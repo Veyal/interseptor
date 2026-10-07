@@ -86,4 +86,5 @@ func (h *Hub) registerCollectionRoutes() {
 	for _, r := range collRoutes {
 		h.mux.HandleFunc(r.method+" "+r.path, r.handler(c))
 	}
+	c.registerMatrix()
 }

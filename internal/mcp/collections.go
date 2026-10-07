@@ -162,3 +162,49 @@ func argStrList(a map[string]any, key string) []string {
 	}
 	return out
 }
+
+// registerCollmatrixTools proxies the Collections differentiators of
+// internal/collmatrix. Like every collection tool they ride the AI channel:
+// scope policy block, secrets scrubbed, no script trust.
+func (s *Server) registerCollmatrixTools() {
+	strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+	post := func(path string, keep ...string) func(map[string]any) (string, error) {
+		return func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			for _, k := range keep {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api("POST", path, body)
+		}
+	}
+	s.add("collection_identity_matrix",
+		"Run a collection (or chosen requests) as each saved authz identity plus anonymous and return the access differential: per request and identity the outcome class, status, size and a flag when an identity expected to be denied succeeded (a hypothesis to reproduce, not proof). Scope policy block; script variable writes are discarded.",
+		obj(map[string]any{"collectionUid": pt("string"), "folderUid": pt("string"), "itemUids": strList, "envUid": pt("string"), "identities": strList, "baseline": pt("string"), "noScripts": pt("boolean")}, "collectionUid"),
+		post("/api/collmatrix/run", "collectionUid", "folderUid", "itemUids", "envUid", "identities", "baseline", "noScripts"))
+	s.add("collection_openapi_coverage",
+		"Which operations of an imported OpenAPI spec were exercised by stored runs of a collection: untested, blocked, failing or passing per operation, with statuses seen and a per-tag rollup.",
+		obj(map[string]any{"collectionUid": pt("string")}, "collectionUid"),
+		func(a map[string]any) (string, error) {
+			return s.apiGet("/api/collmatrix/coverage?collection=" + url.QueryEscape(argStr(a, "collectionUid")))
+		})
+	s.add("collection_intruder_handoff",
+		"Build an Intruder attack (target, raw template with section-sign positions, attack type, payloads) from a collection request. Secret variables stay placeholders. Returns the spec; it does not start an attack.",
+		obj(map[string]any{"collectionUid": pt("string"), "itemUid": pt("string"), "envUid": pt("string"), "positions": strList, "payloads": strList, "attackType": pt("string"), "dataset": map[string]any{"type": "object", "additionalProperties": strList}}, "collectionUid", "itemUid"),
+		post("/api/collmatrix/handoff", "collectionUid", "itemUid", "envUid", "positions", "payloads", "attackType", "dataset"))
+	s.add("collection_example_diff",
+		"Diff a saved response example of a collection request (name or 1-based index) against a captured response flow: status, headers (volatile ones ignored) and JSON structure by path. ignorePaths accepts $.items[*].id style paths.",
+		obj(map[string]any{"collectionUid": pt("string"), "itemUid": pt("string"), "example": pt("string"), "flowId": pt("integer"), "ignorePaths": strList, "ignoreHeaders": strList}, "collectionUid", "itemUid", "flowId"),
+		post("/api/collmatrix/diff-example", "collectionUid", "itemUid", "example", "flowId", "ignorePaths", "ignoreHeaders"))
+	s.add("collection_run_timing",
+		"Timing breakdown of a stored collection run: wall time split into requests, tests and other; per-request min, median, p95, max; slow outliers. Request time is the total round trip.",
+		obj(map[string]any{"collectionUid": pt("string"), "runUid": pt("string")}, "collectionUid", "runUid"),
+		func(a map[string]any) (string, error) {
+			return s.apiGet("/api/collmatrix/timing?collection=" + url.QueryEscape(argStr(a, "collectionUid")) + "&run=" + url.QueryEscape(argStr(a, "runUid")))
+		})
+	s.add("collection_attach_run_evidence",
+		"Attach the captured flows of a stored collection run (or selected requests) to a finding as typed evidence with a run-context note. Secrets are masked in the notes.",
+		obj(map[string]any{"collectionUid": pt("string"), "runUid": pt("string"), "itemUids": strList, "findingId": pt("integer")}, "collectionUid", "runUid", "findingId"),
+		post("/api/collmatrix/attach-run", "collectionUid", "runUid", "itemUids", "findingId"))
+}
