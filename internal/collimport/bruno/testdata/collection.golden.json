@@ -1,0 +1,763 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Bruno Example",
+    "description": "# Example collection",
+    "auth": {
+      "type": "bearer",
+      "bearer": [
+        {
+          "key": "token",
+          "type": "string",
+          "value": "{{token}}"
+        }
+      ]
+    },
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "bruno"
+    },
+    "importReport": {
+      "format": "bruno",
+      "entries": [
+        {
+          "level": "unsupported",
+          "path": "/Users/Get user",
+          "item": "id003",
+          "feature": "assert:isNumber",
+          "message": "assertion 'res.status: isNumber' has no equivalent; the runner reports it unsupported instead of passing",
+          "suggestion": "Rewrite it as a script or a supported operator"
+        },
+        {
+          "level": "unsupported",
+          "path": "/Users/Upload",
+          "item": "id004",
+          "feature": "script-api:bruno",
+          "message": "bruno script API (require('fs') has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "unsupported",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "script-api:bruno",
+          "message": "bruno script API (bru.setVar, res.body) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "unsupported",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "script-api:bruno",
+          "message": "bruno script API (res.status) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "unsupported",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "assert:gt",
+          "message": "assertion 'res.body.items.length: gt' has no equivalent; the runner reports it unsupported instead of passing",
+          "suggestion": "Rewrite it as a script or a supported operator"
+        },
+        {
+          "level": "blocked",
+          "path": "/Users/Upload",
+          "item": "id004",
+          "feature": "script-quarantined",
+          "message": "bruno prerequest script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 24133e8118fe, then trust it"
+        },
+        {
+          "level": "blocked",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "script-quarantined",
+          "message": "bruno test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 657c262f55d2, then trust it"
+        },
+        {
+          "level": "blocked",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "script-quarantined",
+          "message": "bruno test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash de286621fe76, then trust it"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Users/Get user",
+          "item": "id003",
+          "feature": "embedded-credential",
+          "message": "auth basic.password holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Users/Upload",
+          "item": "id004",
+          "feature": "needs-asset",
+          "message": "form field file uploads a local file; files are never read at import",
+          "suggestion": "Attach the file in the form editor"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "secret-variable",
+          "message": "variable api_secret holds a secret value; it was moved out of the shareable initial value"
+        },
+        {
+          "level": "needs-review",
+          "path": "environment dev",
+          "feature": "secret-variable",
+          "message": "variable password holds a secret value; it was moved out of the shareable initial value (offered as a local current value only)"
+        },
+        {
+          "level": "degraded",
+          "feature": "ignored-files",
+          "message": "1 non-.bru file(s) ignored (dotenv, node_modules and other files are never read)"
+        },
+        {
+          "level": "degraded",
+          "path": "collection.bru",
+          "feature": "inherited-headers",
+          "message": "collection headers are copied into each request because collections do not apply headers when sending"
+        },
+        {
+          "level": "degraded",
+          "path": "/Users",
+          "item": "id002",
+          "feature": "inherited-headers",
+          "message": "folder headers are copied into each request below because folders do not apply headers when sending"
+        },
+        {
+          "level": "preserved-inert",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "vars:post-response",
+          "message": "post-response variable expressions are stored but evaluated only by trusted scripts",
+          "suggestion": "Use a post-response script or an extractor"
+        },
+        {
+          "level": "converted",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "assertion",
+          "message": "assertion res.status: eq 200 converted"
+        },
+        {
+          "level": "converted",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "assertion",
+          "message": "assertion res.body.token: isDefined converted"
+        },
+        {
+          "level": "converted",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "assertion",
+          "message": "assertion res.headers.content-type: contains json converted"
+        },
+        {
+          "level": "converted",
+          "path": "/Login",
+          "item": "id005",
+          "feature": "assertion",
+          "message": "assertion res.responseTime: lt 1000 converted"
+        }
+      ],
+      "counts": {
+        "blocked": 3,
+        "converted": 4,
+        "degraded": 3,
+        "needs-review": 4,
+        "preserved-inert": 1,
+        "unsupported": 5
+      },
+      "scripts": {
+        "total": 3,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 3
+      },
+      "scriptList": [
+        {
+          "path": "/Users/Upload",
+          "item": "id004",
+          "listen": "prerequest",
+          "sourceHash": "24133e8118fecd85ad64e78b80be4221a1bbe91df2827fed0e1fd9dd63055942",
+          "lines": 1,
+          "status": "unsupported",
+          "quarantined": true
+        },
+        {
+          "path": "/Login",
+          "item": "id005",
+          "listen": "test",
+          "sourceHash": "657c262f55d26eed9d8f28cdf06b2b00a6ca329b00601ba34d08786fcb9444c8",
+          "lines": 1,
+          "apis": [
+            "bru.setVar",
+            "res.body"
+          ],
+          "status": "unsupported",
+          "quarantined": true
+        },
+        {
+          "path": "/Login",
+          "item": "id005",
+          "listen": "test",
+          "sourceHash": "de286621fe76bf3282b0d3f02bf4f40efd8f2aba6b16e9baf2a09ca5d2097f98",
+          "lines": 1,
+          "apis": [
+            "res.status"
+          ],
+          "status": "unsupported",
+          "quarantined": true
+        }
+      ],
+      "stats": {
+        "folders": 1,
+        "requests": 3,
+        "examples": 0,
+        "variables": 4,
+        "secretVariables": 3,
+        "disabledRows": 2,
+        "needsAsset": 1,
+        "embeddedCredentials": 1,
+        "environmentVariables": 3
+      },
+      "headline": "1 folder(s), 3 request(s) from Bruno; 3 scripts: 0 fully supported, 0 partial, 3 using unsupported APIs (all quarantined until trusted); 4 need review, 3 degraded, 5 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "Users",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "i",
+      "name": "Get user",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/users/:id?expand=roles",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "users",
+          ":id"
+        ],
+        "query": [
+          {
+            "key": "expand",
+            "value": "roles"
+          },
+          {
+            "key": "debug",
+            "value": "1",
+            "disabled": true
+          }
+        ],
+        "variable": [
+          {
+            "key": "id",
+            "value": "42"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "X-Client",
+          "value": "interseptor-test"
+        },
+        {
+          "key": "X-Folder",
+          "value": "yes"
+        }
+      ],
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "type": "string",
+            "value": "alice"
+          },
+          {
+            "key": "password",
+            "type": "string",
+            "value": "literal-bru-password"
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "id": "a1",
+          "name": "res.status: isNumber",
+          "type": "unsupported"
+        }
+      ],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "r",
+      "name": "Upload",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/upload",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "upload"
+        ]
+      },
+      "headers": [
+        {
+          "key": "X-Client",
+          "value": "interseptor-test"
+        },
+        {
+          "key": "X-Folder",
+          "value": "yes"
+        }
+      ],
+      "body": {
+        "formdata": [
+          {
+            "key": "title",
+            "type": "text",
+            "value": "hello"
+          },
+          {
+            "key": "file",
+            "src": "",
+            "type": "file"
+          }
+        ],
+        "mode": "formdata"
+      },
+      "events": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fs = require('fs');"
+            ]
+          },
+          "dialect": "bruno"
+        }
+      ],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "Login",
+      "descriptionMd": "Logs in.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/login",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "login"
+        ]
+      },
+      "headers": [
+        {
+          "key": "X-Client",
+          "value": "interseptor-test"
+        },
+        {
+          "key": "Accept",
+          "value": "application/json"
+        },
+        {
+          "key": "X-Off",
+          "value": "1",
+          "disabled": true
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"user\": \"alice\",\n  \"password\": \"{{password}}\"\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "auth": {
+        "type": "noauth"
+      },
+      "events": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "bru.setVar(\"token\", res.body.token);"
+            ]
+          },
+          "dialect": "bruno"
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "test(\"ok\", function() { expect(res.status).to.equal(200); });"
+            ]
+          },
+          "dialect": "bruno"
+        }
+      ],
+      "vars": {
+        "extract": [
+          {
+            "disabled": false,
+            "expr": "res.body.token",
+            "name": "token"
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "id": "a1",
+          "name": "res.status: eq 200",
+          "type": "status",
+          "op": "eq",
+          "value": 200
+        },
+        {
+          "id": "a2",
+          "name": "res.body.token: isDefined",
+          "type": "jsonpath",
+          "op": "exists",
+          "path": "$.token"
+        },
+        {
+          "id": "a3",
+          "name": "res.body.items.length: gt 0",
+          "type": "unsupported"
+        },
+        {
+          "id": "a4",
+          "name": "res.headers.content-type: contains json",
+          "type": "header",
+          "op": "contains",
+          "header": "content-type",
+          "value": "json"
+        },
+        {
+          "id": "a5",
+          "name": "res.responseTime: lt 1000",
+          "type": "time",
+          "op": "lt",
+          "value": 1000
+        }
+      ],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "https://api.example.com",
+      "enabled": true
+    },
+    {
+      "ownerKind": "request",
+      "ownerUid": "id005",
+      "key": "api_secret",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id006",
+        "name": "dev",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id006",
+          "key": "host",
+          "type": "default",
+          "initialValue": "https://dev.example.com",
+          "enabled": true
+        },
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id006",
+          "key": "password",
+          "type": "secret",
+          "initialValue": "",
+          "enabled": true
+        },
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id006",
+          "key": "token",
+          "type": "secret",
+          "initialValue": "",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "bruno",
+    "entries": [
+      {
+        "level": "unsupported",
+        "path": "/Users/Get user",
+        "item": "id003",
+        "feature": "assert:isNumber",
+        "message": "assertion 'res.status: isNumber' has no equivalent; the runner reports it unsupported instead of passing",
+        "suggestion": "Rewrite it as a script or a supported operator"
+      },
+      {
+        "level": "unsupported",
+        "path": "/Users/Upload",
+        "item": "id004",
+        "feature": "script-api:bruno",
+        "message": "bruno script API (require('fs') has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "unsupported",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "script-api:bruno",
+        "message": "bruno script API (bru.setVar, res.body) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "unsupported",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "script-api:bruno",
+        "message": "bruno script API (res.status) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "unsupported",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "assert:gt",
+        "message": "assertion 'res.body.items.length: gt' has no equivalent; the runner reports it unsupported instead of passing",
+        "suggestion": "Rewrite it as a script or a supported operator"
+      },
+      {
+        "level": "blocked",
+        "path": "/Users/Upload",
+        "item": "id004",
+        "feature": "script-quarantined",
+        "message": "bruno prerequest script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 24133e8118fe, then trust it"
+      },
+      {
+        "level": "blocked",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "script-quarantined",
+        "message": "bruno test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 657c262f55d2, then trust it"
+      },
+      {
+        "level": "blocked",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "script-quarantined",
+        "message": "bruno test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash de286621fe76, then trust it"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Users/Get user",
+        "item": "id003",
+        "feature": "embedded-credential",
+        "message": "auth basic.password holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Users/Upload",
+        "item": "id004",
+        "feature": "needs-asset",
+        "message": "form field file uploads a local file; files are never read at import",
+        "suggestion": "Attach the file in the form editor"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "secret-variable",
+        "message": "variable api_secret holds a secret value; it was moved out of the shareable initial value"
+      },
+      {
+        "level": "needs-review",
+        "path": "environment dev",
+        "feature": "secret-variable",
+        "message": "variable password holds a secret value; it was moved out of the shareable initial value (offered as a local current value only)"
+      },
+      {
+        "level": "degraded",
+        "feature": "ignored-files",
+        "message": "1 non-.bru file(s) ignored (dotenv, node_modules and other files are never read)"
+      },
+      {
+        "level": "degraded",
+        "path": "collection.bru",
+        "feature": "inherited-headers",
+        "message": "collection headers are copied into each request because collections do not apply headers when sending"
+      },
+      {
+        "level": "degraded",
+        "path": "/Users",
+        "item": "id002",
+        "feature": "inherited-headers",
+        "message": "folder headers are copied into each request below because folders do not apply headers when sending"
+      },
+      {
+        "level": "preserved-inert",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "vars:post-response",
+        "message": "post-response variable expressions are stored but evaluated only by trusted scripts",
+        "suggestion": "Use a post-response script or an extractor"
+      },
+      {
+        "level": "converted",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "assertion",
+        "message": "assertion res.status: eq 200 converted"
+      },
+      {
+        "level": "converted",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "assertion",
+        "message": "assertion res.body.token: isDefined converted"
+      },
+      {
+        "level": "converted",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "assertion",
+        "message": "assertion res.headers.content-type: contains json converted"
+      },
+      {
+        "level": "converted",
+        "path": "/Login",
+        "item": "id005",
+        "feature": "assertion",
+        "message": "assertion res.responseTime: lt 1000 converted"
+      }
+    ],
+    "counts": {
+      "blocked": 3,
+      "converted": 4,
+      "degraded": 3,
+      "needs-review": 4,
+      "preserved-inert": 1,
+      "unsupported": 5
+    },
+    "scripts": {
+      "total": 3,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 3
+    },
+    "scriptList": [
+      {
+        "path": "/Users/Upload",
+        "item": "id004",
+        "listen": "prerequest",
+        "sourceHash": "24133e8118fecd85ad64e78b80be4221a1bbe91df2827fed0e1fd9dd63055942",
+        "lines": 1,
+        "status": "unsupported",
+        "quarantined": true
+      },
+      {
+        "path": "/Login",
+        "item": "id005",
+        "listen": "test",
+        "sourceHash": "657c262f55d26eed9d8f28cdf06b2b00a6ca329b00601ba34d08786fcb9444c8",
+        "lines": 1,
+        "apis": [
+          "bru.setVar",
+          "res.body"
+        ],
+        "status": "unsupported",
+        "quarantined": true
+      },
+      {
+        "path": "/Login",
+        "item": "id005",
+        "listen": "test",
+        "sourceHash": "de286621fe76bf3282b0d3f02bf4f40efd8f2aba6b16e9baf2a09ca5d2097f98",
+        "lines": 1,
+        "apis": [
+          "res.status"
+        ],
+        "status": "unsupported",
+        "quarantined": true
+      }
+    ],
+    "stats": {
+      "folders": 1,
+      "requests": 3,
+      "examples": 0,
+      "variables": 4,
+      "secretVariables": 3,
+      "disabledRows": 2,
+      "needsAsset": 1,
+      "embeddedCredentials": 1,
+      "environmentVariables": 3
+    },
+    "headline": "1 folder(s), 3 request(s) from Bruno; 3 scripts: 0 fully supported, 0 partial, 3 using unsupported APIs (all quarantined until trusted); 4 need review, 3 degraded, 5 unsupported"
+  }
+}
