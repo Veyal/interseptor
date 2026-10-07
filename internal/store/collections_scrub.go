@@ -339,3 +339,36 @@ func (s *Store) BackupToScrubbed(destPath string, opt ScrubOptions) (ScrubReport
 	}
 	return rep, nil
 }
+
+// QuarantineImportedProject strips every grant a foreign project database
+// carries: all script trust rows are deleted, collection capabilities reset to
+// default-deny and a scope policy of "off" (or anything invalid) becomes
+// "block". Restores and vault pulls call it on the staged file before it is
+// installed, so a hand-built archive can never arrive with scripts already
+// trusted (trust is a UI-only decision, mirroring MergeCollectionsFrom).
+func QuarantineImportedProject(path string) error {
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA journal_mode=DELETE`); err != nil {
+		return err
+	}
+	has := func(t string) bool { ok, _ := peerHasTable(db, t); return ok }
+	if has("ix_script_trust") {
+		if _, err := db.Exec(`DELETE FROM ix_script_trust`); err != nil {
+			return fmt.Errorf("clear imported script trust: %w", err)
+		}
+	}
+	if has("ix_collections") {
+		if _, err := db.Exec(`UPDATE ix_collections SET caps_json=''`); err != nil {
+			return fmt.Errorf("reset imported capabilities: %w", err)
+		}
+		if _, err := db.Exec(`UPDATE ix_collections SET scope_policy='block' WHERE scope_policy NOT IN ('block','warn')`); err != nil {
+			return fmt.Errorf("reset imported scope policy: %w", err)
+		}
+	}
+	return nil
+}

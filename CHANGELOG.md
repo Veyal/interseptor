@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **HAR importer test fixture was gitignored.** `*.har` in `.gitignore` swallowed `internal/collimport/har/testdata/sample.har`, so a clean checkout failed `TestHARGolden`; added a testdata negation and committed the (example.com) fixture.
 - Script sandbox: secret variable values no longer enter the JS heap unless the script holds `secrets.read` (and no variable data without `vars.read`), and scope data moved from the public `__d` property to a closure-private WeakMap, so `vars.read` alone can no longer read or exfiltrate secrets.
+- Project restore (`/api/import/full`, `/api/import/full/file`) and vault pull now clear imported script trust, reset collection capabilities to default-deny and downgrade scope policy `off` to `block` before the project is installed (`store.QuarantineImportedProject`); vault pull uses the same staged, validated install as a local restore. A crafted archive can no longer arrive with scripts pre-trusted.
 
 ### Changed
 

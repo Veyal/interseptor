@@ -382,6 +382,9 @@ func installFullArchiveWithOps(zipPath, destDir string, overwrite bool, ops proj
 		if err := validateImportedProject(stage); err != nil {
 			return err
 		}
+		if err := store.QuarantineImportedProject(filepath.Join(stage, archiveDBName)); err != nil {
+			return fmt.Errorf("quarantine imported project: %w", err)
+		}
 		if !overwrite || !dirHasProject(destDir) {
 			return os.Rename(stage, destDir)
 		}
