@@ -222,7 +222,13 @@ func TestManagerEmitsPauseResumeAndPersistAskEvents(t *testing.T) {
 	m := NewManager()
 	defer m.Close()
 	f := newFake("login")
-	f.step = writer
+	// Hold the first step until Pause and Resume were issued; otherwise a fast
+	// runner finishes before Pause lands and no "paused" event exists to see.
+	gate := make(chan struct{})
+	f.step = func(in collexec.StepInput, n int) *collexec.StepResult {
+		<-gate
+		return writer(in, n)
+	}
 	var mu sync.Mutex
 	var types []string
 	var asked []VarChangeView
@@ -239,6 +245,7 @@ func TestManagerEmitsPauseResumeAndPersistAskEvents(t *testing.T) {
 	}
 	lr.Pause()
 	lr.Resume()
+	close(gate)
 	waitFor(t, "awaiting_persist", func() bool { return lr.Snapshot(0).Status == LiveAwaitingPersist })
 	lr.Decide(true)
 	if _, err := lr.Wait(context.Background()); err != nil {
