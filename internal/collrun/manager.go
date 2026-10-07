@@ -72,6 +72,7 @@ type LiveRun struct {
 	done        chan struct{}
 	startedOnce sync.Once
 	finished    time.Time
+	user        func(Event) // the caller's OnEvent, also fed by lifecycle events
 }
 
 // ErrTooManyRuns is returned when MaxActive runs are already in flight.
@@ -99,13 +100,8 @@ func (m *Manager) Start(b Backend, rs RunStore, o Options) (*LiveRun, error) {
 
 	lr := &LiveRun{runner: New(b, rs), status: "starting", subs: map[int]chan Event{},
 		decide: make(chan bool, 1), started: make(chan struct{}), done: make(chan struct{})}
-	user := o.OnEvent
-	o.OnEvent = func(e Event) {
-		lr.onEvent(e)
-		if user != nil {
-			user(e)
-		}
-	}
+	lr.user = o.OnEvent
+	o.OnEvent = lr.publish
 	if o.Persist == PersistAsk && o.Decide == nil {
 		o.Decide = lr.waitDecision
 	}
@@ -206,6 +202,23 @@ func (l *LiveRun) isFinished() bool {
 	}
 }
 
+// publish records an event for snapshots/subscribers and forwards it to the
+// caller's OnEvent. Lifecycle events (paused, resumed, awaiting_persist) come
+// from the LiveRun itself; the rest from the runner.
+func (l *LiveRun) publish(e Event) {
+	l.onEvent(e)
+	if l.user != nil {
+		l.user(e)
+	}
+}
+
+func (l *LiveRun) lifecycle(typ string, pending []VarChangeView) {
+	l.mu.Lock()
+	uid, totals, status := l.UID, l.totals, l.status
+	l.mu.Unlock()
+	l.publish(Event{Type: typ, RunUID: uid, Totals: totals, Status: status, Pending: pending})
+}
+
 func (l *LiveRun) onEvent(e Event) {
 	l.mu.Lock()
 	switch e.Type {
@@ -302,24 +315,30 @@ func (l *LiveRun) Snapshot(since int) Progress {
 // Pause holds the run before its next request.
 func (l *LiveRun) Pause() {
 	l.runner.Pause()
-	l.setStatusIf(StatusRunning, LivePaused)
+	if l.setStatusIf(StatusRunning, LivePaused) {
+		l.lifecycle("paused", nil)
+	}
 }
 
 // Resume continues a paused run.
 func (l *LiveRun) Resume() {
 	l.runner.Resume()
-	l.setStatusIf(LivePaused, StatusRunning)
+	if l.setStatusIf(LivePaused, StatusRunning) {
+		l.lifecycle("resumed", nil)
+	}
 }
 
 // Abort cancels the run, including an in-flight request.
 func (l *LiveRun) Abort() { l.runner.Abort() }
 
-func (l *LiveRun) setStatusIf(from, to string) {
+func (l *LiveRun) setStatusIf(from, to string) bool {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.status == from {
 		l.status = to
+		return true
 	}
-	l.mu.Unlock()
+	return false
 }
 
 // Decide answers a persist=ask prompt: keep the script variable writes or
@@ -345,6 +364,7 @@ func (l *LiveRun) waitDecision(pending []VarChangeView) bool {
 	l.mu.Lock()
 	l.status, l.pending = LiveAwaitingPersist, append([]VarChangeView(nil), pending...)
 	l.mu.Unlock()
+	l.lifecycle("awaiting_persist", pending)
 	select {
 	case keep := <-l.decide:
 		return keep

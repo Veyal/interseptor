@@ -2,6 +2,7 @@ package collrun
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -212,5 +213,49 @@ func TestSubscriberNeverBlocksRunner(t *testing.T) {
 	rep, err := lr.Wait(ctx)
 	if err != nil || len(rep.Items) != 400 {
 		t.Fatalf("a stuck subscriber stalled the run: %v", err)
+	}
+}
+
+// Pause, resume and the persist-ask prompt are visible to event consumers
+// (the control layer forwards them over SSE).
+func TestManagerEmitsPauseResumeAndPersistAskEvents(t *testing.T) {
+	m := NewManager()
+	defer m.Close()
+	f := newFake("login")
+	f.step = writer
+	var mu sync.Mutex
+	var types []string
+	var asked []VarChangeView
+	lr, err := m.Start(f, nil, Options{CollectionUID: "c1", Persist: PersistAsk, OnEvent: func(e Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		types = append(types, e.Type)
+		if e.Type == "awaiting_persist" {
+			asked = e.Pending
+		}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lr.Pause()
+	lr.Resume()
+	waitFor(t, "awaiting_persist", func() bool { return lr.Snapshot(0).Status == LiveAwaitingPersist })
+	lr.Decide(true)
+	if _, err := lr.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, want := range []string{"start", "paused", "resumed", "awaiting_persist", "done"} {
+		found := false
+		for _, g := range types {
+			found = found || g == want
+		}
+		if !found {
+			t.Fatalf("missing %q event in %v", want, types)
+		}
+	}
+	if len(asked) != 1 || asked[0].Key != "token" {
+		t.Fatalf("awaiting_persist must carry the pending writes: %+v", asked)
 	}
 }

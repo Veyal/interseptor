@@ -93,12 +93,14 @@ type Options struct {
 
 // Event is a progress notification for SSE or the CLI.
 type Event struct {
-	Type   string      `json:"type"` // start | item | paused | resumed | done
+	Type   string      `json:"type"` // start | item | paused | resumed | awaiting_persist | done
 	RunUID string      `json:"runUid"`
 	Item   *ItemResult `json:"item,omitempty"`
 	Totals Totals      `json:"totals"`
 	Status string      `json:"status,omitempty"`
 	Total  int         `json:"plannedSteps,omitempty"`
+	// Pending carries the variable writes of an awaiting_persist prompt.
+	Pending []VarChangeView `json:"pendingWrites,omitempty"`
 }
 
 // Runner executes one run at a time. Use a new Runner per run; Pause, Resume

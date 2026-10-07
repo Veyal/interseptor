@@ -10,6 +10,7 @@ import (
 
 	"github.com/Veyal/interseptor/internal/collexec"
 	"github.com/Veyal/interseptor/internal/redact"
+	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/varstore"
 )
@@ -26,7 +27,15 @@ type StoreConfig struct {
 	// --trust-hash). They are never written to the store.
 	PinnedHashes []string
 	Registry     *redact.Registry
-	Clock        func() time.Time
+	// Jars shares cookie jars with the host (control keeps one set per
+	// process); nil gives the backend its own.
+	Jars *collexec.Jars
+	// Own returns the listeners to refuse at send time; it overrides
+	// OwnPorts/OwnIPs when set (the control server's ports can rebind).
+	Own func() ([]int, []net.IP)
+	// Scripts chooses the script engine per trust state (see PMExecutor).
+	Scripts scriptworker.Router
+	Clock   func() time.Time
 	// Source/AI describe the caller for script sends.
 	Source collexec.Source
 	AI     bool
@@ -56,7 +65,11 @@ func NewStoreBackend(cfg StoreConfig) *StoreBackend {
 			pins[h] = true
 		}
 	}
-	return &StoreBackend{cfg: cfg, jars: &collexec.Jars{}, reg: reg, pins: pins}
+	jars := cfg.Jars
+	if jars == nil {
+		jars = &collexec.Jars{}
+	}
+	return &StoreBackend{cfg: cfg, jars: jars, reg: reg, pins: pins}
 }
 
 var _ Backend = (*StoreBackend)(nil)
@@ -117,13 +130,18 @@ func (b *StoreBackend) IsScriptTrusted(collectionUID, hash string) (bool, error)
 // Step implements Backend: one pipeline per step (cheap) sharing the cookie
 // jars and masking registry, with the sandbox executor bound to this step.
 func (b *StoreBackend) Step(ctx context.Context, in collexec.StepInput, meta StepMeta) (*collexec.StepResult, error) {
+	ports, ips := b.cfg.OwnPorts, b.cfg.OwnIPs
+	if b.cfg.Own != nil {
+		ports, ips = b.cfg.Own()
+	}
 	exec := &PMExecutor{
 		Coll: in.Chain.Collection, Source: in.Source, AI: in.AI, EnvUID: in.EnvUID, Layers: in.Layers,
 		Iter: in.Iteration, Count: meta.IterationCount, Reg: b.reg, Flows: b.cfg.Store, Clock: b.cfg.Clock, Scope: b.cfg.Scope,
+		Scripts: b.cfg.Scripts,
 	}
 	p := collexec.NewPipeline(collexec.Pipeline{
 		Sender: b.cfg.Sender, Exec: exec, Scope: b.cfg.Scope, Trust: b, Flows: b.cfg.Store, Bodies: b.cfg.Store,
-		Jars: b.jars, Registry: b.reg, OwnPorts: b.cfg.OwnPorts, OwnIPs: b.cfg.OwnIPs, Clock: b.cfg.Clock,
+		Jars: b.jars, Registry: b.reg, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
 	})
 	exec.Pipe = p
 	return p.Step(ctx, in)

@@ -19,6 +19,7 @@ import (
 	"github.com/Veyal/interseptor/internal/pmsandbox"
 	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/scriptctx"
+	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/varstore"
 )
@@ -78,6 +79,22 @@ type PMExecutor struct {
 	Flows  FlowReader
 	Clock  func() time.Time
 	Scope  collexec.ScopeChecker
+	// Scripts picks the engine per trust state: the out-of-process worker, or
+	// in-process for trusted scripts when Router.InProcessTrusted is set. The
+	// zero Router runs everything in-process (tests, embedders without a
+	// re-exec-able binary).
+	Scripts scriptworker.Router
+}
+
+// runScript executes one sandbox phase. Only scripts the pipeline's trust gate
+// approved reach PMExecutor, so they are always "trusted" here; the router
+// decides whether trusted code still goes through the worker.
+func (e *PMExecutor) runScript(ctx context.Context, in pmsandbox.Input) pmsandbox.Output {
+	r := e.Scripts
+	if r.Worker == nil {
+		return scriptworker.InProcess{}.Run(ctx, in)
+	}
+	return r.Run(ctx, true, in)
 }
 
 func (e *PMExecutor) now() time.Time {
@@ -117,7 +134,7 @@ func (e *PMExecutor) Run(ctx context.Context, call collexec.ScriptCall) (collexe
 	if sc.Response != nil {
 		in.Response = toScriptResponse(sc.Response)
 	}
-	out := pmsandbox.Run(ctx, in)
+	out := e.runScript(ctx, in)
 	e.applyOutput(sc, call, baseline, out)
 	outcome := collexec.ScriptOutcome{}
 	for _, l := range out.Console {
