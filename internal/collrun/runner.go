@@ -113,6 +113,7 @@ type Runner struct {
 	paused  bool
 	resume  chan struct{}
 	aborted bool
+	runDone <-chan struct{} // closed when the run's context ends (abort or parent cancel)
 }
 
 // New returns a Runner.
@@ -291,6 +292,7 @@ func (r *Runner) Run(ctx context.Context, o Options) (*Report, error) {
 	defer cancel()
 	r.mu.Lock()
 	r.cancel = cancel
+	r.runDone = runCtx.Done()
 	pre := r.aborted
 	r.mu.Unlock()
 	if pre {
@@ -403,4 +405,12 @@ func (r *Runner) displayValue(c collexec.VarChange) string {
 	}
 	prefix := c.Key + "="
 	return strings.TrimPrefix(r.Backend.Scrub(prefix+c.Display), prefix)
+}
+
+// abortCh is closed when the run is aborted or its parent context ends. Only
+// valid once Run has started.
+func (r *Runner) abortCh() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.runDone
 }
