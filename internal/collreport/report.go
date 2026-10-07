@@ -114,6 +114,9 @@ func scrubValue(v any, scrub func(string) string) any {
 		return t
 	case map[string]any:
 		for k := range t {
+			if k == "hash" { // content digests (script hash, data hash) are public identifiers, not secrets
+				continue
+			}
 			t[k] = scrubValue(t[k], scrub)
 		}
 		return t
