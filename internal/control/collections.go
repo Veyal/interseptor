@@ -40,6 +40,7 @@ type collectionsAPI struct {
 	beOnce sync.Once
 	be     *collrun.StoreBackend
 	mgr    *collrun.Manager // asynchronous runs (UI runner, MCP, REST)
+	oauth  oauthPending     // authorization-code flows awaiting their callback
 }
 
 func newCollectionsAPI(h *Hub) *collectionsAPI {

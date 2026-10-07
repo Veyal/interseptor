@@ -144,6 +144,17 @@ func (b *StoreBackend) IsScriptTrusted(collectionUID, hash string) (bool, error)
 // Step implements Backend: one pipeline per step (cheap) sharing the cookie
 // jars and masking registry, with the sandbox executor bound to this step.
 func (b *StoreBackend) Step(ctx context.Context, in collexec.StepInput, meta StepMeta) (*collexec.StepResult, error) {
+	return b.pipeline(in, meta).Step(ctx, in)
+}
+
+// AuthContext binds ctx to the scope and dial rules of in, so the auth
+// manager's token requests outside a Step (the OAuth2 authorization-code
+// callback) are guarded like any send.
+func (b *StoreBackend) AuthContext(ctx context.Context, in collexec.StepInput) context.Context {
+	return b.pipeline(in, StepMeta{IterationCount: 1}).AuthContext(ctx, in)
+}
+
+func (b *StoreBackend) pipeline(in collexec.StepInput, meta StepMeta) *collexec.Pipeline {
 	ports, ips := b.cfg.OwnPorts, b.cfg.OwnIPs
 	if b.cfg.Own != nil {
 		ports, ips = b.cfg.Own()
@@ -158,7 +169,7 @@ func (b *StoreBackend) Step(ctx context.Context, in collexec.StepInput, meta Ste
 		Jars: b.jars, Registry: b.reg, Auth: b.auth, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
 	})
 	exec.Pipe = p
-	return p.Step(ctx, in)
+	return p
 }
 
 // ---- variables -----------------------------------------------------------------

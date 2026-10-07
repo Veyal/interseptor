@@ -24,7 +24,7 @@ func TestUIRunnerAndCollectionsModelsUnderNode(t *testing.T) {
 func TestUIRunnerViewUsesAsyncRunnerAPI(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/runner.js"))
 	for _, want := range []string{
-		"'/api/runner/runs'", // start
+		"'/api/runner/runs'",                              // start
 		"'/abort'", "'/pause'", "'/resume'", "'/persist'", // controls and the persist-ask answer
 		"registerSseHandler('collrun'", // live events
 		"?since=",                      // incremental results
