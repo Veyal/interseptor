@@ -257,10 +257,9 @@ func (h *Hub) vaultImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(tmpPath)
-	if dirHasProject(destDir) && in.Overwrite {
-		_ = os.RemoveAll(destDir)
-	}
-	if err := unpackFullArchive(tmpPath, destDir); err != nil {
+	// Same staged, validated, quarantined install as a local restore: a peer's
+	// archive must never arrive with scripts trusted or capabilities granted.
+	if err := installFullArchive(tmpPath, destDir, in.Overwrite); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

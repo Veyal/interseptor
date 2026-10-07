@@ -1,0 +1,51 @@
+meta {
+  name: Login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  Accept: application/json
+  ~X-Off: 1
+}
+
+body:json {
+  {
+    "user": "alice",
+    "password": "{{password}}"
+  }
+}
+
+vars:pre-request {
+  api_secret: canary-bru-secret
+}
+
+vars:post-response {
+  token: res.body.token
+}
+
+assert {
+  res.status: eq 200
+  res.body.token: isDefined
+  res.body.items.length: gt 0
+  res.headers.content-type: contains json
+  res.responseTime: lt 1000
+}
+
+script:post-response {
+  bru.setVar("token", res.body.token);
+}
+
+tests {
+  test("ok", function() { expect(res.status).to.equal(200); });
+}
+
+docs {
+  Logs in.
+}

@@ -1,0 +1,246 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "V5 Example",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "insomnia"
+    },
+    "importReport": {
+      "format": "insomnia",
+      "entries": [
+        {
+          "level": "blocked",
+          "path": "/Folder/List",
+          "item": "id003",
+          "feature": "script-quarantined",
+          "message": "insomnia prerequest script (1 lines, partial) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash ac7e76a3b000, then trust it"
+        }
+      ],
+      "counts": {
+        "blocked": 1
+      },
+      "scripts": {
+        "total": 1,
+        "supported": 0,
+        "partial": 1,
+        "unsupported": 0
+      },
+      "scriptList": [
+        {
+          "path": "/Folder/List",
+          "item": "id003",
+          "listen": "prerequest",
+          "sourceHash": "ac7e76a3b00029a510dc1e49e5c6904820fdf0774c639cff3d1ec2506edd5227",
+          "lines": 1,
+          "apis": [
+            "pm.environment"
+          ],
+          "status": "partial",
+          "quarantined": true
+        }
+      ],
+      "stats": {
+        "folders": 1,
+        "requests": 2,
+        "examples": 0,
+        "variables": 2,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 1
+      },
+      "headline": "1 folder(s), 2 request(s) from Insomnia; 1 scripts: 0 fully supported, 1 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 0 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "Folder",
+      "sidecar": {
+        "id": "fld_a"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "i",
+      "name": "List",
+      "method": "GET",
+      "url": {
+        "raw": "{{host}}/items?q=x",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "items"
+        ],
+        "query": [
+          {
+            "key": "q",
+            "value": "x"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "application/json"
+        }
+      ],
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          {
+            "key": "key",
+            "type": "string",
+            "value": "X-Key"
+          },
+          {
+            "key": "value",
+            "type": "string",
+            "value": "{{key}}"
+          },
+          {
+            "key": "in",
+            "type": "string",
+            "value": "header"
+          }
+        ]
+      },
+      "events": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('a', 1);"
+            ]
+          },
+          "dialect": "insomnia"
+        }
+      ],
+      "sidecar": {
+        "id": "req_a"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "Root",
+      "method": "DELETE",
+      "url": {
+        "raw": "https://example.com/root",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "root"
+        ]
+      },
+      "headers": [],
+      "sidecar": {
+        "id": "req_b"
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "host",
+      "type": "default",
+      "initialValue": "https://example.com",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id005",
+        "name": "Prod",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id005",
+          "key": "host",
+          "type": "default",
+          "initialValue": "https://prod.example.com",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "insomnia",
+    "entries": [
+      {
+        "level": "blocked",
+        "path": "/Folder/List",
+        "item": "id003",
+        "feature": "script-quarantined",
+        "message": "insomnia prerequest script (1 lines, partial) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash ac7e76a3b000, then trust it"
+      }
+    ],
+    "counts": {
+      "blocked": 1
+    },
+    "scripts": {
+      "total": 1,
+      "supported": 0,
+      "partial": 1,
+      "unsupported": 0
+    },
+    "scriptList": [
+      {
+        "path": "/Folder/List",
+        "item": "id003",
+        "listen": "prerequest",
+        "sourceHash": "ac7e76a3b00029a510dc1e49e5c6904820fdf0774c639cff3d1ec2506edd5227",
+        "lines": 1,
+        "apis": [
+          "pm.environment"
+        ],
+        "status": "partial",
+        "quarantined": true
+      }
+    ],
+    "stats": {
+      "folders": 1,
+      "requests": 2,
+      "examples": 0,
+      "variables": 2,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 1
+    },
+    "headline": "1 folder(s), 2 request(s) from Insomnia; 1 scripts: 0 fully supported, 1 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 0 degraded, 0 unsupported"
+  }
+}

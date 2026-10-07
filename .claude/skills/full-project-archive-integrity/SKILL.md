@@ -47,3 +47,4 @@ successful archive into a hidden directory that the project picker cannot select
 The server-side path export/import handlers are filesystem mutation commands. Decode one complete,
 bounded JSON value before taking a snapshot, creating a destination, or installing a staged archive;
 a valid path object followed by extra JSON must leave both destination and project directory absent.
+- `harx.Build` must emit `"entries": []` (never null) for an empty project or the bundle cannot be re-imported; the full archive and vault snapshots are scrubbed (`BackupToScrubbed`), so a restore intentionally loses secret variable values, cookies, tokens and script trust.

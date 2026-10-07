@@ -84,3 +84,13 @@ test('middleEllipsis keeps both ends of a long path and leaves short ones alone'
   assert.equal(middleEllipsis(null, 10), '');
   assert.equal(middleEllipsis('abcdefghij', 3), 'abcdefghij', 'a nonsensical max never mangles text');
 });
+
+test('hiding collection flows counts as an active filter and a popover filter', () => {
+  const s = base();
+  assert.equal(activeFilterCount(s), 0, 'collection flows are shown by default');
+  s.showCollection = false;
+  assert.equal(activeFilterCount(s), 1);
+  assert.equal(popoverFilterCount(s), 1);
+  s.showCollection = true;
+  assert.equal(activeFilterCount(s), 0);
+});

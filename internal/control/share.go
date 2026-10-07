@@ -86,6 +86,9 @@ func (h *Hub) Close() {
 		h.StopTunnel()
 		h.closeActivitySocket()
 		h.stopMaintenance()
+		if h.collAPI != nil {
+			h.collAPI.mgr.Close() // aborts live collection runs
+		}
 		if h.intr != nil {
 			h.intr.Close()
 		}

@@ -69,6 +69,7 @@ session-header reuse, and report contamination.
 | HAR | Interchange with browser and proxy tooling | Imports flows into History; some Interseptor-only metadata is not represented. |
 | Burp saved-items XML | Migrating Proxy history or Target traffic from Burp Suite | Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. |
 | Postman collection JSON | Preparing editable requests in Repeater | Imports Collection v2.0/v2.1 with optional environment resolution; unsupported values are reported and no requests are sent by import. |
+| Collections | Requests, environments, variables and scripts for [Collections](collections.md) | Travel inside the full project ZIP, the portable project JSON (v2 `collections` section), peer merge and vault backups, always in scrubbed form. Importers: Postman, OpenAPI/Swagger, curl, Insomnia, Bruno, HAR, Burp XML. |
 | Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project. |
 | Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
 
@@ -85,6 +86,26 @@ Native `.burp` project files are not accepted. PortSwigger documents project-fil
 not publish the native persistence format as an interchange format; exporting selected items as XML
 is the supported migration boundary. Keep exports protected as engagement evidence, and review the
 reported imported/skipped counts before deleting the Burp project.
+
+## Collections, secrets, and archives
+
+[Collections](collections.md) store secrets: secret variable values, auth credentials, cookies, OAuth
+tokens and script trust. They are removed by one scrub function, not by per-feature filtering.
+
+| Path | What leaves the machine |
+| --- | --- |
+| Full project ZIP (download, file export, merge push) | A scrubbed copy of the database: secret variables, current values, cookies, tokens, auth credentials and script trust are deleted from the file itself, and freed pages are overwritten. Shareable collection data (names, URLs, variable references, initial values of ordinary variables) survives. |
+| Vault backup | The same scrubbed snapshot. |
+| Portable project JSON v2 | A scrubbed `collections` section. Version 1 bundles still import; bundles newer than 2 are rejected. |
+| Merge (peer, archive, vault) | Collections are unioned by uid. Current values, cookies, tokens, trust and runs are never merged; scripts arrive quarantined with empty capabilities, and scope policy `off` becomes `block`. |
+| MCP and AI-source REST | Scrubbed reads, no script source, no reveal. |
+| Run reports (CLI, JSON, JUnit, HTML) | Masked with the run's secrets and credential shapes. |
+
+One thing is deliberately not scrubbed: a request that was **sent** is a captured flow with its exact
+wire bytes, so an Authorization header it carried is in History and in History exports (HAR, the
+project bundle's `har` section, findings evidence). Treat evidence exports as sensitive, and prefer
+secret variables over literal credentials in request headers so the collection itself stays
+shareable. A secret that must move to another machine has to be re-entered there.
 
 ## Retention and deletion
 

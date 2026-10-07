@@ -1,0 +1,30 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2024-01-01T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {"_id": "wrk_1", "_type": "workspace", "name": "Example API", "description": "demo", "parentId": null},
+    {"_id": "env_base", "_type": "environment", "name": "Base Environment", "parentId": "wrk_1", "data": {"base_url": "https://api.example.com", "api_token": "canary-token-123", "nested": {"a": 1, "b": "two"}}},
+    {"_id": "env_stage", "_type": "environment", "name": "Staging", "parentId": "env_base", "data": {"base_url": "https://stage.example.com"}, "metaSortKey": 1},
+    {"_id": "jar_1", "_type": "cookie_jar", "parentId": "wrk_1", "cookies": []},
+    {"_id": "grpc_1", "_type": "grpc_request", "parentId": "wrk_1", "name": "g"},
+    {"_id": "fld_1", "_type": "request_group", "parentId": "wrk_1", "name": "Users", "description": "user calls", "metaSortKey": 1, "environment": {"scope": "users"}},
+    {"_id": "req_login", "_type": "request", "parentId": "wrk_1", "name": "Login", "method": "POST", "url": "{{ _.base_url }}/login", "metaSortKey": 2,
+      "headers": [{"name": "Content-Type", "value": "application/json"}, {"name": "X-Request-Id", "value": "{% uuid 'v4' %}"}, {"name": "X-Off", "value": "1", "disabled": true}],
+      "body": {"mimeType": "application/json", "text": "{\"user\":\"alice\",\"pass\":\"{{ _.password }}\"}"},
+      "authentication": {"type": "basic", "username": "alice", "password": "literal-secret"},
+      "afterResponseScript": "insomnia.environment.set('t', insomnia.response.json().token);"},
+    {"_id": "req_get", "_type": "request", "parentId": "fld_1", "name": "Get user", "method": "GET", "url": "{{ _.base_url }}/users/1", "metaSortKey": 1,
+      "parameters": [{"name": "expand", "value": "roles"}, {"name": "off", "value": "x", "disabled": true}],
+      "headers": [{"name": "Authorization", "value": "Bearer {% response 'body', 'req_login', 'b64::JC50b2tlbg==::46b', 'never', 60 %}"}],
+      "authentication": {"type": "bearer", "token": "{{ _.api_token }}"},
+      "settingFollowRedirects": "off"},
+    {"_id": "req_form", "_type": "request", "parentId": "fld_1", "name": "Upload", "method": "POST", "url": "https://example.com/upload", "metaSortKey": 2,
+      "body": {"mimeType": "multipart/form-data", "params": [{"name": "title", "value": "x"}, {"name": "file", "type": "file", "fileName": "/home/u/secret.bin"}]},
+      "preRequestScript": "const x = 1;"},
+    {"_id": "req_gql", "_type": "request", "parentId": "fld_1", "name": "GQL", "method": "POST", "url": "https://example.com/graphql", "metaSortKey": 3,
+      "body": {"mimeType": "application/graphql", "text": "{\"query\":\"{ me { id } }\",\"variables\":{\"a\":1}}"},
+      "headers": [{"name": "X-T", "value": "{% faker 'name' %} {{ _.a | upper }}"}]}
+  ]
+}

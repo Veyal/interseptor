@@ -452,12 +452,33 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // use this so mandatory provenance cannot be lost after the row is published.
 func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
-	id := f.ID
-	if id == 0 {
-		id = s.allocFlowID()
-	} else {
-		s.noteFlowID(id)
+	if f.ID != 0 {
+		s.noteFlowID(f.ID)
+		return s.insertFlowRow(f, tags, f.ID)
 	}
+	// An id this store allocated can already be taken when another process
+	// (the headless `interseptor run` CLI) wrote flows into the same project
+	// since this store opened. Resync the counter to the table and retry.
+	var err error
+	for attempt := 0; attempt < 4; attempt++ {
+		var id int64
+		if id, err = s.insertFlowRow(f, tags, s.allocFlowID()); err == nil || !isFlowIDConflict(err) {
+			return id, err
+		}
+		var maxID int64
+		if qerr := s.db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); qerr != nil {
+			return 0, err
+		}
+		s.noteFlowID(maxID)
+	}
+	return 0, err
+}
+
+func isFlowIDConflict(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: flows.id")
+}
+
+func (s *Store) insertFlowRow(f *Flow, tags []string, id int64) (int64, error) {
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
 	orh, _ := json.Marshal(f.OriginalReqHeaders)

@@ -168,5 +168,15 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 		}
 	}
 	frows.Close()
-	return stats, frows.Err()
+	if err := frows.Err(); err != nil {
+		return stats, err
+	}
+	cstats, hasColl, err := s.previewCollectionsFromDB(peer)
+	if err != nil {
+		return stats, fmt.Errorf("preview collections: %w", err)
+	}
+	if hasColl {
+		stats.Collections = &cstats
+	}
+	return stats, nil
 }

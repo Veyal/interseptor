@@ -78,3 +78,6 @@ User-facing capabilities in the current release. For a tour of the menus, see th
   See [Settings](settings.md).
 - **Session inspector** — a passive timeline and role comparison of selected History captures,
   with redacted observations and explicitly limited conclusions. See [Workspace guide](workspace.md#session-inspector).
+- **Collections** — saved requests with environments, variables, auth, `pm.*`-compatible scripts that
+  stay quarantined until you trust them, a runner, `interseptor run` for CI with JUnit output, and
+  importers for Postman, OpenAPI, curl, Insomnia, Bruno, HAR and Burp. See [Collections](collections.md).
