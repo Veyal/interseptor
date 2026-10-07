@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
+
 ## [2.5.0] - 2026-10-07
 
 > Feature release: pure-Go evidence image renders, the redrawn "Gate & Lane" icon family, a date-aware History Time column and a cleaner desktop navigation.
