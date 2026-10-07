@@ -38,8 +38,10 @@ scan under pressure.
 ## Icons
 
 - Icons are one inline sprite in `index.html`; the rules and vocabulary live in
-  [docs/ui-icons.md](../../../docs/ui-icons.md). 24x24 grid, 1.75 stroke, round
-  caps, `currentColor` only, at most about 3 sub-shapes, no fills.
+  [docs/ui-icons.md](../../../docs/ui-icons.md). 24x24 grid, 1.75 stroke, square
+  caps and mitre joins, `Gate & Lane` construction (path-only, M/L/H/V/Z, 0/45/90
+  degree segments, chamfered corners, octagons instead of circles, square pads),
+  `currentColor` only, at most about 3 sub-shapes, no fills.
 - Use `<use href="#i-name"/>` or `icon('name')`; never emoji, Unicode glyphs or
   CSS `content:` glyphs. Name ids by meaning and do not keep aliases.
 - Decorative icons are `aria-hidden="true" focusable="false"`; icon-only buttons

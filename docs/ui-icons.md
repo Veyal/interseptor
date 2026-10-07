@@ -6,46 +6,76 @@ sprite (`<svg id="iconSprite">` in `internal/control/ui/index.html`). Icons use
 themes with no extra work. They are not raster images, emoji or font glyphs.
 
 The sprite is inline so the UI needs no extra request at boot. The login page is
-a separate document with its own single inline lock glyph drawn to the same
+a separate document with its own inline lock glyph and two-lane mark drawn to the same
 rules. The mobile dock reuses the main sprite.
 
-## Style rules
+## The Interseptor family: "Gate & Lane"
+
+The family is built the way the product works: traffic runs down straight
+**lanes**, and the interesting things happen at a **gate**. The logo (`i-proxy`)
+is two opposed lanes (request out, response back) with a square tap pad between
+them; that same mark is the favicon, the header logo and the login mark.
+
+### Construction spec
 
 | Rule | Value |
 |---|---|
-| Grid | 24x24 `viewBox`, 2px safe padding (live area 2-22) |
-| Stroke | 1.75 units, set once by `.icon` in `app.css`; symbols never set a stroke width |
-| Caps and joins | round |
-| Corner radius | 2 for rectangles and bends; 1 to 1.5 on small details |
-| Fills | none. A deliberate dot is a zero-length stroke or a tiny circle (r <= 1.8) |
-| Complexity | aim for 3 sub-shapes or fewer; hard limit 6 and 700 bytes of shape data |
-| Colour | none in the symbol; the element's `color` decides |
+| Grid | 24x24 `viewBox`; every vertex inside the 2..22 safe box |
+| Geometry | `<path>` only, commands `M L H V Z` only. Every segment is horizontal, vertical or exactly 45 degrees. No arcs, curves, `circle`, `ellipse` or `rect` |
+| Corners | Chamfered at 45 degrees, never rounded: boxes use a 2-unit chamfer (1 on small details). "Round" things (status, info, block, clock face, lens, scanner, globe) are octagons |
+| Stroke | 1.75, set once by `.icon` in `app.css` together with `stroke-linecap:square` and `stroke-linejoin:miter`; symbols never set stroke attributes |
+| Pads | A dot is a zero-length stroke (`h.01`), which the square cap renders as a 1.75 square pad. `more`, `cluster` and `timeline` use a 2x2 closed "cell" (about 3.75 solid) where a heavier dot is needed |
+| Signature | (1) lane + hold bar: icons that sit in the request path carry a lone vertical gate stroke (`intercept`, `intruder`); (2) the tap pad marks a point where traffic is observed (`proxy`, `scope`, `target`, `api-mcp`, `oob`); (3) severity is shape coded: diamond = critical, up pentagon = high, octagon = medium, down pentagon = low. The signature must NOT be added to generic UI icons (`plus`, `close`, `check`, `chevron`, arrows, `trash`, `copy`) - noise at 16px |
+| Complexity | aim for 3 sub-shapes or fewer; hard limit 6 paths and 700 bytes |
+| Fills | none (stroke only). Colour is never in the symbol; the element's `color` decides |
+| 16px rule | no gap smaller than 2 units between parallel strokes, no feature smaller than the 1.75 pad; if two icons look alike at 16px the less common one changes |
+| States | none. Active/disabled are colour and opacity from CSS; icons never swap geometry |
+
+`ui_icons_test.go` enforces the mechanical rules (path commands, 45 degree
+segments, safe box, path-only, no colour, size, signature motifs, square/mitre
+stroke style) so a new icon cannot drift.
 
 **Why 1.75.** At the 16px default (`.icon` is 1.15em) a 2-unit stroke renders at
-1.33px and closes the 2-unit gaps inside busier icons (certificate, phone with
-signal, radar) into blobs. 1.75 renders at 1.17px, stays crisp on 1x displays and
-still reads at 20px nav and 24px section headings. Empty-state illustrations
-override it in CSS (`.state-empty-icon .icon`).
+1.33px and closes the gaps in busier icons into blobs. 1.75 renders at 1.17px,
+stays crisp on 1x displays and still reads at 20px nav and 24px headings.
+Empty-state illustrations override it in CSS (`.state-empty-icon .icon`).
 
-**Signature motif.** The Interseptor mark (`i-proxy`, also the logo and
-favicon) is two opposed lanes, a request out and a response back, with the
-barbed arrowheads on the outer sides. The family echoes that idea: things that
-sit *in the path* are drawn as a lane meeting a gate or a node. `i-intercept` is
-a lane stopped at a hold bar, `i-intruder` fans one lane out against a wall,
-`i-repeater` is two lanes closed into a loop, `i-scanner` is a sweep line over
-open rings, and `i-map` is a tree of nodes.
+### Directions that were drawn and rejected
+
+All three were drawn as complete probe sets (27 icons, every category, 16/20/24/48px,
+dark and light, plus a nav-rail/chip mock) before the winner was picked.
+
+- **A. Gate & Lane (chosen).** Angular, 0/45/90 only, octagons, square pads. It
+  scaled to all 81 meanings (including `sev-low`, `status-*`, `codec`, `chevron`,
+  `more`) without exceptions beyond a 2-3 icon touch-up, stayed legible at 16px
+  and is visibly unlike Lucide/Feather.
+- **B. Packet** (orthogonal cells, one solid cell, butt caps). Rejected: with no
+  diagonals and no curves, `search`, `check`, `close`, `key`, `clock` and
+  `alert` degraded into boxy stairs; `sev-low` and `status-done` became the same
+  square with a stair glyph; solid cells break the stroke-only rule and make
+  forced-colors and thin-stroke rendering inconsistent.
+- **C. Scanline** (round monoline with a 45 degree intercept gap cut into one
+  stroke of each icon, mocked with a mask). Rejected: the gap reads as a rendering
+  glitch at 16px, it breaks one-stroke glyphs (`check`, `plus`, `chevron`
+  split in two), needs masks or hand-split paths in every symbol, and the
+  underlying round monoline is still the stock look.
+
+The four weak icons of the previous set are fixed: `intruder` is a source node
+fanning three lanes into a gate bar (no arrowhead), `codec` is a transform chip
+with pins, `appearance` is a hatched half octagon, and `sev-low` (down pentagon
+with a dash) is a different silhouette from `status-done` (octagon with a tick).
 
 ## Vocabulary by domain
 
 - **Workspaces.** `proxy`, `intercept` (hold gate), `repeater` (loop), `intruder`
-  (payload fan), `scanner` (radar), `map` (site tree), `finding` (flag),
+  (node fanning into a gate), `scanner` (radar), `map` (site tree), `finding` (flag),
   `notes` (notebook), `activity` (pulse), `settings` (sliders), `report`
   (document), `folder` (project).
 - **Engagement context.** `scope` (corner brackets around a target), `target`
   (crosshair), `evidence` (paperclip on flow rows), `readiness` (dial), `stop`
   (blockers), `info`.
 - **Status and severity.** `status-todo`, `status-done`, `check`, `alert`
-  (high), `alert-circle` (medium), `sev-critical` (diamond), `sev-low`, `info`
+  (high, up pentagon), `alert-circle` (medium, octagon), `sev-critical` (diamond), `sev-low` (down pentagon), `info`
   (informational), `block`.
 - **Network and security.** `tls` (certificate with seal), `lock`, `lock-open`,
   `key` (session and auth), `identity`, `globe` (host), `oob` (callback
@@ -56,7 +86,7 @@ open rings, and `i-map` is a tree of nodes.
   `arrow-down`, `external`, `fit`, `parallel`, `filter`, `tag`, `note`,
   `columns`, `panel-right`, `panel-bottom`, `chevron`, `more`, `tools`,
   `decode`, `codec`, `folder-open`, `archive`, `clipboard`, `flask`, `clock`,
-  `keyboard`, `rocket`, `sun`, `moon`, `appearance`, `intent`, `storage`,
+  `keyboard`, `rocket`, `sun`, `moon`, `appearance`, `intent`, `storage`, `bell`,
   `cluster`, `timeline`, `list`, `grid`.
 
 One meaning, one icon: ids are semantic (what the icon *means*), never aliases

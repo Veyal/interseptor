@@ -1,9 +1,11 @@
 package control
 
 import (
+	"math"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -345,6 +347,167 @@ func TestUIIconsNeverUseGlyphsOrEmoji(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// ---- Construction spec (docs/ui-icons.md, "Gate & Lane") ----------------------
+//
+// Every symbol is built from straight runs only: path data uses M/L/H/V/Z, every
+// segment is horizontal, vertical or exactly 45 degrees, every vertex sits in
+// the 2..22 safe box. There are no arcs, curves, circles or rects; "round"
+// things are chamfered octagons and dots are square pads.
+
+var (
+	iconPathRe  = regexp.MustCompile(`<path d="([^"]*)"/>`)
+	iconDataRe  = regexp.MustCompile(`[MmLlHhVvZz]|-?\d*\.?\d+`)
+	iconBadCmd  = regexp.MustCompile(`[A-Za-z]`)
+	iconBadCmds = regexp.MustCompile(`[^MmLlHhVvZz0-9.\s,-]`)
+)
+
+type iconPoint struct {
+	x, y float64
+	move bool // starts a new subpath (no segment leads to it)
+}
+
+// iconWalk parses one path's data into its vertices (M/L/H/V/Z, abs and rel).
+func iconWalk(t *testing.T, id, d string) []iconPoint {
+	t.Helper()
+	if bad := iconBadCmds.FindString(d); bad != "" {
+		t.Errorf("i-%s: path command/character %q is outside the Gate & Lane set M L H V Z (no arcs or curves)", id, bad)
+		return nil
+	}
+	toks := iconDataRe.FindAllString(d, -1)
+	var pts []iconPoint
+	var x, y, sx, sy float64
+	cmd := byte(0)
+	i := 0
+	num := func() float64 {
+		if i >= len(toks) {
+			t.Errorf("i-%s: truncated path data %q", id, d)
+			return 0
+		}
+		v, err := strconv.ParseFloat(toks[i], 64)
+		if err != nil {
+			t.Errorf("i-%s: bad number %q in %q", id, toks[i], d)
+		}
+		i++
+		return v
+	}
+	for i < len(toks) {
+		if iconBadCmd.MatchString(toks[i]) {
+			cmd = toks[i][0]
+			i++
+		}
+		rel := cmd >= 'a'
+		moved := false
+		switch strings.ToUpper(string(cmd)) {
+		case "M", "L":
+			nx, ny := num(), num()
+			if rel {
+				nx, ny = nx+x, ny+y
+			}
+			x, y = nx, ny
+			if strings.ToUpper(string(cmd)) == "M" {
+				sx, sy = x, y
+				moved = true
+				if rel {
+					cmd = 'l'
+				} else {
+					cmd = 'L'
+				}
+			}
+		case "H":
+			nx := num()
+			if rel {
+				nx += x
+			}
+			x = nx
+		case "V":
+			ny := num()
+			if rel {
+				ny += y
+			}
+			y = ny
+		case "Z":
+			x, y = sx, sy
+		default:
+			t.Errorf("i-%s: number with no command in %q", id, d)
+			return pts
+		}
+		pts = append(pts, iconPoint{x, y, moved})
+	}
+	return pts
+}
+
+func TestUIIconsFollowGateAndLaneConstruction(t *testing.T) {
+	const eps = 0.011
+	for name, def := range uiIconDefinitions(t) {
+		body := iconSymbolRe.FindStringSubmatch(def)[3]
+		if strings.Count(body, "<") != len(iconPathRe.FindAllString(body, -1)) {
+			t.Errorf("i-%s: only <path> elements are allowed (octagons and boxes are chamfered paths, not circle/rect)", name)
+			continue
+		}
+		for _, m := range iconPathRe.FindAllStringSubmatch(body, -1) {
+			pts := iconWalk(t, name, m[1])
+			for i, p := range pts {
+				if p.x < 2-eps || p.x > 22+eps || p.y < 2-eps || p.y > 22+eps {
+					t.Errorf("i-%s: vertex (%g,%g) leaves the 2..22 safe box in %q", name, p.x, p.y, m[1])
+				}
+				if i == 0 || p.move {
+					continue
+				}
+				dx, dy := math.Abs(p.x-pts[i-1].x), math.Abs(p.y-pts[i-1].y)
+				if dx > eps && dy > eps && math.Abs(dx-dy) > eps {
+					t.Errorf("i-%s: segment (%g,%g) is not horizontal, vertical or 45 degrees in %q", name, dx, dy, m[1])
+				}
+			}
+		}
+	}
+}
+
+// The signature motifs live where the spec says they must.
+func TestUIIconsCarrySignatureMotifs(t *testing.T) {
+	defs := uiIconDefinitions(t)
+	gate := regexp.MustCompile(`d="M\d+(?:\.\d+)? \d+(?:\.\d+)?v\d+(?:\.\d+)?"`)
+	pad := regexp.MustCompile(`h\.01`)
+	// A hold bar (a lone full-height vertical stroke) stops the lane.
+	for _, id := range []string{"intercept", "intruder"} {
+		if !gate.MatchString(defs[id]) {
+			t.Errorf("i-%s is an in-path icon and must carry a hold bar (single vertical gate stroke)", id)
+		}
+	}
+	// The proxy mark is two opposed lanes with the tap pad between them.
+	if !strings.Contains(defs["proxy"], "M3 8h16l-4-4M21 16H5l4 4") || !pad.MatchString(defs["proxy"]) {
+		t.Error("i-proxy must be the two opposed lanes with the tap pad")
+	}
+	// Severity is also shape-coded (never colour alone): four distinct outlines.
+	shapes := map[string]string{}
+	for _, id := range []string{"sev-critical", "alert", "alert-circle", "sev-low"} {
+		first := iconPathRe.FindStringSubmatch(defs[id])[1]
+		if other, dup := shapes[first]; dup {
+			t.Errorf("severity icons i-%s and i-%s share an outline", id, other)
+		}
+		shapes[first] = id
+	}
+	// The same lanes are the logo, favicon and login mark.
+	for _, f := range []string{"index.html", "login.html"} {
+		if !strings.Contains(readUIAsset(t, f), "M3 8h16l-4-4M21 16H5l4 4") && !strings.Contains(readUIAsset(t, f), "M5%208.5h12.5l-3-3M19%2015.5H6.5l3%203") {
+			t.Errorf("%s does not carry the two-lane mark", f)
+		}
+	}
+}
+
+// Square caps and mitre joins are what make pads square and corners crisp.
+func TestUIIconStrokeStyleIsSquareMitre(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	m := regexp.MustCompile(`(?m)^\.icon\{[^}]*\}`).FindString(css)
+	if !strings.Contains(m, "stroke-linecap:square") || !strings.Contains(m, "stroke-linejoin:miter") || !strings.Contains(m, "stroke-width:1.75") {
+		t.Errorf(".icon must set stroke-width:1.75, stroke-linecap:square and stroke-linejoin:miter, got %q", m)
+	}
+	for _, f := range []string{"index.html", "login.html"} {
+		if strings.Contains(readUIAsset(t, f), "stroke-linecap=\"round\"") || strings.Contains(readUIAsset(t, f), "stroke-linecap:round") {
+			t.Errorf("%s still draws an icon with round caps", f)
 		}
 	}
 }

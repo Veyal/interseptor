@@ -40,7 +40,7 @@ const page = `<!doctype html><meta charset="utf-8"><title>Interseptor icon sheet
   figure{margin:0;padding:8px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:8px}
   .row{display:flex;gap:10px;align-items:center;min-height:52px}
   figcaption{margin-top:6px;opacity:.75;font-size:11px;overflow-wrap:anywhere}
-  .ic{fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .ic{fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:square;stroke-linejoin:miter;flex:none}
   .ic.accent{color:#00e08a}
 </style>
 ${sprite[0].replace('<svg id="iconSprite"', '<svg id="iconSprite" style="position:absolute;width:0;height:0"')}

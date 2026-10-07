@@ -199,7 +199,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* Icon primitive — one family, sized in em so an icon always matches the text it
    sits beside, and stroked in currentColor so it inherits the theme. Sizes come
    from the type scale via font-size, never from per-instance width/height. */
-.icon{width:1.15em;height:1.15em;flex:none;vertical-align:-.18em;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.icon{width:1.15em;height:1.15em;flex:none;vertical-align:-.18em;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:square;stroke-linejoin:miter}
 .icon-lg{width:1.6em;height:1.6em}
 .mob-ico,.lbl-short{display:none}
 .icon-back{transform:rotate(90deg)}
