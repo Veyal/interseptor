@@ -26,7 +26,7 @@ The goal is a **report-ready project**, not just a pile of History rows.
 - [ ] Attach **PoC flows** (`add_finding_poc` / UI) with a role and exact proof statement
 - [ ] Attach a real browser/device **screenshot as primary visual evidence** when it visibly proves the issue;
   use `add_finding_image` with `source=browser_screenshot`. Use `render_flow_preview` for a labeled visual
-  HTTP record, not as a substitute for a real screenshot when one is available
+  HTTP record and `render_evidence` for generated renders of recorded Intruder/authz data (`source=evidence_render`; never browser proof), not as a substitute for a real screenshot when one is available
 - [ ] Mark uncertain items `needs_verification` with concrete check steps
 - [ ] Intruder: filter **Interesting** → **→ Finding** to attach flagged attempts
 
@@ -58,7 +58,7 @@ For agent-driven close-out, see [MCP cookbook]({{ "/mcp-cookbook/" | relative_ur
 Findings use one ordered `blocks` array across the UI, REST API, MCP, and reports. Blocks are text,
 captured flows, or images. Give evidence a role (`baseline`, `action`, `result`, `control`, or
 `retest`), state exactly what it proves, and preserve provenance (`captured_flow`,
-`browser_screenshot`, or `flow_preview` plus `sourceFlowId` where applicable). Before→Action→After
+`browser_screenshot`, `flow_preview` plus `sourceFlowId`, or `evidence_render` plus `sourceRef` where applicable). Before→Action→After
 is an optional Differential preset for authorization/state comparisons; use a shorter role sequence
 when the vulnerability does not require a before/after comparison. See [API & MCP]({{ "/api-and-mcp/" | relative_url }})
 for the complete field and endpoint contract.

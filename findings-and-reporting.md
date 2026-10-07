@@ -207,6 +207,7 @@ Image provenance is explicit:
 | `browser_screenshot` | Operator-declared capture of real browser state; not independently authenticated. |
 | `device_screenshot` | Operator-declared capture of real device state; not independently authenticated. |
 | `flow_preview` | Generated Interseptor rendering of HTTP evidence; retains `sourceFlowId`. |
+| `evidence_render` | Generated render of recorded Intruder, authz, diff, waterfall or chain data; carries `sourceRef` (for example `intruder:<runId>`), is labelled "generated evidence render from recorded data; not browser proof" in reports, and never qualifies as real visual proof. A render's PNG carries a generated-render marker, so it cannot be re-uploaded as a browser or device screenshot. |
 | `generated_image` | Generated illustration or synthetic image; never qualifies as real visual proof. |
 | `operator_upload` | Operator-supplied image whose capture mechanism is not otherwise recorded. |
 | `tool_output` | Visual output produced by another local testing tool. |
@@ -269,7 +270,7 @@ or image references remain visible rather than being silently removed.
 3. Use `create_finding` or `update_finding` with the report envelope, ordered `targets`, `proofReview`, and a structured `blocks` array.
 4. Use `add_finding_poc` for captured flows; set `role`, `note`, and `proof`.
 5. Use `add_finding_image` for real screenshots, choosing the accurate [image source classification](#evidence-rules).
-6. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
+6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
 
 AI-generated interpretation must remain distinguishable from attached raw evidence. If browser
