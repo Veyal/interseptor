@@ -947,6 +947,7 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 func (s *Server) registerTools() {
 	s.registerFindingReviewTools()
 	s.registerEvidenceRenderTools()
+	s.registerCollectionTools()
 	s.add("list_flows",
 		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
