@@ -57,9 +57,31 @@ func secretName(name string) bool {
 	return false
 }
 
+var (
+	templateAnyRe = regexp.MustCompile(`\{\{[^{}]+\}\}`)
+	// authSchemes are the words that may surround template references without
+	// the value holding a literal secret ("Bearer {{token}}").
+	authSchemes = map[string]bool{"bearer": true, "basic": true, "token": true, "digest": true, "apikey": true, "oauth": true, "negotiate": true, "ntlm": true}
+)
+
+// onlyTemplateRefs reports whether s is made of {{template}} references,
+// separators and at most auth-scheme words: it carries no literal secret.
+func onlyTemplateRefs(s string) bool {
+	if !templateAnyRe.MatchString(s) {
+		return false
+	}
+	rest := strings.NewReplacer(":", " ", ",", " ", ";", " ").Replace(templateAnyRe.ReplaceAllString(s, " "))
+	for _, w := range strings.Fields(rest) {
+		if !authSchemes[strings.ToLower(w)] {
+			return false
+		}
+	}
+	return true
+}
+
 func blankable(v any) bool {
 	s, ok := v.(string)
-	return ok && s != "" && !templateRefRe.MatchString(s)
+	return ok && s != "" && !templateRefRe.MatchString(s) && !onlyTemplateRefs(s)
 }
 
 // scrubValue walks decoded JSON blanking literal secrets. A leaf is blanked

@@ -166,9 +166,11 @@ func (c *collectionsAPI) importCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var logged int
+	storedUID := ""
 	if res.Kind == postman.KindCollection {
+		storedUID = c.storedCollectionUID(res.Collection)
 		if raw, err := json.Marshal(res.Report); err == nil {
-			if err := c.h.st.AddImportLog(res.Collection.UID, importSource(res.Report.Format), string(raw)); err == nil {
+			if err := c.h.st.AddImportLog(storedUID, importSource(res.Report.Format), string(raw)); err == nil {
 				logged = 1
 			}
 		}
@@ -181,9 +183,29 @@ func (c *collectionsAPI) importCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{"stats": stats, "report": res.Report, "scriptsQuarantined": true, "importLogged": logged == 1}
 	if res.Kind == postman.KindCollection {
-		out["collectionUid"] = res.Collection.UID
+		out["collectionUid"] = storedUID
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// storedCollectionUID names the collection an import landed in. A file that
+// matches an existing collection (same uid or name) is merged into it, so the
+// parsed uid may never have been written; answering with it would hand the
+// caller a collection that 404s.
+func (c *collectionsAPI) storedCollectionUID(parsed store.Collection) string {
+	if _, err := c.h.st.GetCollection(parsed.UID); err == nil {
+		return parsed.UID
+	}
+	all, err := c.h.st.ListCollections()
+	if err != nil {
+		return parsed.UID
+	}
+	for _, co := range all {
+		if strings.EqualFold(co.Name, parsed.Name) {
+			return co.UID
+		}
+	}
+	return parsed.UID
 }
 
 // importSource names the importer for the import log; Postman reports leave

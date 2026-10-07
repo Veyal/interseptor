@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -430,6 +432,35 @@ func TestIsSecretNameIsTheScrubHeuristic(t *testing.T) {
 	for _, n := range []string{"baseUrl", "tokenUrl", "tokenType", "username", "page", "authName", ""} {
 		if IsSecretName(n) {
 			t.Errorf("%q must not be a secret name", n)
+		}
+	}
+}
+
+// A scheme word around template references holds no literal secret: the very
+// common "Authorization: Bearer {{token}}" header must survive an import or
+// merge (blanking it broke every imported bearer-auth request), while a header
+// that mixes a template with literal text is still scrubbed.
+func TestScrubKeepsSchemeWrappedTemplateRefs(t *testing.T) {
+	cases := []struct {
+		in   string
+		keep bool
+	}{
+		{"Bearer {{token}}", true},
+		{"bearer  {{ token }}", true},
+		{"Basic {{user}}:{{pass}}", true},
+		{"{{scheme}} {{token}}", true},
+		{"Bearer CANARY-LITERAL", false},
+		{"Bearer CANARY-LITERAL{{suffix}}", false},
+		{"CANARY-LITERAL {{token}}", false},
+	}
+	for _, c := range cases {
+		raw := `[{"key":"Authorization","value":` + strconv.Quote(c.in) + `}]`
+		out, n := scrubJSON(raw, false)
+		if c.keep && (n != 0 || !strings.Contains(out, c.in)) {
+			t.Errorf("%q must be kept, got %s (blanked %d)", c.in, out, n)
+		}
+		if !c.keep && (n != 1 || strings.Contains(out, "CANARY-LITERAL")) {
+			t.Errorf("%q must be blanked, got %s (blanked %d)", c.in, out, n)
 		}
 	}
 }
