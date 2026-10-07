@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Collection variable resolver.** New `internal/varstore` package resolves `{{var}}` templates across local/data/environment/folder/collection/global scopes with dynamic variables (`$guid`, `$timestamp`, `$randomInt` and more, injectable clock and seedable random), path variables, pipes (`b64`, `urlenc`, `json`, `md5`, `hmac:key`), cycle/depth/size limits and a block-by-default unresolved policy. `internal/redact` gains a secret-value `Registry` that masks registered secrets.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
