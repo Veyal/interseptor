@@ -345,7 +345,7 @@ function renderAuthzMatrix(runs){
 // authzImageButton is the "Render image" action for a captured run: the server
 // keeps the last runs in memory and returns a runId for them.
 function authzImageButton(d){
-  return d&&d.runId?'<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding">Render image</button>':'';
+  return d&&d.runId?'<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image</button>':'';
 }
 function wireAuthzImageButton(d){
   const b=$('#authzRenderImage');

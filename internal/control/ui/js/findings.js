@@ -1144,7 +1144,7 @@ function renderFindingDetail() {
              <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
-        <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}>Preview chain</button>
+        <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview chain</button>
         <button type="button" class="btn" id="findCopyLink" title="Copy link to this section" aria-label="Copy link to this section"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="lbl-long"> Copy link</span></button>
         <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>

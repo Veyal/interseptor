@@ -128,6 +128,7 @@
 <symbol id="i-intent" viewBox="0 0 24 24"><path d="M4 6l2-2h12l2 2v7l-2 2h-6l-4 4v-4H6l-2-2z"/></symbol>
 <symbol id="i-storage" viewBox="0 0 24 24"><path d="M3 4h18v5H3zM3 10h18v5H3zM3 16h18v5H3z"/><path d="M7 6.5h.01M7 12.5h.01M7 18.5h.01"/></symbol>
 <symbol id="i-cluster" viewBox="0 0 24 24"><path d="M9.5 3h5v5h-5zM3.5 14h5v5h-5zM15.5 14h5v5h-5z"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><path d="M5 4h14l2 2v12l-2 2H5l-2-2V6z"/><path d="M5 17l4-4 3 3 3-3 4 4"/><path d="M8 8h.01"/></symbol>
 <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M6 3v18M11 5h9M11 12h6M11 19h9"/><path d="M5 4h2v2h-2z"/><path d="M5 11h2v2h-2z"/><path d="M5 18h2v2h-2z"/></symbol>
 <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
 <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 3h5l1 1v5l-1 1h-5l-1-1v-5z"/><path d="M15 3h5l1 1v5l-1 1h-5l-1-1v-5z"/><path d="M4 14h5l1 1v5l-1 1h-5l-1-1v-5z"/><path d="M15 14h5l1 1v5l-1 1h-5l-1-1v-5z"/></symbol>
@@ -266,7 +267,7 @@
       <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
       <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
-      <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
             <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
       <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
@@ -484,7 +485,7 @@ Content-Type: application/json
             <button type="button" data-f="interesting" aria-pressed="false" title="Flagged, grep match, or length anomaly">Interesting</button>
             <button type="button" data-f="error" aria-pressed="false">Errors</button>
           </span>
-          <span class="evr-split" id="intrRender"><button type="button" class="btn evr-main" id="intrRenderBtn" aria-disabled="true" title="Preview needs a finished run with a run ID" aria-describedby="intrRenderStatus"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg> Preview image</button><button type="button" class="btn evr-caret" id="intrRenderMenuBtn" aria-label="Choose preview image kind" aria-haspopup="menu" aria-expanded="false" aria-controls="intrRenderMenu" aria-disabled="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button><div class="evr-menu" id="intrRenderMenu" role="menu" aria-label="Preview image kind" hidden></div><span class="u-sr" id="intrRenderStatus" role="status" aria-live="polite"></span></span>
+          <span class="evr-split" id="intrRender"><button type="button" class="btn evr-main" id="intrRenderBtn" aria-disabled="true" title="Preview needs a finished run with a run ID" aria-describedby="intrRenderStatus"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview image</button><button type="button" class="btn evr-caret" id="intrRenderMenuBtn" aria-label="Choose preview image kind" aria-haspopup="menu" aria-expanded="false" aria-controls="intrRenderMenu" aria-disabled="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button><div class="evr-menu" id="intrRenderMenu" role="menu" aria-label="Preview image kind" hidden></div><span class="u-sr" id="intrRenderStatus" role="status" aria-live="polite"></span></span>
           <button class="btn" id="intrToFinding" title="Create a Finding from interesting attempts (attaches their flows as PoCs)">→ Finding</button>
           <span id="intrStats" class="hint"></span><button type="button" class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)" aria-controls="intrHistory" aria-expanded="false">⟲ History</button></div>
         <div class="intr-progbar u-hidden" id="intrProgBar"><div id="intrProgFill"></div></div>
