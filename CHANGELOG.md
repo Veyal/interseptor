@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Intruder results header clipped its actions on desktop.** With the history sidebar open the results pane is narrower than its toolbar, so "Preview image", "-> Finding" and "History" were cut off at the viewport edge above 1100px. The header now wraps at every width instead of only on narrow windows.
 - **API index.** The route index describes `unmask`, `includeBody`, `expected`, `png=1` and the `X-Render-*` headers.
 - **Evidence render docs.** Masking defaults and `unmask`/`includeBody`/`expected`, input bounds and limits, the neutral rate-limit wording, the `evidence_render` provenance decision (`sourceRef` instead of `attackId`, `sourceFlowId`, PNG marker) and that the persisted Intruder run record is raw and ships in full-project archives.
 - **Evidence render previews reach every kind.** Proxy bulk bar, Findings header and authz results now open the waterfall, diff, chain and authz-matrix renders that were previously defined but unreachable.

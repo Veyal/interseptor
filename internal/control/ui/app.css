@@ -790,6 +790,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-work{flex:1;display:flex;min-height:0;background:var(--bg)}
 .intr-config{flex:1.2}
 .intr-results{flex:1.1}
+.intr-results .pane-head{height:auto;min-height:38px;flex-wrap:wrap;row-gap:4px;padding-block:4px;overflow:visible}
 .intr-payloads{flex:none;display:flex;height:180px;min-height:130px;overflow-x:auto}
 .intr-pl{flex:1;min-width:130px;display:flex;flex-direction:column;border-left:1px solid var(--line)}
 .intr-pl:first-child{border-left:none}
