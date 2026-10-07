@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Collections store and model (WP1).** New additive `ix_*` tables (collections tree with folders/requests/ranks, environments, variables with secret type and separate current values, cookies, tokens, datasets, assets, runs, flow context, script trust, import log, item revisions), `store.FlagCollection` (bit 9), CRUD with optimistic revs, a single secret scrub (`BackupToScrubbed`/`ScrubSnapshotFile`/`ExportCollectionsBundle`) covering archive, vault and bundle copies, collection merge by uid with name/path fallback (`MergeCollectionsFrom`, old-peer tolerant), and the `internal/collection` domain package (tree building, ranks, script-trust hashing, Repo contract).
 
+- **Collection variable resolver.** New `internal/varstore` package resolves `{{var}}` templates across local/data/environment/folder/collection/global scopes with dynamic variables (`$guid`, `$timestamp`, `$randomInt` and more, injectable clock and seedable random), path variables, pipes (`b64`, `urlenc`, `json`, `md5`, `hmac:key`), cycle/depth/size limits and a block-by-default unresolved policy. `internal/redact` gains a secret-value `Registry` that masks registered secrets.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
