@@ -222,3 +222,21 @@
   .coll-row{min-height:44px}
   .coll-tab{min-height:44px}
 }
+
+/* runner view (runner.js): live progress, per-request results, persist prompt.
+   Every state is also an icon plus a text label, never colour alone. */
+.runner-view{display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
+.runner-view .row{flex-wrap:wrap;gap:var(--sp-2);align-items:flex-end}
+.runner-view .field{display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
+.runner-view [hidden]{display:none}
+.run-progress{width:100%;height:8px;accent-color:var(--accent)}
+.run-body{min-width:0;max-width:100%;overflow-x:auto}
+.run-body tr[tabindex]{cursor:pointer}
+.run-body tr[aria-selected="true"]{background:var(--bg3)}
+.run-persist-ask{border:1px solid var(--warnLine);background:var(--noteDim);border-radius:var(--r-md);padding:var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-2)}
+.run-detail{min-width:0}
+.run-detail-block ul{margin:0;padding-left:var(--sp-4);overflow-wrap:anywhere}
+.chip.run-pass{color:var(--accent);border-color:var(--accent)}
+.chip.run-fail,.chip.run-error{color:var(--dangerFg);border-color:var(--dangerLine)}
+.chip.run-blocked,.chip.run-unsupported{color:var(--warnFg);border-color:var(--warnLine)}
+.chip.run-skipped{color:var(--fg2)}

@@ -1,9 +1,15 @@
-// runner.js — collection runner view: options, run, per-request results with
-// tests/console/variable changes, rerun failed. The view mounts into a host
-// element (the Collections panel owns placement), so it needs no sheet id.
+// runner.js — collection runner view: options, live progress, per-request
+// results with tests/console/variable changes, pause/resume/abort, the
+// persist-ask prompt and rerun failed. The view mounts into a host element
+// (the Collections panel owns placement), so it needs no sheet id.
+//
+// A run is owned by the server (POST /api/runner/runs). The view follows it by
+// polling /api/runner/runs/{uid}?since=N and by the global {type:'collrun'}
+// event stream, which nudges an immediate poll; both feed the same pure
+// reducers in runner-model.js. Closing the view never aborts the run.
 //
 //   mountRunner(host, { collectionUid, collectionName, folderUid, itemUids, envUid })
-//     -> { run(), rerunFailed(), destroy() }
+//     -> { run(), rerunFailed(), abort(), destroy() }
 //
 // Also registered as the 'collectionRunner' hook. Pure logic lives in
 // runner-model.js. All API text is rendered with textContent; secrets arrive
@@ -11,10 +17,13 @@
 
 import { api, toast, toastError, registerHook, openFlow, icon, wireRowKey } from './core.js';
 import { renderState } from './statepanel.js';
+import { registerSseHandler } from './shell-hooks.js';
 import {
-  BAIL_MODES, PERSIST_MODES, buildRunBody, normalizeRows, summarize, summaryText, failedItemUids, filterRows,
-  stateIcon,
+  BAIL_MODES, PERSIST_MODES, buildRunBody, summarize, summaryText, failedItemUids, filterRows,
+  stateIcon, newLive, applyProgress, applyEvent, runControls, phaseLabel,
 } from './runner-model.js';
+
+const POLL_MS = 700;
 
 let seq = 0;
 
@@ -63,24 +72,20 @@ function detailBlock(title, lines, emptyText) {
   return wrap;
 }
 
-function parseResult(row) {
-  if (!row || !row.resultJson) return {};
-  try { return JSON.parse(row.resultJson) || {}; } catch (e) { return {}; }
-}
-
-function renderDetail(host, r, res) {
+function renderDetail(host, r) {
   host.textContent = '';
+  const d = r.detail || {};
   const head = el('div', 'row');
   head.appendChild(el('strong', null, `${r.n}. ${r.name}`));
   host.appendChild(head);
   if (r.error) host.appendChild(el('p', 'field-error', r.error));
   if (r.blockReason) host.appendChild(el('p', 'kv-dim', 'Blocked: ' + r.blockReason));
   if (r.quarantined) host.appendChild(el('p', 'kv-dim', `${r.quarantined} script(s) not approved and skipped`));
-  const tests = (res.tests || []).map((t) => `${t.status.toUpperCase()}  ${t.name}${t.message ? ' - ' + t.message : ''}`);
+  const tests = (d.tests || []).map((t) => `${String(t.status).toUpperCase()}  ${t.name}${t.message ? ' - ' + t.message : ''}`);
   host.appendChild(detailBlock('Tests', tests, 'No tests ran.'));
-  const con = (res.console || []).map((c) => `[${c.level}] ${c.text}`);
+  const con = (d.console || []).map((c) => `[${c.level}] ${c.text}`);
   host.appendChild(detailBlock('Console', con, 'No console output.'));
-  const vars = (res.varChanges || []).map((v) => `${v.scope}.${v.key} = ${v.unset ? '(unset)' : v.value}`);
+  const vars = (d.varChanges || []).map((v) => `${v.scope}.${v.key} = ${v.unset ? '(unset)' : v.value}`);
   host.appendChild(detailBlock('Variable changes', vars, 'No variable changes.'));
   if (r.flowId) {
     const b = el('button', 'btn', 'Open flow #' + r.flowId);
@@ -92,7 +97,7 @@ function renderDetail(host, r, res) {
 
 export function mountRunner(host, opts = {}) {
   const uid = ++seq;
-  const st = { rows: [], runUid: '', busy: false, filter: 'all', sel: -1, results: null, itemUids: opts.itemUids || [] };
+  const st = { live: newLive(), busy: false, filter: 'all', sel: -1, itemUids: opts.itemUids || [], timer: 0, polling: false, closed: false };
 
   host.textContent = '';
   host.classList.add('runner-view');
@@ -102,7 +107,7 @@ export function mountRunner(host, opts = {}) {
   const delay = el('input', 'btn');
   delay.type = 'number'; delay.min = '0'; delay.max = '60000'; delay.value = '0';
   const bail = select(BAIL_MODES.map((m) => [m, m === 'none' ? 'Never' : m === 'on-failure' ? 'On failure' : 'On error']), 'none');
-  const persist = select(PERSIST_MODES.map((m) => [m, m === 'keep' ? 'Keep variable writes' : 'Discard variable writes']), 'discard');
+  const persist = select(PERSIST_MODES.map((m) => [m, m === 'ask' ? 'Ask when done' : m === 'keep' ? 'Keep variable writes' : 'Discard variable writes']), 'ask');
   const noScripts = el('input'); noScripts.type = 'checkbox';
   form.append(
     labelled(`runDelay${uid}`, 'Delay (ms)', delay),
@@ -112,22 +117,35 @@ export function mountRunner(host, opts = {}) {
   );
 
   const actions = el('div', 'row');
-  const runBtn = el('button', 'btn primary', 'Run'); runBtn.type = 'button';
-  const rerunBtn = el('button', 'btn', 'Rerun failed'); rerunBtn.type = 'button'; rerunBtn.disabled = true;
-  const filterBtn = el('button', 'btn', 'Show problems only'); filterBtn.type = 'button';
+  const mkBtn = (cls, text) => { const b = el('button', cls, text); b.type = 'button'; return b; };
+  const runBtn = mkBtn('btn primary', 'Run');
+  const pauseBtn = mkBtn('btn', 'Pause');
+  const resumeBtn = mkBtn('btn', 'Resume');
+  const abortBtn = mkBtn('btn', 'Abort');
+  const rerunBtn = mkBtn('btn', 'Rerun failed');
+  const filterBtn = mkBtn('btn', 'Show problems only');
   filterBtn.setAttribute('aria-pressed', 'false');
-  actions.append(runBtn, rerunBtn, filterBtn);
+  actions.append(runBtn, pauseBtn, resumeBtn, abortBtn, rerunBtn, filterBtn);
 
   const live = el('div', 'statusline'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
+  const progress = el('progress', 'run-progress'); progress.max = 1; progress.value = 0; progress.hidden = true;
+  progress.setAttribute('aria-label', 'Run progress');
+  const ask = el('section', 'run-persist-ask'); ask.hidden = true; ask.setAttribute('role', 'group');
+  ask.setAttribute('aria-label', 'Variable changes made by scripts');
   const body = el('div', 'run-body');
   const detail = el('div', 'run-detail');
-  host.append(title, form, actions, live, body, detail);
+  host.append(title, form, actions, live, progress, ask, body, detail);
 
   function renderRows() {
     body.textContent = '';
     body.removeAttribute('aria-busy');
-    const shown = filterRows(st.rows, st.filter);
-    if (!st.rows.length) { renderState(body, 'empty-first', { title: 'No run yet', hint: 'Choose options and press Run.' }); return; }
+    const rows = st.live.rows;
+    const shown = filterRows(rows, st.filter);
+    if (!rows.length) {
+      if (st.busy) { renderState(body, 'loading', { rows: 3 }); body.setAttribute('aria-busy', 'true'); return; }
+      renderState(body, 'empty-first', { title: 'No run yet', hint: 'Choose options and press Run.' });
+      return;
+    }
     if (!shown.length) { renderState(body, 'empty-filtered', { title: 'No problems', hint: 'Every request passed.', onClear: toggleFilter }); return; }
     const wrap = el('div', 'md-table-wrap');
     const tbl = el('table', 'rules-tbl');
@@ -154,16 +172,45 @@ export function mountRunner(host, opts = {}) {
     body.appendChild(wrap);
   }
 
-  async function selectRow(r) {
+  function selectRow(r) {
     st.sel = r.n - 1;
     renderRows();
-    if (st.results == null && st.runUid) {
-      try { st.results = (await api('/api/runs/' + encodeURIComponent(st.runUid))).results || []; } catch (e) { st.results = []; toastError('Run detail', e); }
-    }
-    const nth = st.rows.slice(0, r.n).filter((x) => x.itemUid === r.itemUid).length;
-    const res = parseResult((st.results || []).filter((x) => x.itemUid === r.itemUid)[nth - 1]);
-    renderDetail(detail, r, res);
+    renderDetail(detail, r);
   }
+
+  function renderAsk() {
+    ask.textContent = '';
+    const c = runControls(st.live);
+    ask.hidden = !c.decide;
+    if (!c.decide) return;
+    ask.appendChild(el('p', null, 'Scripts changed variables during this run. Keep the changes as current values, or discard them?'));
+    const writes = st.live.pending.map((v) => `${v.scope}.${v.key} = ${v.unset ? '(unset)' : (v.value || '(empty)')}`);
+    ask.appendChild(detailBlock('Pending variable changes', writes, 'None.'));
+    const row = el('div', 'row');
+    const keep = mkBtn('btn primary', 'Keep changes');
+    const drop = mkBtn('btn', 'Discard changes');
+    keep.addEventListener('click', () => decide(true));
+    drop.addEventListener('click', () => decide(false));
+    row.append(keep, drop);
+    ask.appendChild(row);
+  }
+
+  function renderStatus() {
+    const l = st.live;
+    const s = summarize(l.rows);
+    const planned = l.planned ? ` (${l.rows.length}/${l.planned})` : '';
+    live.textContent = l.rows.length || l.runUid ? `${phaseLabel(l.status)}${l.finished ? '' : planned}. ${summaryText(s)}.` : (st.busy ? 'Starting...' : '');
+    progress.hidden = !(l.planned && !l.finished);
+    if (l.planned) { progress.max = l.planned; progress.value = Math.min(l.rows.length, l.planned); }
+    const c = runControls(l);
+    pauseBtn.hidden = !c.pause;
+    resumeBtn.hidden = !c.resume;
+    abortBtn.hidden = !c.abort;
+    runBtn.disabled = st.busy && !l.finished;
+    rerunBtn.disabled = (st.busy && !l.finished) || !failedItemUids(l.rows).length;
+  }
+
+  function render() { renderRows(); renderAsk(); renderStatus(); }
 
   function toggleFilter() {
     st.filter = st.filter === 'all' ? 'problems' : 'all';
@@ -172,15 +219,52 @@ export function mountRunner(host, opts = {}) {
     renderRows();
   }
 
-  function setBusy(on) {
-    st.busy = on;
-    runBtn.disabled = on;
-    rerunBtn.disabled = on || !failedItemUids(st.rows).length;
-    if (on) { body.setAttribute('aria-busy', 'true'); live.textContent = 'Running...'; }
+  const runPath = (suffix = '') => '/api/runner/runs/' + encodeURIComponent(st.live.runUid) + suffix;
+  const post = (suffix, payload) => api(runPath(suffix), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}),
+  });
+
+  async function poll() {
+    if (st.polling || st.closed || !st.live.runUid) return;
+    st.polling = true;
+    try {
+      const p = await api(runPath('?since=' + st.live.since));
+      st.live = applyProgress(st.live, p);
+      st.error = '';
+    } catch (e) {
+      // A transient failure keeps the last known state and retries.
+      st.error = (e && e.message) || 'poll failed';
+    } finally { st.polling = false; }
+    render();
+    if (st.live.finished) { finish(); return; }
+    schedule();
   }
 
+  function schedule() {
+    clearTimeout(st.timer);
+    if (st.closed || st.live.finished) return;
+    st.timer = setTimeout(poll, POLL_MS);
+  }
+
+  function finish() {
+    st.busy = false;
+    clearTimeout(st.timer);
+    render();
+    const status = st.live.status;
+    if (status && status !== 'done') toast('Run ' + phaseLabel(status).toLowerCase(), 'warn');
+  }
+
+  // The global event stream nudges an immediate refresh for this run only.
+  const offSse = registerSseHandler('collrun', (m) => {
+    const e = m && m.event;
+    if (!e || !st.live.runUid || e.runUid !== st.live.runUid) return;
+    st.live = applyEvent(st.live, e);
+    render();
+    if (st.live.finished) poll(); // pick up the final report
+  });
+
   async function run(extra = {}) {
-    if (st.busy) return null;
+    if (st.busy && !st.live.finished) return null;
     let payload;
     try {
       payload = buildRunBody({
@@ -188,37 +272,59 @@ export function mountRunner(host, opts = {}) {
         persist: persist.value, bail: bail.value, delayMs: delay.value, noScripts: noScripts.checked, ...extra,
       });
     } catch (e) { toastError('Run', e); return null; }
-    setBusy(true);
-    renderState(body, 'loading', { rows: 4 });
+    st.busy = true;
+    st.live = newLive();
+    st.sel = -1;
+    detail.textContent = '';
+    render();
     try {
-      const out = await api('/api/collections/run', {
+      const out = await api('/api/runner/runs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-      st.runUid = out.runUid || '';
-      st.results = null;
-      st.sel = -1;
-      detail.textContent = '';
-      st.rows = normalizeRows(out.results);
-      const s = summarize(st.rows);
-      live.textContent = `${summaryText(s)}. Status: ${out.status || 'done'}.`;
-      if (out.status && out.status !== 'done') toast('Run ' + out.status, 'warn');
-      renderRows();
+      st.live = { ...st.live, runUid: out.runUid || '', planned: out.plannedSteps || 0, status: out.status || 'running' };
+      render();
+      await poll();
       return out;
     } catch (e) {
+      st.busy = false;
       renderState(body, 'error', { message: e && e.message, onRetry: () => run(extra) });
       live.textContent = 'Run failed.';
       return null;
-    } finally { setBusy(false); }
+    }
   }
 
-  const rerunFailed = () => run({ itemUids: failedItemUids(st.rows), folderUid: '' });
+  async function control(suffix, label) {
+    try { await post(suffix); await poll(); } catch (e) { toastError(label, e); }
+  }
+  async function decide(keep) {
+    try {
+      await post('/persist', { keep });
+      toast(keep ? 'Variable changes kept' : 'Variable changes discarded');
+      await poll();
+    } catch (e) { toastError('Persist decision', e); }
+  }
+
+  const abort = () => control('/abort', 'Abort');
+  const rerunFailed = () => run({ itemUids: failedItemUids(st.live.rows), folderUid: '' });
 
   runBtn.addEventListener('click', () => run());
+  pauseBtn.addEventListener('click', () => control('/pause', 'Pause'));
+  resumeBtn.addEventListener('click', () => control('/resume', 'Resume'));
+  abortBtn.addEventListener('click', abort);
   rerunBtn.addEventListener('click', rerunFailed);
   filterBtn.addEventListener('click', toggleFilter);
-  renderRows();
+  render();
 
-  return { run, rerunFailed, destroy() { host.textContent = ''; host.classList.remove('runner-view'); } };
+  return {
+    run, rerunFailed, abort,
+    destroy() {
+      st.closed = true;
+      clearTimeout(st.timer);
+      offSse();
+      host.textContent = '';
+      host.classList.remove('runner-view');
+    },
+  };
 }
 
 registerHook('collectionRunner', mountRunner);
