@@ -224,6 +224,9 @@ request still runs, the script does not, and the result says how many scripts we
 - **Only a person in the UI can trust.** Open **Collections → Scripts**, review each script's source
   and analysis, pick the capabilities to grant and confirm. AI, MCP, API-key and agent callers, and
   archives, can never trust a script or set a capability (HTTP 403). There is no MCP trust tool.
+  The UI session is identified by a fixed request header, not a per-session secret, so a local shell
+  process that can reach the control port and omits the agent headers is inside the trust boundary
+  (it is the same user on the same machine). Callers that label themselves AI, MCP or API are refused.
 - **Your own edits** typed in the UI are trusted when their hash is new. A rename or an AI edit never
   approves an existing script.
 - **Capabilities are default-deny**, per collection: `vars.read`, `vars.write`, `cookies.read`,
