@@ -42,3 +42,28 @@ func TestReimportReturnsTheStoredCollectionUID(t *testing.T) {
 		t.Fatalf("returned collection does not exist: %v", err)
 	}
 }
+
+// A variable declared "default" but named like a credential (the common
+// Postman `token` that a login script fills) must not reach the AI channel in
+// clear text; the owner's own UI session still sees it.
+func TestAIChannelMasksSecretNamedDefaultVariables(t *testing.T) {
+	f := newCollFixture(t)
+	const tokenValue = "CANARY-DEFAULT-TYPED-TOKEN"
+	var env struct {
+		UID string `json:"uid"`
+	}
+	f.must("POST", "/api/environments", map[string]any{"name": "dev", "kind": "env",
+		"variables": []map[string]any{{"key": "token", "type": "default", "enabled": true}, {"key": "baseUrl", "type": "default", "enabled": true, "initialValue": "https://api.example.com"}}}, asUI, 201, &env)
+	f.must("PUT", "/api/variables/environment/"+env.UID+"/current", map[string]any{"key": "token", "value": tokenValue}, asUI, 200, nil)
+
+	for _, path := range []string{"/api/environments", "/api/environments/" + env.UID, "/api/variables/environment/" + env.UID} {
+		if body := f.must("GET", path, nil, asAI, 200, nil); strings.Contains(body, tokenValue) {
+			t.Fatalf("AI channel read of %s leaked a credential-named variable", path)
+		} else if !strings.Contains(body, "api.example.com") {
+			t.Fatalf("AI channel read of %s lost the ordinary variable: %s", path, body)
+		}
+		if body := f.must("GET", path, nil, asUI, 200, nil); !strings.Contains(body, tokenValue) {
+			t.Fatalf("the owner's UI session must still see its own value in %s", path)
+		}
+	}
+}

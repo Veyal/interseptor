@@ -25,8 +25,9 @@ type varView struct {
 }
 
 // viewVars merges declared variables with their current values. Secret
-// values are masked unless reveal is set (human sessions only).
-func (c *collectionsAPI) viewVars(kind, uid string, reveal bool) ([]varView, error) {
+// values are masked unless reveal is set (human sessions only); for the AI
+// channel (ai) credential-named variables are masked whatever their type.
+func (c *collectionsAPI) viewVars(kind, uid string, reveal, ai bool) ([]varView, error) {
 	decl, err := c.h.st.ListVariables(kind, uid)
 	if err != nil {
 		return nil, err
@@ -44,7 +45,10 @@ func (c *collectionsAPI) viewVars(kind, uid string, reveal bool) ([]varView, err
 		v := varView{Key: d.Key, Type: d.Type, InitialValue: d.InitialValue, Enabled: d.Enabled}
 		if cv, ok := cm[d.Key]; ok {
 			v.HasCurrent = true
-			if d.Type == store.VarTypeSecret && !reveal {
+			// The AI channel also gets credential-named variables masked: Postman
+			// exports and login scripts routinely keep `token` as a default
+			// variable, and the AI must never read a live credential.
+			if !reveal && (d.Type == store.VarTypeSecret || (ai && store.IsSecretName(d.Key))) {
 				v.Current = secretMask
 			} else {
 				v.Current = cv
@@ -60,8 +64,8 @@ type envView struct {
 	Variables []varView `json:"variables"`
 }
 
-func (c *collectionsAPI) envView(e store.Environment, reveal bool) (envView, error) {
-	vs, err := c.viewVars(store.VarOwnerEnvironment, e.UID, reveal)
+func (c *collectionsAPI) envView(e store.Environment, reveal, ai bool) (envView, error) {
+	vs, err := c.viewVars(store.VarOwnerEnvironment, e.UID, reveal, ai)
 	return envView{Environment: e, Variables: vs}, err
 }
 
@@ -78,7 +82,7 @@ func (c *collectionsAPI) listEnvs(w http.ResponseWriter, r *http.Request) {
 	reveal := revealSecrets(r)
 	out := make([]envView, 0, len(envs))
 	for _, e := range envs {
-		v, err := c.envView(e, reveal)
+		v, err := c.envView(e, reveal, isAISource(r))
 		if err != nil {
 			httpInternalErr(w, err)
 			return
@@ -120,7 +124,7 @@ func (c *collectionsAPI) createEnv(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	v, err := c.envView(*e, false)
+	v, err := c.envView(*e, false, isAISource(r))
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -134,7 +138,7 @@ func (c *collectionsAPI) getEnv(w http.ResponseWriter, r *http.Request) {
 		collErr(w, err)
 		return
 	}
-	v, err := c.envView(*e, revealSecrets(r))
+	v, err := c.envView(*e, revealSecrets(r), isAISource(r))
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -163,7 +167,7 @@ func (c *collectionsAPI) updateEnv(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	v, err := c.envView(*e, false)
+	v, err := c.envView(*e, false, isAISource(r))
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -214,7 +218,7 @@ func (c *collectionsAPI) getVars(w http.ResponseWriter, r *http.Request) {
 		collErr(w, err)
 		return
 	}
-	vs, err := c.viewVars(kind, uid, revealSecrets(r))
+	vs, err := c.viewVars(kind, uid, revealSecrets(r), isAISource(r))
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -248,7 +252,7 @@ func (c *collectionsAPI) putVars(w http.ResponseWriter, r *http.Request) {
 		collErr(w, err)
 		return
 	}
-	vs, err := c.viewVars(kind, uid, false)
+	vs, err := c.viewVars(kind, uid, false, isAISource(r))
 	if err != nil {
 		httpInternalErr(w, err)
 		return
