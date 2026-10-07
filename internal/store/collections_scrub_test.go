@@ -16,6 +16,7 @@ var secretCanaries = []string{
 	"CANARY-CURRENT-VALUE", "CANARY-INITIAL-SECRET", "CANARY-COOKIE", "CANARY-OAUTH-TOKEN",
 	"CANARY-COLL-BEARER", "CANARY-ITEM-BEARER", "CANARY-HEADER-AUTH", "CANARY-PARAM-KEY",
 	"CANARY-REV-BEARER", "CANARY-APIKEY-VALUE", "CANARY-BASIC-PASSWORD", "CANARY-DIRECT-TOKEN",
+	"CANARY-URL-QUERY", "CANARY-URL-RAWQ", "CANARY-URL-USERINFO", "CANARY-BODY-PW", "CANARY-BODY-FORM", "CANARY-BODY-URLENC", "CANARY-BODY-XML", "CANARY-BODY-GQL",
 }
 
 // seedSecrets builds a project carrying every kind of secret the scrub must remove,
@@ -30,6 +31,19 @@ func seedSecrets(t *testing.T, s *Store) (*Collection, *Item) {
 		Auth:    json.RawMessage(`{"type":"apikey","apikey":[{"key":"key","value":"X-Api"},{"key":"value","value":"CANARY-APIKEY-VALUE"}]}`),
 		Headers: json.RawMessage(`[{"key":"Authorization","value":"Bearer CANARY-HEADER-AUTH"},{"key":"X-Trace","value":"keepme"},{"key":"X-Tpl","value":"{{token}}"},{"key":"Cookie","value":"{{ck}}"}]`),
 		Params:  json.RawMessage(`[{"key":"api_key","value":"CANARY-PARAM-KEY"},{"key":"page","value":"2"}]`)})
+	// literal credentials in the URL and body, in every shape the importers produce
+	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "login", Method: "POST",
+		URL:  json.RawMessage(`{"raw":"https://bob:CANARY-URL-USERINFO@example.com/login?api_key=CANARY-URL-RAWQ&page=2&ref={{r}}","query":[{"key":"token","value":"CANARY-URL-QUERY"},{"key":"page","value":"2"}]}`),
+		Body: json.RawMessage(`{"mode":"raw","raw":"{\"username\":\"bob\",\"password\":\"CANARY-BODY-PW\",\"nested\":{\"client_secret\":\"CANARY-BODY-GQL\"}}"}`)})
+	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "form", Method: "POST",
+		URL:  json.RawMessage(`"https://example.com/f?access_token=CANARY-URL-QUERY"`),
+		Body: json.RawMessage(`{"mode":"urlencoded","urlencoded":[{"key":"user","value":"bob"},{"key":"password","value":"CANARY-BODY-URLENC"}]}`)})
+	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "rawform", Method: "POST",
+		URL:  json.RawMessage(`{"raw":"https://example.com/x"}`),
+		Body: json.RawMessage(`{"mode":"raw","raw":"username=bob&password=CANARY-BODY-FORM&x=1"}`)})
+	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "xml", Method: "POST",
+		URL:  json.RawMessage(`{"raw":"https://example.com/x"}`),
+		Body: json.RawMessage(`{"mode":"raw","raw":"<login><user>bob</user><password>CANARY-BODY-XML</password></login>"}`)})
 	// an edit stores the previous (secret-bearing) state as a revision
 	cur, _ := s.GetItem(it.UID)
 	cur.Auth = json.RawMessage(`{"type":"basic","basic":[{"key":"username","value":"bob"},{"key":"password","value":"CANARY-BASIC-PASSWORD"}]}`)
@@ -233,7 +247,7 @@ func TestBundleExportHasNoSecretCanaryAndOldBundleTolerated(t *testing.T) {
 	// round trip into a second project
 	s2 := newTestStore(t)
 	st, err := s2.ImportCollectionsBundle(b)
-	if err != nil || st.CollectionsAdded != 1 || st.ItemsAdded != 1 || st.EnvironmentsAdded != 1 {
+	if err != nil || st.CollectionsAdded != 1 || st.ItemsAdded != 5 || st.EnvironmentsAdded != 1 {
 		t.Fatalf("import: %+v %v", st, err)
 	}
 	raw2, _ := json.Marshal(mustBundle(t, s2))
@@ -267,7 +281,7 @@ func TestMergeCollectionsCanaryAndQuarantine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.CollectionsAdded != 1 || st.ItemsAdded != 1 || st.EnvironmentsAdded != 1 {
+	if st.CollectionsAdded != 1 || st.ItemsAdded != 5 || st.EnvironmentsAdded != 1 {
 		t.Fatalf("stats %+v", st)
 	}
 	got, _ := local.GetCollection(c.UID)
@@ -462,5 +476,32 @@ func TestScrubKeepsSchemeWrappedTemplateRefs(t *testing.T) {
 		if !c.keep && (n != 1 || strings.Contains(out, "CANARY-LITERAL")) {
 			t.Errorf("%q must be blanked, got %s (blanked %d)", c.in, out, n)
 		}
+	}
+}
+
+func TestScrubKeepsShareableURLAndBodyParts(t *testing.T) {
+	it := Item{
+		URL:  json.RawMessage(`{"raw":"https://example.com/a?page=2&token={{tok}}&api_key=LIT#frag","query":[{"key":"page","value":"2"}]}`),
+		Body: json.RawMessage(`{"mode":"raw","raw":"{\"username\": \"bob\", \"password\": \"LIT\", \"pw2\": \"{{pw}}\"}"}`),
+	}
+	if n := scrubItemSecrets(&it); n != 2 {
+		t.Fatalf("blanked %d, want 2 (api_key, password)", n)
+	}
+	u, b := string(it.URL), string(it.Body)
+	for _, keep := range []string{"page=2", "token={{tok}}", "#frag", "example.com"} {
+		if !strings.Contains(u, keep) {
+			t.Errorf("url lost %q: %s", keep, u)
+		}
+	}
+	if strings.Contains(u, "LIT") || !strings.Contains(u, "api_key=") {
+		t.Errorf("url not scrubbed: %s", u)
+	}
+	for _, keep := range []string{`bob`, `{{pw}}`, `username`} {
+		if !strings.Contains(b, keep) {
+			t.Errorf("body lost %q: %s", keep, b)
+		}
+	}
+	if strings.Contains(b, "LIT") {
+		t.Errorf("body not scrubbed: %s", b)
 	}
 }

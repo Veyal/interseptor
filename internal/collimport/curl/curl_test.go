@@ -266,3 +266,14 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestURLQueryAndBodyCredentialsFlaggedWithoutLeak(t *testing.T) {
+	_, rep := parse1(t, `curl -X POST 'https://example.com/login?api_key=CANARY-Q' -d 'username=bob&password=CANARY-P'`)
+	if rep.Stats.EmbeddedCredentials != 2 {
+		t.Fatalf("creds = %d, want 2 (url api_key + body password)", rep.Stats.EmbeddedCredentials)
+	}
+	b, _ := json.Marshal(rep)
+	if strings.Contains(string(b), "CANARY") {
+		t.Fatalf("report leaks a secret: %s", b)
+	}
+}

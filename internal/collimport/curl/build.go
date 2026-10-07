@@ -297,6 +297,11 @@ func (b *builder) credentials(rawURL string) {
 	if u, err := url.Parse(rawURL); err == nil && u.User != nil && !strings.Contains(rawURL, "{{") {
 		flag("URL userinfo")
 	}
+	if n := store.CountURLBodyCredentials(b.it.URL, b.it.Body); n > 0 {
+		for i := 0; i < n; i++ {
+			flag("URL query or body")
+		}
+	}
 }
 
 func headerRows(hs []header) []byte {

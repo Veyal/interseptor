@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -151,10 +152,12 @@ func scrubRaw(r *json.RawMessage, authCtx bool) int {
 	return n
 }
 
-// scrubItemSecrets blanks literal credentials in an item's auth, headers and
-// params. Returns the number of blanked values.
+// scrubItemSecrets blanks literal credentials in an item's auth, headers,
+// params, URL (userinfo and secret-named query values) and body.
+// Returns the number of blanked values.
 func scrubItemSecrets(it *Item) int {
-	return scrubRaw(&it.Auth, true) + scrubRaw(&it.Headers, false) + scrubRaw(&it.Params, false)
+	return scrubRaw(&it.Auth, true) + scrubRaw(&it.Headers, false) + scrubRaw(&it.Params, false) +
+		scrubURLSecrets(&it.URL) + scrubBodySecrets(&it.Body)
 }
 
 func scrubCollectionSecrets(c *Collection) int { return scrubRaw(&c.Auth, true) }
@@ -241,8 +244,8 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 		for _, it := range items {
 			if n := scrubItemSecrets(&it); n > 0 {
 				rep.SecretsBlanked += n
-				if _, err := db.Exec(`UPDATE ix_items SET auth_json=?,headers_json=?,params_json=? WHERE uid=?`,
-					string(it.Auth), string(it.Headers), string(it.Params), it.UID); err != nil {
+				if _, err := db.Exec(`UPDATE ix_items SET auth_json=?,headers_json=?,params_json=?,url_json=?,body_json=? WHERE uid=?`,
+					string(it.Auth), string(it.Headers), string(it.Params), string(it.URL), string(it.Body), it.UID); err != nil {
 					return rep, err
 				}
 			}
@@ -371,4 +374,160 @@ func QuarantineImportedProject(path string) error {
 		}
 	}
 	return nil
+}
+
+// ---- URL and body scrubbing ---------------------------------------------------
+
+var (
+	urlUserinfoRe = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.-]*://[^/?#@:]*):([^/?#@]*)@`)
+	jsonStrPairRe = regexp.MustCompile(`("(?:[^"\\]|\\.)*"\s*:\s*)"((?:[^"\\]|\\.)*)"`)
+	xmlElemRe     = regexp.MustCompile(`<([A-Za-z_][\w.:-]*)>([^<>]*)</([A-Za-z_][\w.:-]*)>`)
+)
+
+func decodeQueryKey(k string) string {
+	if d, err := url.QueryUnescape(k); err == nil {
+		return d
+	}
+	return k
+}
+
+// scrubQueryString blanks the values of secret-named keys in a k=v&k=v string,
+// keeping {{template}} references and every other pair byte for byte.
+func scrubQueryString(q string, n *int) string {
+	parts := strings.Split(q, "&")
+	for i, p := range parts {
+		eq := strings.IndexByte(p, '=')
+		if eq < 0 {
+			continue
+		}
+		if secretName(decodeQueryKey(p[:eq])) && blankable(p[eq+1:]) {
+			parts[i] = p[:eq+1]
+			*n++
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+// scrubURLString blanks literal credentials in a URL string: the userinfo
+// password and the values of secret-named query keys. The fragment is kept.
+func scrubURLString(s string, n *int) string {
+	if m := urlUserinfoRe.FindStringSubmatch(s); m != nil && blankable(m[2]) {
+		s = m[1] + ":@" + s[len(m[0]):]
+		*n++
+	}
+	qi := strings.IndexByte(s, '?')
+	if qi < 0 {
+		return s
+	}
+	frag := ""
+	rest := s[qi+1:]
+	if hi := strings.IndexByte(rest, '#'); hi >= 0 {
+		rest, frag = rest[:hi], rest[hi:]
+	}
+	return s[:qi+1] + scrubQueryString(rest, n) + frag
+}
+
+// scrubBodyText blanks literal credentials in raw body text: JSON string
+// members with a secret name, form-encoded pairs and simple XML elements.
+func scrubBodyText(s string, n *int) string {
+	if strings.ContainsAny(s, "{[") {
+		s = jsonStrPairRe.ReplaceAllStringFunc(s, func(m string) string {
+			sm := jsonStrPairRe.FindStringSubmatch(m)
+			var key string
+			if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sm[1]), ":"))), &key) != nil {
+				return m
+			}
+			if secretName(key) && blankable(sm[2]) {
+				*n++
+				return sm[1] + `""`
+			}
+			return m
+		})
+	}
+	if strings.Contains(s, "</") {
+		s = xmlElemRe.ReplaceAllStringFunc(s, func(m string) string {
+			sm := xmlElemRe.FindStringSubmatch(m)
+			if sm[1] == sm[3] && secretName(sm[1]) && blankable(sm[2]) {
+				*n++
+				return "<" + sm[1] + "></" + sm[3] + ">"
+			}
+			return m
+		})
+	} else if !strings.ContainsAny(s, "{[<\n") && strings.Contains(s, "=") {
+		s = scrubQueryString(s, n)
+	}
+	return s
+}
+
+// scrubStringLeaves applies fn to the string members named in keys (and to a
+// bare string root) anywhere inside decoded JSON.
+func scrubStringLeaves(v any, keys map[string]bool, fn func(string, *int) string, n *int) any {
+	switch t := v.(type) {
+	case string:
+		return fn(t, n)
+	case []any:
+		for i := range t {
+			t[i] = scrubStringLeaves(t[i], keys, fn, n)
+		}
+	case map[string]any:
+		for k, val := range t {
+			if s, ok := val.(string); ok && keys[k] {
+				t[k] = fn(s, n)
+			} else if _, isStr := val.(string); !isStr {
+				t[k] = scrubStringLeaves(val, keys, fn, n)
+			}
+		}
+	}
+	return v
+}
+
+func scrubStringLeavesRaw(r *json.RawMessage, keys map[string]bool, fn func(string, *int) string) int {
+	if len(*r) == 0 {
+		return 0
+	}
+	var v any
+	if err := json.Unmarshal(*r, &v); err != nil {
+		return 0
+	}
+	n := 0
+	v = scrubStringLeaves(v, keys, fn, &n)
+	if n == 0 {
+		return 0
+	}
+	if out, err := json.Marshal(v); err == nil {
+		*r = json.RawMessage(out)
+		return n
+	}
+	return 0
+}
+
+var (
+	urlLeafKeys  = map[string]bool{"raw": true}
+	bodyLeafKeys = map[string]bool{"raw": true, "text": true, "variables": true}
+)
+
+// scrubURLSecrets blanks credentials in an item URL (a string, or an object
+// with raw and a query array).
+func scrubURLSecrets(r *json.RawMessage) int {
+	return scrubRaw(r, false) + scrubStringLeavesRaw(r, urlLeafKeys, scrubURLString)
+}
+
+// scrubBodySecrets blanks credentials in an item body: urlencoded/formdata
+// pairs plus raw, text and graphql-variables text.
+func scrubBodySecrets(r *json.RawMessage) int {
+	return scrubRaw(r, false) + scrubStringLeavesRaw(r, bodyLeafKeys, scrubBodyText)
+}
+
+// CountURLBodyCredentials reports how many literal credentials a request's
+// URL and body hold (secret-named query values, URL userinfo passwords, secret
+// members of the body) without modifying its arguments. Importers use it to
+// raise the same embedded-credential warning headers and auth already get.
+func CountURLBodyCredentials(urlRaw, body json.RawMessage) int {
+	// A URL object carries the same query twice (raw and the parsed array), so
+	// count each representation alone and take the larger.
+	u1 := append(json.RawMessage(nil), urlRaw...)
+	u2 := append(json.RawMessage(nil), urlRaw...)
+	un := max(scrubRaw(&u1, false), scrubStringLeavesRaw(&u2, urlLeafKeys, scrubURLString))
+	b := append(json.RawMessage(nil), body...)
+	return un + scrubBodySecrets(&b)
 }

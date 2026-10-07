@@ -356,6 +356,12 @@ function removes them from everything that leaves the machine, unless you explic
 - **Archives and vault.** Full project archives (download, file export, merge push) and vault backups
   snapshot the database through the scrubbed copy: secret variables, current values, cookies, tokens,
   auth credentials and script trust are removed from the file itself, not only from a view of it.
+  The same scrub blanks literal credentials in a request's URL (userinfo password and secret-named
+  query values) and body (secret-named JSON members, form pairs and XML elements); `{{references}}`
+  and every other value stay. Importers flag these as embedded credentials.
+- **Restore and vault pull** clear script trust, reset collection capabilities to default-deny and
+  downgrade scope policy `off` to `block` before the project is installed, so a crafted archive can
+  never arrive with scripts already trusted. Re-approve scripts in the UI after a restore.
 - **Project bundle** (portable JSON v2) carries a scrubbed `collections` section; scripts arrive
   quarantined, capabilities default-deny.
 - **Merge** (peer pull and push, archive and vault merge) unions collections by uid; it never merges
@@ -367,7 +373,9 @@ function removes them from everything that leaves the machine, unless you explic
   be tracked, so use real credentials.
 
 Captured History flows are evidence and keep their exact wire bytes, including an Authorization
-header a collection request sent. Treat History exports, the project bundle's HAR section and
+header a collection request sent. The AI channel can read those flows (the History list and flow
+detail), so a secret a collection request put on the wire is readable through its captured flow even
+though the variable itself stays masked; do not treat "cannot reveal secrets" as covering History. Treat History exports, the project bundle's HAR section and
 findings evidence as sensitive, as described in [Projects and data](projects-and-data.md#collections-secrets-and-archives).
 
 ## Differences from Postman

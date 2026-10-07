@@ -383,3 +383,20 @@ func FuzzParse(f *testing.F) {
 		_, _ = Parse(data, Options{})
 	})
 }
+
+func TestURLQueryAndBodyCredentialsFlagged(t *testing.T) {
+	col := `{"info":{"name":"c","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+	"item":[{"name":"r1","request":{"method":"POST","url":{"raw":"https://example.com/a?token=CANARY-T&page=2"},
+	"body":{"mode":"raw","raw":"{\"password\":\"CANARY-P\"}"}}}]}`
+	r, err := Parse([]byte(col), Options{NewID: counterID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Report.Stats.EmbeddedCredentials != 2 {
+		t.Fatalf("creds = %d, want 2", r.Report.Stats.EmbeddedCredentials)
+	}
+	b, _ := json.Marshal(r.Report)
+	if strings.Contains(string(b), "CANARY") {
+		t.Fatalf("report leaks: %s", b)
+	}
+}

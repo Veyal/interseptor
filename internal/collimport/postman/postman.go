@@ -413,6 +413,10 @@ func (p *parser) parseRequest(m *OMap, it *store.Item, side *ItemSidecar, path s
 		it.Body = b
 		p.checkBody(b, path, it.UID)
 	}
+	if n := store.CountURLBodyCredentials(it.URL, it.Body); n > 0 {
+		p.res.Report.Stats.EmbeddedCredentials += n
+		p.res.Report.add(Entry{Level: NeedsReview, Path: path, Item: it.UID, Feature: "embedded-credential", Message: fmt.Sprintf("URL query or body holds %d literal credential(s) (values not shown)", n), Suggestion: "Lift each to a secret variable and reference it as {{name}}"})
+	}
 	if a := rm.Get("auth"); !isNull(a) {
 		it.Auth = a
 		p.checkAuth(a, path, it.UID)
