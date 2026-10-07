@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Sender per-send options (collections WP3).** `sender.Request.Options` (`SendOptions`) adds timeout, redirect following (each hop its own flow, credentials dropped cross-host), TLS verify/SNI/client cert, per-send proxy override, DNS override, `Meta` plus an `OnFlow` hook run after the persist hook, ordered duplicate-preserving `RawHeaders` over HTTP/1.1, and a dial-time `IPGuard` (loopback, link-local/metadata, RFC1918/ULA, CGNAT, own-listener refusal; pinned to the vetted IP so DNS rebinding cannot swap it). Transports are cached per option set. A nil `Options` keeps Repeater/Intruder behaviour unchanged.
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.

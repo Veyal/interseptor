@@ -37,6 +37,7 @@ type Request struct {
 	Flags      int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
 	Context    context.Context // optional: cancel an in-flight send
 	NoSession  bool            // skip the global session headers + token macro (authz replays carry their own identity)
+	Options    *SendOptions    // optional per-send tuning (collections); nil keeps Repeater defaults
 	retried401 bool            // internal: prevents infinite 401 re-auth loops
 }
 
@@ -91,6 +92,8 @@ type Sender struct {
 
 	login       loginState
 	refreshSess func([]Header) error
+
+	optCl optionClients // per-options client cache (options.go)
 
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
@@ -268,6 +271,7 @@ func (s *Sender) SetUpstreamProxy(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		s.upstream.Store(nil)
 		s.tr.CloseIdleConnections()
+		s.closeOptionClients()
 		return nil
 	}
 	u, err := url.Parse(raw)
@@ -280,6 +284,7 @@ func (s *Sender) SetUpstreamProxy(raw string) error {
 	}
 	s.upstream.Store(u)
 	s.tr.CloseIdleConnections()
+	s.closeOptionClients()
 	return nil
 }
 
@@ -302,11 +307,16 @@ func (s *Sender) SetUpstreamProxyCA(pemBytes []byte) error {
 	}
 	s.upstreamProxyRoots.Store(roots)
 	s.tr.CloseIdleConnections()
+	s.closeOptionClients()
 	return nil
 }
 
 func (s *Sender) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	up := s.upstream.Load()
+	return s.dialVia(s.upstream.Load(), ctx, network, addr)
+}
+
+// dialVia dials addr directly, or through up when up is a SOCKS proxy.
+func (s *Sender) dialVia(up *url.URL, ctx context.Context, network, addr string) (net.Conn, error) {
 	if up == nil || !senderSOCKSUpstream(up) {
 		return senderNetDialer().DialContext(ctx, network, addr)
 	}
@@ -384,10 +394,19 @@ func senderUpstreamAddress(up *url.URL) string {
 	return net.JoinHostPort(up.Hostname(), port)
 }
 
-// Send issues r, captures the response, and persists a flow. Transport-level
+// sendOne issues r once (Send adds redirect following), captures the response, and persists a flow. Transport-level
 // failures are recorded as an errored flow (502) rather than returned as errors;
 // only malformed input returns an error.
-func (s *Sender) Send(r Request) (*store.Flow, error) {
+func (s *Sender) sendOne(r Request) (*store.Flow, error) {
+	if o := r.Options; o != nil && o.Timeout > 0 {
+		ctx := r.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		var cancel context.CancelFunc
+		r.Context, cancel = context.WithTimeout(ctx, o.Timeout)
+		defer cancel()
+	}
 	u, err := url.Parse(r.URL)
 	if err != nil || !u.IsAbs() || u.Host == "" {
 		return nil, fmt.Errorf("invalid request URL %q", r.URL)
@@ -444,6 +463,17 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	if host != "" {
 		req.Host = host
 	}
+	if r.Options != nil && len(r.Options.RawHeaders) > 0 {
+		req.Header = http.Header{}
+		for _, h := range r.Options.RawHeaders {
+			if http.CanonicalHeaderKey(h.Name) == "Host" {
+				req.Host = h.Value
+				continue
+			}
+			req.Header.Add(h.Name, h.Value)
+		}
+		scopeOK = false // caller owns the exact wire request: no session/macro/reauth
+	}
 	if scopeOK {
 		s.applySession(req) // force session/auth headers (recorded on the flow below)
 	}
@@ -469,12 +499,12 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 		flow.Flags |= store.FlagCaptureError
 	}
 
-	resp, err := s.cl.Do(req)
+	resp, err := s.do(r, req)
 	if err != nil {
 		flow.Status = http.StatusBadGateway
 		flow.Error = err.Error()
 		flow.DurationMs = time.Since(start).Milliseconds()
-		s.persist(flow)
+		s.persistFor(r, flow)
 		return flow, nil
 	}
 	defer resp.Body.Close()
@@ -498,14 +528,14 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	flow.ResHeaders = resp.Header.Clone()
 	flow.Mime = resp.Header.Get("Content-Type")
 	flow.DurationMs = time.Since(start).Milliseconds()
-	s.persist(flow)
+	s.persistFor(r, flow)
 
 	// 401 re-auth: run the login macro once and retry the original request.
 	if scopeOK && !r.retried401 && flow.Status == http.StatusUnauthorized && s.shouldReauth401() {
 		if _, err := s.runLoginMacro(); err == nil {
 			r2 := r
 			r2.retried401 = true
-			return s.Send(r2)
+			return s.sendOne(r2)
 		}
 	}
 	return flow, nil
