@@ -35,6 +35,18 @@ scan under pressure.
   Never use video on the login gate. A static visual must be low contrast,
   self-contained, and leave the access-key action as the clear focal point.
 
+## Icons
+
+- Icons are one inline sprite in `index.html`; the rules and vocabulary live in
+  [docs/ui-icons.md](../../../docs/ui-icons.md). 24x24 grid, 1.75 stroke, round
+  caps, `currentColor` only, at most about 3 sub-shapes, no fills.
+- Use `<use href="#i-name"/>` or `icon('name')`; never emoji, Unicode glyphs or
+  CSS `content:` glyphs. Name ids by meaning and do not keep aliases.
+- Decorative icons are `aria-hidden="true" focusable="false"`; icon-only buttons
+  carry an `aria-label`.
+- After changing the sprite run `node scripts/ui_icon_sheet.mjs <out.html>` and
+  check every icon at 16px in both themes (no lookalikes, nothing muddy).
+
 ## Workflow
 
 1. Preserve the existing interaction and keyboard/accessibility contracts.
