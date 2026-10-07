@@ -1,0 +1,403 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Legacy API",
+    "description": "Version: 0.9",
+    "auth": {
+      "type": "basic",
+      "basic": [
+        {
+          "key": "username",
+          "type": "string",
+          "value": "{{basic_auth_username}}"
+        },
+        {
+          "key": "password",
+          "type": "string",
+          "value": "{{basic_auth_password}}"
+        }
+      ]
+    },
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "swagger-2.0",
+      "info": {
+        "title": "Legacy API",
+        "version": "0.9"
+      }
+    },
+    "importReport": {
+      "format": "openapi",
+      "entries": [
+        {
+          "level": "degraded",
+          "path": "PUT /users/{id}",
+          "feature": "ref-cycle",
+          "message": "$ref cycle through User was cut in a generated example"
+        },
+        {
+          "level": "converted",
+          "path": "servers",
+          "feature": "servers",
+          "message": "2 server(s) became environments with a baseUrl variable"
+        },
+        {
+          "level": "converted",
+          "feature": "auth:basic",
+          "message": "security scheme basic_auth became basic auth with a secret variable"
+        },
+        {
+          "level": "converted",
+          "path": "GET /users/{id}",
+          "feature": "response-examples",
+          "message": "1 saved response example(s) from declared examples"
+        },
+        {
+          "level": "converted",
+          "feature": "auth:apikey",
+          "message": "security scheme key became apikey auth with a secret variable"
+        }
+      ],
+      "counts": {
+        "converted": 4,
+        "degraded": 1
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 1,
+        "requests": 3,
+        "examples": 1,
+        "variables": 4,
+        "secretVariables": 2,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 2
+      },
+      "headline": "1 folders, 3 requests, 1 saved examples; 4 variables (2 secret), 2 environments; 0 need review"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "users",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "i",
+      "name": "Get user",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/users/:id",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "users",
+          ":id"
+        ],
+        "query": [
+          {
+            "disabled": true,
+            "key": "fields",
+            "value": "name,email"
+          }
+        ],
+        "variable": [
+          {
+            "key": "id",
+            "value": "5"
+          }
+        ]
+      },
+      "headers": [],
+      "examples": [
+        {
+          "name": "200 ok",
+          "status": "ok",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"id\": 5,\n  \"name\": \"Alice\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ],
+      "tags": [
+        "users"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/users/{id}",
+          "method": "get"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "r",
+      "name": "PUT /users/{id}",
+      "method": "PUT",
+      "url": {
+        "raw": "{{baseUrl}}/users/:id",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "users",
+          ":id"
+        ],
+        "variable": [
+          {
+            "key": "id",
+            "value": "{{id}}"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"id\": 0,\n  \"name\": \"string\",\n  \"friends\": []\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "tags": [
+        "users"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/users/{id}",
+          "method": "put"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "POST /login",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/login",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "login"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/x-www-form-urlencoded"
+        }
+      ],
+      "body": {
+        "mode": "urlencoded",
+        "urlencoded": [
+          {
+            "key": "user",
+            "value": "alice"
+          },
+          {
+            "key": "pass",
+            "value": ""
+          }
+        ]
+      },
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          {
+            "key": "key",
+            "type": "string",
+            "value": "api_key"
+          },
+          {
+            "key": "value",
+            "type": "string",
+            "value": "{{key}}"
+          },
+          {
+            "key": "in",
+            "type": "string",
+            "value": "query"
+          }
+        ]
+      },
+      "sidecar": {
+        "openapi": {
+          "path": "/login",
+          "method": "post"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "https://api.example.com/v2",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "basic_auth_username",
+      "type": "default",
+      "initialValue": "",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "basic_auth_password",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "key",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id002",
+        "name": "https://api.example.com/v2",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id002",
+          "key": "baseUrl",
+          "type": "default",
+          "initialValue": "https://api.example.com/v2",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "environment": {
+        "uid": "id003",
+        "name": "http://api.example.com/v2",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id003",
+          "key": "baseUrl",
+          "type": "default",
+          "initialValue": "http://api.example.com/v2",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "openapi",
+    "entries": [
+      {
+        "level": "degraded",
+        "path": "PUT /users/{id}",
+        "feature": "ref-cycle",
+        "message": "$ref cycle through User was cut in a generated example"
+      },
+      {
+        "level": "converted",
+        "path": "servers",
+        "feature": "servers",
+        "message": "2 server(s) became environments with a baseUrl variable"
+      },
+      {
+        "level": "converted",
+        "feature": "auth:basic",
+        "message": "security scheme basic_auth became basic auth with a secret variable"
+      },
+      {
+        "level": "converted",
+        "path": "GET /users/{id}",
+        "feature": "response-examples",
+        "message": "1 saved response example(s) from declared examples"
+      },
+      {
+        "level": "converted",
+        "feature": "auth:apikey",
+        "message": "security scheme key became apikey auth with a secret variable"
+      }
+    ],
+    "counts": {
+      "converted": 4,
+      "degraded": 1
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 1,
+      "requests": 3,
+      "examples": 1,
+      "variables": 4,
+      "secretVariables": 2,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 2
+    },
+    "headline": "1 folders, 3 requests, 1 saved examples; 4 variables (2 secret), 2 environments; 0 need review"
+  }
+}
