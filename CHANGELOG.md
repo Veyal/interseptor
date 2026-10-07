@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-07
+
+> Feature release: pure-Go evidence image renders, the redrawn "Gate & Lane" icon family, a date-aware History Time column and a cleaner desktop navigation.
+
 ### Added
 
 - **Evidence render MCP/REST contract.** The MCP `render_intruder_preview` and `render_evidence` read paths called `GET /api/intruder/attacks/{id}/render` and `GET /api/evidence-render`, which did not exist (404 for every kind); the UI MCP descriptor now lists both tools. Both now resolve (`kind`, `runId`, `flowIdA`/`flowIdB`, `flowIds`, `findingIds` whose first id is the chain root), and `POST /api/findings/{id}/evidence-render` accepts the MCP field names `flowIdA`, `flowIdB` and `findingIds`.
@@ -36,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Evidence render buttons use the new `image` icon.** The Proxy bulk-bar "Render image", the Intruder "Preview image", the authz "Render image" and the finding "Preview chain" buttons share one new `i-image` symbol (framed picture, drawn to the Gate & Lane spec in `docs/ui-icons.md`); the retired `i-traffic` id is no longer referenced.
 - **History "Time" column is date-aware.** It showed only the time of day, so a flow from last week looked like one from this morning. Today's rows still show `HH:MM:SS`; yesterday's add `Yest`, the same year adds `Oct 5`, and older years show `2025-10-05 14:32`. Months use a fixed English table (not the viewer's locale), days are local calendar days (DST and year boundaries safe), and the cell exposes the full `YYYY-MM-DD HH:MM:SS.mmm UTC+07:00` as a tooltip and to screen readers. Sorting and filtering still use the real timestamp. The labels refresh at local midnight and when the tab regains focus. The default column is 124px (a saved 60px width from older versions upgrades automatically); phone cards reserve a fixed time track so the status column stays aligned. Formatting lives in the DOM-free `js/flow-when.js`.
 
 - **New purpose-drawn icon family.** Every UI icon is redrawn as an inline SVG symbol in one own visual language, "Gate & Lane": 24x24 grid, 1.75 stroke with square caps and mitre joins, `currentColor`, path-only geometry with horizontal, vertical and 45 degree segments, chamfered corners, octagons instead of circles, square pads, and a hold-bar signature on in-path icons. The logo, favicon, login mark and login lock use the same two-lane mark. `intruder` is now a node fanning into a gate, `sev-low` is a down pentagon distinct from `status-done`, severity is shape coded, and the stray inline header bell is a sprite symbol (`i-bell`). Rules, rejected directions and vocabulary are in `docs/ui-icons.md`; `ui_icons_test.go` enforces the construction spec.
