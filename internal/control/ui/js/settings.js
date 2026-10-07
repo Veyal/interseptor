@@ -547,14 +547,6 @@ export function openSettingsProxy(){
   if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:prefersReducedMotion()?'auto':'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
 }
 
-function syncSettingsPicker() {
-  const picker=$('#settingsSectionSelect');if(!picker)return;
-  const buttons=$$('#setNav button[data-sec]');
-  [...picker.options].forEach(option=>{option.hidden=!!buttons.find(button=>button.dataset.sec===option.value)?.hidden;});
-  picker.disabled=buttons.every(button=>button.hidden);
-  picker.value=buttons.find(button=>button.classList.contains('on'))?.dataset.sec||'proxy';
-}
-
 function syncSettingsNavA11y(active) {
   $$('#setNav button[data-sec]').forEach(button => {
     const sec = document.querySelector('.set-sec[data-sec="'+button.dataset.sec+'"]');
@@ -581,7 +573,6 @@ $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
   $$('#setNav button[data-sec]').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   syncSettingsNavA11y(b);
-  syncSettingsPicker();
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'){retentionLoaded=true;loadRetention();}
@@ -591,11 +582,6 @@ $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
   if(settingsSplit&&!settingsNavSilent&&settingsSplit.mode()==='stack')settingsSplit.showDetail(b);
 });
 syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||document.querySelector('#setNav button[data-sec]'));
-syncSettingsPicker();
-$('#settingsSectionSelect').onchange=event=>{
-  const button=$$('#setNav button[data-sec]').find(button=>button.dataset.sec===event.currentTarget.value);
-  if(button&&!button.hidden)button.click();
-};
 
 // Settings search — filter the left nav to sections whose label or body text
 // matches the query, so options are discoverable without knowing which group
@@ -641,7 +627,6 @@ $('#settingsSectionSelect').onchange=event=>{
     // If the query hid the active section, jump to the first remaining match
     // (without pushing a phone page while the operator is still typing).
     if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden)){settingsNavSilent=true;try{firstVisible.click();}finally{settingsNavSilent=false;}}
-    syncSettingsPicker();
   };
   // Escape clears the filter.
   box.onkeydown=e=>{if(e.key==='Escape'){box.value='';box.oninput();box.blur();}};

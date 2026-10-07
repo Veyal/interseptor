@@ -44,9 +44,25 @@ func isReleaseVersion(v string) bool {
 // CheckLatest queries GitHub for the latest release tag and reports whether it
 // is newer than the running version. Best-effort: any error (offline, rate
 // limit, etc.) returns ("", false, err) for the caller to ignore quietly.
+//
+// It serves a result cached for up to an hour, which suits the passive startup
+// hint. Explicit user actions (`interseptor update`) must use CheckLatestFresh.
 func CheckLatest(ctx context.Context) (latest string, newer bool, err error) {
-	if c, ok := readLatestCache(); ok {
-		return finishLatestCheck(c.Latest)
+	return checkLatest(ctx, true)
+}
+
+// CheckLatestFresh is CheckLatest without reading the cache, so an explicit
+// `interseptor update [--check]` never reports "up to date" for a release that
+// was published after the last passive check. It still refreshes the cache.
+func CheckLatestFresh(ctx context.Context) (latest string, newer bool, err error) {
+	return checkLatest(ctx, false)
+}
+
+func checkLatest(ctx context.Context, useCache bool) (latest string, newer bool, err error) {
+	if useCache {
+		if c, ok := readLatestCache(); ok {
+			return finishLatestCheck(c.Latest)
+		}
 	}
 
 	var apiErr error

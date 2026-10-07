@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **History "Time" column is date-aware.** It showed only the time of day, so a flow from last week looked like one from this morning. Today's rows still show `HH:MM:SS`; yesterday's add `Yest`, the same year adds `Oct 5`, and older years show `2025-10-05 14:32`. Months use a fixed English table (not the viewer's locale), days are local calendar days (DST and year boundaries safe), and the cell exposes the full `YYYY-MM-DD HH:MM:SS.mmm UTC+07:00` as a tooltip and to screen readers. Sorting and filtering still use the real timestamp. The labels refresh at local midnight and when the tab regains focus. The default column is 124px (a saved 60px width from older versions upgrades automatically); phone cards reserve a fixed time track so the status column stays aligned. Formatting lives in the DOM-free `js/flow-when.js`.
+
+### Fixed
+
+- **Redundant "Proxy | Intercept" strip above the workspace on desktop and tablet.** The phone dock's destination sub-control (`#dockSeg`) had no desktop guard and rendered at every width next to the left rail. It is now `display:none` above 720px and shown only in the phone block (still honoring `[hidden]`).
+
+- **"< Sections" back button visible on desktop Settings, Scanner and Intercept.** `.btn`'s display rule (specificity 0-1-3) outranked `.split-back{display:none}`, so the phone-only back button showed next to the always-visible section list. Hidden outside stack mode now.
+
+- **`interseptor update` said "already up to date" right after a release.** It read the hourly cached latest-release lookup meant for the passive startup hint. `update` and `update --check` now always query GitHub (and refresh the cache); only the startup hint keeps using the cache.
+
+### Removed
+
+- **Settings "Section" picker.** The compact select duplicated the section buttons next to it. Section navigation now uses the nav buttons at every width (chips on tablet, grouped pushed-page list on phones); the 721-900px layout keeps the buttons visible as a wrapping row instead of hiding them behind the picker.
+
 ## [2.4.2] - 2026-10-06
 
 > v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.

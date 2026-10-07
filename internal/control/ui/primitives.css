@@ -34,6 +34,8 @@
 .split[data-mode="stack"][data-view="detail"]>.split-list{display:none}
 .split[data-mode="stack"]>.split-list,.split[data-mode="stack"]>.split-detail{height:100%}
 .split-back{display:none}
+/* Outranks .btn's display rule (0-1-3): the back button exists only in stack mode. */
+.split:not([data-mode="stack"]) .split-back{display:none}
 .split[data-mode="stack"] .split-back{display:inline-flex;align-items:center;gap:var(--sp-1);margin:var(--sp-2) var(--sp-4)}
 .split-back .icon{transform:rotate(90deg)}
 

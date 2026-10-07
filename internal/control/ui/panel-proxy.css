@@ -42,14 +42,14 @@
   .proxy-toolbar .search{flex:1 1 100%}
   #panel-proxy #flowHead{display:none}
   #panel-proxy #rows .trow{
-    grid-template-columns:auto minmax(0,1fr) auto auto var(--hit-min);
+    grid-template-columns:auto minmax(0,1fr) auto 7.5rem var(--hit-min);
     grid-template-areas:"m path path st more" "att host len t more";
     height:56px;min-height:56px;row-gap:0;padding-block:var(--sp-1);align-items:center
   }
   #panel-proxy #rows .trow .tr-id,#panel-proxy #rows .trow .tr-mime{display:none}
   #panel-proxy #rows .trow .tr-m{grid-area:m}
   #panel-proxy #rows .trow .tr-path{grid-area:path}
-  #panel-proxy #rows .trow .tr-st{grid-area:st}
+  #panel-proxy #rows .trow .tr-st{grid-area:st;text-align:right}
   #panel-proxy #rows .trow .tr-att{grid-area:att;min-width:var(--sp-5)}
   #panel-proxy #rows .trow .tr-host{grid-area:host;color:var(--fg2)}
   #panel-proxy #rows .trow .tr-len{grid-area:len;text-align:right;color:var(--fg3)}

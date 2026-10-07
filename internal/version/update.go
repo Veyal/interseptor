@@ -60,7 +60,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		target = strings.TrimPrefix(target, "v")
 	} else {
 		prog.step("Checking for latest release…")
-		latest, newer, err := CheckLatest(ctx)
+		latest, newer, err := CheckLatestFresh(ctx) // explicit update: never trust the hourly cache
 		if err != nil {
 			return fmt.Errorf("check for updates: %w", err)
 		}
