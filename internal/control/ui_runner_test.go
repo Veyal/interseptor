@@ -95,3 +95,22 @@ func TestUIHistoryCollectionChip(t *testing.T) {
 		t.Error("FLAG_COLLECTION must mirror store.FlagCollection (1<<9)")
 	}
 }
+
+func TestUIImportSheetReachesEveryImporter(t *testing.T) {
+	src := readUIAsset(t, "js/collections-sheets.js")
+	requireUIContains(t, src, "Insomnia", "Bruno", "HAR", "Burp", "OpenAPI", "Postman", "curl",
+		"file.multiple = true",   // a Bruno folder is several files
+		"format = 'bruno-files'", // sent as {files:[{path,text}]}
+		"?format=' + format",     // the chosen format reaches preview and commit
+		"quarantined",            // the quarantine message stays on the sheet
+	)
+	for _, r := range collRoutes {
+		if r.path == "/api/import/collection/preview" || r.path == "/api/import/collection/commit" {
+			for _, f := range []string{"insomnia", "bruno", "har", "burp", "curl", "openapi", "postman"} {
+				if !strings.Contains(r.desc, f) {
+					t.Errorf("%s description does not list %s", r.path, f)
+				}
+			}
+		}
+	}
+}

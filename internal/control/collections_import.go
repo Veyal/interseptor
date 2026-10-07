@@ -13,9 +13,9 @@ import (
 )
 
 // parseCollectionImport decodes an uploaded file without storing, executing or
-// fetching anything. Postman, OpenAPI/Swagger and curl are supported; every
-// format is normalised to a postman.Result so preview and commit share one
-// path. "auto" sniffs: curl text, Postman JSON, then OpenAPI (JSON or YAML).
+// fetching anything. Postman, OpenAPI/Swagger, curl, Insomnia, Bruno and
+// HAR/Burp are supported; every format is normalised to a postman.Result so
+// preview and commit share one path. "auto" sniffs the content.
 func parseCollectionImport(data []byte, format string) (*postman.Result, int, error) {
 	switch f := strings.ToLower(format); f {
 	case "", "auto":
@@ -26,27 +26,37 @@ func parseCollectionImport(data []byte, format string) (*postman.Result, int, er
 		return parseOpenAPIImport(data)
 	case "curl":
 		return parseCurlImport(data)
+	case "insomnia":
+		return parseInsomniaImport(data)
+	case "bruno":
+		return parseBrunoImport(data)
+	case "bruno-files":
+		return parseBrunoFilesImport(data)
+	case "har":
+		return parseHARImport(data)
+	case "burp":
+		return parseBurpImport(data)
 	default:
-		return nil, http.StatusBadRequest, errors.New("import format " + format + " is not supported (supported: auto, postman, openapi, curl)")
+		return nil, http.StatusBadRequest, errors.New("import format " + format + " is not supported (supported: " + importFormatsList + ")")
 	}
 }
 
 func parseAutoImport(data []byte) (*postman.Result, int, error) {
-	if looksLikeCurl(data) {
+	switch {
+	case looksLikeCurl(data):
 		return parseCurlImport(data)
-	}
-	if json.Valid(data) {
-		res, code, err := parsePostmanImport(data)
-		if err != nil && code == http.StatusUnsupportedMediaType && errors.Is(err, postman.ErrNotPostman) {
-			if r2, c2, e2 := parseOpenAPIImport(data); e2 == nil {
-				return r2, c2, nil
-			}
-		}
-		return res, code, err
+	case looksLikeBru(data):
+		return parseBrunoImport(data)
+	case looksLikeXML(data):
+		return parseBurpImport(data)
+	case json.Valid(data):
+		return sniffJSON(data)
+	case looksLikeInsomniaYAML(data):
+		return parseInsomniaImport(data)
 	}
 	res, code, err := parseOpenAPIImport(data)
 	if err != nil && code == http.StatusUnsupportedMediaType {
-		return nil, http.StatusBadRequest, errors.New("the file is not valid JSON, YAML or a curl command")
+		return nil, http.StatusBadRequest, errors.New("the file is not valid JSON, YAML, a curl command, a .bru file or Burp XML")
 	}
 	return res, code, err
 }

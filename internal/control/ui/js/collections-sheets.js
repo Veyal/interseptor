@@ -212,18 +212,18 @@ export function paintImport(body, initialText) {
   const wrap = el('div', 'coll-sheet');
   body.append(wrap);
   wrap.append(el('h3', '', 'Import a collection'));
-  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML) or a curl command. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
+  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML), Insomnia (v4 or v5), Bruno (.bru files; choose several for a folder), HAR, Burp XML or a curl command. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
   const row = el('div', 'coll-sheet-row');
   const file = document.createElement('input');
-  file.type = 'file'; file.id = 'collImportFile'; file.accept = '.json,.yaml,.yml,.txt,application/json';
-  file.setAttribute('aria-label', 'Choose a collection file');
+  file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,application/json';
+  file.setAttribute('aria-label', 'Choose a collection file, or several .bru files for a Bruno folder');
   row.append(file);
   wrap.append(row);
   const ta = document.createElement('textarea');
   ta.id = 'collImportText';
   ta.className = 'coll-body-raw';
-  ta.setAttribute('aria-label', 'Paste collection JSON, an OpenAPI document or a curl command');
-  ta.placeholder = 'Or paste JSON, YAML or a curl command here';
+  ta.setAttribute('aria-label', 'Paste collection JSON, an OpenAPI document, a .bru file or a curl command');
+  ta.placeholder = 'Or paste JSON, YAML, a .bru file or a curl command here';
   ta.spellcheck = false;
   ta.value = initialText;
   wrap.append(ta);
@@ -236,22 +236,34 @@ export function paintImport(body, initialText) {
   actions.append(preview, commit);
   wrap.append(actions, out);
   let data = initialText;
+  let format = 'auto';
   file.addEventListener('change', async () => {
-    const f = file.files && file.files[0];
-    if (!f) return;
-    if (f.size > 64 * 1024 * 1024) { toast('That file is larger than the 64 MiB import limit', 'error'); return; }
-    data = await f.text();
-    ta.value = data.length > 200000 ? '' : data;
-    ta.placeholder = data.length > 200000 ? f.name + ' loaded (' + fmtSize(f.size) + ')' : ta.placeholder;
+    const picked = Array.from(file.files || []);
+    if (!picked.length) return;
+    const total = picked.reduce((n, f) => n + f.size, 0);
+    if (total > 64 * 1024 * 1024) { toast('Those files are larger than the 64 MiB import limit', 'error'); return; }
+    if (picked.length > 1) {
+      // Several files are a Bruno folder: send each with its relative path.
+      const files = await Promise.all(picked.map(async (f) => ({ path: f.webkitRelativePath || f.name, text: await f.text() })));
+      data = JSON.stringify({ files });
+      format = 'bruno-files';
+      ta.value = '';
+      ta.placeholder = picked.length + ' files loaded (' + fmtSize(total) + ')';
+    } else {
+      data = await picked[0].text();
+      format = 'auto';
+      ta.value = data.length > 200000 ? '' : data;
+      ta.placeholder = data.length > 200000 ? picked[0].name + ' loaded (' + fmtSize(total) + ')' : ta.placeholder;
+    }
     commit.disabled = true;
     runPreview();
   });
-  ta.addEventListener('input', () => { data = ta.value; commit.disabled = true; });
+  ta.addEventListener('input', () => { data = ta.value; format = 'auto'; commit.disabled = true; });
 
   async function post(kind) {
     const text = ta.value || data;
     if (!text.trim()) { toast('Choose a file or paste something to import'); return null; }
-    return api('/api/import/collection/' + kind + '?format=auto', { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: text });
+    return api('/api/import/collection/' + kind + '?format=' + format, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: text });
   }
   async function runPreview() {
     preview.disabled = true;
