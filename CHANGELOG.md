@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - `internal/jsrt`: engine-neutral JavaScript runtime interface with a pure-Go goja adapter (wall-clock/ctx interrupt incl. promise and timer loops, injectable clock and rand, virtual timers, console capture, no ambient I/O) for upcoming collection scripts; ADRs 0001-0005 in `docs/adr/` (engine choice, dependencies/licences/binary-size delta, script trust model, collections data model, verified facts). Adds `github.com/dop251/goja` (MIT) and its pure-Go deps; release binary grows by about 10.7 MiB.
 
+- **Collections store and model (WP1).** New additive `ix_*` tables (collections tree with folders/requests/ranks, environments, variables with secret type and separate current values, cookies, tokens, datasets, assets, runs, flow context, script trust, import log, item revisions), `store.FlagCollection` (bit 9), CRUD with optimistic revs, a single secret scrub (`BackupToScrubbed`/`ScrubSnapshotFile`/`ExportCollectionsBundle`) covering archive, vault and bundle copies, collection merge by uid with name/path fallback (`MergeCollectionsFrom`, old-peer tolerant), and the `internal/collection` domain package (tree building, ranks, script-trust hashing, Repo contract).
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
