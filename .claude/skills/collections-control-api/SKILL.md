@@ -15,3 +15,6 @@ description: Rules for the collections REST routes, MCP tools and script trust i
 - All JSON handlers use `decodeLimitedJSON` with the package limits `maxCollection*Bytes` (vars so tests can shrink them); import uses `readLimitedBody`.
 - Tests that send to an `httptest` loopback server need an explicit include scope rule for the host (the pipeline's dial guard blocks private hosts under `block`), and `SetSelfAddr` to model own-listener refusal.
 - Script variable writes: UI send defaults to `persist: keep`, runs and MCP default to `discard`; a run carries writes between steps through `varOverlay` even when discarding.
+- Import routes reach Postman, OpenAPI/Swagger, curl, Insomnia, Bruno (`.bru` or `format=bruno-files` `{files:[{path,text}]}`), HAR and Burp XML; `format=auto` sniffs content (`sniffJSON` by top-level keys). A new importer needs a `parseXImport`, a sniff rule, a route-description mention (`TestUIImportSheetReachesEveryImporter`) and a quarantine assertion.
+- History: collection flows are included by default; `GET /api/flows?collection=0|only` filters them (`FlagCollection` = 1<<9, COLL tag and the `#histCollFilter` chip).
+- `TestEverySendPathAppliesTheSameScopeAndDialGuard` enumerates send paths (interactive, AI, sync run, async runner, `pm.sendRequest`, OAuth token). Add a row when a new path to the network appears.

@@ -15,3 +15,4 @@ description: Rules for internal/collexec, the single Step() pipeline every colle
 - Request model: `params_json` non-empty means the URL's own query is dropped (authoritative params); empty keeps the URL query verbatim. Query values are escaped minimally so payloads reach the wire as typed. Multipart file parts and body mode `file` are refused (no local path reads).
 - Codec: `settings.codec` = `""` auto (apply_on_send + match on the plaintext body), `"off"`, or an id applied directly (item body is the plaintext; the codec's `match()` is skipped).
 - Use example.com names only in fixtures; httptest loopback servers need a fake explicit scope or `ScopePolicy: "off"`.
+- Only `step.go` (Step) and `auth.go` (StepDoer) may call the sender; `TestCollectionStackHasOnlyGuardedSendSites` fails on any other sender call, direct dial or bare HTTP client in the collections stack.
