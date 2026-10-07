@@ -79,3 +79,19 @@ func TestUIRunnerModelNeverRendersUnsupportedAsPass(t *testing.T) {
 		t.Error("runner-model.js must give unsupported its own state and label")
 	}
 }
+
+func TestUIHistoryCollectionChip(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `id="histCollFilter"`, `aria-pressed="true"`, `#i-collection`)
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"FLAG_COLLECTION",                            // client predicate and row badge
+		"q.set('collection','0')",                    // server filter when hidden
+		"state.showCollection=!state.showCollection", // the chip toggles it
+		"hiding collections",                         // removable active-filter chip with a text label
+		"COLL",                                       // row tag
+	)
+	if !strings.Contains(readUIAsset(t, "js/core.js"), "FLAG_COLLECTION=512") {
+		t.Error("FLAG_COLLECTION must mirror store.FlagCollection (1<<9)")
+	}
+}

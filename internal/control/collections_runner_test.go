@@ -253,3 +253,54 @@ func TestSendCookiesFollowPersistPolicy(t *testing.T) {
 		t.Fatalf("an interactive send keeps session state by default; stored = %d", stored())
 	}
 }
+
+// Collection flows are History traffic by default; ?collection=0 hides them
+// and ?collection=only shows nothing else. The AI-source filters compose.
+func TestHistoryCollectionFlowFilter(t *testing.T) {
+	f := newCollFixture(t)
+	collUID, envUID := f.runnerFixture(1)
+	var out struct {
+		RunUID string `json:"runUid"`
+	}
+	f.must("POST", "/api/collections/run", map[string]any{"collectionUid": collUID, "envUid": envUID}, asUI, 200, &out)
+	if _, err := f.st.InsertFlow(&store.Flow{TS: time.Now(), Method: "GET", Scheme: "https", Host: "app.example.com", Path: "/proxied", Status: 200}); err != nil {
+		t.Fatal(err)
+	}
+	paths := func(q string) []string {
+		var res struct {
+			Flows []struct {
+				Path  string `json:"path"`
+				Flags int64  `json:"flags"`
+			} `json:"flows"`
+		}
+		f.must("GET", "/api/flows"+q, nil, asUI, 200, &res)
+		var ps []string
+		for _, fl := range res.Flows {
+			ps = append(ps, fl.Path)
+		}
+		return ps
+	}
+	has := func(ps []string, p string) bool {
+		for _, x := range ps {
+			if x == p {
+				return true
+			}
+		}
+		return false
+	}
+	def := paths("")
+	if !has(def, "/pa") || !has(def, "/proxied") {
+		t.Fatalf("default History must include collection and proxied flows: %v", def)
+	}
+	hidden := paths("?collection=0")
+	if has(hidden, "/pa") || !has(hidden, "/proxied") {
+		t.Fatalf("collection=0 must hide collection flows only: %v", hidden)
+	}
+	only := paths("?collection=only")
+	if !has(only, "/pa") || has(only, "/proxied") {
+		t.Fatalf("collection=only must show collection flows only: %v", only)
+	}
+	if got := paths("?collection=1"); !has(got, "/pa") || !has(got, "/proxied") {
+		t.Fatalf("collection=1 is the default: %v", got)
+	}
+}

@@ -240,3 +240,6 @@
 .chip.run-fail,.chip.run-error{color:var(--dangerFg);border-color:var(--dangerLine)}
 .chip.run-blocked,.chip.run-unsupported{color:var(--warnFg);border-color:var(--warnLine)}
 .chip.run-skipped{color:var(--fg2)}
+
+/* History COLL tag: same shape as the AI tag, neutral colour so it reads as a source label */
+.coll-tag{background:var(--bg3);color:var(--fg);border:1px solid var(--line2)}

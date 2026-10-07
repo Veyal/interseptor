@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
@@ -106,6 +106,9 @@ const HIDE_TLS_KEY='proxy.hideTlsFailed';
 // exposes the matching `manual` and `ai` query parameters, and live SSE rows
 // need the same predicates before they are admitted to the in-memory window.
 if(typeof state.showAI!=='boolean')state.showAI=true;
+// Collection-sent flows (FlagCollection) are History traffic by default; the
+// Collections chip hides them. Server: ?collection=0.
+if(typeof state.showCollection!=='boolean')state.showCollection=true;
 function loadProxyPrefs(){
   try{state.hideTlsFailed=localStorage.getItem(HIDE_TLS_KEY)!=='0';}catch(e){state.hideTlsFailed=true;}
 }
@@ -385,6 +388,7 @@ function flowMatchesFilters(f){
   const isAI=(f.flags&FLAG_AI)!==0;
   if(!state.showManual&&!isAI)return false;
   if(!state.showAI&&isAI)return false;
+  if(!state.showCollection&&(f.flags&FLAG_COLLECTION)!==0)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
   // Scope mode is part of the server-side query (buildFlowParams sets inScope=1),
@@ -435,7 +439,7 @@ function flowRowHTML(f){
     attached:`<div class="tr-att" data-field="attached">${linked?`<span title="${escAttr(linked)}">${icon('attach')}<span class="u-sr">${esc(linked)}</span></span>`:''}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${f.scheme==='https'?icon('lock','HTTPS')+' ':''}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path"${phoneCard?` title="${escAttr(f.path)}"`:''}>${esc(phoneCard?middleEllipsis(f.path,44):f.path)}${intercepted?` <span class="tr-held" title="intercepted" role="img" aria-label="intercepted">${icon('finding')}</span>`:''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
+    path:`<div class="tr-path" data-field="path"${phoneCard?` title="${escAttr(f.path)}"`:''}>${esc(phoneCard?middleEllipsis(f.path,44):f.path)}${intercepted?` <span class="tr-held" title="intercepted" role="img" aria-label="intercepted">${icon('finding')}</span>`:''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_COLLECTION)?'<span class="ai-tag coll-tag" title="sent from a collection request">COLL</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -1018,6 +1022,7 @@ function buildFlowParams(){
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
   q.set('manual',state.showManual?'1':'0');
   q.set('ai',state.showAI?'1':'0');
+  if(!state.showCollection)q.set('collection','0');
   q.set('sort',state.sort.key);
   q.set('dir',sortDirParam());
   return q;
@@ -1031,7 +1036,7 @@ function inspectorFilterSignature(){
     method:f.method||'',status:f.status||'',host:f.host||'',tag:f.tag||'',
     exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
     hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
-    showManual:!!state.showManual,showAI:!!state.showAI,
+    showManual:!!state.showManual,showAI:!!state.showAI,showCollection:!!state.showCollection,
     sort:(state.sort&&state.sort.key)||'',dir:sortDirParam(),
   });
 }
@@ -1706,10 +1711,13 @@ function syncSourceFilters(){
   if(mf){mf.classList.toggle('on',state.showManual);mf.setAttribute('aria-pressed',state.showManual?'true':'false');}
   const af=$('#aiFilter');
   if(af){af.classList.toggle('on',state.showAI);af.setAttribute('aria-pressed',state.showAI?'true':'false');}
+  const cf=$('#histCollFilter');
+  if(cf){cf.classList.toggle('on',state.showCollection);cf.setAttribute('aria-pressed',state.showCollection?'true':'false');}
 }
 export { syncSourceFilters };
 $('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();renderChips();loadFlows();});
 $('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();renderChips();loadFlows();});
+$('#histCollFilter')&&($('#histCollFilter').onclick=()=>{state.showCollection=!state.showCollection;syncSourceFilters();renderChips();loadFlows();});
  syncSourceFilters();
 export function saveNote(){
   const flowId=state.selId,detail=state.detail;
@@ -1768,7 +1776,7 @@ function applyView(v){
   state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',searchScope:f.searchScope||'anywhere',host:f.host||'',tag:f.tag||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
   state.inScopeOnly=!!f.inScope;
   state.notesOnly=!!f.notesOnly;
-  state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;
+  state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;state.showCollection=f.showCollection!==false;
   state.hideTlsFailed=f.hideTlsFailed!==false;
   const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
   syncSourceFilters();syncHideTlsFilter();
@@ -1779,7 +1787,7 @@ function applyView(v){
 async function saveCurrentView(){
   const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
   if(viewsMutationPending)return;
-  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,hideTlsFailed:state.hideTlsFailed};
+  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,showCollection:state.showCollection,hideTlsFailed:state.hideTlsFailed};
   viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
   try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
   catch(e){toastError('Save view failed',e);}
@@ -1918,14 +1926,14 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;state.showManual=true;state.showAI=true;state.inScopeOnly=false;state.hideTlsFailed=false;
+  state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;
   try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
   syncSourceFilters();syncHideTlsFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncScopeToggle(false);
   syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||!state.showCollection);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -1978,7 +1986,7 @@ export function renderChips(){
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
   // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),
   // so an active one also shows here as a removable chip: removal clicks the toggle.
-  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent']].forEach(([on,sel,label])=>{
+  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent'],[!state.showCollection,'#histCollFilter','hiding collections']].forEach(([on,sel,label])=>{
     if(on)items.push(`<span class="chip"><span><b>${esc(label)}</b></span><button type="button" class="x" data-toggle="${sel}" title="Remove filter" aria-label="Remove ${escAttr(label)} filter">${icon('close')}</button></span>`);
   });
   const hasFilters=items.length>0;

@@ -1241,6 +1241,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
 export const FLAG_WS=32;
 export const FLAG_TLS=16;
 export const FLAG_AI=1024;
+export const FLAG_COLLECTION=512; // sent from a collection request (store.FlagCollection)
 export const FLAG_DISCOVERY=4096;
 export const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light
 export const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)

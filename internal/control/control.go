@@ -693,6 +693,15 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	case showManual && !showAI:
 		f.WithoutFlags = store.FlagAI
 	}
+	// Collection-sent flows are History traffic by default (FlagCollection, a
+	// COLL chip in the UI). collection=0 hides them, collection=only shows
+	// nothing else; both compose with the source filters above.
+	switch q.Get("collection") {
+	case "0":
+		f.WithoutFlags |= store.FlagCollection
+	case "only":
+		f.RequireFlags |= store.FlagCollection
+	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
 	}
