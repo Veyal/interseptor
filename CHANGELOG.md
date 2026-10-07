@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `internal/jsrt`: engine-neutral JavaScript runtime interface with a pure-Go goja adapter (wall-clock/ctx interrupt incl. promise and timer loops, injectable clock and rand, virtual timers, console capture, no ambient I/O) for upcoming collection scripts; ADRs 0001-0005 in `docs/adr/` (engine choice, dependencies/licences/binary-size delta, script trust model, collections data model, verified facts). Adds `github.com/dop251/goja` (MIT) and its pure-Go deps; release binary grows by about 10.7 MiB.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
