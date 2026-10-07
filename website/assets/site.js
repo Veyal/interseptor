@@ -5,7 +5,7 @@
   function applyTheme(theme) {
     root.dataset.theme = theme;
     themeButton?.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#111318' : '#ffffff');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1a1722' : '#fff6e8');
   }
   applyTheme(root.dataset.theme || (darkPreference.matches ? 'dark' : 'light'));
   if (themeButton) {
@@ -41,6 +41,56 @@
   if (activePage && !mobile.matches) {
     sidebar.scrollTop = Math.max(0, activePage.offsetTop - sidebar.offsetTop - sidebar.clientHeight / 2);
   }
+
+  // Code cards: label and copy button. Without JavaScript the plain bordered block remains.
+  document.querySelectorAll('main div.highlighter-rouge').forEach(block => {
+    const code = block.querySelector('pre');
+    if (!code) return;
+    const lang = ((block.className.match(/language-([\w+-]+)/) || [])[1] || 'code').replace(/^plaintext$/, 'text');
+    const card = document.createElement('div');
+    card.className = 'code-card';
+    const bar = document.createElement('div');
+    bar.className = 'code-bar';
+    const label = document.createElement('span');
+    label.className = 'code-lang';
+    label.textContent = lang;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'chip';
+    copy.textContent = 'Copy';
+    copy.setAttribute('aria-label', `Copy ${lang} code`);
+    let reset;
+    copy.addEventListener('click', async () => {
+      const text = code.textContent.replace(/\n$/, '');
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+        const area = document.createElement('textarea');
+        area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;top:-100px;opacity:0';
+        document.body.append(area); area.select();
+        try { ok = document.execCommand('copy'); } catch (__) {}
+        area.remove(); copy.focus();
+      }
+      copy.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+      copy.dataset.state = ok ? 'copied' : 'failed';
+      clearTimeout(reset);
+      reset = setTimeout(() => { copy.textContent = 'Copy'; delete copy.dataset.state; }, 1800);
+    });
+    bar.append(label, copy);
+    block.replaceWith(card);
+    card.append(bar, block);
+  });
+  // Tables scroll inside their own focusable region instead of widening the page.
+  document.querySelectorAll('main table').forEach(table => {
+    if (table.parentElement.classList.contains('table-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'region');
+    const caption = table.querySelector('caption')?.textContent.trim();
+    wrap.setAttribute('aria-label', caption ? `${caption} (scrollable table)` : 'Scrollable table');
+    table.replaceWith(wrap);
+    wrap.append(table);
+  });
 
   const outline = document.querySelector('.outline');
   const outlineNav = document.querySelector('#page-outline');

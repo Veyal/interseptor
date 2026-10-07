@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Documentation site restyled to match veyal.github.io.** Design tokens (cream, ink, candy pink/yellow/mint/sky/grape, 1rem radius) with a dark variant, self-hosted Baloo 2 and Nunito (SIL OFL, latin and latin-ext subsets, no third-party requests), sticker-style header with a back link to the main site, sidebar current-page pill, bordered search results, footer, homepage cards, code cards with a Copy chip, scrollable tables, labelled callouts, 404 and feature cards. Keyboard focus, reduced motion, forced colors and 375px layouts are covered.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
 
 ## [2.5.0] - 2026-10-07
