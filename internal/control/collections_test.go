@@ -287,9 +287,44 @@ func TestImportPreviewStoresNothingAndCommitQuarantines(t *testing.T) {
 	if len(sv.Scripts) != 1 || sv.Scripts[0].Trusted || sv.Untrusted != 1 || len(sv.Capabilities) != 0 {
 		t.Fatalf("imported scripts must be quarantined with no capabilities: %+v", sv)
 	}
-	f.must("POST", "/api/import/collection/commit?format=openapi", doc, asUI, 400, nil)
+	f.must("POST", "/api/import/collection/commit?format=openapi", doc, asUI, 415, nil)
+	f.must("POST", "/api/import/collection/commit?format=bogus", doc, asUI, 400, nil)
 	f.must("POST", "/api/import/collection/preview", `{"nope":1}`, asUI, 415, nil)
 	f.must("POST", "/api/import/collection/preview", `{{{`, asUI, 400, nil)
+}
+
+func TestImportCurlAndOpenAPIAreWired(t *testing.T) {
+	f := newCollFixture(t)
+	curlDoc := "curl -X POST https://api.example.com/v1/items -H 'Content-Type: application/json' -d '{\"a\":1}'"
+	var pv importPreview
+	f.must("POST", "/api/import/collection/preview", curlDoc, asUI, 200, &pv)
+	if pv.Report.Format != "curl" || pv.Report.Stats.Requests != 1 {
+		t.Fatalf("curl auto preview = %+v", pv)
+	}
+	var out struct {
+		CollectionUID string `json:"collectionUid"`
+	}
+	f.must("POST", "/api/import/collection/commit?format=curl", curlDoc, asUI, 201, &out)
+	if out.CollectionUID == "" || f.firstRequest(out.CollectionUID) == "" {
+		t.Fatalf("curl import stored no request: %+v", out)
+	}
+	oas := `{"openapi":"3.0.0","info":{"title":"Demo","version":"1"},"servers":[{"url":"https://api.example.com"}],
+ "paths":{"/pets":{"get":{"responses":{"200":{"description":"ok"}}}}}}`
+	for _, q := range []string{"", "?format=openapi"} {
+		var pv2 importPreview
+		f.must("POST", "/api/import/collection/preview"+q, oas, asUI, 200, &pv2)
+		if pv2.Report.Format != "openapi" || pv2.Name != "Demo" {
+			t.Fatalf("openapi preview%s = %+v", q, pv2)
+		}
+	}
+	yml := "openapi: 3.0.0\ninfo:\n  title: Yml\n  version: '1'\npaths:\n  /a:\n    get:\n      responses:\n        '200':\n          description: ok\n"
+	var out2 struct {
+		CollectionUID string `json:"collectionUid"`
+	}
+	f.must("POST", "/api/import/collection/commit", yml, asUI, 201, &out2)
+	if out2.CollectionUID == "" {
+		t.Fatal("yaml openapi import stored nothing")
+	}
 }
 
 // ---- send / run / scripts / trust ---------------------------------------------
