@@ -513,7 +513,7 @@ func (c *collCLI) run(ref string) int {
 	ports, ips := ownListeners(c.st)
 	backend := collrun.NewStoreBackend(collrun.StoreConfig{
 		Store: c.st, Sender: c.newSender(), Scope: eng, OwnPorts: ports, OwnIPs: ips,
-		PinnedHashes: splitHashes(c.f.trust), Source: collexec.SourceCLI,
+		PinnedHashes: splitHashes(c.f.trust), Source: collexec.SourceCLI, Scripts: newScriptRouter(),
 	})
 	persist := collrun.PersistDiscard
 	if c.f.persist {
@@ -604,7 +604,7 @@ func (c *collCLI) lint(ref string) int {
 	if err != nil {
 		return c.fail(collrun.ExitImportLint, "%v", err)
 	}
-	backend := collrun.NewStoreBackend(collrun.StoreConfig{Store: c.st, PinnedHashes: splitHashes(c.f.trust)})
+	backend := collrun.NewStoreBackend(collrun.StoreConfig{Store: c.st, PinnedHashes: splitHashes(c.f.trust), Scripts: newScriptRouter()})
 	var cols []string
 	if ds != nil {
 		cols = ds.Columns
