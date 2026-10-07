@@ -352,7 +352,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* history table */
 /* --flow-cols is set by proxy.js (applyFlowGrid) on #flowHead and #rows; the
    fallback is the default visible-column template for the pre-JS/first paint. */
-.thead,.trow{display:grid;align-items:center;grid-template-columns:var(--flow-cols,44px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 64px 60px)}
+.thead,.trow{display:grid;align-items:center;grid-template-columns:var(--flow-cols,44px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 64px 124px)}
 .thead{flex:none;height:32px;background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;color:var(--fg2);padding:0 6px;backdrop-filter:none;position:sticky;top:0;z-index:5;cursor:pointer}
 .thead>div{padding:0 4px;cursor:pointer;user-select:none;transition:color var(--motion-fast) var(--motion-standard);position:relative}
 .thead>div.sorted{color:var(--accent)}
@@ -385,6 +385,11 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .tr-mime{color:var(--fg3)}
 .tr-len{color:var(--fg2);text-align:right}
 .tr-t{color:var(--fg3);text-align:right}
+/* Time cell: optional dim date ('Yest', 'Oct 5', '2025-10-05') then the time. The
+   time is the aligned part (tabular digits, right edge); today's rows have no
+   date, so their time sits exactly where it always did. */
+.when-time{color:var(--fg2);font-variant-numeric:tabular-nums}
+.when-date{color:var(--fg3);margin-right:.5em;font-variant-numeric:tabular-nums}
 .empty{padding:30px;text-align:center;color:var(--fg3);font-size:var(--fs-sm)}
 /* .sel-bar — the multi-selection action bar (Proxy's #selBar, shown on demand
    above the history table when rows are selected). `display` stays inline

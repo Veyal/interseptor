@@ -1,4 +1,5 @@
-import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
+import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
@@ -122,6 +123,12 @@ export function setShowTlsFailed(show){
   syncHideTlsFilter();
   renderChips();
 }
+// The Time cell can carry a short date next to the time ('2025-10-05 14:32'), so
+// its default track is wider than the old time-only 60px. A saved 60px width
+// (the previous default, never a deliberate choice for the new content) is
+// dropped on load so existing users pick up the new default; any other saved
+// width is kept.
+const TIME_COL_W=124,LEGACY_TIME_COL_W=60;
 const FLOW_COLUMNS=[
   {key:'id',label:'#',sort:'id',w:'44px'},
   {key:'attached',label:'Ev',sort:'',w:'32px',align:'center'},
@@ -131,7 +138,7 @@ const FLOW_COLUMNS=[
   {key:'status',label:'St',sort:'status',w:'52px',align:'center'},
   {key:'mime',label:'Type',sort:'mime',w:'70px',defaultVisible:false},
   {key:'size',label:'Size',sort:'size',w:'64px',align:'right'},
-  {key:'time',label:'Time',sort:'time',w:'60px',align:'right'},
+  {key:'time',label:'Time',sort:'time',w:TIME_COL_W+'px',align:'right'},
 ];
 function defaultFlowCols(){return FLOW_COLUMNS.filter(c=>c.defaultVisible!==false).map(c=>c.key);}
 function normalizeFlowCols(cols){
@@ -183,6 +190,7 @@ function loadFlowColW(){
     const raw=JSON.parse(localStorage.getItem(FLOW_COLW_KEY)||'null');
     if(raw&&typeof raw==='object')for(const c of FLOW_COLUMNS){
       const v=raw[c.key];
+      if(c.key==='time'&&v===LEGACY_TIME_COL_W)continue;
       if(typeof v==='number'&&isFinite(v))out[c.key]=Math.max(FLOW_COL_MIN,Math.min(1200,Math.round(v)));
     }
   }catch(e){}
@@ -406,6 +414,13 @@ function http2Chip(f){
   if(!/^HTTP\/2/i.test(v)&&v!=='h2')return '';
   return '<span class="ai-tag" style="background:var(--accentDim);color:var(--accent)" title="Upstream spoke '+escAttr(v)+' (MITM client leg is HTTP/1.1)">h2</span>';
 }
+// The visible part may be time-only (today); the title and the .u-sr copy carry
+// the full local date-time + UTC offset for pointer and assistive-tech users.
+function flowTimeCell(f){
+  const w=formatFlowWhen(f.ts);
+  if(w.kind==='none')return '<div class="tr-t" data-field="time"><span class="when-time">—</span><span class="u-sr">no timestamp</span></div>';
+  return `<div class="tr-t" data-field="time" title="${escAttr(w.title)}">${w.date?`<span class="when-date" aria-hidden="true">${esc(w.date)}</span>`:''}<span class="when-time" aria-hidden="true">${esc(w.time)}</span><span class="u-sr">${esc(w.title)}</span></div>`;
+}
 function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
   const pending=!f.status&&!f.error;
@@ -424,7 +439,7 @@ function flowRowHTML(f){
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
-    time:`<div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>`,
+    time:flowTimeCell(f),
   };
   return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
       ${visibleFlowCols().map(k=>cells[k]).join('')}
@@ -770,6 +785,25 @@ const flowVirt=createVirtualList({container:$('#rows'),itemHeight:()=>ROW_H,thre
 // from the current in-memory state.flows) and guarantees the visible window
 // can never stay stale after a background period.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive())renderRows();});
+// "Yest"/"Today" labels depend on the current day, so schedule one refresh at the
+// next local midnight (re-armed each time) and re-check on focus/visibility
+// (sleeping laptops skip timers). Only rows whose markup changed are patched.
+let midnightTimer=0,whenDay=new Date().toDateString();
+function refreshWhenIfDayChanged(){
+  const day=new Date().toDateString();
+  if(day===whenDay)return;
+  whenDay=day;
+  refreshVisibleRows();
+}
+function armMidnightRefresh(){
+  clearTimeout(midnightTimer);
+  midnightTimer=setTimeout(()=>{refreshWhenIfDayChanged();armMidnightRefresh();},msUntilNextMidnight()+50);
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshWhenIfDayChanged();armMidnightRefresh();}});
+window.addEventListener('focus',()=>{refreshWhenIfDayChanged();armMidnightRefresh();});
+window.addEventListener('pagehide',()=>clearTimeout(midnightTimer));
+window.addEventListener('pageshow',armMidnightRefresh);
+armMidnightRefresh();
 function refreshRowHeight(){
   const h=readRowHeight();
   if(h===ROW_H)return;
