@@ -233,9 +233,12 @@ func TestUIEvidenceImagesAreKeyboardOperable(t *testing.T) {
 }
 
 func TestUIFindingFlowEvidenceHasOneExplicitInspectAction(t *testing.T) {
-	findings := requireUIContracts(t, "js/findings.js", `<div class="find-report-flow"`, "find-open-flow")
+	findings := requireUIContracts(t, "js/findings.js", `<a class="find-report-flow find-open-flow find-flow-shot"`, "find-open-flow", "flowPreviewURL", "flowPopup(flowId, {modal:true})")
 	if strings.Contains(findings, `<button type="button" class="find-report-flow"`) {
 		t.Error("finding flow summary duplicates the adjacent Inspect request action")
+	}
+	if strings.Contains(findings, "Inspect evidence") {
+		t.Error("inline Inspect evidence is redundant with the request/response popup")
 	}
 }
 

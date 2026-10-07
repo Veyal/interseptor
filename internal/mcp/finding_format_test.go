@@ -123,7 +123,7 @@ func TestValidateFindingFormatWarnsCredentialsNotHighlighted(t *testing.T) {
 
 func TestMCPInstructionsRequireFindingFormat(t *testing.T) {
 	instr := mcpInstructions()
-	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof"} {
+	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof", "what the application normally does", "what we changed", "practical impact"} {
 		if !strings.Contains(instr, want) {
 			t.Fatalf("mcpInstructions missing %q:\n%s", want, instr)
 		}
@@ -146,7 +146,7 @@ func TestFindingBlocksSchemaAdvertisesCapturedFlowProvenance(t *testing.T) {
 }
 
 func TestValidateFindingFormatAcceptsTypedObservationEvidence(t *testing.T) {
-	body := `[{"type":"text","role":"observation","md":"Request the public configuration endpoint."},{"type":"flow","role":"result","flowId":12,"proof":"The unauthenticated response contains internal service names."},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"flow_preview","sourceFlowId":12,"caption":"Unauthenticated response","proof":"Visually identifies the exposed internal service list."}]`
+	body := `[{"type":"text","role":"baseline","md":"An ordinary signed-in user receives only their own configuration."},{"type":"flow","role":"action","flowId":11,"proof":"The same request was sent without a session."},{"type":"text","role":"observation","md":"Request the public configuration endpoint."},{"type":"flow","role":"result","flowId":12,"proof":"The unauthenticated response contains internal service names."},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"flow_preview","sourceFlowId":12,"caption":"Unauthenticated response","proof":"Visually identifies the exposed internal service list."}]`
 	err, warns := validateFindingFormat(findingFormatInput{
 		Severity: "Medium",
 		Summary:  "An unauthenticated endpoint exposes internal service configuration.",
@@ -162,6 +162,27 @@ func TestValidateFindingFormatAcceptsTypedObservationEvidence(t *testing.T) {
 	}
 	if len(warns) > 0 {
 		t.Fatalf("complete typed finding should have no warnings, got %v", warns)
+	}
+}
+
+func TestValidateFindingFormatWarnsWhenProofStoryIsIncomplete(t *testing.T) {
+	body := `[{"type":"flow","role":"result","flowId":12,"proof":"The response lists another tenant's invoices."}]`
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "High",
+		Summary:  "A user can read another tenant's invoices.",
+		Impact:   "Invoice data is disclosed across tenants.",
+		Why:      "The invoice id is not checked against the session tenant.",
+		Target:   "https://api.example.com/invoices/18",
+		Body:     body,
+	})
+	if err != nil {
+		t.Fatalf("incomplete proof should warn, not reject: %v", err)
+	}
+	joined := strings.Join(warns, "\n")
+	for _, want := range []string{"normally does", "role baseline", "role action", "role result"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing proof-story warning %q in %v", want, warns)
+		}
 	}
 }
 

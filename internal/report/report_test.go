@@ -16,7 +16,7 @@ func TestFindingsEmpty(t *testing.T) {
 
 func TestProjectFlowRawChoosesSafeFenceAndRendersEvidenceProvenance(t *testing.T) {
 	out := Project([]store.Finding{{ID: 1, Severity: "High", Status: "open", Title: "Fence", Summary: "short", Retest: "repeat it", Blocks: []store.FindingBlock{{Type: "flow", FlowID: 9, Method: "POST", Host: "example.com", Path: "/x", Role: "result", Proof: "response proves access", Source: "captured_flow", SourceFlowID: 9, ReqRaw: "POST /x HTTP/1.1\r\nX: ````\r\n\r\n"}}}}, nil)
-	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result, proof=response proves access, source=captured_flow") {
+	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result (what changed), proof=response proves access, source=captured_flow") {
 		t.Fatalf("canonical envelope missing: %s", out)
 	}
 	if !strings.Contains(out, "`````http") {

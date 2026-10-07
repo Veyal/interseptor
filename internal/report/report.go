@@ -421,10 +421,23 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	}
 }
 
+func proofStoryLabel(role string) string {
+	switch role {
+	case "baseline", "control":
+		return " (normal behavior)"
+	case "action", "setup":
+		return " (what we changed)"
+	case "result":
+		return " (what changed)"
+	default:
+		return ""
+	}
+}
+
 func blockEvidenceMeta(bl store.FindingBlock) string {
 	var parts []string
 	if bl.Role != "" {
-		parts = append(parts, "role="+sanitizeLine(bl.Role))
+		parts = append(parts, "role="+sanitizeLine(bl.Role)+proofStoryLabel(bl.Role))
 	}
 	if bl.Proof != "" {
 		parts = append(parts, "proof="+sanitizeLine(bl.Proof))

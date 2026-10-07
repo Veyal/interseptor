@@ -19,9 +19,13 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - Link annotated evidence per target; only documented setup/chain targets may use evidenceException
    - Environment: production|staging|development|testing|local (legacy prod is preserved)
    - CVSS:4.0 vector is required for report readiness; the calculated score must match severity
-4. Reproduction — ordered typed blocks with role=context|setup|baseline|action|result|control|retest|observation
-   - Before → Action → After is only the "Differential proof" preset for authz/state-change cases
-   - Outlines organize the narrative; readiness separately requires evidenced action, observed result, and a negative/control case
+4. Proof of concept — every filed finding tells this story, in order, so a non-technical reader and a developer can both follow it. This is the Differential proof. Do not pick a shorter role sequence.
+   - baseline: what the application normally does for an ordinary authorized user. Attach that captured request when it exists, and say it in plain language.
+   - action: what we changed or sent to trigger the issue. Name the exact difference from the normal request.
+   - result: what the response or application did differently, and the practical impact of that change.
+   - Put the plain-language explanation in each block's proof field. Do not paste raw HTTP into text.
+   - setup, control, observation, and retest may be added after those three. They do not replace them.
+   - Readiness still checks an evidenced action, observed result, and a negative or normal control. The baseline is the normal behavior; a separate control block is still required before report-ready.
 5. Evidence — every report-ready finding needs a captured flow and/or image, with a short proof statement
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
@@ -204,7 +208,10 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 		warns = append(warns, "visual proof recommended — attach a real browser screenshot when it proves the UI result, or a labeled flow preview or evidence render for HTTP/recorded data")
 	}
 	if hasPoC && !hasReproductionRole(a.roles) && len(strings.TrimSpace(a.text)) > 0 {
-		warns = append(warns, "reproduction blocks need semantic roles such as observation, action, and result; Before/Action/After is only for differential proof")
+		warns = append(warns, "reproduction blocks need semantic roles; the proof of concept uses baseline, action, and result")
+	}
+	if substantial && (!a.roles["baseline"] || !a.roles["action"] || !a.roles["result"]) {
+		warns = append(warns, "proof of concept must describe what the application normally does (role baseline), what was changed to trigger the issue (role action), and what the response or impact changed to (role result)")
 	}
 
 	st := strings.ToLower(strings.TrimSpace(in.Status))
