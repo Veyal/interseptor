@@ -1,7 +1,7 @@
 # Settings
 
 Open **Configure → Settings**. Search matches both section names and their contents; **Escape**
-clears the search. In a narrow window, the **Section** picker opens the same sections.
+clears the search. In a narrow window the sections wrap into a row of buttons; on a phone they form a grouped list.
 
 ## Network
 

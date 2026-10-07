@@ -39,7 +39,7 @@ func TestUIProjectSwitchIgnoresNavigationButGuardsSettingsDrafts(t *testing.T) {
 const controls=new Map();const $=id=>controls.get(id);
 const dirty=id=>controls.set('#'+id,{dataset:{settingsDirty:'1'}});
 ` + src[start:start+end] + `
-['setSearch','settingsSectionSelect','projSelect','projNew','projNewPath'].forEach(dirty);
+['setSearch','projSelect','projNew','projNewPath'].forEach(dirty);
 if(hasUnsavedSettingsFields())throw Error('navigation or project form blocked a clean switch');
 for(const id of ['setSessionHeaders','hostHdrList','setUpstreamHost','proxyListenersList','retMaxFlows']){
  dirty(id);if(!hasUnsavedSettingsFields())throw Error(id+' draft would be discarded');controls.delete('#'+id);

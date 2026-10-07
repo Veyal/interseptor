@@ -66,16 +66,13 @@ func TestUISettingsNewModulesWriteNoInlineStyleOrHTMLStrings(t *testing.T) {
 
 func TestUISettingsKeepsSectionIdsAndNavLinks(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	requireUIContains(t, index, `id="setNav"`, `id="setSearch"`, `id="settingsSectionSelect"`, `id="setNavEmpty"`)
+	requireUIContains(t, index, `id="setNav"`, `id="setSearch"`, `id="setNavEmpty"`)
 	for _, sec := range settingsSections {
 		if !regexp.MustCompile(`<section class="set-sec" data-sec="` + sec + `"`).MatchString(index) {
 			t.Errorf("Settings section %q is missing", sec)
 		}
 		if !regexp.MustCompile(`<button[^>]*data-sec="` + sec + `"`).MatchString(index) {
 			t.Errorf("#setNav has no button for %q", sec)
-		}
-		if !strings.Contains(index, `<option value="`+sec+`">`) {
-			t.Errorf("section picker has no option for %q", sec)
 		}
 	}
 }
@@ -146,10 +143,8 @@ func TestUISettingsPhoneUsesPushedPages(t *testing.T) {
 	requireUIContains(t, src, "createSplitPane(", "stackBelow:720", "showDetail(", "scopeKey:projectStorageKey")
 	css := readUIAsset(t, "settings.css")
 	requireUIContains(t, css, "@media (max-width:720px)", ".settings-wrap.split")
-	// The compact picker would duplicate the grouped list.
-	if !regexp.MustCompile(`(?s)@media \(max-width:720px\).*\.settings-picker\{display:none`).MatchString(css) {
-		t.Error("phone Settings must hide the section picker in favour of the grouped list")
-	}
+	// The grouped list is the only phone section navigation (no picker).
+	requireUIContains(t, css, ".settings-wrap.split .settings-nav-group:not([hidden]){display:flex}")
 }
 
 func TestUISettingsDestructiveActionsNeedTypedConfirm(t *testing.T) {

@@ -168,9 +168,7 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
 	}
 	requireUIContains(t, css,
-		`.settings-nav-group{display:none}`,
-		`.settings-picker{display:flex;align-items:center`,
-		`.settings-picker .ui-select{flex:1;min-width:0}`,
+		`.settings-wrap:not(.split) .settings-nav-group{display:contents}`,
 	)
 }
 

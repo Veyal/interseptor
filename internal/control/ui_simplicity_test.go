@@ -6,24 +6,6 @@ import (
 	"testing"
 )
 
-func TestUISettingsPickerFollowsNavigationAndSearch(t *testing.T) {
-	src := readUIAsset(t, "js/settings.js")
-	start := strings.Index(src, "function syncSettingsPicker()")
-	if start < 0 {
-		t.Fatal("compact Settings picker missing")
-	}
-	end := strings.Index(src[start:], "function syncSettingsNavA11y")
-	script := `const buttons=[{dataset:{sec:'proxy'},hidden:false,classList:{contains:()=>false}},{dataset:{sec:'tls'},hidden:false,classList:{contains:()=>true}}];
-const picker={options:[{value:'proxy'},{value:'tls'}]};const $=()=>picker;const $$=()=>buttons;
-` + src[start:start+end] + `
-syncSettingsPicker();if(picker.value!=='tls'||picker.disabled)throw new Error('active section not synchronized');
-buttons[0].hidden=true;syncSettingsPicker();if(!picker.options[0].hidden||picker.options[1].hidden)throw new Error('search filter not synchronized');
-buttons[1].hidden=true;syncSettingsPicker();if(!picker.disabled)throw new Error('empty search exposes selectable sections');`
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("settings picker: %v\n%s", err, out)
-	}
-}
-
 func TestUIHistoryNoteFailureRetainsDraftAcrossSelection(t *testing.T) {
 	src := readUIAsset(t, "js/proxy.js")
 	if !strings.Contains(src, "function restoreFlowNoteDraft(") {
@@ -83,8 +65,8 @@ func TestUIMobileNavigationUsesOneVisibleControl(t *testing.T) {
 	if !strings.Contains(css, "#tabs{display:none}") {
 		t.Error("mobile tool picker duplicates main tab strip")
 	}
-	if !strings.Contains(css, ".settings-nav-group{display:none}") {
-		t.Error("compact Settings picker duplicates section buttons")
+	if !strings.Contains(css, ".settings-wrap:not(.split) .settings-nav-group{display:contents}") {
+		t.Error("compact Settings nav must lay the section buttons out as chips")
 	}
 	settings := readUIAsset(t, "js/settings.js")
 	if !strings.Contains(settings, `<div class="field" style="width:100px;margin-bottom:0">`) {

@@ -8,7 +8,7 @@
 
 /* ---- bottom navigation: hidden above the phone breakpoint ---- */
 #dock{display:none}
-.dock-seg{margin:var(--sp-2) var(--sp-4) 0;width:calc(100% - var(--sp-4) * 2);box-sizing:border-box;min-height:44px}
+.seg.dock-seg{display:none;margin:var(--sp-2) var(--sp-4) 0;width:calc(100% - var(--sp-4) * 2);box-sizing:border-box;min-height:44px}
 .dock-seg[hidden]{display:none}
 .dock-seg button{flex:1 1 0;min-width:0;min-height:44px}
 
@@ -38,6 +38,8 @@
   #appRow{padding-bottom:0}
   /* One visible nav: the legacy select stays in the DOM and synced, never shown. */
   .mobile-tool-nav{display:none}
+  /* Phone only: the rail is hidden here, so the dock's destination sub-control is the group nav. */
+  .seg.dock-seg:not([hidden]){display:flex}
   html[data-soft-keyboard="true"] #dock{display:none}
   /* Phone text floor: inputs stay 16px so iOS does not zoom on focus. */
   input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:var(--fs-xl)}
