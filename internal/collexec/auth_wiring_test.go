@@ -132,10 +132,14 @@ func TestAuthTypesBeyondBasicUseTheSuite(t *testing.T) {
 	}{
 		{"awsv4", m{"type": "awsv4", "awsv4": []m{{"key": "accessKey", "value": "AKIDEXAMPLE"}, {"key": "secretKey", "value": "{{secret}}"},
 			{"key": "region", "value": "us-east-1"}, {"key": "service", "value": "execute-api"}}},
-			func(h http.Header) bool { return strings.HasPrefix(h.Get("Authorization"), "AWS4-HMAC-SHA256") && h.Get("X-Amz-Date") != "" }},
+			func(h http.Header) bool {
+				return strings.HasPrefix(h.Get("Authorization"), "AWS4-HMAC-SHA256") && h.Get("X-Amz-Date") != ""
+			}},
 		{"jwt", m{"type": "jwt", "jwt": []m{{"key": "algorithm", "value": "HS256"}, {"key": "secret", "value": "{{secret}}"},
 			{"key": "payload", "value": `{"sub":"ann"}`}}},
-			func(h http.Header) bool { return strings.Count(strings.TrimPrefix(h.Get("Authorization"), "Bearer "), ".") == 2 }},
+			func(h http.Header) bool {
+				return strings.Count(strings.TrimPrefix(h.Get("Authorization"), "Bearer "), ".") == 2
+			}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
