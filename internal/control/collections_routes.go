@@ -45,6 +45,15 @@ var collRoutes = []collRoute{
 	{"GET", "/api/collections/{uid}/runs", "Recent runs of a collection (newest first, max 50)", func(c *collectionsAPI) http.HandlerFunc { return c.listRuns }},
 	{"GET", "/api/runs/{uid}", "Per-request results of one run", func(c *collectionsAPI) http.HandlerFunc { return c.getRun }},
 
+	{"POST", "/api/runner/runs", "Start an asynchronous run owned by the server (not the request). Body as POST /api/collections/run plus {iterations?, rps?, failedFromRun?, data?: {name, text}}; persist defaults to ask for the UI (discard for the AI channel, which cannot ask). Returns 202 {runUid, status, plannedSteps}; follow it with GET /api/runner/runs/{uid}, its /events stream or the global {type:collrun} events", func(c *collectionsAPI) http.HandlerFunc { return c.startAsync }},
+	{"GET", "/api/runner/runs", "Uids of runs that are still running", func(c *collectionsAPI) http.HandlerFunc { return c.activeRuns }},
+	{"GET", "/api/runner/runs/{uid}", "Live progress of a run: status (running|paused|awaiting_persist|done|bailed|aborted|...), totals, results from offset ?since=N, pending variable writes while awaiting_persist, and the final report once finished", func(c *collectionsAPI) http.HandlerFunc { return c.runStatus }},
+	{"GET", "/api/runner/runs/{uid}/events", "Server-Sent Events of one run: a snapshot, then start/item/paused/resumed/awaiting_persist/done events (results already masked)", func(c *collectionsAPI) http.HandlerFunc { return c.runEvents }},
+	{"POST", "/api/runner/runs/{uid}/pause", "Hold the run before its next request", func(c *collectionsAPI) http.HandlerFunc { return c.runPause }},
+	{"POST", "/api/runner/runs/{uid}/resume", "Continue a paused run", func(c *collectionsAPI) http.HandlerFunc { return c.runResume }},
+	{"POST", "/api/runner/runs/{uid}/abort", "Abort the run, cancelling an in-flight request", func(c *collectionsAPI) http.HandlerFunc { return c.runAbort }},
+	{"POST", "/api/runner/runs/{uid}/persist", "Answer a persist=ask prompt. UI-session only (AI/MCP/API-key callers get 403). Body: {keep: true|false}; 409 when the run is not waiting", func(c *collectionsAPI) http.HandlerFunc { return c.runPersist }},
+
 	{"GET", "/api/collections/{uid}/scripts", "Script review sheet: every distinct script with hash, trust state, analysis (APIs, modules, hosts, flags) and, for a UI session, source. AI-source callers get status only (no source)", func(c *collectionsAPI) http.HandlerFunc { return c.listScripts }},
 	{"POST", "/api/collections/{uid}/trust", "Trust scripts and set the capability set. UI-session only: AI/MCP, API-key and agent callers get 403. Body: {confirm:true, all?|hashes?, capabilities?: [vars.read, vars.write, cookies.read, cookies.write, net.send, secrets.read]}", func(c *collectionsAPI) http.HandlerFunc { return c.approve }},
 	{"POST", "/api/collections/{uid}/trust/revoke", "Revoke script trust (UI-session only). Body: {all?|hashes?}", func(c *collectionsAPI) http.HandlerFunc { return c.revoke }},
