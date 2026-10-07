@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **"< Sections" back button visible on desktop Settings, Scanner and Intercept.** `.btn`'s display rule (specificity 0-1-3) outranked `.split-back{display:none}`, so the phone-only back button showed next to the always-visible section list. Hidden outside stack mode now.
 
+- **`interseptor update` said "already up to date" right after a release.** It read the hourly cached latest-release lookup meant for the passive startup hint. `update` and `update --check` now always query GitHub (and refresh the cache); only the startup hint keeps using the cache.
+
 ### Removed
 
 - **Settings "Section" picker.** The compact select duplicated the section buttons next to it. Section navigation now uses the nav buttons at every width (chips on tablet, grouped pushed-page list on phones); the 721-900px layout keeps the buttons visible as a wrapping row instead of hiding them behind the picker.
