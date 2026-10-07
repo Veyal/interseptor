@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Runner view wired into the Collections panel.** `runner.js` is loaded by `index.html` and `runCollection` mounts it through the `collectionRunner` hook, falling back to the plain run sheet when the hook is absent.
 
 ### Fixed
+- Collections scope guard: the pipeline now applies the whole destination (host, path, scheme, port) to the scope rules via `scope.Engine.URLInScope`, so an include rule pinned to one port, scheme or path no longer lets the same host through on any other port or path under the `block` policy (runner, CLI, MCP, scripts). Checkers without `URLInScope` keep comparing the host.
 - Collections import: the secret scrub no longer blanks a header that only wraps template references in an auth scheme (`Authorization: Bearer {{token}}`, `Basic {{user}}:{{pass}}`); an imported bearer-auth request was stored with an empty Authorization header and sent unauthenticated. A value mixing a template with literal text is still scrubbed. Re-importing a file that matches an existing collection (same uid or name) now answers with the stored collection's uid instead of one that was never written.
 
 - **HAR importer test fixture was gitignored.** `*.har` in `.gitignore` swallowed `internal/collimport/har/testdata/sample.har`, so a clean checkout failed `TestHARGolden`; added a testdata negation and committed the (example.com) fixture.

@@ -42,6 +42,12 @@ type ScopeChecker interface {
 	HostInScope(host string) bool
 }
 
+// urlScope is implemented by scope.Engine: the full-destination decision
+// (host, path, scheme, port). A checker without it is compared by host only.
+type urlScope interface {
+	URLInScope(scheme, host string, port int, path string) bool
+}
+
 // explicitScope is implemented by scope.Engine: true only when an include rule
 // makes scope a real allow-list. Private destinations are reachable only when
 // scope is explicit and lists the host.
@@ -176,6 +182,18 @@ func (p *Pipeline) isOwn(host string, port int) bool {
 
 func (p *Pipeline) hostInScope(host string) bool {
 	return p.Scope == nil || p.Scope.HostInScope(host)
+}
+
+// urlInScope applies the whole destination to the scope rules when the
+// checker can, so a rule pinned to a port, scheme or path is honoured.
+func (p *Pipeline) urlInScope(u *url.URL) bool {
+	if p.Scope == nil {
+		return true
+	}
+	if us, ok := p.Scope.(urlScope); ok {
+		return us.URLInScope(strings.ToLower(u.Scheme), u.Hostname(), portOf(u), u.Path)
+	}
+	return p.Scope.HostInScope(u.Hostname())
 }
 
 // allowPrivate reports whether private destinations may be dialled for host:

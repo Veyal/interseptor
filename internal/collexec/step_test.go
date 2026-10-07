@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/varstore"
@@ -316,4 +319,27 @@ func TestRedirectFollowRechecksScopePerHop(t *testing.T) {
 		t.Fatalf("warnings: %v", res.Warnings)
 	}
 	_ = first
+}
+
+// The scope guard compares the whole destination, not just the host: an
+// include rule pinned to one port must not let the same host answer on another.
+func TestScopeBlockHonoursRulePort(t *testing.T) {
+	e := newEnv(t)
+	rec := newRecorder(t, nil)
+	u, _ := url.Parse(rec.srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	eng := scope.New()
+	e.pipe.Scope = eng
+	it := store.Item{Method: "GET", URL: js(rec.srv.URL + "/x")}
+
+	eng.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "127.0.0.1", Port: port + 1}})
+	res := e.step(StepInput{Chain: chainOf(it), Source: SourceRunner})
+	if res.Outcome != OutcomeBlocked || res.BlockReason != BlockScope || rec.count() != 0 {
+		t.Fatalf("wrong port must be blocked: %+v", res)
+	}
+	eng.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "127.0.0.1", Port: port}})
+	res = e.step(StepInput{Chain: chainOf(it), Source: SourceRunner})
+	if res.Outcome != OutcomeSent || rec.count() != 1 {
+		t.Fatalf("matching port must be sent: %+v", res)
+	}
 }

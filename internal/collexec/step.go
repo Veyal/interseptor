@@ -314,7 +314,7 @@ func (x *stepRun) checkDest(u *url.URL, policy, pin string) (BlockReason, string
 	switch {
 	case pin != "" && !pinMatches(pin, u):
 		reason, msg = BlockPin, fmt.Sprintf("host %s does not match the environment's base target pin", host)
-	case !x.p.hostInScope(host):
+	case !x.p.urlInScope(u):
 		reason, msg = BlockScope, fmt.Sprintf("host %s is out of scope", host)
 	default:
 		return "", ""
