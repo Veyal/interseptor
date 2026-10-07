@@ -350,6 +350,39 @@ func (s *Store) PutCookie(c CollCookie) error {
 	return err
 }
 
+// ReplaceCookies atomically swaps a partition's cookies for cs (all rows are
+// written under that partition; an empty list clears it).
+func (s *Store) ReplaceCookies(partition string, cs []CollCookie) error {
+	if err := s.ensureCollections(); err != nil {
+		return err
+	}
+	if partition == "" {
+		partition = "default"
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM ix_cookies WHERE partition=?`, partition); err != nil {
+		return err
+	}
+	for _, c := range cs {
+		if c.Domain == "" || c.Name == "" {
+			continue
+		}
+		if c.Path == "" {
+			c.Path = "/"
+		}
+		if _, err := tx.Exec(`INSERT INTO ix_cookies(partition,domain,path,name,value,flags,expires) VALUES(?,?,?,?,?,?,?)
+ ON CONFLICT(partition,domain,path,name) DO UPDATE SET value=excluded.value,flags=excluded.flags,expires=excluded.expires`,
+			partition, c.Domain, c.Path, c.Name, c.Value, c.Flags, c.Expires); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // ListCookies returns a partition's cookies.
 func (s *Store) ListCookies(partition string) ([]CollCookie, error) {
 	if err := s.ensureCollections(); err != nil {

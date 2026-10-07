@@ -177,3 +177,33 @@ func TestAuthWithManagerKeepsExplicitHeaderPrecedence(t *testing.T) {
 		t.Fatalf("explicit header lost: %v %+v", req.Header, res)
 	}
 }
+
+func TestJarExportReplaceAndLoader(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	j := NewJar()
+	u := mustURL(t, "https://api.example.com/a/b")
+	j.Store(u, []*http.Cookie{{Name: "sid", Value: "1", Path: "/", Secure: true, HttpOnly: true}, {Name: "gone", Value: "x", MaxAge: -1}}, now)
+	snap := j.Export()
+	if len(snap) != 1 || snap[0].Name != "sid" || !snap[0].Secure || !snap[0].HTTPOnly {
+		t.Fatalf("export = %+v", snap)
+	}
+	j.Store(u, []*http.Cookie{{Name: "later", Value: "2", Path: "/"}}, now)
+	j.Replace(snap)
+	if got := j.List(now); len(got) != 1 || got[0].Name != "sid" {
+		t.Fatalf("replace must restore the snapshot: %+v", got)
+	}
+	if h := j.Header(u, now); !strings.Contains(h, "sid=1") {
+		t.Fatalf("header after replace = %q", h)
+	}
+
+	var loads int
+	js := &Jars{Loader: func(coll, env, identity string) []JarCookie {
+		loads++
+		return snap
+	}}
+	a := js.For("c", "e", "i")
+	js.For("c", "e", "i")
+	if loads != 1 || len(a.List(now)) != 1 {
+		t.Fatalf("loader calls = %d cookies = %d", loads, len(a.List(now)))
+	}
+}

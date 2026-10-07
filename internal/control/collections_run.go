@@ -71,15 +71,19 @@ func (c *collectionsAPI) runStep(ctx context.Context, chain collexec.Chain, rq s
 			local[k] = v
 		}
 	}
+	cookieSnap := be.SnapshotCookies(chain.Collection.UID, rq.EnvUID, rq.Identity)
 	res, err := be.Step(ctx, collexec.StepInput{
 		Chain: chain, Layers: layers, Local: local, Source: src, AI: ai, ScopePolicy: policy,
 		NoScripts: rq.NoScripts, EnvUID: rq.EnvUID, EnvPin: be.EnvPin(rq.EnvUID), Identity: rq.Identity,
 	}, collrun.StepMeta{IterationCount: 1})
 	if err != nil {
+		be.FinishCookies(chain.Collection.UID, rq.EnvUID, rq.Identity, cookieSnap, false)
 		return nil, err
 	}
 	out := &stepOut{StepResult: res}
-	if rq.Persist == "keep" {
+	keep := rq.Persist == "keep"
+	be.FinishCookies(chain.Collection.UID, rq.EnvUID, rq.Identity, cookieSnap, keep)
+	if keep {
 		out.Skipped = be.Commit(chain.Collection, rq.EnvUID, res.VarChanges)
 	}
 	return out, nil

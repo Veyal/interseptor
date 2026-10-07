@@ -49,3 +49,14 @@ type RunStore interface {
 }
 
 var _ RunStore = (*store.Store)(nil)
+
+// SessionBackend is implemented by backends that keep cookie jars. Cookies
+// follow the run's persist policy exactly like variable writes: a kept run
+// stores the jar in the project, a discarded run restores it as it was.
+type SessionBackend interface {
+	// SnapshotCookies captures the partition's jar before a run.
+	SnapshotCookies(collectionUID, envUID, identity string) any
+	// FinishCookies keeps (stores) the jar, or discards what the run changed
+	// by restoring snap.
+	FinishCookies(collectionUID, envUID, identity string, snap any, keep bool)
+}

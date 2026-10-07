@@ -305,10 +305,18 @@ func (r *Runner) Run(ctx context.Context, o Options) (*Report, error) {
 	r.emit(&o, Event{Type: "start", RunUID: rep.RunUID, Status: StatusRunning, Total: len(plan) * iterations})
 
 	ov := NewOverlay()
+	sess, _ := r.Backend.(SessionBackend)
+	var cookieSnap any
+	if sess != nil {
+		cookieSnap = sess.SnapshotCookies(coll.UID, o.EnvUID, o.Identity)
+	}
 	st := &runState{r: r, o: &o, rep: rep, coll: coll, items: items, plan: plan, ov: ov, iterations: iterations}
 	st.loop(runCtx)
 
 	r.finishPersist(&o, rep, coll, ov)
+	if sess != nil {
+		sess.FinishCookies(coll.UID, o.EnvUID, o.Identity, cookieSnap, keepCookies(&o, rep))
+	}
 	rep.FinishedMs = r.now().UnixMilli()
 	r.persistHeader(rep, rep)
 	r.emit(&o, Event{Type: "done", RunUID: rep.RunUID, Totals: rep.Totals, Status: rep.Status})
@@ -384,6 +392,19 @@ func (r *Runner) finishPersist(o *Options, rep *Report, coll store.Collection, o
 		return
 	}
 	rep.Persist.Decision = PersistDiscard
+}
+
+// keepCookies applies the persist policy to the cookie jar: keep stores it,
+// discard restores it, and ask follows the answer (an ask that never had
+// variable writes to show keeps the jar: there was nothing to decide).
+func keepCookies(o *Options, rep *Report) bool {
+	switch o.Persist {
+	case PersistKeep:
+		return true
+	case PersistAsk:
+		return rep.Persist.Decision != PersistDiscard
+	}
+	return false
 }
 
 func (r *Runner) views(changes []collexec.VarChange) []VarChangeView {

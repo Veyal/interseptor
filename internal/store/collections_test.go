@@ -404,3 +404,30 @@ func TestDeleteTokenRemovesOnlyTheNamedSlot(t *testing.T) {
 		t.Fatalf("deleting a missing token must be a no-op: %v", err)
 	}
 }
+
+func TestReplaceCookiesSwapsOnePartition(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.PutCookie(CollCookie{Partition: "p1", Domain: "example.com", Name: "old", Value: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutCookie(CollCookie{Partition: "p2", Domain: "example.com", Name: "other", Value: "2"}); err != nil {
+		t.Fatal(err)
+	}
+	err := s.ReplaceCookies("p1", []CollCookie{{Domain: "example.com", Path: "/", Name: "new", Value: "3", Flags: "secure"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1, _ := s.ListCookies("p1")
+	if len(p1) != 1 || p1[0].Name != "new" || p1[0].Partition != "p1" {
+		t.Fatalf("p1 = %+v", p1)
+	}
+	if p2, _ := s.ListCookies("p2"); len(p2) != 1 {
+		t.Fatalf("another partition was touched: %+v", p2)
+	}
+	if err := s.ReplaceCookies("p1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if p1, _ = s.ListCookies("p1"); len(p1) != 0 {
+		t.Fatalf("empty replace must clear the partition: %+v", p1)
+	}
+}

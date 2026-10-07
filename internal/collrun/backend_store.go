@@ -79,6 +79,11 @@ func NewStoreBackend(cfg StoreConfig) *StoreBackend {
 	if jars == nil {
 		jars = &collexec.Jars{}
 	}
+	if jars.Loader == nil && cfg.Store != nil {
+		jars.Loader = func(coll, env, identity string) []collexec.JarCookie {
+			return loadCookies(cfg.Store, coll, env, identity)
+		}
+	}
 	auth := cfg.Auth
 	if auth == nil {
 		auth = collauth.New(collauth.Options{Doer: collexec.StepDoer{}, Store: &tokenStore{st: cfg.Store}, Secrets: reg, Now: cfg.Clock})
@@ -333,4 +338,73 @@ func (b *StoreBackend) globalsUID(collUID string) string {
 		return ""
 	}
 	return e.UID
+}
+
+// ---- cookies -------------------------------------------------------------------
+
+var _ SessionBackend = (*StoreBackend)(nil)
+
+// partitionKey names a cookie-jar partition in ix_cookies.
+func partitionKey(collUID, envUID, identity string) string {
+	return collUID + "|" + envUID + "|" + identity
+}
+
+func cookieFlags(c collexec.JarCookie) string {
+	var f []string
+	if c.Secure {
+		f = append(f, "secure")
+	}
+	if c.HTTPOnly {
+		f = append(f, "httponly")
+	}
+	if c.HostOnly {
+		f = append(f, "hostonly")
+	}
+	return strings.Join(f, ",")
+}
+
+func loadCookies(st *store.Store, collUID, envUID, identity string) []collexec.JarCookie {
+	rows, err := st.ListCookies(partitionKey(collUID, envUID, identity))
+	if err != nil {
+		return nil
+	}
+	now := time.Now()
+	out := make([]collexec.JarCookie, 0, len(rows))
+	for _, r := range rows {
+		c := collexec.JarCookie{Name: r.Name, Value: r.Value, Domain: r.Domain, Path: r.Path,
+			Secure: strings.Contains(r.Flags, "secure"), HTTPOnly: strings.Contains(r.Flags, "httponly"), HostOnly: strings.Contains(r.Flags, "hostonly")}
+		if r.Expires > 0 {
+			c.Expires = time.UnixMilli(r.Expires)
+			if !c.Expires.After(now) {
+				continue
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// SnapshotCookies implements SessionBackend.
+func (b *StoreBackend) SnapshotCookies(collUID, envUID, identity string) any {
+	return b.jars.For(collUID, envUID, identity).Export()
+}
+
+// FinishCookies implements SessionBackend.
+func (b *StoreBackend) FinishCookies(collUID, envUID, identity string, snap any, keep bool) {
+	jar := b.jars.For(collUID, envUID, identity)
+	if !keep {
+		if prev, ok := snap.([]collexec.JarCookie); ok {
+			jar.Replace(prev)
+		}
+		return
+	}
+	var rows []store.CollCookie
+	for _, c := range jar.Export() {
+		row := store.CollCookie{Domain: c.Domain, Path: c.Path, Name: c.Name, Value: c.Value, Flags: cookieFlags(c)}
+		if !c.Expires.IsZero() {
+			row.Expires = c.Expires.UnixMilli()
+		}
+		rows = append(rows, row)
+	}
+	_ = b.cfg.Store.ReplaceCookies(partitionKey(collUID, envUID, identity), rows)
 }

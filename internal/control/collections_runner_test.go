@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -220,5 +221,35 @@ func TestAsyncRunBroadcastsOnTheGlobalEventStream(t *testing.T) {
 	}
 	if !seen["start"] || !seen["item"] {
 		t.Fatalf("global stream saw %v", seen)
+	}
+}
+
+// A single send persists the cookie jar only when it keeps session state, like
+// variable writes; the default for an interactive send is keep.
+func TestSendCookiesFollowPersistPolicy(t *testing.T) {
+	f := newCollFixture(t)
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "sid", Value: "cookie-value-123456", Path: "/"})
+	}))
+	defer site.Close()
+	u, _ := url.Parse(site.URL)
+	f.h.sc.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: u.Hostname()}})
+	var co store.Collection
+	f.must("POST", "/api/collections", map[string]any{"name": "Cookies"}, asUI, 201, &co)
+	var req store.Item
+	f.must("POST", "/api/collections/"+co.UID+"/items", map[string]any{"kind": "request", "name": "login", "method": "GET",
+		"url": site.URL + "/login"}, asUI, 201, &req)
+	envUID := f.newEnv("tok-value-123456")
+	stored := func() int {
+		cs, _ := f.st.ListCookies(co.UID + "|" + envUID + "|")
+		return len(cs)
+	}
+	f.must("POST", "/api/collections/send", map[string]any{"itemUid": req.UID, "envUid": envUID, "persist": "discard"}, asUI, 200, nil)
+	if stored() != 0 {
+		t.Fatal("a discarded send must not persist its cookies")
+	}
+	f.must("POST", "/api/collections/send", map[string]any{"itemUid": req.UID, "envUid": envUID}, asUI, 200, nil)
+	if stored() != 1 {
+		t.Fatalf("an interactive send keeps session state by default; stored = %d", stored())
 	}
 }

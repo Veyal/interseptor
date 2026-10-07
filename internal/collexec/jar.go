@@ -187,8 +187,45 @@ func (j *Jar) Clear() {
 	j.mu.Unlock()
 }
 
+// Export returns a copy of every stored cookie (session cookies included), for
+// persistence or a restore point. Replace reverses it.
+func (j *Jar) Export() []JarCookie {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	out := make([]JarCookie, 0, len(j.cookies))
+	for _, c := range j.cookies {
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].created < out[b].created })
+	return out
+}
+
+// Replace swaps the jar's contents for cs.
+func (j *Jar) Replace(cs []JarCookie) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.cookies = make(map[string]*JarCookie, len(cs))
+	for i := range cs {
+		c := cs[i]
+		if c.Name == "" || c.Domain == "" {
+			continue
+		}
+		if c.created == 0 {
+			j.seq++
+			c.created = j.seq
+		} else if c.created > j.seq {
+			j.seq = c.created
+		}
+		j.cookies[jarKey(&c)] = &c
+	}
+}
+
 // Jars hands out one Jar per (collection, environment, identity) partition.
 type Jars struct {
+	// Loader, when set, supplies a partition's persisted cookies the first time
+	// its jar is created.
+	Loader func(collectionUID, envUID, identity string) []JarCookie
+
 	mu sync.Mutex
 	m  map[string]*Jar
 }
@@ -204,6 +241,9 @@ func (js *Jars) For(collectionUID, envUID, identity string) *Jar {
 	j, ok := js.m[k]
 	if !ok {
 		j = NewJar()
+		if js.Loader != nil {
+			j.Replace(js.Loader(collectionUID, envUID, identity))
+		}
 		js.m[k] = j
 	}
 	return j
