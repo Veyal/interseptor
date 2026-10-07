@@ -27,7 +27,29 @@ type Config struct {
 	Fields map[string]string
 }
 
-func (c Config) f(name string) string { return strings.TrimSpace(c.Fields[name]) }
+// fieldAliases maps this package's field names to the snake_case spellings the
+// Postman and OpenAPI importers write, so imported auth works as written.
+var fieldAliases = map[string]string{"grantType": "grant_type", "clientAuth": "client_authentication"}
+
+func (c Config) f(name string) string {
+	if v := strings.TrimSpace(c.Fields[name]); v != "" {
+		return v
+	}
+	if alias, ok := fieldAliases[name]; ok {
+		return strings.TrimSpace(c.Fields[alias])
+	}
+	return ""
+}
+
+// tokenInQuery reports whether the token goes into the query string
+// ("query", or Postman's "queryParams").
+func (c Config) tokenInQuery() bool {
+	switch strings.ToLower(c.f("addTokenTo")) {
+	case "query", "queryparams", "url":
+		return true
+	}
+	return false
+}
 
 // Result describes what Apply did. It never contains secret values.
 type Result struct {

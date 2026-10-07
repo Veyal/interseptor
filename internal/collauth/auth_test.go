@@ -403,3 +403,27 @@ func TestMemoryStoreConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// Postman and OpenAPI imports write snake_case oauth2 field names and the
+// "queryParams" token placement; the suite must honour them as written.
+func TestOAuth2AcceptsImportedFieldNames(t *testing.T) {
+	ts := newTokenServer(t, 100)
+	m := New(Options{})
+	cfg := Config{Type: "oauth2", Fields: map[string]string{
+		"grant_type": "client_credentials", "accessTokenUrl": ts.srv.URL + "/token", "clientId": "cid",
+		"clientSecret": canary, "client_authentication": "body", "addTokenTo": "queryParams",
+	}}
+	r := newReq("GET", "https://example.com/x")
+	if _, err := m.Apply(context.Background(), "k", cfg, r); err != nil {
+		t.Fatal(err)
+	}
+	if ts.calls[0].Get("grant_type") != "client_credentials" {
+		t.Fatalf("grant_type alias ignored: %v", ts.calls[0])
+	}
+	if ts.auth[0] != "" || ts.calls[0].Get("client_id") != "cid" {
+		t.Fatalf("client_authentication=body must send credentials in the form: auth=%q form=%v", ts.auth[0], ts.calls[0])
+	}
+	if !strings.Contains(r.URL, "access_token=access-token-1") || r.Header.Get("Authorization") != "" {
+		t.Fatalf("addTokenTo=queryParams must put the token in the query: %s %v", r.URL, r.Header)
+	}
+}

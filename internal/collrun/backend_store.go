@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/collauth"
 	"github.com/Veyal/interseptor/internal/collexec"
 	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/scriptworker"
@@ -35,7 +36,11 @@ type StoreConfig struct {
 	Own func() ([]int, []net.IP)
 	// Scripts chooses the script engine per trust state (see PMExecutor).
 	Scripts scriptworker.Router
-	Clock   func() time.Time
+	// Auth overrides the auth suite (tests); the default persists OAuth2 tokens
+	// in the project store and sends token requests through the step's
+	// scope-guarded sender.
+	Auth  *collauth.Manager
+	Clock func() time.Time
 	// Source/AI describe the caller for script sends.
 	Source collexec.Source
 	AI     bool
@@ -50,8 +55,13 @@ type StoreBackend struct {
 	jars *collexec.Jars
 	reg  *redact.Registry
 	pins map[string]bool
+	auth *collauth.Manager
 	mu   sync.Mutex // serialises variable commits
 }
+
+// Auth returns the auth manager shared by every step (OAuth2 token cache and
+// the pending authorization-code states).
+func (b *StoreBackend) Auth() *collauth.Manager { return b.auth }
 
 // NewStoreBackend builds a StoreBackend.
 func NewStoreBackend(cfg StoreConfig) *StoreBackend {
@@ -69,7 +79,11 @@ func NewStoreBackend(cfg StoreConfig) *StoreBackend {
 	if jars == nil {
 		jars = &collexec.Jars{}
 	}
-	return &StoreBackend{cfg: cfg, jars: jars, reg: reg, pins: pins}
+	auth := cfg.Auth
+	if auth == nil {
+		auth = collauth.New(collauth.Options{Doer: collexec.StepDoer{}, Store: &tokenStore{st: cfg.Store}, Secrets: reg, Now: cfg.Clock})
+	}
+	return &StoreBackend{cfg: cfg, jars: jars, reg: reg, pins: pins, auth: auth}
 }
 
 var _ Backend = (*StoreBackend)(nil)
@@ -141,7 +155,7 @@ func (b *StoreBackend) Step(ctx context.Context, in collexec.StepInput, meta Ste
 	}
 	p := collexec.NewPipeline(collexec.Pipeline{
 		Sender: b.cfg.Sender, Exec: exec, Scope: b.cfg.Scope, Trust: b, Flows: b.cfg.Store, Bodies: b.cfg.Store,
-		Jars: b.jars, Registry: b.reg, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
+		Jars: b.jars, Registry: b.reg, Auth: b.auth, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
 	})
 	exec.Pipe = p
 	return p.Step(ctx, in)

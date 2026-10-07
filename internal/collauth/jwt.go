@@ -168,7 +168,7 @@ func (m *Manager) applyJWT(cfg Config, req *Request) (Result, error) {
 		return Result{}, m.fail(err)
 	}
 	m.track(tok)
-	if cfg.f("addTokenTo") == "query" {
+	if cfg.tokenInQuery() {
 		k := cfg.f("queryParamKey")
 		if k == "" {
 			k = "token"

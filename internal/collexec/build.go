@@ -55,10 +55,14 @@ type built struct {
 	Applied     []string
 	Warnings    []string
 	AuthApplied bool
+	// AuthType/AuthFields carry the resolved auth for the collauth suite when
+	// the pipeline has one (the built-in handling is then skipped).
+	AuthType   string
+	AuthFields map[string]string
 }
 
 // assemble builds the wire request from the resolved structured request.
-func assemble(m *RequestModel, res varstore.Request) (*built, error) {
+func assemble(m *RequestModel, res varstore.Request, deferAuth bool) (*built, error) {
 	b := &built{Method: strings.ToUpper(strings.TrimSpace(res.Method))}
 	if b.Method == "" {
 		b.Method = "GET"
@@ -85,7 +89,11 @@ func assemble(m *RequestModel, res varstore.Request) (*built, error) {
 	if err := buildBody(b, m, res); err != nil {
 		return nil, err
 	}
-	applyAuth(b, &u, m.Auth, res.Auth)
+	if deferAuth {
+		b.AuthType, b.AuthFields = m.Auth.Type, res.Auth
+	} else {
+		applyAuth(b, &u, m.Auth, res.Auth)
+	}
 	b.URL = u
 	pu, err := url.Parse(b.URL)
 	if err != nil || pu.Host == "" || (pu.Scheme != "http" && pu.Scheme != "https") {

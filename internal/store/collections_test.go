@@ -384,3 +384,23 @@ func TestFlagCollectionBitFree(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteTokenRemovesOnlyTheNamedSlot(t *testing.T) {
+	s := newTestStore(t)
+	c := mustColl(t, s, Collection{Name: "c"})
+	for _, n := range []string{"a", "b"} {
+		if _, err := s.PutToken(CollToken{CollectionUID: c.UID, Name: n, TokenJSON: `{"x":1}`}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.DeleteToken(c.UID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ListTokens(c.UID)
+	if len(got) != 1 || got[0].Name != "b" {
+		t.Fatalf("tokens = %+v", got)
+	}
+	if err := s.DeleteToken(c.UID, "missing"); err != nil {
+		t.Fatalf("deleting a missing token must be a no-op: %v", err)
+	}
+}

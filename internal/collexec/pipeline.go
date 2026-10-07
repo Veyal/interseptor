@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/collauth"
 	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
@@ -68,6 +69,11 @@ type Pipeline struct {
 	Encoder  BodyEncoder
 	Jars     *Jars
 	Registry *redact.Registry
+	// Auth applies every auth type beyond the pure-header basics (OAuth2 with
+	// refresh, JWT, digest, AWS SigV4). Nil keeps the built-in
+	// basic/bearer/apikey/oauth2-access-token handling. Its token requests must
+	// use StepDoer so they pass the scope and dial guards.
+	Auth     collauth.Applier
 	Clock    func() time.Time
 	Rand     *varstore.Rand
 	// OwnPorts/OwnIPs identify the tool's own listeners (:8080, :9966). Sends

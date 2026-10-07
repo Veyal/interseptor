@@ -80,9 +80,12 @@ func (p *Pipeline) Step(ctx context.Context, in StepInput) (*StepResult, error) 
 	if !x.prepare(b, settings) {
 		return x.res, nil
 	}
+	policy := scopePolicy(in)
+	if !x.applyAuth(ctx, b, sc.Request, policy) {
+		return x.res, nil
+	}
 	x.res.Method, x.res.URL = b.Method, b.URL
 
-	policy := scopePolicy(in)
 	req, ok := x.buildSend(b, settings, policy, templateHash)
 	if !ok {
 		return x.res, nil
@@ -244,7 +247,7 @@ func (x *stepRun) resolve(m *RequestModel, settings Settings) (*built, string, b
 		x.res.Error = rr.Err.Error()
 		return nil, "", false
 	}
-	b, err := assemble(m, resolved)
+	b, err := assemble(m, resolved, x.p.Auth != nil)
 	if err != nil {
 		x.res.Error = err.Error()
 		return nil, "", false
@@ -293,6 +296,12 @@ func (x *stepRun) prepare(b *built, settings Settings) bool {
 // check enforces own-listener refusal, the base-target pin and scope for one
 // destination. It returns "" to proceed, or a block reason with a message.
 func (x *stepRun) check(u *url.URL, policy string) (BlockReason, string) {
+	return x.checkDest(u, policy, x.in.EnvPin)
+}
+
+// checkDest is check with an explicit base-target pin ("" for destinations the
+// pin does not describe, such as an identity provider's token endpoint).
+func (x *stepRun) checkDest(u *url.URL, policy, pin string) (BlockReason, string) {
 	host, port := u.Hostname(), portOf(u)
 	if x.p.isOwn(host, port) {
 		return BlockOwn, fmt.Sprintf("refusing to send to the tool's own listener %s:%d", host, port)
@@ -303,7 +312,7 @@ func (x *stepRun) check(u *url.URL, policy string) (BlockReason, string) {
 	var reason BlockReason
 	var msg string
 	switch {
-	case x.in.EnvPin != "" && !pinMatches(x.in.EnvPin, u):
+	case pin != "" && !pinMatches(pin, u):
 		reason, msg = BlockPin, fmt.Sprintf("host %s does not match the environment's base target pin", host)
 	case !x.p.hostInScope(host):
 		reason, msg = BlockScope, fmt.Sprintf("host %s is out of scope", host)

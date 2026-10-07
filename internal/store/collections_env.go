@@ -403,6 +403,15 @@ func (s *Store) PutToken(t CollToken) (*CollToken, error) {
 	return &t, nil
 }
 
+// DeleteToken removes one named token record; a missing one is not an error.
+func (s *Store) DeleteToken(collectionUID, name string) error {
+	if err := s.ensureCollections(); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM ix_tokens WHERE collection_uid=? AND name=?`, collectionUID, name)
+	return err
+}
+
 // ListTokens returns a collection's token records.
 func (s *Store) ListTokens(collectionUID string) ([]CollToken, error) {
 	if err := s.ensureCollections(); err != nil {

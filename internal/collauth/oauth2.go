@@ -60,7 +60,7 @@ func (m *Manager) applyOAuth2(ctx context.Context, key string, cfg Config, req *
 
 func (m *Manager) attachToken(cfg Config, req *Request, t Token, res Result) (Result, error) {
 	m.track(t.Access, t.Refresh)
-	if cfg.f("addTokenTo") == "query" {
+	if cfg.tokenInQuery() {
 		k := cfg.f("queryParamKey")
 		if k == "" {
 			k = "access_token"
