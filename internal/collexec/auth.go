@@ -146,7 +146,7 @@ func AuthCacheKey(coll, envUID, identity string, a AuthModel) string {
 // OAuth2 authorization-code flow needs it outside a Step.
 func ResolveAuth(in StepInput, reg *redact.Registry) (collauth.Config, string, error) {
 	m := in.Chain.model()
-	stack := newVars(in.Layers, in.Local, reg).Stack()
+	stack := newVars(in.Layers, in.Local, reg, nil).Stack()
 	r := varstore.New(varstore.Options{Policy: varstore.PolicyBlock, Registry: reg})
 	cfg := collauth.Config{Type: m.Auth.Type, Fields: map[string]string{}}
 	for k, v := range m.Auth.Fields {

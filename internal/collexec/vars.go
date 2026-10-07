@@ -43,10 +43,13 @@ type Vars struct {
 	layers  []varstore.Layer
 	changes []VarChange
 	reg     *redact.Registry
+	// secretName classifies a variable name the script writes for the first
+	// time; nil keeps secret-ness to already-declared variables only.
+	secretName func(string) bool
 }
 
-func newVars(base []varstore.Layer, local map[string]string, reg *redact.Registry) *Vars {
-	v := &Vars{reg: reg}
+func newVars(base []varstore.Layer, local map[string]string, reg *redact.Registry, secretName func(string) bool) *Vars {
+	v := &Vars{reg: reg, secretName: secretName}
 	for _, l := range base {
 		nl := varstore.Layer{Scope: l.Scope, Name: l.Name, Vars: make(map[string]varstore.Var, len(l.Vars))}
 		for k, x := range l.Vars {
@@ -137,7 +140,7 @@ func (v *Vars) Set(scope, name, value string) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	var target *varstore.Layer
-	secret := false
+	secret, existed := false, false
 	for i := range v.layers {
 		if v.layers[i].Scope != sc {
 			continue
@@ -146,13 +149,16 @@ func (v *Vars) Set(scope, name, value string) error {
 			target = &v.layers[i]
 		}
 		if x, ok := v.layers[i].Vars[name]; ok {
-			target, secret = &v.layers[i], x.Secret
+			target, secret, existed = &v.layers[i], x.Secret, true
 			break
 		}
 	}
 	if target == nil {
 		v.layers = append(v.layers, varstore.Layer{Scope: sc, Name: scope, Vars: map[string]varstore.Var{}})
 		target = &v.layers[len(v.layers)-1]
+	}
+	if !existed && v.secretName != nil && v.secretName(name) {
+		secret = true // a credential written for the first time is a secret from that moment
 	}
 	target.Vars[name] = varstore.Var{Value: value, Secret: secret}
 	if secret {

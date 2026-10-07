@@ -171,7 +171,7 @@ func (b *StoreBackend) pipeline(in collexec.StepInput, meta StepMeta) *collexec.
 	}
 	p := collexec.NewPipeline(collexec.Pipeline{
 		Sender: b.cfg.Sender, Exec: exec, Scope: b.cfg.Scope, Trust: b, Flows: b.cfg.Store, Bodies: b.cfg.Store,
-		Jars: b.jars, Registry: b.reg, Auth: b.auth, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
+		Jars: b.jars, Registry: b.reg, SecretName: store.IsSecretName, Auth: b.auth, OwnPorts: ports, OwnIPs: ips, Clock: b.cfg.Clock,
 	})
 	exec.Pipe = p
 	return p

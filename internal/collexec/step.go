@@ -46,7 +46,7 @@ func (p *Pipeline) Step(ctx context.Context, in StepInput) (*StepResult, error) 
 	}
 	ctx = ctxOrBackground(ctx)
 	x := &stepRun{p: p, in: in, res: &StepResult{Outcome: OutcomeError}}
-	x.vars = newVars(in.Layers, in.Local, p.Registry)
+	x.vars = newVars(in.Layers, in.Local, p.Registry, p.SecretName)
 	x.vars.Stack().RegisterSecrets(p.Registry)
 	x.jar = p.Jars.For(in.Chain.Collection.UID, in.EnvUID, in.Identity)
 	x.caps = capSet(in.Chain.Collection.Caps)

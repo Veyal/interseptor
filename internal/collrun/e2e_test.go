@@ -319,3 +319,42 @@ func TestE2ESecretsNeverLeakIntoReportOrRows(t *testing.T) {
 		t.Fatal("console output expected (masked), got none")
 	}
 }
+
+const freshCanary = "CANARY-fresh-W3k8YY27-do-not-leak"
+
+// A secret-named variable a script creates for the first time must be masked
+// in console, test names, the report and the persisted rows, even though it
+// was never declared and the run discards its variable writes.
+func TestE2EFirstWriteSecretNamedVariableIsMasked(t *testing.T) {
+	x := newE2E(t)
+	if _, err := x.st.UpdateCollection(store.Collection{UID: x.coll.UID, Name: x.coll.Name, ScopePolicy: x.coll.ScopePolicy,
+		Caps: js([]string{"vars.read", "vars.write"})}); err != nil {
+		t.Fatal(err)
+	}
+	x.add("fresh", "GET", "/user", func(it *store.Item) {
+		it.Events = events("test",
+			"pm.environment.set('fresh_token', '"+freshCanary+"');",
+			"console.log('got ' + pm.environment.get('fresh_token'));",
+			"pm.test('has '+pm.environment.get('fresh_token'), () => {});")
+	})
+	b := x.backend()
+	b2 := NewStoreBackend(StoreConfig{Store: x.st, Sender: sender.New(x.st, capture.New(x.st)), Scope: b.cfg.Scope,
+		PinnedHashes: x.allHashes()})
+	rep := x.run(b2, Options{FailOnQuarantine: true})
+	raw, _ := json.Marshal(rep)
+	if strings.Contains(string(raw), freshCanary) {
+		t.Fatalf("canary leaked into the report JSON:\n%s", raw)
+	}
+	if len(rep.Items) == 0 || len(rep.Items[0].Console) == 0 {
+		t.Fatalf("console output expected (masked): %+v", rep.Items)
+	}
+	rows, _ := x.st.ListRunResults(rep.RunUID)
+	if len(rows) == 0 {
+		t.Fatal("no rows persisted")
+	}
+	for _, r := range rows {
+		if strings.Contains(r.ResultJSON, freshCanary) {
+			t.Fatalf("canary leaked into ix_run_results: %s", r.ResultJSON)
+		}
+	}
+}

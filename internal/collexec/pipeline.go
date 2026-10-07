@@ -75,6 +75,9 @@ type Pipeline struct {
 	Encoder  BodyEncoder
 	Jars     *Jars
 	Registry *redact.Registry
+	// SecretName classifies variable names a script writes for the first time
+	// (store.IsSecretName); matching values are masked from the first write.
+	SecretName func(string) bool
 	// Auth applies every auth type beyond the pure-header basics (OAuth2 with
 	// refresh, JWT, digest, AWS SigV4). Nil keeps the built-in
 	// basic/bearer/apikey/oauth2-access-token handling. Its token requests must

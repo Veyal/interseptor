@@ -258,7 +258,7 @@ func TestScriptVarWritesFeedLaterResolution(t *testing.T) {
 }
 
 func TestVarsScopesAndUnset(t *testing.T) {
-	v := newVars([]varstore.Layer{layer(varstore.ScopeEnvironment, map[string]string{"a": "1"}), layer(varstore.ScopeData, map[string]string{"d": "x"})}, nil, nil)
+	v := newVars([]varstore.Layer{layer(varstore.ScopeEnvironment, map[string]string{"a": "1"}), layer(varstore.ScopeData, map[string]string{"d": "x"})}, nil, nil, nil)
 	if got, _ := v.Get("a"); got != "1" {
 		t.Fatal("get")
 	}
