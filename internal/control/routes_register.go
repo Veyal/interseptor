@@ -32,6 +32,7 @@ func (h *Hub) routes() {
 	h.registerEvidenceRoutes(ev)
 	h.registerMetaRoutes(meta)
 	h.registerPacksRoutes()
+	h.registerCollectionRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
 }
