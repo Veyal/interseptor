@@ -240,6 +240,7 @@ func run() error {
 	hub := control.New(st, eng, ca, pm, sc)
 	defer hub.Close()
 	hub.SetControlRebinder(cm)
+	hub.WireIntruderRunSink() // persist finished Intruder runs for evidence renders
 	// User-authored Starlark scanner checks are global (shared across projects).
 	checksDir := filepath.Join(globalDir, "checks")
 	migrateGlobalChecks(globalDir, filepath.Join(globalDir, "projects"))

@@ -27,7 +27,8 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
    - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot
    - Capability checklist before report-ready (readiness reports each separately): ACTION the exact triggering request/flow; RESULT the observed outcome; CONTROL a negative or normal-behavior request that distinguishes vulnerable behavior; VISUAL a real browser/device screenshot for browser findings
-   - Operator-uploaded images count as visual proof only after a reviewer classifies them (classify_finding_image); generated previews never qualify
+   - Operator-uploaded images count as visual proof only after a reviewer classifies them (classify_finding_image); generated previews and evidence renders never qualify
+   - Use render_evidence for generated Intruder/authz/diff/waterfall/chain images (source=evidence_render, sourceRef kept); they are drawn from recorded data and are not browser proof, so a real screenshot via add_finding_image is still required for visual claims
    - Test the claimed impact end to end when safe and in scope; if a step was not executed, set proofReview.execution=not_executed with proofReview.reason, keep status=needs_verification, or narrow the impact
    - WebSocket evidence: ws_send records the handshake and every frame as a flow and returns its flowId — cite it as an ordinary flow block (including a rejected-handshake or invalid-token control); annotate frames with set_ws_frame_note
 6. Fix and retest — remediation plus the expected secure behavior / negative test in retest
@@ -76,7 +77,7 @@ func findingBlocksSchema() map[string]any {
 				"hash":         map[string]any{"type": "string", "description": "existing content hash; upload new images with add_finding_image"},
 				"mime":         map[string]any{"type": "string"},
 				"caption":      map[string]any{"type": "string"},
-				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|generated_image|operator_upload|tool_output|other"},
+				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|evidence_render|generated_image|operator_upload|tool_output|other"},
 				"sourceFlowId": map[string]any{"type": "integer", "description": "originating flow for captured flows or generated flow previews"},
 			},
 			"required": []string{"type"},
@@ -200,7 +201,7 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 		warns = append(warns, "evidence is missing a proof annotation — explain exactly what each flow or image establishes")
 	}
 	if hasPoC && a.imageCount == 0 {
-		warns = append(warns, "visual proof recommended — attach a real browser screenshot when it proves the UI result, or a labeled flow preview for HTTP evidence")
+		warns = append(warns, "visual proof recommended — attach a real browser screenshot when it proves the UI result, or a labeled flow preview or evidence render for HTTP/recorded data")
 	}
 	if hasPoC && !hasReproductionRole(a.roles) && len(strings.TrimSpace(a.text)) > 0 {
 		warns = append(warns, "reproduction blocks need semantic roles such as observation, action, and result; Before/Action/After is only for differential proof")

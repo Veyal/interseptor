@@ -2273,7 +2273,7 @@ export function updateSelBar(){
   $('#selCount').textContent=n+' selected';
   // Verbs stay visible and are disabled with a reason, so "Diff" is discoverable
   // before the second flow is selected.
-  const buttonFor={repeater:'selSendTo',intruder:'selSendTo',scanner:'selSendTo',tag:'selTag',finding:'selAddFinding',copyas:'selCopyAs',diff:'selCompare',delete:'selDelete'};
+  const buttonFor={repeater:'selSendTo',intruder:'selSendTo',scanner:'selSendTo',tag:'selTag',finding:'selAddFinding',copyas:'selCopyAs',diff:'selCompare',render:'selRender',delete:'selDelete'};
   const enabled={};
   bulkVerbs(n).forEach(v=>{
     const id=buttonFor[v.id];
@@ -2361,6 +2361,17 @@ export async function openCompare(restoreModeFocus=''){
   }catch(e){if(current())box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
 }
 if($('#selCompare'))$('#selCompare').onclick=()=>openFlowDiff();
+{
+  // Render image: waterfall of the selection, or a diff image of exactly two flows.
+  const renderBtn=$('#selRender');
+  if(renderBtn)renderBtn.onclick=()=>{
+    const ids=[...state.selected];if(!ids.length)return;
+    const open=(build)=>import('./evidence-render.js').then(m=>{const p=build(m);return m.open(p.kind,p.params,{opener:renderBtn});}).catch(e=>toastError('Render failed',e));
+    const items=[{label:'Waterfall of '+Math.min(ids.length,50)+(ids.length>1?' flows':' flow'),act:()=>open(m=>m.waterfallPreview(ids))}];
+    if(ids.length===2)items.push({label:'Diff of the two flows',act:()=>open(m=>m.diffPreview(ids[0],ids[1]))});
+    openMenu(0,0,[{head:'RENDER IMAGE',items}],renderBtn);
+  };
+}
 if($('#compareClose'))$('#compareClose').onclick=closeCompare;
 $('#selClear').onclick=()=>{state.selected.clear();state.selAnchorId=null;state.lastSelIdx=-1;renderRows();updateSelBar();};
 

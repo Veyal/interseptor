@@ -16,6 +16,7 @@ func (h *Hub) routes() {
 	az := &authzAPI{h}
 	sess := &sessionAPI{h}
 	meta := &metaAPI{h}
+	ev := newEvidenceAPI(h)
 
 	h.registerFlowRoutes(f)
 	h.registerInterceptRoutes(ic)
@@ -27,7 +28,8 @@ func (h *Hub) routes() {
 	h.registerChecksRoutes(chk)
 	h.registerProjectRoutes(proj)
 	h.registerOobRoutes(oob)
-	h.registerAuthzRoutes(az)
+	h.registerAuthzRoutes(az, ev)
+	h.registerEvidenceRoutes(ev)
 	h.registerMetaRoutes(meta)
 	h.registerPacksRoutes()
 
@@ -245,7 +247,7 @@ func (h *Hub) registerOobRoutes(oob *oobAPI) {
 // neutral receiver (e.g. metaAPI) would require either duplicating
 // authzIdentities() or introducing a cross-group call, which isn't worth it for a
 // cosmetic regroup.
-func (h *Hub) registerAuthzRoutes(az *authzAPI) {
+func (h *Hub) registerAuthzRoutes(az *authzAPI, ev *evidenceAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
 	h.mux.HandleFunc("POST /api/authz/identity", az.addAuthzIdentity)
@@ -255,7 +257,7 @@ func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)
-	h.mux.HandleFunc("POST /api/authz/run", az.authzRun)
+	h.mux.HandleFunc("POST /api/authz/run", ev.captureAuthzRun(az.authzRun))
 	h.mux.HandleFunc("POST /api/authz/differential", az.authzDifferentialRun)
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
@@ -307,4 +309,19 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("POST /api/vault/backup", h.vaultBackup)
 	h.mux.HandleFunc("POST /api/vault/import", h.vaultImport)
 	h.mux.HandleFunc("POST /api/vault/merge", h.vaultMerge)
+}
+
+// registerEvidenceRoutes wires the evidence render family: Intruder attack
+// records and renders, authz/diff/waterfall/chain renders, and the attach path.
+func (h *Hub) registerEvidenceRoutes(ev *evidenceAPI) {
+	h.mux.HandleFunc("GET /api/intruder/attacks", ev.intruderAttacks)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}", ev.intruderAttack)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render.png", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/evidence-render", ev.getEvidenceRender)
+	h.mux.HandleFunc("GET /api/render/authz/{runId}", ev.getAuthzRender)
+	h.mux.HandleFunc("GET /api/render/flow-diff.png", ev.getFlowDiffRender)
+	h.mux.HandleFunc("GET /api/render/flow-waterfall.png", ev.getFlowWaterfallRender)
+	h.mux.HandleFunc("GET /api/render/finding-chain.png", ev.getFindingChainRender)
+	h.mux.HandleFunc("POST /api/findings/{id}/evidence-render", ev.attachEvidenceRender)
 }

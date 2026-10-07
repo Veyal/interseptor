@@ -14,12 +14,29 @@ type FindingImageProvenance struct {
 	Ingestion      string `json:"ingestion"`
 	OriginalSource string `json:"originalSource"`
 	IngestedTS     int64  `json:"ingestedTs,omitempty"`
+	SourceRef      string `json:"sourceRef,omitempty"`
 	ClassifiedBy   string `json:"classifiedBy,omitempty"`
 	ClassifiedTS   int64  `json:"classifiedTs,omitempty"`
 }
 
 func generatedFindingImage(source string) bool {
-	return source == "flow_preview" || source == "generated_image"
+	return source == "flow_preview" || source == "generated_image" || source == "evidence_render"
+}
+
+// maxSourceRefLen bounds a sourceRef such as "intruder:<runId>".
+const maxSourceRefLen = 80
+
+// validateSourceRef accepts empty or a short [a-z0-9:_-] token.
+func validateSourceRef(ref string) error {
+	if len(ref) > maxSourceRefLen {
+		return fmt.Errorf("%w: sourceRef exceeds %d characters", ErrInvalidFinding, maxSourceRefLen)
+	}
+	for _, c := range ref {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == ':' || c == '_' || c == '-') {
+			return fmt.Errorf("%w: sourceRef must match [a-z0-9:_-]", ErrInvalidFinding)
+		}
+	}
+	return nil
 }
 func capturedFindingImage(source string) bool {
 	return source == "browser_screenshot" || source == "device_screenshot"
@@ -74,7 +91,12 @@ func stampFindingImageProvenance(tx *sql.Tx, oldBody, newBody string, change Fin
 		}
 		if generatedFindingImage(p.OriginalSource) {
 			b.Source = p.OriginalSource
+			// sourceRef is immutable on generated images, like sourceFlowId.
+			if existed {
+				b.SourceRef = prev.SourceRef
+			}
 		}
+		p.SourceRef = b.SourceRef
 		if existed && prev.Provenance != nil && b.Source == prev.Source {
 			p.ClassifiedBy = prev.Provenance.ClassifiedBy
 			p.ClassifiedTS = prev.Provenance.ClassifiedTS

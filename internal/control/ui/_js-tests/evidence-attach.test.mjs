@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeRefs, flowAttachRequest, imageAttachRequest, newFindingRequest, filterFindings, readinessPips, findingOptionLabel, undoPlan, EVIDENCE_KINDS, validateAltText, attachKeyTarget } from '../js/evidence-attach.js';
+import { normalizeRefs, flowAttachRequest, imageAttachRequest, newFindingRequest, filterFindings, readinessPips, findingOptionLabel, undoPlan, EVIDENCE_KINDS, validateAltText, attachKeyTarget, evidenceSourceLabel } from '../js/evidence-attach.js';
 
 test('normalizeRefs dedupes, drops invalid ids and caps the list', () => {
   assert.deepEqual(normalizeRefs('flow', [3, '3', 4, 0, -1, 'x', 5.5]), [3, 4]);
@@ -73,4 +73,12 @@ test('attachKeyTarget resolves the flow id from a row or the drawer, else null',
   assert.equal(attachKeyTarget(nothing, 0), null);
   assert.equal(attachKeyTarget(nothing, 11), 11);
   assert.equal(attachKeyTarget(null, 0), null);
+});
+
+test('evidenceSourceLabel names generated renders and never reads them as browser proof', () => {
+  assert.equal(evidenceSourceLabel('evidence_render'), 'Generated evidence render · not browser proof');
+  assert.equal(evidenceSourceLabel('flow_preview'), 'Generated HTTP preview');
+  assert.equal(evidenceSourceLabel('browser_screenshot'), 'Browser capture · reviewer declared');
+  assert.equal(evidenceSourceLabel(''), 'Origin unconfirmed');
+  assert.equal(evidenceSourceLabel('something_new'), 'something_new');
 });

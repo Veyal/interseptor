@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="/panel-misc.css">
 <link rel="stylesheet" href="/settings.css">
 <link rel="stylesheet" href="/report.css">
+<link rel="stylesheet" href="/css/evidence-render.css">
 <link rel="stylesheet" href="/mobile.css">
 <!-- Modulepreload hints for the tabs users most often visit right after Proxy
      (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
@@ -244,7 +245,8 @@
       <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
       <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
-      <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
+      <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+            <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
       <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
       <button class="btn sel-clear" id="selClear">Clear</button>
@@ -419,6 +421,7 @@
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
       <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span><input id="intrDelay" type="number" min="0" step="50" value="0">ms</label>
       <label class="intr-num u-hidden" id="intrRepeatWrap" title="How many times to send the same request (Race / repeat — no payloads)"><span>×</span><input id="intrRepeat" type="number" min="1" max="2000" value="20">sends</label>
+      <label class="intr-num intr-barrier u-hidden" id="intrBarrierWrap" title="Race / repeat: hold the first launch wave until every worker is ready so requests leave together. Separate connections, not single-packet sync."><input id="intrBarrier" type="checkbox">Barrier</label>
       <div class="spacer"></div>
       <span id="intrCount" class="hint"></span>
       <button class="btn btn-primary" id="intrStart">Start ▸</button>
@@ -460,6 +463,7 @@ Content-Type: application/json
             <button type="button" data-f="interesting" aria-pressed="false" title="Flagged, grep match, or length anomaly">Interesting</button>
             <button type="button" data-f="error" aria-pressed="false">Errors</button>
           </span>
+          <span class="evr-split" id="intrRender"><button type="button" class="btn evr-main" id="intrRenderBtn" aria-disabled="true" title="Preview needs a finished run with a run ID" aria-describedby="intrRenderStatus"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg> Preview image</button><button type="button" class="btn evr-caret" id="intrRenderMenuBtn" aria-label="Choose preview image kind" aria-haspopup="menu" aria-expanded="false" aria-controls="intrRenderMenu" aria-disabled="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button><div class="evr-menu" id="intrRenderMenu" role="menu" aria-label="Preview image kind" hidden></div><span class="u-sr" id="intrRenderStatus" role="status" aria-live="polite"></span></span>
           <button class="btn" id="intrToFinding" title="Create a Finding from interesting attempts (attaches their flows as PoCs)">→ Finding</button>
           <span id="intrStats" class="hint"></span><button type="button" class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)" aria-controls="intrHistory" aria-expanded="false">⟲ History</button></div>
         <div class="intr-progbar u-hidden" id="intrProgBar"><div id="intrProgFill"></div></div>
@@ -1760,6 +1764,41 @@ Content-Type: application/json
     <div class="modal-plain-head"><div id="confirmTitle" class="modal-shell-title">Confirm</div></div>
     <div class="modal-plain-body u-fs-sm u-lh u-fg2" id="confirmMsg"></div>
     <div class="row modal-shell-foot"><button class="btn" id="confirmCancel">Cancel</button><button class="btn btn-primary" id="confirmOk">OK</button></div>
+  </div>
+</div>
+<div id="evRenderDialog" class="modal-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="evRenderTitle" class="modal-shell evr-shell">
+    <div class="modal-shell-head"><div id="evRenderTitle" class="modal-shell-title">Evidence render</div><button type="button" class="btn evr-close" id="evRenderClose" aria-label="Close evidence render preview"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
+    <div class="evr-tabs" id="evRenderTabs" role="tablist" aria-label="Render kind" hidden></div>
+    <div class="modal-shell-body evr-body">
+      <p class="evr-hint" id="evRenderHint"></p>
+      <div class="evr-options" id="evRenderOptions" hidden>
+        <label class="evr-option" id="evRenderMaskRow" hidden><input type="checkbox" id="evRenderMask" checked> Mask payloads and extracted values</label>
+        <label class="evr-option" id="evRenderBodyRow" hidden><input type="checkbox" id="evRenderBody"> Include response body lines (redacted, may still show personal data)</label>
+      </div>
+      <figure class="evr-figure">
+        <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false" tabindex="0">
+          <p class="evr-state" id="evRenderLoading" hidden>Rendering from recorded data…</p>
+          <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
+          <img class="evr-img" id="evRenderImg" alt="" hidden>
+        </div>
+        <figcaption class="evr-caption" id="evRenderCaption"></figcaption>
+      </figure>
+      <p class="evr-summary" id="evRenderSummary" aria-hidden="true"></p>
+      <p class="evr-note" id="evRenderNote"></p>
+    </div>
+    <div class="row modal-shell-foot evr-foot">
+      <div class="evr-pick" id="evRenderPick" role="group" aria-label="Attach to a finding" hidden>
+        <label for="evRenderFinding">Finding</label>
+        <select id="evRenderFinding" class="btn btn-field" aria-describedby="evRenderPickStatus"></select>
+        <button type="button" class="btn btn-primary" id="evRenderPickGo" disabled>Attach</button>
+        <button type="button" class="btn" id="evRenderPickCancel">Cancel</button>
+        <p class="evr-pick-status" id="evRenderPickStatus"></p>
+      </div>
+      <button type="button" class="btn" id="evRenderDownload" disabled>Download PNG</button>
+      <button type="button" class="btn btn-primary" id="evRenderAttach" aria-expanded="false" aria-controls="evRenderPick" disabled>+ Finding</button>
+    </div>
+    <p class="u-sr" id="evRenderStatus" role="status" aria-live="polite"></p>
   </div>
 </div>
 <div id="promptModal" class="modal-overlay modal-overlay-high">

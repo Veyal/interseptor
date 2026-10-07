@@ -434,12 +434,17 @@ func blockEvidenceMeta(bl store.FindingBlock) string {
 		switch bl.Source {
 		case "flow_preview":
 			label += " (generated HTTP preview; not browser proof)"
+		case "evidence_render":
+			label += " (generated evidence render from recorded data; not browser proof)"
 		case "browser_screenshot":
 			label += " (operator-declared browser capture)"
 		case "operator_upload":
 			label += " (uploaded image; capture origin not confirmed)"
 		}
 		parts = append(parts, "source="+sanitizeLine(label))
+	}
+	if bl.SourceRef != "" {
+		parts = append(parts, "source ref "+sanitizeLine(bl.SourceRef))
 	}
 	if bl.SourceFlowID > 0 {
 		parts = append(parts, fmt.Sprintf("source flow #%d", bl.SourceFlowID))

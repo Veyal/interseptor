@@ -382,3 +382,6 @@ function initDrag(core) {
 if (typeof document !== 'undefined') {
   loadCore().then((core) => { initKeys(core); initDrag(core); }).catch(() => { /* optional module: a failure must not block boot */ });
 }
+
+// Human label for a finding image/evidence block source; generated sources say so.
+export const evidenceSourceLabel = source => ({ device_screenshot: 'Device capture · reviewer declared', browser_screenshot: 'Browser capture · reviewer declared', operator_upload: 'Uploaded image · origin unconfirmed', flow_preview: 'Generated HTTP preview', evidence_render: 'Generated evidence render · not browser proof', generated_image: 'Generated image · not browser proof', tool_output: 'Tool output', captured_flow: 'Captured traffic' })[source] || source || 'Origin unconfirmed';
