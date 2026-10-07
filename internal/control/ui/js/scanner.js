@@ -42,7 +42,7 @@ export async function loadOob(baseOwner=null){
 function renderOobList(list){
   const c=$('#oobCount');if(c)c.textContent=list.length?list.length+' interaction'+(list.length===1?'':'s'):'';
   const box=$('#oobList');if(!box)return;
-  if(!list.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg></div><div class="state-empty-title">No interactions yet</div><p class="state-empty-hint">Callbacks to a generated URL appear here live.</p></div>';return;}
+  if(!list.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-oob"/></svg></div><div class="state-empty-title">No interactions yet</div><p class="state-empty-hint">Callbacks to a generated URL appear here live.</p></div>';return;}
   box.innerHTML=list.map(it=>`<div class="oob-row">
     <span class="oob-m">${esc(it.method)}</span>
     <span class="oob-p" title="${escAttr(it.path+(it.query?'?'+it.query:''))}">${esc(it.path)}${it.query?'<span style="color:var(--fg3)">?'+esc(it.query)+'</span>':''}</span>
@@ -233,7 +233,7 @@ async function loadCheckDocs(){
     checkDocsLoaded=true;
   }catch(e){
     if(epoch!==checkDocsLoadEpoch)return;
-    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
+    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><p class="state-error-msg" role="alert">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-check-docs-retry]');if(retry)retry.onclick=loadCheckDocs;
   }
 }
@@ -293,7 +293,7 @@ export async function loadChecksList(){
       const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
       return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
         ${cb}<button type="button" class="checks-body checks-edit-target" style="padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer" aria-label="Edit ${escAttr(opts.title)}">
-        <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>':''}</span>
+        <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>':''}</span>
         <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
         </button></div>`;
     };
@@ -328,7 +328,7 @@ export async function loadChecksList(){
     if(epoch!==checkListEpoch||checkToggleBusy)return;
     const box=$('#checksList');if(!box)return;
     box.removeAttribute('aria-busy');
-    box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load checks: ${esc(e.message)}</p><button type="button" class="btn" data-checks-list-retry>Retry</button></div>`;
+    box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><p class="state-error-msg" role="alert">Couldn't load checks: ${esc(e.message)}</p><button type="button" class="btn" data-checks-list-retry>Retry</button></div>`;
     box.querySelector('[data-checks-list-retry]')?.addEventListener('click',loadChecksList);
   }
 }
@@ -440,7 +440,7 @@ export async function checkTest(){
     const findings=r.findings||[];
     if(!findings.length){
       const note=r.note||'no finding';
-      setCheckOutcome(out,`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`);
+      setCheckOutcome(out,`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> No finding — check compiles &amp; runs.</div></div>`);
       setCheckActionState('test','success');resetCheckAction('test',800,epoch);
       return;
     }
@@ -471,7 +471,7 @@ export async function checkSave(){
     if(epoch!==checkActionEpoch||selection!==checkSelId)return;
     if(draftEpoch!==checkDraftEpoch)return;
     checkOverridden=checkBuiltin||checkOverridden;
-    setCheckOutcome(out,'<div class="check-status check-status-ok">Saved ✓ — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>');
+    setCheckOutcome(out,'<div class="check-status check-status-ok">Saved <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>');
     updateCheckDeleteLabel();
     setCheckActionState('save','success');resetCheckAction('save',800,epoch);}
   catch(e){
@@ -527,8 +527,8 @@ async function loadPacksPanel(){
     if(installed.length){
       html+='<div class="hint" style="margin:8px 0 4px;font-weight:700">Installed</div>';
       html+=installed.map(p=>{
-        const sig=p.signed==='builtin'?'builtin ✓':(p.signed?('signed ✓ '+p.signed):'unsigned');
-        return `<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version||'')} · ${esc(sig)}</span></div>
+        const sig=p.signed==='builtin'?'builtin':(p.signed?('signed '+p.signed):'unsigned');const sigOk=p.signed?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>':'';
+        return `<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version||'')} · ${esc(sig)}${sigOk}</span></div>
         <button type="button" class="btn" data-remove="${escAttr(p.name)}" title="Uninstall pack" aria-label="Uninstall pack ${escAttr(p.name)}">Remove</button></div>`;
       }).join('');
     }
@@ -798,7 +798,7 @@ export function renderScan(){
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
   const focusedTitle=Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
   list.removeAttribute('data-state');
-  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
   const all=groupIssues(scanState.issues);
   const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
   renderScanChips(all);
@@ -847,8 +847,8 @@ export function renderScan(){
 function scanTargetRow(i,n,shared){
   const actions=i.flowId?`<div class="scan-tgt-actions" role="group" aria-label="Actions for ${escAttr(i.target||'this target')}">
       <button type="button" class="btn xs" data-act="open" data-n="${n}">${icon('link')} Open flow #${i.flowId}</button>
-      <button type="button" class="btn xs" data-act="verify" data-n="${n}">${icon('repeat')} Verify in Repeater</button>
-      <button type="button" class="btn xs" data-act="attach" data-n="${n}">${icon('paperclip')} Attach as evidence</button></div>`:'';
+      <button type="button" class="btn xs" data-act="verify" data-n="${n}">${icon('repeater')} Verify in Repeater</button>
+      <button type="button" class="btn xs" data-act="attach" data-n="${n}">${icon('attach')} Attach as evidence</button></div>`:'';
   return `<div class="scan-tgt"><div class="scan-tgt-url">${esc(i.target||'(no target)')}${i.flowId?` <span class="scan-tgt-flow">flow #${i.flowId}</span>`:''}</div>
     ${(!shared&&i.detail)?`<div class="scan-tgt-detail">${esc(i.detail)}</div>`:''}
     ${i.evidence?`<div class="evidence scan-tgt-evidence">${esc(i.evidence)}</div>`:''}${actions}</div>`;

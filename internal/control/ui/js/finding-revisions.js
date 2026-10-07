@@ -6,7 +6,7 @@ const value = v => v == null ? '—' : typeof v === 'string' ? v : JSON.stringif
 // Shared failure component (app.css .state-error): an alerted message plus an
 // optional Retry, instead of a bare sentence assigned as textContent.
 function showErrorState(host, message, retry) {
-  host.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><span class="state-error-msg" role="alert">${esc(message)}</span>${retry ? '<button type="button" class="btn xs" data-revision-retry>Retry</button>' : ''}</div>`;
+  host.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><span class="state-error-msg" role="alert">${esc(message)}</span>${retry ? '<button type="button" class="btn xs" data-revision-retry>Retry</button>' : ''}</div>`;
   if (retry) host.querySelector('[data-revision-retry]').onclick = retry;
 }
 export function renderFindingRevisions() {

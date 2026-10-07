@@ -65,7 +65,8 @@
 .ui-select-opt{flex-direction:row;align-items:center;gap:10px;min-height:36px;padding:9px 10px;border-radius:var(--r-md);font-weight:500}
 .ui-select-opt-title{font-weight:500}
 .ui-select-opt.active{outline:1px solid var(--accent);outline-offset:-1px}
-.ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:var(--fs-sm)}
+.ui-select-check{display:none;flex:none;margin-left:auto;color:var(--accent)}
+.ui-select-opt.sel .ui-select-check{display:inline-block}
 .ui-select-trigger[aria-expanded=true]{border-color:var(--accent);background:var(--bg2)}
 details>summary{min-height:32px;align-content:center}
 details>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
@@ -138,8 +139,8 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 .flow-inspector-request{border-right:1px solid var(--line)}
 .flow-inspector-panes pre{padding:16px;font-size:var(--fs-sm);line-height:var(--lh-loose)}
 .flow-inspector-sides{display:none}
-.act-expandable .act-tool::after{content:' +';color:var(--fg3)}
-.act-expandable.expanded .act-tool::after{content:' −'}
+.act-caret{color:var(--fg3);transition:transform 120ms ease}
+.act-expandable.expanded .act-caret{transform:rotate(180deg)}
 
 /* Fixed payload controls must not consume the stacked request editor's height. */
 @media (max-width: 720px) {

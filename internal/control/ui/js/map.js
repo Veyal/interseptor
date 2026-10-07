@@ -471,8 +471,8 @@ function mapCoverageHTML(e){
   const authHTML = auth.kind === 'unknown' ? '' : `<span class="map-auth is-${auth.kind}" title="${auth.kind === 'auth' ? 'A 401 or 403 was observed for this endpoint' : 'Only successful or redirect statuses were observed'}">${icon(auth.icon)}<span>${esc(auth.label)}</span></span>`;
   const linked = coveragePips(e, mapState.linked).find(p => p.id === 'linked');
   const pipHTML = !linked ? '' : linked.on
-    ? `<span class="map-pip is-on" title="${escAttr(linked.label)}">${icon('paperclip')}<span>Linked</span></span>`
-    : `<span class="map-pip" title="${escAttr(linked.label)}">${icon('ring')}<span class="u-sr">${esc(linked.label)}</span></span>`;
+    ? `<span class="map-pip is-on" title="${escAttr(linked.label)}">${icon('attach')}<span>Linked</span></span>`
+    : `<span class="map-pip" title="${escAttr(linked.label)}">${icon('status-todo')}<span class="u-sr">${esc(linked.label)}</span></span>`;
   return authHTML || pipHTML ? `<span class="map-cov">${authHTML}${pipHTML}</span>` : '';
 }
 
@@ -488,10 +488,10 @@ function mapCtxFor(trigger){
   if(!id) return null;
   const items = [
     { label: 'Open in flow view', icon: 'search', act: () => openMapFlow(id) },
-    { label: 'Send to Repeater', icon: 'repeat', act: () => sendToRepeater({ id }) },
+    { label: 'Send to Repeater', icon: 'repeater', act: () => sendToRepeater({ id }) },
   ];
   const attach = getHook('attachEvidence');
-  if(attach) items.push({ label: 'Attach to finding or create one', icon: 'paperclip', act: () => attach({ kind: 'flow', refs: [id] }, { anchor: trigger }) });
+  if(attach) items.push({ label: 'Attach to finding or create one', icon: 'attach', act: () => attach({ kind: 'flow', refs: [id] }, { anchor: trigger }) });
   return { id, sections: [{ head: 'ENDPOINT', items }] };
 }
 
@@ -556,7 +556,7 @@ export function mapEpRow(e, dim){
     const expanded = searchExpanded||mapState.expandedClusters.has(e._cluster.key);
     const badgeTitle=searchExpanded?'Expanded to show current search matches':`${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}`;
     const badgeLabel=searchExpanded?`Expanded ${extra} ${label} endpoint${extra === 1 ? '' : 's'} to show search matches`:`${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}`;
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
@@ -790,7 +790,7 @@ export function renderMapTree(eps){
     return;
   }
   if(eps.length > MAP_TREE_EAGER_MAX && (mapState.expandAll || mapState.search)){
-    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
+    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
     mapState._treeHosts = null;
     return;
   }
@@ -835,7 +835,7 @@ function mapTableRow(e, showHost){
   if(e._cluster && !e._clusterChild){
     const extra = e._cluster.count - 1;
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
-    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</span>`;
+    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</span>`;
   }
   return `<tr data-flow="${e.lastFlowId || ''}" class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
     ${showHost ? `<td style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
@@ -875,7 +875,7 @@ function renderMapTable(eps){
   const sorted = mapSortEps(eps);
   const showHost = !mapState.domain;
   const sk = mapState.sort.key, sd = mapState.sort.dir;
-  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ' + icon('arrow-up') : ' ' + icon('arrow-down')) : ''}</th>`;
   const head = `<thead><tr>
     ${showHost ? th('host', 'Host', '140px') : ''}
     ${th('method', 'Method', '72px')}

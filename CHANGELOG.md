@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
 - **Evidence render MCP/REST contract.** The MCP `render_intruder_preview` and `render_evidence` read paths called `GET /api/intruder/attacks/{id}/render` and `GET /api/evidence-render`, which did not exist (404 for every kind); the UI MCP descriptor now lists both tools. Both now resolve (`kind`, `runId`, `flowIdA`/`flowIdB`, `flowIds`, `findingIds` whose first id is the chain root), and `POST /api/findings/{id}/evidence-render` accepts the MCP field names `flowIdA`, `flowIdB` and `findingIds`.
 - **Evidence render REST wiring.** `GET /api/intruder/attacks`, `/api/intruder/attacks/{id}` (id may be `latest`) and `/api/intruder/attacks/{id}/render.png?kind=timeline|distribution|race|strip&width=&mask=` (`format=json` returns `{alt,summary,kind,width,height,sourceRef}`); `GET /api/render/authz/{runId}`, `/api/render/flow-diff.png?a=&b=`, `/api/render/flow-waterfall.png?ids=` (max 50) and `/api/render/finding-chain.png?findingId=`. `POST /api/findings/{id}/evidence-render` attaches a render with `source=evidence_render` and a server-stamped `sourceRef`. Credentials in payloads, headers, URLs and diffs are redacted before drawing. `POST /api/authz/run` now also returns a `runId`, and finished Intruder runs are persisted through the run sink; `POST /api/intruder/start` accepts `barrier`.
 - **MCP evidence render tools.** `render_intruder_preview` (kind timeline|distribution|race|strip, attackId default `latest`) and `render_evidence` (authz_matrix|flow_diff|flow_waterfall|finding_chain) return alt text, summary and a bounded base64 data URI without `findingId`, or attach via `POST /api/findings/{id}/evidence-render` with `findingId`. Descriptions state these are generated renders, not browser proof, and that `add_finding_image` with a real screenshot is still required. `start_intruder` gains `barrier` and documents the returned `runId`; `intruder_state` documents the run identity fields.
@@ -34,9 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Flow timing waterfall render (`preview.RenderFlowWaterfall`).** Deterministic PNG of a flow sequence: rows sorted by start then flow id, bars on a shared offset axis (ms, or s above 5000 ms), status chips with glyphs, 2px minimum bar for 0 ms flows, aggregated bucket beyond the row/height budget, and an explicit note that only total duration is recorded (no phase split).
 
 ### Changed
+
 - **History "Time" column is date-aware.** It showed only the time of day, so a flow from last week looked like one from this morning. Today's rows still show `HH:MM:SS`; yesterday's add `Yest`, the same year adds `Oct 5`, and older years show `2025-10-05 14:32`. Months use a fixed English table (not the viewer's locale), days are local calendar days (DST and year boundaries safe), and the cell exposes the full `YYYY-MM-DD HH:MM:SS.mmm UTC+07:00` as a tooltip and to screen readers. Sorting and filtering still use the real timestamp. The labels refresh at local midnight and when the tab regains focus. The default column is 124px (a saved 60px width from older versions upgrades automatically); phone cards reserve a fixed time track so the status column stays aligned. Formatting lives in the DOM-free `js/flow-when.js`.
 
+- **New purpose-drawn icon family.** Every UI icon is redrawn as an inline SVG symbol in one own visual language, "Gate & Lane": 24x24 grid, 1.75 stroke with square caps and mitre joins, `currentColor`, path-only geometry with horizontal, vertical and 45 degree segments, chamfered corners, octagons instead of circles, square pads, and a hold-bar signature on in-path icons. The logo, favicon, login mark and login lock use the same two-lane mark. `intruder` is now a node fanning into a gate, `sev-low` is a down pentagon distinct from `status-done`, severity is shape coded, and the stray inline header bell is a sprite symbol (`i-bell`). Rules, rejected directions and vocabulary are in `docs/ui-icons.md`; `ui_icons_test.go` enforces the construction spec.
+- **Mobile devices and API & MCP now have correct icons.** Mobile devices used a toolbox and API & MCP used the settings sliders; they are now a phone with signal (`i-device-mobile`) and braces around a node (`i-api-mcp`). Codecs no longer use a padlock, Decoder no longer uses a toolbox, Filters no longer use the columns icon, the Settings gear no longer looks like a sun, and one icon no longer stands for several meanings (`toolbox`, `sliders` and `panel` were each used for three or more).
+- **Unicode glyphs and CSS-drawn glyphs are now icons.** Download, fit, refresh, parallel threads, external-link, push/pull, sort and WebSocket direction arrows, check marks, the select checkmark, expand carets, the data-retention warning and the narrow-screen toolbar glyphs are sprite icons. `scripts/ui_icon_sheet.mjs` renders a contact sheet of the sprite. The favicon now carries the Interseptor mark.
+- Retired the aliases `warning`/`alert-tri`, `check-circle`/`ring` (now `status-done`/`status-todo`) and the unused `split-h`, `split-v` and `drawer` symbols.
+
 ### Fixed
+
 - **API index.** The route index describes `unmask`, `includeBody`, `expected`, `png=1` and the `X-Render-*` headers.
 - **Evidence render docs.** Masking defaults and `unmask`/`includeBody`/`expected`, input bounds and limits, the neutral rate-limit wording, the `evidence_render` provenance decision (`sourceRef` instead of `attackId`, `sourceFlowId`, PNG marker) and that the persisted Intruder run record is raw and ships in full-project archives.
 - **Evidence render previews reach every kind.** Proxy bulk bar, Findings header and authz results now open the waterfall, diff, chain and authz-matrix renders that were previously defined but unreachable.
@@ -65,7 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`interseptor update` said "already up to date" right after a release.** It read the hourly cached latest-release lookup meant for the passive startup hint. `update` and `update --check` now always query GitHub (and refresh the cache); only the startup hint keeps using the cache.
 
+- **Blank icons in the report preflight list and the evidence tray.** These called `icon('i-check-circle')`, which resolves to `#i-i-check-circle` and drew nothing. New tests fail on any reference that does not resolve to a defined symbol, on dead symbols, on hard-coded colours and on glyph or emoji icons.
+
 ### Removed
+
 - **Settings "Section" picker.** The compact select duplicated the section buttons next to it. Section navigation now uses the nav buttons at every width (chips on tablet, grouped pushed-page list on phones); the 721-900px layout keeps the buttons visible as a wrapping row instead of hiding them behind the picker.
 
 

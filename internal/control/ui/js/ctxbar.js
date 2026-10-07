@@ -119,7 +119,7 @@ function renderReady(s) {
     for (let i = 0; i < n; i++) segs.appendChild(el('span', i < filled ? 'ctx-seg is-pass' : 'ctx-seg is-gap'));
   }
   setText('ctxReadyText', s.loaded ? (total ? ready + '/' + total : 'No findings') : '…');
-  setUse($('ctxReadyIcon'), total && ready === total ? 'check-circle' : 'ring');
+  setUse($('ctxReadyIcon'), total && ready === total ? 'status-done' : 'readiness');
   const wrap = $('ctxReady');
   if (wrap) { wrap.dataset.stale = s.stale.findings ? 'true' : 'false'; wrap.title = s.stale.findings ? 'Could not refresh findings' : valuetext; }
 }
@@ -130,7 +130,7 @@ function renderBlockers(s) {
   const n = s.blockers.length;
   const label = !s.loaded ? '…' : n ? n + (n === 1 ? ' blocker' : ' blockers') : 'No blockers';
   setText('ctxBlockersText', label);
-  setUse($('ctxBlockersIcon'), n ? 'alert-tri' : 'check-circle');
+  setUse($('ctxBlockersIcon'), n ? 'stop' : 'status-done');
   chip.dataset.count = String(n);
   chip.setAttribute('aria-label', s.loaded ? label + '. Show what blocks the report.' : 'Blockers: loading');
   if (announcer && s.loaded) announcer.update(n);
@@ -178,7 +178,7 @@ export function setCtxProject(name) {
 /* ---- blockers popover ---- */
 function projectRow(b) {
   const li = el('li', 'ctx-pop-row');
-  li.appendChild(iconNode('alert-tri'));
+  li.appendChild(iconNode('alert'));
   li.appendChild(el('span', 'ctx-pop-label', b.label));
   const fix = el('button', 'btn xs', 'Fix');
   fix.type = 'button';
@@ -189,7 +189,7 @@ function projectRow(b) {
 }
 function findingRow(row) {
   const li = el('li', 'ctx-pop-row ctx-pop-finding');
-  li.appendChild(iconNode('flag'));
+  li.appendChild(iconNode('finding'));
   const body = el('span', 'ctx-pop-label');
   body.appendChild(el('strong', '', 'F-' + row.id));
   for (const g of row.gaps) {

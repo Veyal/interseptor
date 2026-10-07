@@ -75,7 +75,7 @@ function renderCard(host, model, onDismiss) {
   model.steps.forEach((s) => {
     const li = el('li', 'checklist-step');
     li.dataset.done = s.done ? 'true' : 'false';
-    li.appendChild(iconNode(s.done ? 'check-circle' : 'ring'));
+    li.appendChild(iconNode(s.done ? 'status-done' : 'status-todo'));
     li.appendChild(el('span', 'checklist-label', s.label));
     li.appendChild(el('span', 'checklist-state', s.done ? 'Done' : 'To do'));
     if (!s.done) {

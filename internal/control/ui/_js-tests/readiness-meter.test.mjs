@@ -44,7 +44,7 @@ test('valuetext and attrs for missing readiness say unknown, not zero', () => {
 test('segments: icon plus state per milestone, reached ones are passes', () => {
   const s = readinessSegments({ stage: 'reproducible' });
   assert.deepEqual(s.map((x) => x.state), ['pass', 'pass', 'todo']);
-  assert.deepEqual(s.map((x) => x.icon), ['i-check-circle', 'i-check-circle', 'i-ring']);
+  assert.deepEqual(s.map((x) => x.icon), ['i-status-done', 'i-status-done', 'i-status-todo']);
   assert.ok(s.every((x) => x.label && x.status));
   assert.deepEqual(readinessSegments(null).map((x) => x.state), ['todo', 'todo', 'todo']);
 });

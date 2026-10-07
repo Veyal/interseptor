@@ -13,10 +13,10 @@ export const sevRank = (s) => {
 };
 
 // Every severity is icon + text; colour only reinforces it.
-const SEV_ICON = { Critical: 'alert-tri', High: 'alert-tri', Medium: 'warning', Low: 'flag', Info: 'ring' };
+const SEV_ICON = { Critical: 'sev-critical', High: 'alert', Medium: 'alert-circle', Low: 'sev-low', Info: 'info' };
 export function severityMeta(sev) {
   const label = SEV_ORDER.includes(sev) ? sev : String(sev || 'Unknown');
-  return { label, icon: SEV_ICON[sev] || 'ring' };
+  return { label, icon: SEV_ICON[sev] || 'info' };
 }
 
 export function groupIssues(issues) {

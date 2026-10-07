@@ -52,6 +52,8 @@ assistants alike. They describe how the existing code is written; match it.
   `js/`. Shared helpers (DOM, `state`, `api()`, formatters, HTTP highlighters, modals, `renderMD`)
   live in `js/core.js`; each feature owns one module. See the
   [Web UI architecture](docs/architecture.md#web-ui) for current shared boundaries and loading.
+  Icons are one inline SVG sprite in `index.html`; follow the [UI icon system](docs/ui-icons.md)
+  (24x24 grid, 1.75 stroke, `currentColor`) and never use emoji or Unicode glyphs as icons.
   Add feature behavior to its owning module, import shared bits from `./core.js`, and `export`
   anything other modules call. Boot-loaded modules wire through `app.js`; lazy modules must keep one
   shared cross-feature loader so no entry point bypasses its readiness boundary.

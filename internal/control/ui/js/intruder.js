@@ -75,12 +75,12 @@ export function outlierChips(r, baseline) {
   return chips;
 }
 
-const CHIP_ICON = { error: 'alert-tri', status: 'alert-tri', length: 'diff', time: 'clock', flag: 'flag', match: 'check-circle' };
+const CHIP_ICON = { error: 'alert', status: 'alert', length: 'diff', time: 'clock', flag: 'finding', match: 'status-done' };
 
 // chipsHTML renders chips with icon + visible text. `esc` is core's escaper.
 export function chipsHTML(r, baseline, esc) {
   return outlierChips(r, baseline)
-    .map((c) => `<span class="intr-chip intr-chip-${c.kind}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'flag'}"/></svg>${esc(c.label)}</span>`)
+    .map((c) => `<span class="intr-chip intr-chip-${c.kind}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'finding'}"/></svg>${esc(c.label)}</span>`)
     .join('');
 }
 
@@ -262,7 +262,7 @@ export function wireIntruderExtras(deps) {
 
   /* row actions: attach, diff vs baseline, copy as */
   let active = 0;
-  const attach = mkButton(doc, 'intrAttach', 'Attach', 'paperclip');
+  const attach = mkButton(doc, 'intrAttach', 'Attach', 'attach');
   const diff = mkButton(doc, 'intrDiffBtn', 'Diff vs baseline', 'diff');
   attach.title = 'Attach the selected attempt as evidence';
   diff.title = 'Compare the selected attempt with the baseline response';

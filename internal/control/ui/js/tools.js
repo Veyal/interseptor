@@ -30,7 +30,7 @@ function repStatusLine(f){
 // REP_RES_EMPTY — the response pane's placeholder before any send. #repResView
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
-const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 let repResponseEpoch=0;
 
 function repSyncResView(t){
@@ -1184,7 +1184,7 @@ const INTR_TPL='POST /login HTTP/1.1\nHost: example.com\nContent-Type: applicati
 const INTR_SNIPER="admin\nadministrator\nroot\n' OR 1=1--\n../../../etc/passwd";
 const INTR_POS=["admin\nadministrator\nroot","password\n123456\nchangeme"];
 // INTR_RESULTS_EMPTY — the idle state of #intrResults before the first attack.
-const INTR_RESULTS_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg></div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div>';
+const INTR_RESULTS_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-intruder"/></svg></div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div>';
 // Live editing mirror of the active tab's mode + payload lists (the other fields —
 // target/template/threads/delay/repeat — live in the DOM and are snapshotted to tabs).
 const INTR_NUM_DEFAULT=()=>({start:1,end:100,step:1,mode:'sequence',count:100,pad:0,unique:false});
@@ -1433,7 +1433,7 @@ function renderIntrHistory(){
   const focusedHistoryID=document.activeElement?.closest?.('#intrHistory .h[data-hid]')?.dataset.hid||'';
   if(!visibleHistory.length){box.removeAttribute('role');box.removeAttribute('aria-label');box.innerHTML='<div class="hint" style="padding:10px">No attacks for this tab yet this session.</div>';return;}
   const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
-  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-selected="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-selected="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-finding"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
   // Live row + past runs are one single-select list (exactly one of them owns
   // the results pane), so they share one listbox and one Tab stop. Arrows move
   // focus only: committing swaps the whole results pane and its config.
@@ -2060,7 +2060,7 @@ function updateIntrSortHeaders(){
     const col=el.dataset.sort;
     const base=col==='id'?'#':col==='payload'?'Payload':col==='status'?'St':col==='length'?'Len':'Time';
     if(intrSort.col===col){
-      el.textContent=base+(intrSort.dir==='asc'?' ▲':' ▼');
+      const sortIcon=intrSort.dir==='asc'?icon('arrow-up'):icon('arrow-down');el.innerHTML=base+' '+sortIcon;
       el.classList.add('sorted');
     }else{
       el.textContent=base;
@@ -2192,7 +2192,7 @@ export function renderIntr(st,{authoritative=true}={}){
     stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
   }
   const box=$('#intrResults');
-  if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
+  if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!displayRes.length){
     box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;

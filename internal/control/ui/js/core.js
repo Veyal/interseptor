@@ -713,7 +713,7 @@ export function enhanceSelect(sel){
         const v=o.value;
         const selOn=v===cur;
         const dis=o.disabled;
-        return `<button type="button" role="option" tabindex="-1" id="${menu.id}Opt${i}" class="ui-select-opt${selOn?' sel':''}${i===inst.active?' active':''}" data-index="${i}" data-value="${escAttr(v)}"${dis?' disabled aria-disabled="true"':''}${o.hidden?' hidden':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span></button>`;
+        return `<button type="button" role="option" tabindex="-1" id="${menu.id}Opt${i}" class="ui-select-opt${selOn?' sel':''}${i===inst.active?' active':''}" data-index="${i}" data-value="${escAttr(v)}"${dis?' disabled aria-disabled="true"':''}${o.hidden?' hidden':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span><svg class="icon ui-select-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>`;
       }).join('');
       const picked=opts.find(o=>o.value===cur)||opts[0];
       valueEl.textContent=picked?picked.textContent:(sel.getAttribute('placeholder')||'…');

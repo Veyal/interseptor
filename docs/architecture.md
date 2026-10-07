@@ -179,7 +179,8 @@ request the server cannot accept. A browser-local write failure is visible but d
 project-database synchronization path. Replacing an ignored malformed pending marker with a valid
 explicit edit immediately re-enables that synchronization path.
 
-The [UI motion specification](ui-motion-spec.md) owns motion behavior and constraints. Other design
+The [UI motion specification](ui-motion-spec.md) owns motion behavior and constraints, and the
+[UI icon system](ui-icons.md) owns the icon sprite, its style rules and how to add an icon. Other design
 notes and per-slice specs/plans live under [`docs/`](.).
 
 Workspace controls use app-rendered dropdowns, checkbox/radio appearances,

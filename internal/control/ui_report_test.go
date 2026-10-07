@@ -131,7 +131,7 @@ func TestUIReportPreflightMounts(t *testing.T) {
 
 func TestUIReportPreflightIsAccessibleAndStyleFree(t *testing.T) {
 	ui := executableJS(readUIAsset(t, "js/report-preflight.js"))
-	for _, want := range []string{`aria-labelledby="reportTitle"`, `tabindex="-1"`, `role="alert"`, `aria-busy`, `aria-label="Fix `, `i-alert-tri`, `i-check-circle`} {
+	for _, want := range []string{`aria-labelledby="reportTitle"`, `tabindex="-1"`, `role="alert"`, `aria-busy`, `aria-label="Fix `, `'alert'`, `'status-done'`} {
 		if !strings.Contains(ui, want) {
 			t.Errorf("report-preflight.js missing accessibility contract %q", want)
 		}

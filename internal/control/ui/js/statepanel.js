@@ -11,7 +11,7 @@
 import { icon, copyText } from './core.js';
 
 export const STATE_KINDS = ['empty-first', 'empty-filtered', 'loading', 'error', 'offline', 'locked'];
-const DEFAULT_ICON = { 'empty-first': 'flag', 'empty-filtered': 'search', loading: 'search', error: 'alert-tri', offline: 'alert-tri', locked: 'lock' };
+const DEFAULT_ICON = { 'empty-first': 'info', 'empty-filtered': 'search', loading: 'search', error: 'alert', offline: 'alert', locked: 'lock' };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);

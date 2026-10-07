@@ -209,7 +209,7 @@ func TestUIScannerCandidatesPromoteVerifyAndFilter(t *testing.T) {
 	}
 	// Severity is icon + text, never colour alone.
 	model := readUIAsset(t, "js/scanner-model.js")
-	requireUIContains(t, model, "Critical: 'alert-tri'", "Info: 'ring'")
+	requireUIContains(t, model, "Critical: 'sev-critical'", "Low: 'sev-low'", "Info: 'info'")
 }
 
 func TestUIScannerRunGateExplainsItselfAndNeverTreatsEmptyScopeAsBlocked(t *testing.T) {

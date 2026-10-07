@@ -50,7 +50,7 @@ export function readinessSegments(readiness) {
   const reached = stageIndex(readiness);
   return MILESTONES.map((m, i) => {
     const pass = reached >= i + 1;
-    return { stage: m.stage, label: m.label, section: m.section, state: pass ? 'pass' : 'todo', icon: pass ? 'i-check-circle' : 'i-ring', status: pass ? 'reached' : 'not reached' };
+    return { stage: m.stage, label: m.label, section: m.section, state: pass ? 'pass' : 'todo', icon: pass ? 'i-status-done' : 'i-status-todo', status: pass ? 'reached' : 'not reached' };
   });
 }
 

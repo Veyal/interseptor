@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, toastError, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode, openFlow, getHook } from './core.js';
+import { $, esc, escAttr, state, toast, toastError, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode, openFlow, getHook, icon } from './core.js';
 import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
 import { sendToRepeater, sendToIntruder } from './tools.js';
 /* ---- flow inspect entry points (Map graph/table, Scanner findings, Findings evidence, …)
@@ -84,12 +84,12 @@ export async function fmRenderSide(side){
   const mime = bodyMime(d, side);
   if(isBinaryMime(mime)){
     const dl=flowBodyDownloadName(state.fm.id,side,mime), href=flowBodyDownloadHref(state.fm.id,side);
-    el.innerHTML = highlightHTTP(headerBlockText(d, side))+`<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len ? ' · '+fmtSize(len) : ''} — binary, not rendered.<br><a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a></div>`;
+    el.innerHTML = highlightHTTP(headerBlockText(d, side))+`<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len ? ' · '+fmtSize(len) : ''} — binary, not rendered.<br><a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a></div>`;
     return;
   }
   if(len > RENDER_CAP){
     const dl=flowBodyDownloadName(state.fm.id,side,mime), href=flowBodyDownloadHref(state.fm.id,side);
-    el.innerHTML = `<div class="hint" style="padding:14px;line-height:1.7">${side === 'req' ? 'Request' : 'Response'} body is <b>${fmtSize(len)}</b> — not rendered.<br><a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a></div>`;
+    el.innerHTML = `<div class="hint" style="padding:14px;line-height:1.7">${side === 'req' ? 'Request' : 'Response'} body is <b>${fmtSize(len)}</b> — not rendered.<br><a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a></div>`;
     return;
   }
   el.innerHTML = '<span class="hint" style="padding:12px">loading…</span>';
@@ -128,7 +128,7 @@ function wireFlowPopupActions(){
   if(!repeater||$('#fmIntruder'))return;
   const intruder=document.createElement('button');
   intruder.type='button';intruder.className='btn';intruder.id='fmIntruder';
-  intruder.title='Load this flow into Intruder';intruder.textContent='Intruder ↗';
+  intruder.title='Load this flow into Intruder';intruder.innerHTML='Intruder '+icon('external');
   const finding=document.createElement('button');
   finding.type='button';finding.className='btn';finding.id='fmFinding';
   finding.title='Add this flow to a finding';finding.textContent='+ Finding';

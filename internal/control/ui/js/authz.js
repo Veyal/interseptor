@@ -19,7 +19,7 @@ let authzIdentityMutationTail=Promise.resolve();
 // hand-rolled `<div class="hint">` placeholders: an empty state is an icon +
 // title + one-line hint, a failure is a .state-error with an alert message.
 const authzEmptyState=(iconName,title,hint)=>`<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${iconName}"/></svg></div><div class="state-empty-title">${title}</div><p class="state-empty-hint">${hint}</p></div>`;
-const authzErrorState=message=>`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><span class="state-error-msg" role="alert">${esc(message)}</span></div>`;
+const authzErrorState=message=>`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><span class="state-error-msg" role="alert">${esc(message)}</span></div>`;
 function setAuthzActionBusy(busy) {
   const modal=$('#authzModal');
   if(busy&&!authzActionBusy){
@@ -185,7 +185,7 @@ function renderIdentities(ids){
     <input class="authz-name btn u-bg3" aria-label="Authorization identity ${i+1} name" placeholder="role e.g. ${i===0?'admin (baseline)':'user'}" value="${escAttr(id.name||'')}">
     <textarea class="authz-hdr rep-edit" aria-label="Authorization identity ${i+1} headers" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
     <div class="u-flex u-gap-1">
-      <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" aria-label="${id.broken?'Unmark':'Mark'} authorization identity ${i+1} as broken" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>'}</button>
+      <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" aria-label="${id.broken?'Unmark':'Mark'} authorization identity ${i+1} as broken" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> broken':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>'}</button>
       <button class="btn danger authz-del" data-i="${i}" aria-label="Remove authorization identity ${i+1}" title="Remove identity"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     ${id.broken&&id.brokenNote?`<div class="hint u-fs-xs u-mt-1 u-warn">${esc(id.brokenNote)}</div>`:''}
@@ -261,7 +261,7 @@ async function checkSessions(){
       +checks.map(c=>c.broken?`<div class="authz-row u-dim">
         <span>${esc(c.name||'(unnamed)')}</span>
         <span class="u-fg3">—</span>
-        <span><span class="u-warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken</span></span>
+        <span><span class="u-warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> broken</span></span>
         <span></span></div>`:`<div class="authz-row${c.sessionInvalid?' flag':''}">
         <span>${esc(c.name||'(unnamed)')}</span>
         <span class="u-bold" style="color:${statusColor(c.status)}">${c.error?'ERR':(c.status||'—')}</span>
@@ -283,11 +283,11 @@ function runBody(){
 
 function renderAuthzRow(r,i){
   let verdict='';
-  if(r.broken)verdict='<span class="u-warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken — skipped</span>';
+  if(r.broken)verdict='<span class="u-warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> broken — skipped</span>';
   else if(i===0)verdict='<span class="hint">baseline</span>';
   else if(r.sessionInvalid)verdict='<span class="u-warn u-bold">session?</span>';
-  else if(r.sameAsBaseline)verdict='<span class="u-danger u-bold"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> same access</span>';
-  else verdict='<span class="hint">differs ✓</span>';
+  else if(r.sameAsBaseline)verdict='<span class="u-danger u-bold"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> same access</span>';
+  else verdict='<span class="hint">differs <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></span>';
   return `<div class="authz-row${r.sameAsBaseline||r.sessionInvalid?' flag':''}${r.broken?' authz-broken-row':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
     <span class="u-dim"${r.broken?'':''}>${esc(r.name||'(unnamed)')}</span>
     <span class="u-bold" style="color:${r.broken?'var(--fg3)':statusColor(r.status)}">${r.broken?'—':(r.error?'ERR':(r.status||'—'))}</span>
@@ -310,7 +310,7 @@ function renderAuthzListBulk(runs){
     html+=`<details class="panel-details"${flagged?' open':''}>
       <summary class="u-cursor u-mono u-fs-xs ${flagged?'u-danger':'u-fg'}">
         <span class="u-accent u-bold">${esc(run.method)}</span> ${esc(run.host)}${esc(run.path||'/')}
-        ${flagged?' · <b class="u-danger"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> access issue</b>':''}
+        ${flagged?' · <b class="u-danger"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> access issue</b>':''}
       </summary>
       <div class="authz-row authz-head u-mt-2"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>
       ${(run.results||[]).map((r,i)=>renderAuthzRow(r,i)).join('')}
@@ -334,7 +334,7 @@ function renderAuthzMatrix(runs){
       ${(run.results||[]).map((r,i)=>{
         const warn=i>0&&r.sameAsBaseline;
         const err=!!r.error||r.status===0;
-        return `<td class="matrix-td u-ta-center"${r.flowId?` data-flow="${r.flowId}"`:''}>${i===0?`<span class="hint u-fs-xs">—</span>`:`<span class="u-bold" style="color:${err?'var(--fg3)':statusColor(r.status)}">${err?'ERR':(r.status||'—')}</span><span class="u-fg3 u-fs-xs u-block">${fmtSize(r.length)}</span>${warn?'<span class="u-danger u-fs-xs"><svg class="icon" role="img" aria-label="same access as baseline" focusable="false"><use href="#i-warning"/></svg></span>':''}${r.sessionInvalid?'<span class="u-warn u-fs-xs">sess?</span>':''}`}</td>`;
+        return `<td class="matrix-td u-ta-center"${r.flowId?` data-flow="${r.flowId}"`:''}>${i===0?`<span class="hint u-fs-xs">—</span>`:`<span class="u-bold" style="color:${err?'var(--fg3)':statusColor(r.status)}">${err?'ERR':(r.status||'—')}</span><span class="u-fg3 u-fs-xs u-block">${fmtSize(r.length)}</span>${warn?'<span class="u-danger u-fs-xs"><svg class="icon" role="img" aria-label="same access as baseline" focusable="false"><use href="#i-alert"/></svg></span>':''}${r.sessionInvalid?'<span class="u-warn u-fs-xs">sess?</span>':''}`}</td>`;
       }).join('')}
     </tr>`;
   }
@@ -369,8 +369,8 @@ function renderAuthzResults(d){
   const toggleHtml=`<div class="row u-gap-2 u-mb-2">
     <span class="hint">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged</span>
     <div class="spacer"></div>
-    <button class="btn${authzViewMode==='list'?' on':''} xs" id="authzViewList">☰ List</button>
-    <button class="btn${authzViewMode==='matrix'?' on':''} xs" id="authzViewMatrix">⊞ Matrix</button>
+    <button class="btn${authzViewMode==='list'?' on':''} xs" id="authzViewList"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg> List</button>
+    <button class="btn${authzViewMode==='matrix'?' on':''} xs" id="authzViewMatrix"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"/></svg> Matrix</button>
     ${authzImageButton(d)}
   </div>`;
   box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
@@ -408,7 +408,7 @@ function renderCrossHostResults(d){
       <span class="u-mono u-fs-xs">${esc(r.host)}</span>
       <span class="u-bold" style="color:${err?'var(--fg3)':statusColor(r.status)}">${err?'ERR':(r.status||'—')}</span>
       <span>${fmtSize(r.length)}</span>
-      <span>${r.accepted?'<span class="u-danger u-bold"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> accepted</span>':'<span class="hint">rejected ✓</span>'}</span>
+      <span>${r.accepted?'<span class="u-danger u-bold"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> accepted</span>':'<span class="hint">rejected <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></span>'}</span>
     </div>`;
   });
   box.innerHTML=html;

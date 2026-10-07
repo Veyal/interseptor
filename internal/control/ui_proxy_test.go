@@ -178,7 +178,7 @@ func TestUIProxyEmptyStatesUseStatePanelAndChecklist(t *testing.T) {
 
 func TestUIProxyPaperclipColumnReflectsLinkedFindings(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
-	requireUIContains(t, src, "{key:'attached'", "attachedLabel(", "flowFindings(", "icon('paperclip')", "tr-att")
+	requireUIContains(t, src, "{key:'attached'", "attachedLabel(", "flowFindings(", "icon('attach')", "tr-att")
 	css := readUIAsset(t, "panel-proxy.css")
 	requireUIContains(t, css, ".tr-att")
 	if !strings.Contains(src, "visually") && !strings.Contains(src, "u-sr") {

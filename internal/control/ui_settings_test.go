@@ -124,7 +124,7 @@ func TestUISettingsEngagementUsesOneRenderer(t *testing.T) {
 
 func TestUISettingsHealthChipsPairIconAndText(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/settings-health.js"))
-	requireUIContains(t, src, "sectionHealth(", "'/api/readiness'", "check-circle", "alert-tri", "ring", "projectState.subscribe(", "settings-health")
+	requireUIContains(t, src, "sectionHealth(", "'/api/readiness'", "status-done", "alert", "status-todo", "projectState.subscribe(", "settings-health")
 	css := readUIAsset(t, "settings.css")
 	requireUIContains(t, css, ".settings-health", `[data-state="warn"]`)
 }

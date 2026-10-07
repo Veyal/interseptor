@@ -94,7 +94,7 @@ async function setupReadiness(){
     if(!ownsReadiness())return null;
     const ids=['proxy','tls_intercept','traffic'];
     const checks=ids.map(id=>(report.checks||[]).find(c=>c.id===id)).filter(Boolean);
-    box.innerHTML=checks.map(c=>`<div class="${c.ok?'u-accent':'u-warn'}">${c.ok?'✓':'!'} ${esc(c.detail)}${!c.ok&&c.fix?' — '+esc(c.fix):''}</div>`).join('');
+    box.innerHTML=checks.map(c=>`<div class="${c.ok?'u-accent':'u-warn'}">${c.ok?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-status-done"/></svg>':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>'} ${esc(c.detail)}${!c.ok&&c.fix?' — '+esc(c.fix):''}</div>`).join('');
     return report;
   }catch(e){
     if(!ownsReadiness())return null;
@@ -112,7 +112,7 @@ function renderStep() {
   // The CA step owns its trust gate. Never carry that disabled state into a
   // different step when the operator navigates Back or forward again.
   next.disabled=false;
-  next.textContent = step === LAST ? 'Finish ✓' : 'Next ▸';
+  next.textContent = step === LAST ? 'Finish' : 'Next ▸';
   const b = $('#setupBody');
   if (step === 0) {
     const addr = esc(state.proxyAddr || '127.0.0.1:8080');
@@ -167,7 +167,7 @@ function renderStep() {
     const cmd = TRUST_COMMANDS[os];
     const cmdBox = cmd ? `<div class="row u-gap-2 u-mt-3"><code class="evidence u-flex-1 u-m-0 u-fs-xs u-prewrap u-break">${esc(cmd)}</code><button class="btn" id="setupCopyCmd" aria-label="Copy trust command" title="Copy trust command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div><p class="hint u-m-0 u-mt-1">…or paste this one-liner into a terminal after downloading.</p>` : '';
     b.innerHTML = `<p class="u-m-0 u-mb-3">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
-      <a class="btn accent u-no-underline u-inline-block u-mb-4" href="/api/ca.crt" download>⤓ Download CA certificate</a>
+      <a class="btn accent u-no-underline u-inline-block u-mb-4" href="/api/ca.crt" download><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download CA certificate</a>
       <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol class="setup-steps u-fg2">${trust}</ol></details>
       ${cmdBox}
       <label class="icpt-chk u-flex u-gap-2 u-mt-3 u-cursor u-fg2"><input type="checkbox" id="setupTrusted"> I've installed &amp; trusted the CA</label>
@@ -200,7 +200,7 @@ function renderStep() {
         const msg = $('#setupScopeMsg');
         if (msg) {
           msg.setAttribute('role', 'status');
-          msg.innerHTML = '<span class="u-accent">✓ added ' + esc(host) + ' to scope</span>';
+          msg.innerHTML = '<span class="u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> added ' + esc(host) + ' to scope</span>';
         }
         const input = $('#setupScopeHost');
         setupLastScopeHost = host;
