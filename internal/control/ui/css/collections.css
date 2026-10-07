@@ -109,7 +109,7 @@
 .coll-vt[data-s="dynamic"],.coll-vt[data-s="secret"]{background:var(--noteDim);color:var(--amber)}
 
 /* tabs */
-.coll-tabs{flex:none;display:flex;gap:2px;padding:0 var(--sp-3);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.coll-tabs{flex:none;display:flex;gap:2px;padding:0 var(--sp-3);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
 .coll-tab{flex:none;min-height:var(--hit-min);padding:0 var(--sp-2);background:transparent;border:0;border-bottom:2px solid transparent;color:var(--fg2);font:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:var(--sp-1)}
 .coll-tab:hover{color:var(--fg)}
 .coll-tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
