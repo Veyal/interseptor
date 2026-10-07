@@ -173,8 +173,8 @@ export function wireRepeaterExtras(deps) {
   const attachedFlows = new Set();
 
   /* toolbar */
-  const attach = button(doc, { id: 'repAttach', icon: 'paperclip', text: 'Attach as evidence', cls: 'btn xs btn-primary' });
-  const proof = button(doc, { id: 'repProof', icon: 'check-circle', text: 'Save as proof' });
+  const attach = button(doc, { id: 'repAttach', icon: 'attach', text: 'Attach as evidence', cls: 'btn xs btn-primary' });
+  const proof = button(doc, { id: 'repProof', icon: 'status-done', text: 'Save as proof' });
   const diff = button(doc, { id: 'repDiffBtn', icon: 'diff', text: 'Diff vs previous' });
   const copy = button(doc, { id: 'repCopyAs', icon: 'copy', text: 'Copy as', label: 'Copy the sent request in another format' });
   copy.setAttribute('aria-haspopup', 'menu');
@@ -182,7 +182,7 @@ export function wireRepeaterExtras(deps) {
   chip.id = 'repAttachedChip';
   chip.className = 'rep-attached';
   chip.hidden = true;
-  chip.appendChild(iconNode(doc, 'paperclip'));
+  chip.appendChild(iconNode(doc, 'attach'));
   chip.appendChild(doc.createTextNode(' Attached'));
   group.prepend(attach, proof, diff, copy, chip);
 

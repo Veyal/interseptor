@@ -2,10 +2,10 @@
 import { $, esc, state, api, toast, toastError, renderLoadError } from './core.js';
 
 const VERDICT = {
-  ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '✓' },
+  ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-status-done"/></svg>' },
   tls_blocked: { label: 'TLS blocked — pinning or untrusted CA', color: 'var(--red)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg>' },
-  no_traffic: { label: 'No traffic captured yet', color: 'var(--amber)', icon: '○' },
-  no_https: { label: 'No HTTPS traffic intercepted yet (HTTP only so far)', color: 'var(--amber)', icon: '?' },
+  no_traffic: { label: 'No traffic captured yet', color: 'var(--amber)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-status-todo"/></svg>' },
+  no_https: { label: 'No HTTPS traffic intercepted yet (HTTP only so far)', color: 'var(--amber)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>' },
 };
 
 export const BANNER_HIDDEN_KEY = 'tlsDiagBannerHidden';

@@ -82,9 +82,9 @@ const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><
 
 function tileHTML(t, { editable }) {
   const label = `${t.kind === 'shot' ? 'Screenshot' : 'Flow'} ${t.position} of ${t.total}: ${t.title}${t.missing ? ' (' + t.detail + ')' : ''}`;
-  const thumb = t.thumb ? `<img class="et-thumb" src="${esc(t.thumb)}" alt="${esc(t.alt)}" loading="lazy">` : `<span class="et-kind">${icon(t.kind === 'shot' ? 'i-evidence' : 'i-link')}</span>`;
+  const thumb = t.thumb ? `<img class="et-thumb" src="${esc(t.thumb)}" alt="${esc(t.alt)}" loading="lazy">` : `<span class="et-kind">${icon(t.kind === 'shot' ? 'evidence' : 'link')}</span>`;
   const controls = editable
-    ? `<span class="et-actions"><button type="button" class="btn xs" data-et-move="-1" aria-label="Move earlier: ${esc(t.title)}"${t.position === 1 ? ' disabled' : ''}>${icon('i-chevron')}<span class="u-sr">Earlier</span></button><button type="button" class="btn xs" data-et-move="1" aria-label="Move later: ${esc(t.title)}"${t.position === t.total ? ' disabled' : ''}>${icon('i-chevron')}<span class="u-sr">Later</span></button><button type="button" class="btn xs danger" data-et-remove aria-label="Remove from evidence: ${esc(t.title)}">${icon('i-close')}<span class="u-sr">Remove</span></button></span>`
+    ? `<span class="et-actions"><button type="button" class="btn xs" data-et-move="-1" aria-label="Move earlier: ${esc(t.title)}"${t.position === 1 ? ' disabled' : ''}>${icon('chevron')}<span class="u-sr">Earlier</span></button><button type="button" class="btn xs" data-et-move="1" aria-label="Move later: ${esc(t.title)}"${t.position === t.total ? ' disabled' : ''}>${icon('chevron')}<span class="u-sr">Later</span></button><button type="button" class="btn xs danger" data-et-remove aria-label="Remove from evidence: ${esc(t.title)}">${icon('close')}<span class="u-sr">Remove</span></button></span>`
     : '';
   return `<li class="et-tile${t.missing ? ' is-missing' : ''}" role="group" aria-roledescription="evidence tile" aria-label="${esc(label)}" data-et-index="${t.index}" tabindex="${t.position === 1 ? '0' : '-1'}">${thumb}<span class="et-body"><span class="et-title">${esc(t.title)}</span><span class="et-meta">${esc(t.detail)}${t.role ? ' · ' + esc(t.role) : ''}${t.hasProof ? ' · proof statement' : ''}</span></span>${controls}</li>`;
 }

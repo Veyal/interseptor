@@ -4,7 +4,6 @@
    (app.css) so assistive tech never sees two navs. Only transform and opacity
    animate; the reduced-motion block at the end removes that motion. */
 
-.dock-sprite{position:absolute;width:0;height:0;overflow:hidden}
 
 /* ---- bottom navigation: hidden above the phone breakpoint ---- */
 #dock{display:none}

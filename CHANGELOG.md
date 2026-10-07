@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **New purpose-drawn icon family.** Every UI icon is redrawn as an inline SVG symbol on one grid (24x24, 1.75 stroke, round caps, `currentColor`) with a consistent vocabulary: intercept is a hold gate, Repeater a loop, Intruder a payload fan, Scanner a radar sweep, Map a site tree, Findings a flag, Settings sliders, Activity a pulse, scope corner brackets, TLS a certificate with seal, OOB a callback antenna. The sprite is a single deduplicated set (the mobile dock no longer carries its own) of 81 symbols with semantic ids. See `docs/ui-icons.md`.
+- **Mobile devices and API & MCP now have correct icons.** Mobile devices used a toolbox and API & MCP used the settings sliders; they are now a phone with signal (`i-device-mobile`) and braces around a node (`i-api-mcp`). Codecs no longer use a padlock, Decoder no longer uses a toolbox, Filters no longer use the columns icon, the Settings gear no longer looks like a sun, and one icon no longer stands for several meanings (`toolbox`, `sliders` and `panel` were each used for three or more).
+- **Unicode glyphs and CSS-drawn glyphs are now icons.** Download, fit, refresh, parallel threads, external-link, push/pull, sort and WebSocket direction arrows, check marks, the select checkmark, expand carets, the data-retention warning and the narrow-screen toolbar glyphs are sprite icons. `scripts/ui_icon_sheet.mjs` renders a contact sheet of the sprite. The favicon now carries the Interseptor mark.
+- Retired the aliases `warning`/`alert-tri`, `check-circle`/`ring` (now `status-done`/`status-todo`) and the unused `split-h`, `split-v` and `drawer` symbols.
+
+### Fixed
+
+- **Blank icons in the report preflight list and the evidence tray.** These called `icon('i-check-circle')`, which resolves to `#i-i-check-circle` and drew nothing. New tests fail on any reference that does not resolve to a defined symbol, on dead symbols, on hard-coded colours and on glyph or emoji icons.
+
 ## [2.4.2] - 2026-10-06
 
 > v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.

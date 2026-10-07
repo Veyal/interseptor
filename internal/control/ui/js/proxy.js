@@ -277,7 +277,7 @@ export function renderFlowHead(){
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
-    const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
+    const arrow=c.sort===sk?(sd>0?' '+icon('arrow-up'):' '+icon('arrow-down')):'';
     return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
@@ -417,10 +417,10 @@ function flowRowHTML(f){
   const title=rowTitle?` title="${escAttr(rowTitle)}"`:'';
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
-    attached:`<div class="tr-att" data-field="attached">${linked?`<span title="${escAttr(linked)}">${icon('paperclip')}<span class="u-sr">${esc(linked)}</span></span>`:''}</div>`,
+    attached:`<div class="tr-att" data-field="attached">${linked?`<span title="${escAttr(linked)}">${icon('attach')}<span class="u-sr">${esc(linked)}</span></span>`:''}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${f.scheme==='https'?icon('lock','HTTPS')+' ':''}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path"${phoneCard?` title="${escAttr(f.path)}"`:''}>${esc(phoneCard?middleEllipsis(f.path,44):f.path)}${intercepted?` <span class="tr-held" title="intercepted" role="img" aria-label="intercepted">${icon('flag')}</span>`:''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
+    path:`<div class="tr-path" data-field="path"${phoneCard?` title="${escAttr(f.path)}"`:''}>${esc(phoneCard?middleEllipsis(f.path,44):f.path)}${intercepted?` <span class="tr-held" title="intercepted" role="img" aria-label="intercepted">${icon('finding')}</span>`:''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -730,7 +730,7 @@ export function handleFlowUpdate(f){
 
 export function getStartedCard(){
   return `<div class="state-empty history-welcome">
-    <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div>
+    <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-proxy"/></svg></div>
     <div class="state-empty-title">Your traffic starts here</div>
     <p class="state-empty-hint">Connect a client to <code>${esc(state.proxyAddr)}</code>. Requests appear here as they arrive.</p>
     <div class="history-welcome-actions"><button type="button" class="btn btn-primary" id="gsSettings">Connection settings</button><button type="button" class="btn" id="gsTLS">HTTPS setup</button></div>
@@ -861,7 +861,7 @@ function renderEmptyHistory(box){
     renderState(box,'empty-filtered',{title:model.title,hint:model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
     return;
   }
-  renderState(box,'empty-first',{title:model.title,hint:model.hint,icon:'traffic'});
+  renderState(box,'empty-first',{title:model.title,hint:model.hint,icon:'proxy'});
   const wrap=box.querySelector('.state-panel');
   const actions=document.createElement('div');
   actions.className='history-welcome-actions';
@@ -1328,7 +1328,7 @@ function fetchRawMessage(flowId,side,detail){
   return api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{cache.map.set(key,raw);return raw;});
 }
 function wsFrameRow(dir,opcode,length,text){
-  const arrow=dir==='send'?'<span class="ws-dir-send">▲ send</span>':'<span class="u-accent">▼ recv</span>';
+  const arrow=dir==='send'?'<span class="ws-dir-send">'+icon('arrow-up')+' send</span>':'<span class="u-accent">'+icon('arrow-down')+' recv</span>';
   const replayable=opcode===1; // text frames only — binary has no editable text to load
   return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" title="Click to load this frame into the replay box"`:''}>
     <span class="ws-col ws-col-dir">${arrow}</span>
@@ -1369,7 +1369,7 @@ export async function renderWSFrames(id){
     }
     const box=`<div class="ws-replay-row">
         <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" class="ws-replay-input">
-        <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
+        <button class="btn accent" id="wsSendBtn">${icon('arrow-up')} Send</button></div>
       <div id="wsReplayOut" class="ws-replay-out"></div>`;
     $('#resView').innerHTML=box+`<div id="wsFrameList" data-flow-id="${id}">${list}</div>`;
     wireWsFrames($('#resView'));
@@ -1403,7 +1403,7 @@ async function wsReplay(url){
     if(!current())return;
     if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
   }catch(e){if(current())out.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';
-  }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='▲ Send';}}
+  }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.innerHTML=icon('arrow-up')+' Send';}}
 }
 export async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
@@ -1485,7 +1485,7 @@ export async function renderSide(side){
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint body-note body-note-flush">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
-        <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
+        <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a>
         <button class="btn body-action body-action-next" data-bin="1">Show raw anyway</button>
         <button class="btn body-action body-action-next" data-bin-hex="1">Hex dump</button></div>`;
     const b=el.querySelector('[data-bin]');
@@ -1503,7 +1503,7 @@ export async function renderSide(side){
   if(len>RENDER_CAP){
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=`<div class="hint body-note body-note-lg">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
-      <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
+      <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a>
       <button class="btn body-action" data-bigshow="1">Show anyway</button></div>`;
     const b=el.querySelector('[data-bigshow]');
     if(b)b.onclick=()=>{el.innerHTML='<span class="hint body-pad">rendering…</span>';setTimeout(draw,10);};
@@ -2046,7 +2046,7 @@ function flowGlobalSection(f,head,side='both'){
 
   items.push({sep:true},
     ...(side==='req'?[]:side==='res'?[]:rawExportItems(f,'res')),
-    {label:'Scan this host',icon:'search',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
+    {label:'Scan this host',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
     {label:'Authz test',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
     {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)});
   return {head:head||'REQUEST', items};
@@ -2120,7 +2120,7 @@ export function showCtx(x,y,f,field){
   if(selN)tagItems.push({label:'Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
   sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
-  const fitems=ff.map(x=>({label:x.title,icon:'pin',val:x.severity,act:()=>openFinding(x.id)}));
+  const fitems=ff.map(x=>({label:x.title,icon:'finding',val:x.severity,act:()=>openFinding(x.id)}));
   fitems.push({label:'Add to finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
   sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
   if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
@@ -2489,7 +2489,7 @@ function syncDock(){
   if(btn){
     btn.hidden=resolveDock('drawer',window.innerWidth)!=='drawer'||!getHook('openFlow');
     btn.setAttribute('aria-pressed',drawer?'true':'false');
-    btn.innerHTML=icon('panel')+(drawer?' Side drawer':' Bottom inspector');
+    btn.innerHTML=icon(drawer?'panel-right':'panel-bottom')+(drawer?' Side drawer':' Bottom inspector');
   }
   return drawer;
 }

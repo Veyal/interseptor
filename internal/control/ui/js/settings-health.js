@@ -9,7 +9,7 @@ import { sectionHealth } from './settings-model.js';
 import { TAB_CHANGE_EVENT } from './shell-hooks.js';
 
 const SECTIONS = ['proxy', 'tls', 'scope', 'scanner', 'session'];
-const ICONS = { ok: 'check-circle', warn: 'alert-tri', unknown: 'ring' };
+const ICONS = { ok: 'status-done', warn: 'alert', unknown: 'status-todo' };
 const MIN_GAP_MS = 5000;
 let readiness = null;
 let stale = false;
@@ -51,7 +51,7 @@ function paint(chip, health) {
   chip.title = (health.detail || '') + (chip.dataset.stale === 'true' ? ' (could not refresh)' : '');
   const label = document.createElement('span');
   label.textContent = health.text + (chip.dataset.stale === 'true' ? ' (stale)' : '');
-  chip.append(iconNode(ICONS[health.state] || 'ring'), label);
+  chip.append(iconNode(ICONS[health.state] || 'status-todo'), label);
 }
 
 export function renderHealth() {

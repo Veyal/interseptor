@@ -175,7 +175,7 @@ function findingIsEmpty(f) {
 
 function findingListMeta(f) {
   const st = f.status === 'needs_verification'
-    ? '<span class="find-needs-verif" title="Needs human verification"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> needs verification</span>'
+    ? '<span class="find-needs-verif" title="Needs human verification"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> needs verification</span>'
     : esc(statusLabel(f.status));
   const readiness = findingReadiness(f);
   const ready = readiness.ready
@@ -534,7 +534,7 @@ function renderBlockEl(b, i, total) {
       return `<div class="find-block find-doc-image find-block-missing" data-i="${i}">
         ${controls}${blockMetaEditor(b, i)}
         <blockquote class="find-poc-callout find-poc-missing">
-          <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot — evidence blob missing</div>
+          <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> Screenshot — evidence blob missing</div>
           <span class="hint">${esc(b.hash || '')}</span>
         </blockquote>
         <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
@@ -558,7 +558,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-flow find-block-missing" data-i="${i}">
       ${controls}
       <blockquote class="find-poc-callout find-poc-missing">
-        <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
+        <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
         <span class="hint">Re-capture this endpoint to restore evidence</span>
       </blockquote>
       <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
@@ -1072,14 +1072,14 @@ function renderFindingDetail() {
     if (missFlow) parts.push(`${missFlow} PoC flow${missFlow === 1 ? '' : 's'} deleted from history`);
     if (missImg) parts.push(`${missImg} screenshot${missImg === 1 ? '' : 's'} missing`);
     if (badType) parts.push(`${badType} unknown block type${badType === 1 ? '' : 's'} (edit & re-save to fix)`);
-    return parts.length ? `<div class="find-missing-banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> ${parts.join(' · ')} — restore evidence if needed.</div>` : '';
+    return parts.length ? `<div class="find-missing-banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> ${parts.join(' · ')} — restore evidence if needed.</div>` : '';
   })();
   const completeBar = readiness.ready
     ? `<div class="find-complete find-complete-ready" role="status"><span class="find-ready">Report ready</span> — claim, evidence, remediation, retest, and review are complete.</div>`
     : `<div class="find-complete find-complete-draft"><span class="find-draft">${esc(findingReadinessLabel(readiness.stage))}</span><div class="find-review-gaps">${readiness.gaps.map(g => `<a href="${findingHref(f.id,findingSectionForGap(g))}" data-gap="${escAttr(g)}" class="find-gap-link"><span>${esc(findingGapLabel(g))}</span><small>${esc((f.readiness?.checks || []).find(check => check.code === g)?.message || '')}</small><span aria-hidden="true">→</span></a>`).join('') || '<span>Add finding content to continue.</span>'}</div>${renderEvidenceCapabilities(f.readiness)}</div>`;
   const verifBanner = f.status === 'needs_verification'
     ? `<div class="find-verif-banner" role="status">
-        <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Needs human verification</div>
+        <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> Needs human verification</div>
         ${edit
           ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" aria-label="Human verification instructions" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
           : `<div class="find-verif-read">${f.verificationInstructions ? esc(f.verificationInstructions) : '<span class="hint">No verification instructions recorded.</span>'}</div>`}
@@ -1103,7 +1103,7 @@ function renderFindingDetail() {
         }).join('')
       : '<span class="hint">Gate detail unavailable</span>';
     return `<section class="find-machine-proof" aria-label="External-agent verification">
-      <div class="find-machine-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> External-agent verification · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
+      <div class="find-machine-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-agent"/></svg> External-agent verification · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
       <div class="hint">Class <b>${esc(v.vulnClass || '—')}</b>${v.runId ? ' · run #' + esc(String(v.runId)) : ''}${v.reproCount ? ' · repro ×' + esc(String(v.reproCount)) : ''}${v.oobToken ? ' · OOB' : ''}</div>
       <div class="find-gate-list">${gateRows}</div>
       ${(v.baselineFlow || v.payloadFlow) ? `<div class="hint">PoC flows: ${[v.baselineFlow && ('#' + v.baselineFlow), v.payloadFlow && ('#' + v.payloadFlow)].filter(Boolean).join(' · ')}</div>` : ''}
@@ -1121,24 +1121,24 @@ function renderFindingDetail() {
         : `${f.why ? `<section class="find-sec" id="find-sec-why"><h3>Why this matters</h3><div class="md">${renderMD(f.why)}</div></section>` : ''}`}
       ${(f.cvss || f.cwe || f.environment) ? `<p class="hint">${[f.cvss && 'CVSS ' + esc(f.cvss), f.cwe && esc(f.cwe), f.environment && esc(f.environment)].filter(Boolean).join(' · ')}</p>` : ''}
       <div class="find-tags-bar"><div class="find-tag-chips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">no tags</span>'}</div>
-        ${edit ? `<button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Tags</button>` : ''}</div>
+        ${edit ? `<button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg> Tags</button>` : ''}</div>
     </div></details>`;
 
   box.innerHTML = `<article class="find-article find-workspace${edit ? ' find-editing' : ' find-reading'}">
     <header class="find-header find-header-sticky">
       <div class="find-header-top">
-        <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings">← Findings</button>
+        <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
         <span class="find-id-badge">FINDING #${f.id}</span>
         ${edit
           ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity" style="color:${sevColor(f.severity)}">${sevOpts}</select>
              <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
-             <button class="btn xs" id="findRename" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg></button>`
+             <button class="btn xs" id="findRename" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>`
           : `<span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
              <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
              <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
-        <button type="button" class="btn" id="findCopyLink" title="Copy link to this section">Copy link</button>
+        <button type="button" class="btn" id="findCopyLink" title="Copy link to this section" aria-label="Copy link to this section"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="lbl-long"> Copy link</span></button>
         <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>
       <div class="find-context-line"><span class="find-target">${esc(f.target || 'Target not recorded')}</span><a href="${findingHref(f.id,'review')}" data-find-section="review" class="find-stage-link">${esc(findingReadinessLabel(readiness.stage))}${readiness.gaps.length ? ` · ${readiness.gaps.length} to complete` : ''}</a>${f.readiness ? readinessMeterHTML(f.readiness, { size: 'full', hrefFor: section => findingHref(f.id, section), labelFor: findingGapLabel, id: 'findMeter' }) : ''}</div>
@@ -1438,7 +1438,7 @@ function renderFindReportBody(fid) {
       step++;
       const imageMeta = `<div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(evidenceSourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
       if (b.missing) {
-        return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}<div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot missing</div></div></div>`;
+        return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}<div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> Screenshot missing</div></div></div>`;
       }
       const src = b.url || ('/api/findings/images/' + (b.hash || ''));
       return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}
@@ -1449,7 +1449,7 @@ function renderFindReportBody(fid) {
       step++;
       if (b.missing) {
         return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div>
-          <div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
+          <div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
       }
       const reqLine = b.method
         ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
@@ -1463,7 +1463,7 @@ function renderFindReportBody(fid) {
            </div>
            <div class="find-evidence-actions">
              <button type="button" class="btn find-inline-toggle" data-flow="${b.flowId}" aria-expanded="false" aria-controls="find-inline-${index}">Inspect evidence</button>
-             <a class="btn xs find-open-flow" href="#finding-${fid}/flow-${b.flowId}" data-flow="${b.flowId}">Open inspector ↗</a>
+             <a class="btn xs find-open-flow" href="#finding-${fid}/flow-${b.flowId}" data-flow="${b.flowId}">Open inspector <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-external"/></svg></a>
            </div>
            <div class="find-inline-inspector" id="find-inline-${index}" hidden>
              <div class="find-inline-toolbar"><div class="seg" role="group" aria-label="Evidence side"><button type="button" data-side="req" aria-pressed="true" class="on">Request</button><button type="button" data-side="res" aria-pressed="false">Response</button></div><button type="button" class="btn xs" data-copy-evidence>Copy</button></div>
@@ -1666,7 +1666,7 @@ function renderFlowPickList(filter = '') {
   if (!list) return;
   const rows = flowPickFilter(filter);
   if (!rows.length) {
-    list.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">Capture traffic through the proxy first.</p></div>';
+    list.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-proxy"/></svg></div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">Capture traffic through the proxy first.</p></div>';
   } else {
     list.innerHTML = rows.map(f => {
       const on = flowPickSel.has(f.id);

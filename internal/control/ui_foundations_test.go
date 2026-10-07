@@ -35,18 +35,14 @@ var foundationRegions = []string{
 // copy, columns, panel and scope replace Unicode glyphs in static markup; the
 // rest are reserved for the shared components that adopt them.
 var foundationIcons = []string{
-	"scope", "identity", "evidence", "paperclip", "check-circle", "ring", "alert-tri",
-	"drawer", "link", "split-h", "split-v", "diff", "copy", "columns", "chevron", "panel",
-	"close", "plus", "flag", "pin", "target",
+	"scope", "identity", "evidence", "attach", "status-done", "status-todo", "alert",
+	"link", "diff", "copy", "columns", "chevron", "panel-right",
+	"close", "plus", "finding", "target",
 }
 
 // foundationReservedIcons may be defined without a use site until the owning
 // shared component lands (TestUIUsesVectorIconsNotEmoji otherwise forbids this).
-var foundationReservedIcons = map[string]bool{
-	"identity": true, "evidence": true, "paperclip": true, "check-circle": true,
-	"ring": true, "alert-tri": true, "drawer": true, "link": true,
-	"split-h": true, "split-v": true, "diff": true,
-}
+var foundationReservedIcons = map[string]bool{}
 
 func foundationReadAll(t *testing.T, names []string) map[string]string {
 	t.Helper()

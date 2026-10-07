@@ -345,39 +345,9 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 	if !strings.Contains(index, `<svg id="iconSprite"`) {
 		t.Fatal("index.html is missing the inline icon sprite")
 	}
-	// Every icon referenced anywhere must exist in the sprite.
-	defined := map[string]bool{}
-	for _, m := range regexp.MustCompile(`<symbol id="i-([a-z-]+)"`).FindAllStringSubmatch(index, -1) {
-		defined[m[1]] = true
-	}
-	if len(defined) == 0 {
-		t.Fatal("icon sprite defines no symbols")
-	}
-	used := map[string]bool{}
-	for _, name := range assets {
-		asset := readUIAsset(t, name)
-		for _, m := range regexp.MustCompile(`href="#i-([a-z-]+)"`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-		// icon('name') / icon("name") calls in JS.
-		for _, m := range regexp.MustCompile(`\bicon\(['"]([a-z-]+)['"]`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-		// ctx-menu items declaring icon:'name'
-		for _, m := range regexp.MustCompile(`icon:\s*['"]([a-z-]+)['"]`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-	}
-	for name := range used {
-		if !defined[name] {
-			t.Errorf("icon %q is referenced but not defined in the sprite", name)
-		}
-	}
-	for name := range defined {
-		if !used[name] && !foundationReservedIcons[name] {
-			t.Errorf("icon %q is defined in the sprite but never used — drop it", name)
-		}
-	}
+	// Reference/definition integrity (every use resolves, no dead symbols) lives
+	// in TestUIIconReferencesResolveAndNoDeadSymbols (ui_icons_test.go).
+
 	// Icon markup must never be built inside an escaping call or an HTML
 	// attribute value. esc()/escAttr() turn it into visible literal "<svg …>"
 	// text, and an attribute cannot hold markup at all. This is exactly how the

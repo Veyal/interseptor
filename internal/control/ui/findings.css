@@ -136,8 +136,9 @@
   .find-section-nav{padding:0 20px;gap:18px}
   .find-workspace .find-title-text{font-size:var(--fs-2xl)}
   .findings-toolbar{padding:10px 14px}
-  .findings-toolbar #findGuide{font-size:0;padding:8px}
-  .findings-toolbar #findGuide::after{content:'?';font-size:var(--fs-lg)}
+  .findings-toolbar #findGuide{padding:8px}
+  .findings-toolbar #findGuide .lbl-long{display:none}
+  .findings-toolbar #findGuide .mob-ico{display:inline-block}
 }
 @media(max-width:600px){
   #scanFindingsView{flex-direction:column}
@@ -150,8 +151,8 @@
   .findings-toolbar-title strong{font-size:var(--fs-lg)}
   .findings-toolbar-actions{flex:none;width:auto;flex-wrap:nowrap;margin-left:auto;gap:6px}
   .findings-toolbar-actions .btn{padding:7px 9px;min-height:34px}
-  .findings-toolbar-actions #findNew{font-size:0}
-  .findings-toolbar-actions #findNew::after{content:'+ New';font-size:var(--fs-sm)}
+  .findings-toolbar-actions #findNew .lbl-long{display:none}
+  .findings-toolbar-actions #findNew .lbl-short{display:inline}
   .find-workspace .find-header{padding:12px 16px}
   .find-workspace .find-header-top{display:grid;grid-template-columns:30px minmax(0,1fr) auto auto;gap:9px 7px;margin-bottom:10px}
   .find-workspace .find-title-text{grid-column:1/-1;grid-row:3;min-width:0;font-size:var(--fs-2xl);line-height:1.35;margin:0}
@@ -163,12 +164,12 @@
   .find-workspace .find-header-top>#findRename{grid-column:4;grid-row:2}
   .find-workspace .find-context-line{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
   .find-workspace .find-stage-link{justify-self:start}
-  .find-workspace .find-mobile-back{font-size:0;min-width:30px;padding:6px}
+  .find-workspace .find-mobile-back{min-width:30px;padding:6px}
+  .find-workspace .find-mobile-back .lbl-long{display:none}
   .find-workspace .find-header-top .find-mobile-back{grid-column:1;grid-row:1}
-  .find-workspace .find-mobile-back::after{content:'←';font-size:var(--fs-xl)}
-  .find-workspace #findCopyLink{font-size:0;min-width:30px;padding:6px}
+  .find-workspace #findCopyLink{min-width:30px;padding:6px}
+  .find-workspace #findCopyLink .lbl-long{display:none}
   .find-workspace .find-header-top #findCopyLink{grid-column:3;grid-row:1}
-  .find-workspace #findCopyLink::after{content:'↗';font-size:var(--fs-xl)}
   .find-workspace .find-header-top #findToggleEdit{grid-column:4;grid-row:1;padding:7px 10px}
   .find-section-nav{padding:0 16px;gap:18px}
   .find-section-nav a{font-size:var(--fs-sm);padding:11px 0}
@@ -192,8 +193,8 @@
 details.find-target-card>summary{cursor:pointer;list-style:none}
 details.find-target-card>summary::-webkit-details-marker{display:none}
 details.find-target-card>summary::before{display:none}
-details.find-target-card>summary::after{content:'⌄';color:var(--fg3);margin-left:auto;transition:transform 120ms ease}
-details.find-target-card[open]>summary::after{transform:rotate(180deg)}
+details.find-target-card>summary .find-target-caret{color:var(--fg3);margin-left:auto;transition:transform 120ms ease}
+details.find-target-card[open]>summary .find-target-caret{transform:rotate(180deg)}
 .find-target-number{display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:var(--r-md);background:var(--bg2);font-size:var(--fs-xs);color:var(--fg3)}
 .find-target-address{min-width:0;flex:1;display:grid;gap:4px}
 .find-target-address strong{font-size:var(--fs-sm);font-weight:600;overflow-wrap:anywhere}
@@ -215,7 +216,7 @@ details.find-target-card[open]>summary::after{transform:rotate(180deg)}
 .find-proof-review{display:grid;gap:10px}
 .find-cvss-score{font-size:var(--fs-sm);color:var(--fg2);overflow-wrap:anywhere;margin:0}
 @media(max-width:600px){.find-target-grid{grid-template-columns:minmax(0,1fr)}.find-target-heading{flex-wrap:wrap}.find-target-gap{flex-basis:100%;padding-left:34px}}
-@media(prefers-reduced-motion:reduce){details.find-target-card>summary::after{transition:none}}
+@media(prefers-reduced-motion:reduce){details.find-target-card>summary .find-target-caret{transition:none}}
 
 .find-revisions>summary{cursor:pointer;font-weight:600;padding:8px 0}
 .find-revision{border-top:1px solid var(--line);padding:8px 0;min-width:0}

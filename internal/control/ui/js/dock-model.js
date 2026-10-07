@@ -4,11 +4,11 @@
 // activateTab, never here.
 
 export const DOCK_DESTINATIONS = [
-  { id: 'capture', label: 'Capture', icon: 'traffic', panels: ['proxy', 'intercept'] },
-  { id: 'test', label: 'Test', icon: 'repeat', panels: ['repeater', 'intruder'] },
-  { id: 'recon', label: 'Recon', icon: 'scan', panels: ['scanner', 'map'] },
+  { id: 'capture', label: 'Capture', icon: 'proxy', panels: ['proxy', 'intercept'] },
+  { id: 'test', label: 'Test', icon: 'repeater', panels: ['repeater', 'intruder'] },
+  { id: 'recon', label: 'Recon', icon: 'scanner', panels: ['scanner', 'map'] },
   { id: 'report', label: 'Report', icon: 'report', panels: ['findings', 'notes', 'activity'] },
-  { id: 'more', label: 'More', icon: 'dock-more', panels: ['settings'] },
+  { id: 'more', label: 'More', icon: 'more', panels: ['settings'] },
 ];
 
 export const PANEL_LABELS = {

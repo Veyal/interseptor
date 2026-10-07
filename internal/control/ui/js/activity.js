@@ -132,15 +132,15 @@ export function renderActivity(){
     const detail=expandable?`<div class="act-detail" id="actDetail-${i}"${expanded?'':' hidden'}><div><b>Summary</b><span>${esc(it.summary||'—')}</span></div><div><b>Result</b><span>${esc(it.result||'—')}</span></div>${it.intent?`<div><b>Intent</b><span>${esc(it.intent)}</span></div>`:''}</div>`:'';
     return `<div class="act-row${fid?' act-jump':''}${expandable?' act-expandable':''}${expanded?' expanded':''}${grp}" tabindex="0" role="button"${expandable?` aria-expanded="${expanded}" aria-controls="actDetail-${i}"`:''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}"${fid?' title="Open flow #'+fid+'"':''}>
     <span class="ok ${it.ok?'is-ok':'is-fail'}" aria-hidden="true" title="${status}"></span>
-    <span class="act-actor" title="Recorded from an AI assistant (MCP)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-robot"/></svg>AI</span>
-    <span class="act-tool">${esc(it.tool)}</span>
+    <span class="act-actor" title="Recorded from an AI assistant (MCP)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-agent"/></svg>AI</span>
+    <span class="act-tool">${esc(it.tool)}${expandable?' <svg class="icon act-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg>':''}</span>
     <span class="act-cat">${esc(cat?cat.label:'Agent/MCP')}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
     <span class="act-res">${esc(it.result||'')}</span>
     ${fid?`<span class="act-target"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg>Flow #${fid}</span>`:''}
     <span class="act-outcome${it.ok?' is-ok':' is-fail'}">${status}</span>
     <span class="act-meta">${duration} · ${actTime(it.ts)}</span>
-    ${it.intent?`<span class="act-intent" title="the AI's stated reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-thought"/></svg> ${esc(it.intent)}</span>`:''}
+    ${it.intent?`<span class="act-intent" title="the AI's stated reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-intent"/></svg> ${esc(it.intent)}</span>`:''}
     ${detail}
   </div>`;
   }).join('')}</section>`).join('');

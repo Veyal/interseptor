@@ -40,9 +40,9 @@ function blockersHTML() {
   const groups = groupBlockers(S.quality);
   if (!groups.length) {
     const s = summarize(S.quality);
-    return `<p class="rp-none">${icon('i-check-circle')}<span>${s.total ? 'No blockers. Every finding in this report is ready.' : 'No findings match the selected statuses.'}</span></p>`;
+    return `<p class="rp-none">${icon('status-done')}<span>${s.total ? 'No blockers. Every finding in this report is ready.' : 'No findings match the selected statuses.'}</span></p>`;
   }
-  return '<ol class="rp-groups">' + groups.map((g) => `<li class="rp-group"><div class="rp-group-h"><span class="rp-id">#${g.id}</span><span class="rp-title">${esc(g.title)}</span>${g.severity ? `<span class="rp-sev">${esc(g.severity)}</span>` : ''}</div><ul class="rp-issues">${g.issues.map((i) => `<li class="rp-issue">${icon('i-alert-tri')}<span class="rp-issue-text"><strong>${esc(i.label)}</strong>${i.message ? `<small>${esc(i.message)}</small>` : ''}${i.hint ? `<small class="rp-hint">${esc(i.hint)}</small>` : ''}</span><a class="btn xs" href="${escAttr(i.href)}" data-fix="${escAttr(i.href)}" aria-label="Fix ${escAttr(i.label)} in finding ${g.id}">Fix</a></li>`).join('')}</ul></li>`).join('') + '</ol>';
+  return '<ol class="rp-groups">' + groups.map((g) => `<li class="rp-group"><div class="rp-group-h"><span class="rp-id">#${g.id}</span><span class="rp-title">${esc(g.title)}</span>${g.severity ? `<span class="rp-sev">${esc(g.severity)}</span>` : ''}</div><ul class="rp-issues">${g.issues.map((i) => `<li class="rp-issue">${icon('alert')}<span class="rp-issue-text"><strong>${esc(i.label)}</strong>${i.message ? `<small>${esc(i.message)}</small>` : ''}${i.hint ? `<small class="rp-hint">${esc(i.hint)}</small>` : ''}</span><a class="btn xs" href="${escAttr(i.href)}" data-fix="${escAttr(i.href)}" aria-label="Fix ${escAttr(i.label)} in finding ${g.id}">Fix</a></li>`).join('')}</ul></li>`).join('') + '</ol>';
 }
 
 function optionsHTML() {
@@ -58,7 +58,7 @@ function previewHTML() {
   if (S.loading && !S.quality) return '<div class="skel skel-row" aria-hidden="true"></div><div class="skel skel-row" aria-hidden="true"></div><div class="skel skel-row" aria-hidden="true"></div>';
   const rows = previewRows(S.quality);
   if (!rows.length) return '<p class="hint">Nothing to preview.</p>';
-  return '<ol class="rp-preview-list">' + rows.map((r) => `<li class="rp-prow${r.ready ? ' is-ready' : ' is-blocked'}">${icon(r.ready ? 'i-check-circle' : 'i-alert-tri')}<span class="rp-title">${esc(r.title)}</span>${r.severity ? `<span class="rp-sev">${esc(r.severity)}</span>` : ''}<span class="rp-state">${r.status}</span></li>`).join('') + '</ol><div class="rp-page" aria-hidden="true"><span class="skel rp-line"></span><span class="skel rp-line rp-line-s"></span><span class="skel rp-line"></span></div>';
+  return '<ol class="rp-preview-list">' + rows.map((r) => `<li class="rp-prow${r.ready ? ' is-ready' : ' is-blocked'}">${icon(r.ready ? 'status-done' : 'alert')}<span class="rp-title">${esc(r.title)}</span>${r.severity ? `<span class="rp-sev">${esc(r.severity)}</span>` : ''}<span class="rp-state">${r.status}</span></li>`).join('') + '</ol><div class="rp-page" aria-hidden="true"><span class="skel rp-line"></span><span class="skel rp-line rp-line-s"></span><span class="skel rp-line"></span></div>';
 }
 
 function actionsHTML() {
@@ -68,7 +68,7 @@ function actionsHTML() {
   const ok = overrideConfirmed(S.typed);
   return `<div class="rp-actions"><button type="button" class="btn btn-primary" id="reportExport" aria-disabled="${gate.allowed ? 'false' : 'true'}" aria-describedby="reportExportReason"${S.busy ? ' aria-busy="true"' : ''}>Download report</button>
 ${draft.available && !S.confirming ? '<button type="button" class="btn" id="reportDraftOpen" aria-expanded="false" aria-controls="reportDraftConfirm">Export draft anyway</button>' : ''}</div>
-<p id="reportExportReason" class="rp-reason${gate.allowed ? ' is-ok' : ''}">${icon(gate.allowed ? 'i-check-circle' : 'i-alert-tri')}<span>${esc(gate.reason)}</span></p>
+<p id="reportExportReason" class="rp-reason${gate.allowed ? ' is-ok' : ''}">${icon(gate.allowed ? 'status-done' : 'alert')}<span>${esc(gate.reason)}</span></p>
 ${confirm ? `<div id="reportDraftConfirm" class="rp-confirm" role="group" aria-labelledby="reportDraftLabel"><label id="reportDraftLabel" for="reportDraftType">Unresolved blockers stay in a draft export. Type ${OVERRIDE_PHRASE} to confirm.</label><div class="rp-confirm-row"><input id="reportDraftType" class="btn btn-field" autocomplete="off" spellcheck="false" value="${escAttr(S.typed)}"><button type="button" class="btn btn-primary" id="reportDraftGo" aria-disabled="${ok ? 'false' : 'true'}">Export draft</button><button type="button" class="btn" id="reportDraftCancel">Cancel</button></div></div>` : ''}`;
 }
 
@@ -84,7 +84,7 @@ function render() {
   const keep = document.activeElement && mount.contains(document.activeElement) ? document.activeElement.id : '';
   mount.innerHTML = `<section class="rp" aria-labelledby="reportTitle" aria-busy="${S.loading ? 'true' : 'false'}">
 <header class="rp-head"><button type="button" class="btn" id="reportBack">Back to findings</button><h2 id="reportTitle" tabindex="-1">Report preflight</h2><span id="reportSummary" class="rp-sum" role="status" aria-live="polite">${esc(summaryText())}</span><button type="button" class="btn" id="reportRecheck">Check again</button></header>
-${S.error ? `<p class="rp-error" role="alert">${icon('i-alert-tri')}<span>${esc(S.error)}</span></p>` : ''}
+${S.error ? `<p class="rp-error" role="alert">${icon('alert')}<span>${esc(S.error)}</span></p>` : ''}
 <div class="rp-body"><section class="rp-col rp-blockers" aria-labelledby="rpBlkTitle"><h3 id="rpBlkTitle">Blockers</h3>${blockersHTML()}</section>
 <div class="rp-col rp-side"><section aria-labelledby="rpOptTitle"><h3 id="rpOptTitle">Export</h3>${optionsHTML()}<div id="reportActions">${actionsHTML()}</div></section>
 <section aria-labelledby="rpPrevTitle"><h3 id="rpPrevTitle">Report contents</h3>${previewHTML()}</section></div></div></section>`;
