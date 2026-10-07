@@ -8,7 +8,6 @@ import (
 
 	"github.com/Veyal/interseptor/internal/collection"
 	"github.com/Veyal/interseptor/internal/pmsandbox"
-	"github.com/Veyal/interseptor/internal/scriptctx"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -45,29 +44,6 @@ func capNames(raw json.RawMessage) []string {
 		return out
 	}
 	return nil
-}
-
-// sandboxCaps maps granted capability names to the sandbox's switches. An
-// empty set grants nothing (default deny).
-func sandboxCaps(names []string) scriptctx.Caps {
-	var c scriptctx.Caps
-	for _, n := range names {
-		switch n {
-		case CapVarsRead:
-			c.VarsRead = true
-		case CapVarsWrite:
-			c.VarsWrite = true
-		case CapCookiesRead:
-			c.CookiesRead = true
-		case CapCookiesWrite:
-			c.CookiesWrite = true
-		case CapNetSend:
-			c.NetSend = true
-		case CapSecretsRead:
-			c.SecretsRead = true
-		}
-	}
-	return c
 }
 
 // scriptEntry is one distinct script of a collection.

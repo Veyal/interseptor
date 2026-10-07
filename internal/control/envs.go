@@ -334,108 +334,6 @@ func (c *collectionsAPI) resetCurrent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ---- layers ------------------------------------------------------------------
-
-func effectiveVars(st *store.Store, kind, uid string) (map[string]varstore.Var, error) {
-	decl, err := st.ListVariables(kind, uid)
-	if err != nil {
-		return nil, err
-	}
-	cur, err := st.ListCurrentValues(kind, uid)
-	if err != nil {
-		return nil, err
-	}
-	cm := make(map[string]string, len(cur))
-	for _, v := range cur {
-		cm[v.Key] = v.Value
-	}
-	out := make(map[string]varstore.Var, len(decl))
-	for _, d := range decl {
-		if !d.Enabled {
-			continue
-		}
-		v := varstore.Var{Value: d.InitialValue, Secret: d.Type == store.VarTypeSecret}
-		if cv, ok := cm[d.Key]; ok {
-			v.Value = cv
-		}
-		out[d.Key] = v
-	}
-	return out, nil
-}
-
-// layersFor builds the resolver layers for one request: globals, collection,
-// folders (inner to outer), the chosen environment, and the request's own
-// variables as the local map.
-func (c *collectionsAPI) layersFor(chain collexec.Chain, envUID string) (layers []varstore.Layer, local map[string]string, err error) {
-	st := c.h.st
-	add := func(scope varstore.Scope, name, kind, uid string) error {
-		vs, err := effectiveVars(st, kind, uid)
-		if err != nil {
-			return err
-		}
-		layers = append(layers, varstore.Layer{Scope: scope, Name: name, Vars: vs})
-		return nil
-	}
-	envs, err := st.ListEnvironments()
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, e := range envs {
-		if e.Kind == "globals" && (e.CollectionUID == "" || e.CollectionUID == chain.Collection.UID) {
-			if err := add(varstore.ScopeGlobal, e.Name, store.VarOwnerEnvironment, e.UID); err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-	if err := add(varstore.ScopeCollection, chain.Collection.Name, store.VarOwnerCollection, chain.Collection.UID); err != nil {
-		return nil, nil, err
-	}
-	for i := len(chain.Folders) - 1; i >= 0; i-- {
-		f := chain.Folders[i]
-		if err := add(varstore.ScopeFolder, f.Name, store.VarOwnerFolder, f.UID); err != nil {
-			return nil, nil, err
-		}
-	}
-	if envUID != "" {
-		e, err := st.GetEnvironment(envUID)
-		if err != nil {
-			return nil, nil, err
-		}
-		if e.Kind != "env" || (e.CollectionUID != "" && e.CollectionUID != chain.Collection.UID) {
-			return nil, nil, store.ErrCollInvalid
-		}
-		if err := add(varstore.ScopeEnvironment, e.Name, store.VarOwnerEnvironment, e.UID); err != nil {
-			return nil, nil, err
-		}
-	}
-	rv, err := effectiveVars(st, store.VarOwnerRequest, chain.Item.UID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(rv) > 0 {
-		local = make(map[string]string, len(rv))
-		for k, v := range rv {
-			local[k] = v.Value
-		}
-	}
-	return layers, local, nil
-}
-
-// secretNames lists the secret variable names across layers.
-func secretNames(layers []varstore.Layer) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, l := range layers {
-		for k, v := range l.Vars {
-			if v.Secret && !seen[k] {
-				seen[k] = true
-				out = append(out, k)
-			}
-		}
-	}
-	return out
-}
-
 // resolvePreview resolves one template against the real layers. Secret values
 // are masked in the answer.
 func (c *collectionsAPI) resolvePreview(w http.ResponseWriter, r *http.Request) {
@@ -468,7 +366,7 @@ func (c *collectionsAPI) resolvePreview(w http.ResponseWriter, r *http.Request) 
 		httpErr(w, http.StatusBadRequest, "collectionUid or itemUid required")
 		return
 	}
-	layers, _, err := c.layersFor(chain, in.EnvUID)
+	layers, _, err := c.backend().Layers(chain, in.EnvUID)
 	if err != nil {
 		collErr(w, err)
 		return

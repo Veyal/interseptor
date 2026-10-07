@@ -71,6 +71,7 @@ var collectionMCPTools = []map[string]string{
 
 func (h *Hub) registerCollectionRoutes() {
 	c := newCollectionsAPI(h)
+	h.collAPI = c
 	for _, r := range collRoutes {
 		h.mux.HandleFunc(r.method+" "+r.path, r.handler(c))
 	}

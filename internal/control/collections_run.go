@@ -3,12 +3,13 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/Veyal/interseptor/internal/collection"
 	"github.com/Veyal/interseptor/internal/collexec"
+	"github.com/Veyal/interseptor/internal/collrun"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -53,16 +54,14 @@ type stepOut struct {
 	Skipped []string `json:"variableWritesSkipped,omitempty"`
 }
 
-// runOne executes one request item through the shared pipeline and applies
-// variable changes per the persist policy. ov (may be nil) carries script
-// writes between the steps of a run.
-func (c *collectionsAPI) runOne(ctx context.Context, chain collexec.Chain, rq stepRequest, src collexec.Source, ai bool, policy string, ov *varOverlay, runUID string, iter, count int) (*stepOut, error) {
-	layers, local, err := c.layersFor(chain, rq.EnvUID)
+// runStep executes one request item through the shared backend (the same
+// pipeline, variable layers and script engine as the runner and the CLI) and
+// applies variable changes per the persist policy.
+func (c *collectionsAPI) runStep(ctx context.Context, chain collexec.Chain, rq stepRequest, src collexec.Source, ai bool, policy string) (*stepOut, error) {
+	be := c.backend()
+	layers, local, err := be.Layers(chain, rq.EnvUID)
 	if err != nil {
 		return nil, err
-	}
-	if ov != nil {
-		layers = ov.apply(layers)
 	}
 	if len(rq.Local) > 0 {
 		if local == nil {
@@ -72,27 +71,16 @@ func (c *collectionsAPI) runOne(ctx context.Context, chain collexec.Chain, rq st
 			local[k] = v
 		}
 	}
-	var pin string
-	if rq.EnvUID != "" {
-		if e, err := c.h.st.GetEnvironment(rq.EnvUID); err == nil {
-			pin = e.BaseTargetPin
-		}
-	}
-	env := &stepEnv{c: c, coll: chain.Collection, source: src, ai: ai, envUID: rq.EnvUID, layers: layers, iter: iter, count: count}
-	p := c.pipeline(env)
-	res, err := p.Step(ctx, collexec.StepInput{
+	res, err := be.Step(ctx, collexec.StepInput{
 		Chain: chain, Layers: layers, Local: local, Source: src, AI: ai, ScopePolicy: policy,
-		NoScripts: rq.NoScripts, RunID: runUID, Iteration: iter, EnvUID: rq.EnvUID, EnvPin: pin, Identity: rq.Identity,
-	})
+		NoScripts: rq.NoScripts, EnvUID: rq.EnvUID, EnvPin: be.EnvPin(rq.EnvUID), Identity: rq.Identity,
+	}, collrun.StepMeta{IterationCount: 1})
 	if err != nil {
 		return nil, err
 	}
 	out := &stepOut{StepResult: res}
-	if ov != nil {
-		ov.record(res.VarChanges)
-	}
 	if rq.Persist == "keep" {
-		out.Skipped = c.commitChanges(chain.Collection, rq.EnvUID, res.VarChanges)
+		out.Skipped = be.Commit(chain.Collection, rq.EnvUID, res.VarChanges)
 	}
 	return out, nil
 }
@@ -155,7 +143,7 @@ func (c *collectionsAPI) send(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), runDeadline)
 	defer cancel()
-	out, err := c.runOne(ctx, chain, in, sourceOf(r), isAISource(r), policy, nil, "", 0, 1)
+	out, err := c.runStep(ctx, chain, in, sourceOf(r), isAISource(r), policy)
 	if err != nil {
 		collErr(w, err)
 		return
@@ -175,54 +163,17 @@ type runRequest struct {
 	MaxItems      int      `json:"maxItems"`
 	ScopePolicy   string   `json:"scopePolicy"`
 	Identity      string   `json:"identity"`
+	// Runner-view options (async runs).
+	Iterations    int      `json:"iterations"`
+	RPS           float64  `json:"rps"`
+	FailedFromRun string   `json:"failedFromRun"`
+	Data          *runData `json:"data"`
 }
 
-// planItems lists the requests a run would execute in tree order.
-func planItems(items []store.Item, folderUID string, pick []string) []store.Item {
-	byUID := map[string]store.Item{}
-	for _, it := range items {
-		byUID[it.UID] = it
-	}
-	if len(pick) > 0 {
-		var out []store.Item
-		for _, u := range pick {
-			if it, ok := byUID[u]; ok && it.Kind == "request" {
-				out = append(out, it)
-			}
-		}
-		return out
-	}
-	var out []store.Item
-	var walk func(ns []*collection.Node)
-	walk = func(ns []*collection.Node) {
-		for _, n := range ns {
-			if n.Kind == "request" {
-				out = append(out, n.Item)
-			}
-			walk(n.Children)
-		}
-	}
-	roots := collection.BuildTree(items)
-	if folderUID == "" {
-		walk(roots)
-		return out
-	}
-	var find func(ns []*collection.Node) *collection.Node
-	find = func(ns []*collection.Node) *collection.Node {
-		for _, n := range ns {
-			if n.UID == folderUID {
-				return n
-			}
-			if f := find(n.Children); f != nil {
-				return f
-			}
-		}
-		return nil
-	}
-	if f := find(roots); f != nil && f.Kind == "folder" {
-		walk(f.Children)
-	}
-	return out
+// runData is an inline CSV/JSON iteration data file.
+type runData struct {
+	Name string `json:"name"` // file name; the extension picks the parser
+	Text string `json:"text"`
 }
 
 type runRow struct {
@@ -248,149 +199,158 @@ func testCounts(ts []collexec.TestResult) map[string]int {
 	return m
 }
 
-func (c *collectionsAPI) run(w http.ResponseWriter, r *http.Request) {
-	var in runRequest
-	if !decodeLimitedJSON(w, r, maxCollectionSmallBytes, &in) {
-		return
-	}
+// runOptions validates a run request into runner options. async selects the
+// persist default of the asynchronous API (ask for a human, discard for the
+// AI channel); the synchronous API can never ask. It writes the error response
+// itself and reports false on failure.
+func (c *collectionsAPI) runOptions(w http.ResponseWriter, r *http.Request, in runRequest, async bool) (collrun.Options, bool) {
+	var opt collrun.Options
 	policy, ok := scopePolicyOverride(r, in.ScopePolicy)
 	if !ok {
 		httpErr(w, http.StatusBadRequest, "scopePolicy must be block, warn or off (not settable from the AI channel)")
-		return
+		return opt, false
 	}
 	if policy == "" {
 		// Runs are headless-style: scope blocks unless a human says otherwise.
 		policy = store.ScopePolicyBlock
 	}
-	persist, ok := persistOrDefault(in.Persist, "discard")
+	def := "discard"
+	if async && !isAISource(r) {
+		def = collrun.PersistAsk
+	}
+	persist, ok := persistOrDefault(in.Persist, def)
+	if !ok && async && in.Persist == collrun.PersistAsk && !isAISource(r) {
+		persist, ok = collrun.PersistAsk, true
+	}
 	if !ok {
-		httpErr(w, http.StatusBadRequest, "persist must be keep or discard")
-		return
+		msg := "persist must be keep or discard"
+		if async {
+			msg += " (ask is for interactive runs only)"
+		}
+		httpErr(w, http.StatusBadRequest, msg)
+		return opt, false
 	}
 	switch in.Bail {
 	case "", "none", "on-failure", "on-error":
 	default:
 		httpErr(w, http.StatusBadRequest, "bail must be none, on-failure or on-error")
-		return
+		return opt, false
 	}
 	if in.DelayMs < 0 || in.DelayMs > 60000 {
 		httpErr(w, http.StatusBadRequest, "delayMs must be between 0 and 60000")
-		return
+		return opt, false
+	}
+	if in.Iterations < 0 || in.Iterations > collrun.MaxIterations || in.RPS < 0 || in.RPS > 10000 {
+		httpErr(w, http.StatusBadRequest, "iterations or rps out of range")
+		return opt, false
+	}
+	var data *collrun.Dataset
+	if in.Data != nil && strings.TrimSpace(in.Data.Text) != "" {
+		var err error
+		if data, err = collrun.ParseData(in.Data.Name, strings.NewReader(in.Data.Text)); err != nil {
+			httpErr(w, http.StatusBadRequest, "iteration data: "+err.Error())
+			return opt, false
+		}
 	}
 	limit := in.MaxItems
 	if limit <= 0 || limit > maxRunItems {
 		limit = maxRunItems
 	}
-	co, err := c.h.st.GetCollection(in.CollectionUID)
+	_, items, err := c.backend().Load(in.CollectionUID)
 	if err != nil {
 		collErr(w, err)
-		return
+		return opt, false
 	}
-	items, err := c.h.st.ListItems(co.UID)
-	if err != nil {
-		httpInternalErr(w, err)
-		return
+	pick := in.ItemUIDs
+	if in.FailedFromRun != "" {
+		failed, err := collrun.FailedItemUIDs(c.h.st, in.FailedFromRun)
+		if err != nil || len(failed) == 0 {
+			httpErr(w, http.StatusBadRequest, "nothing to rerun: that run had no failed requests")
+			return opt, false
+		}
+		pick = failed
 	}
-	plan := planItems(items, in.FolderUID, in.ItemUIDs)
+	plan := collrun.PlanItems(items, in.FolderUID, pick)
 	if len(plan) == 0 {
 		httpErr(w, http.StatusBadRequest, "nothing to run: no requests selected")
-		return
+		return opt, false
 	}
 	if len(plan) > limit {
 		httpErr(w, http.StatusBadRequest, "run would exceed the item limit; narrow the selection or raise maxItems (max 1000)")
+		return opt, false
+	}
+	return collrun.Options{
+		CollectionUID: in.CollectionUID, FolderUID: in.FolderUID, ItemUIDs: in.ItemUIDs, FailedFromRun: in.FailedFromRun,
+		EnvUID: in.EnvUID, Iterations: in.Iterations, Data: data,
+		Delay: time.Duration(in.DelayMs) * time.Millisecond, RPS: in.RPS, Bail: in.Bail, Persist: persist,
+		NoScripts: in.NoScripts, ScopePolicy: policy, Source: sourceOf(r), AI: isAISource(r), Identity: in.Identity,
+	}, true
+}
+
+// startRun launches a run through the Manager. Lifecycle and per-request
+// events are forwarded to every SSE client as {type:"collrun", event:...}.
+func (c *collectionsAPI) startRun(opt collrun.Options) (*collrun.LiveRun, error) {
+	opt.OnEvent = func(e collrun.Event) {
+		c.h.broadcast(map[string]any{"type": "collrun", "event": e})
+	}
+	return c.mgr.Start(c.backend(), c.h.st, opt)
+}
+
+// startErr maps a Manager.Start failure to an HTTP status.
+func startErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, collrun.ErrTooManyRuns) {
+		httpErr(w, http.StatusTooManyRequests, "too many active runs; wait for one to finish or abort it")
 		return
 	}
-	src, ai := sourceOf(r), isAISource(r)
-	run, err := c.h.st.PutRun(store.CollRun{CollectionUID: co.UID, EnvUID: in.EnvUID, Source: string(src), Status: "running"})
+	collErr(w, err)
+}
+
+// run is the synchronous API (MCP run_collection, scripts): it starts a run on
+// the shared runner and answers when it ends, in the compact legacy shape.
+func (c *collectionsAPI) run(w http.ResponseWriter, r *http.Request) {
+	var in runRequest
+	if !decodeLimitedJSON(w, r, maxCollectionSmallBytes, &in) {
+		return
+	}
+	opt, ok := c.runOptions(w, r, in, false)
+	if !ok {
+		return
+	}
+	lr, err := c.startRun(opt)
 	if err != nil {
-		httpInternalErr(w, err)
+		startErr(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), runDeadline)
 	defer cancel()
-	rows, status := c.execPlan(ctx, *co, items, plan, in, persist, policy, src, ai, run.UID)
-	summary := summarize(rows)
-	sumJSON, _ := json.Marshal(summary)
-	run.Status, run.FinishedTS, run.SummaryJSON = status, time.Now().UnixMilli(), string(sumJSON)
-	_, _ = c.h.st.PutRun(*run)
-	c.writeStep(w, r, map[string]any{"runUid": run.UID, "status": status, "summary": summary, "results": rows})
+	rep, err := lr.Wait(ctx)
+	if rep == nil && ctx.Err() != nil {
+		lr.Abort() // client went away or the deadline passed
+		rep, err = lr.Wait(context.Background())
+	}
+	if err != nil || rep == nil {
+		httpInternalErr(w, errors.New("run failed"))
+		return
+	}
+	rows := legacyRows(rep)
+	c.writeStep(w, r, map[string]any{"runUid": rep.RunUID, "status": rep.Status, "summary": summarize(rows), "results": rows})
 }
 
-func (c *collectionsAPI) execPlan(ctx context.Context, co store.Collection, items []store.Item, plan []store.Item, in runRequest, persist, policy string, src collexec.Source, ai bool, runUID string) ([]runRow, string) {
-	ov := newOverlay()
-	byName := map[string]int{}
-	for i, it := range plan {
-		byName[it.UID] = i
-		if _, dup := byName[it.Name]; !dup {
-			byName[it.Name] = i
-		}
-	}
-	var rows []runRow
-	maxSteps := len(plan) * 10
-	if maxSteps > maxRunSteps {
-		maxSteps = maxRunSteps
-	}
-	status := "done"
-	for i, steps := 0, 0; i < len(plan); steps++ {
-		if steps >= maxSteps {
-			status = "aborted: step limit (setNextRequest loop guard)"
-			break
-		}
-		if ctx.Err() != nil {
-			status = "aborted"
-			break
-		}
-		it := plan[i]
-		chain, err := collexec.ChainFromItems(co, items, it.UID)
-		if err != nil {
-			rows = append(rows, runRow{ItemUID: it.UID, Name: it.Name, Outcome: collexec.OutcomeError, Error: "chain: " + err.Error()})
-			i++
-			continue
-		}
-		rq := stepRequest{ItemUID: it.UID, EnvUID: in.EnvUID, NoScripts: in.NoScripts, Persist: persist, Identity: in.Identity}
-		out, err := c.runOne(ctx, chain, rq, src, ai, policy, ov, runUID, 0, 1)
-		if err != nil {
-			rows = append(rows, runRow{ItemUID: it.UID, Name: it.Name, Outcome: collexec.OutcomeError, Error: "step failed"})
-			i++
-			continue
-		}
-		row := runRow{ItemUID: it.UID, Name: it.Name, Outcome: out.Outcome, Block: out.BlockReason, FlowID: out.FlowID,
-			Error: out.Error, Tests: testCounts(out.Tests)}
-		if out.Response != nil {
-			row.Status = out.Response.Status
-		}
-		for _, s := range out.Scripts {
+// legacyRows folds a report into the compact per-request rows of the
+// synchronous API.
+func legacyRows(rep *collrun.Report) []runRow {
+	rows := make([]runRow, 0, len(rep.Items))
+	for _, it := range rep.Items {
+		row := runRow{ItemUID: it.ItemUID, Name: it.Name, Outcome: it.Outcome, Block: it.BlockReason, FlowID: it.FlowID,
+			Status: it.HTTPStatus, Error: it.Error, Tests: testCounts(it.Tests)}
+		for _, s := range it.Scripts {
 			if strings.HasPrefix(s.Reason, "quarantined") {
 				row.Quarantine++
 			}
 		}
 		rows = append(rows, row)
-		raw, _ := json.Marshal(out)
-		_, _ = c.h.st.AddRunResult(store.CollRunResult{RunUID: runUID, ItemUID: it.UID, FlowID: out.FlowID,
-			Status: string(out.Outcome), ResultJSON: c.reg.Mask(string(raw))})
-		if (in.Bail == "on-failure" && (out.Failed() || out.Outcome != collexec.OutcomeSent)) ||
-			(in.Bail == "on-error" && (out.Outcome == collexec.OutcomeError || out.Outcome == collexec.OutcomeBlocked)) {
-			status = "bailed"
-			break
-		}
-		next := i + 1
-		if out.Flow.HasNext {
-			if out.Flow.NextRequest == "" {
-				break
-			}
-			if j, ok := byName[out.Flow.NextRequest]; ok {
-				next = j
-			}
-		}
-		i = next
-		if in.DelayMs > 0 && i < len(plan) {
-			select {
-			case <-ctx.Done():
-			case <-time.After(time.Duration(in.DelayMs) * time.Millisecond):
-			}
-		}
 	}
-	return rows, status
+	return rows
 }
 
 type runSummary struct {

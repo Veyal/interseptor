@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/Veyal/interseptor/internal/collexec"
+	"github.com/Veyal/interseptor/internal/collrun"
 	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -35,10 +36,14 @@ type collectionsAPI struct {
 	jars *collexec.Jars
 	reg  *redact.Registry
 	mu   sync.Mutex // serializes variable commits and trust changes
+
+	beOnce sync.Once
+	be     *collrun.StoreBackend
+	mgr    *collrun.Manager // asynchronous runs (UI runner, MCP, REST)
 }
 
 func newCollectionsAPI(h *Hub) *collectionsAPI {
-	return &collectionsAPI{h: h, jars: &collexec.Jars{}, reg: redact.NewRegistry()}
+	return &collectionsAPI{h: h, jars: &collexec.Jars{}, reg: redact.NewRegistry(), mgr: collrun.NewManager()}
 }
 
 // isAISource reports whether the request came through the MCP tool bus (or any

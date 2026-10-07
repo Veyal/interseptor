@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Control server collection sends and runs now execute on the shared `collrun` backend and runner (one pipeline, variable layering, persistence and script-engine routing for UI, REST, MCP and CLI); the duplicate control-side script executor, variable overlay and run loop were removed. Hub gains `ScriptRouter` for out-of-process script isolation.
 - `collrun.Manager` now emits `paused`, `resumed` and `awaiting_persist` (with the pending variable writes) events next to start/item/done, and `StoreBackend`/`PMExecutor` accept shared cookie jars, a dynamic own-listener function and a `scriptworker.Router`, so the control server can use the same backend and script engine routing as the CLI.
 - Portable project bundle v2: `/api/export/project` now carries a scrubbed `collections` section (`Export/DecodeCollectionsBundle`, secrets blanked, scripts quarantined on import, capabilities default-deny) and `/api/import/project` merges it and reports `importedCollections`. Version 1 bundles without the section still import; bundles newer than 2 are rejected.
 - Fixed: an exported project with no captured flows serialized its HAR as `"entries": null`, which the project importer rejected; `harx.Build` now always emits an empty array.

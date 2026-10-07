@@ -34,6 +34,7 @@ import (
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/oob"
 	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
@@ -102,6 +103,13 @@ type Hub struct {
 	// SetAutoBypassOnPinFailure toggles auto-adding a host to the bypass list on
 	// an MITM handshake failure (SSL pinning). Set by cmd.
 	SetAutoBypassOnPinFailure func(bool)
+
+	// ScriptRouter picks the engine for collection scripts: the out-of-process
+	// worker, or in-process for trusted scripts when InProcessTrusted is set.
+	// The zero value runs everything in-process (tests); cmd wires the
+	// worker. Set before serving.
+	ScriptRouter scriptworker.Router
+	collAPI      *collectionsAPI
 
 	// ChecksDir holds user-authored Starlark scanner checks (global, shared across
 	// projects — typically ~/.interseptor/checks). Set by cmd.
