@@ -266,6 +266,10 @@ func (r *gojaRT) Eval(ctx context.Context, name, src string) (res Result, err er
 	if len(src) > r.o.MaxSource {
 		return res, ErrSourceSize
 	}
+	// A previous Eval may have been interrupted (timeout/cancel) or have a
+	// late interrupt still pending; clear it so the runtime stays usable,
+	// e.g. to read back partial results after a limit hit.
+	r.vm.ClearInterrupt()
 	begin := time.Now()
 	var cause error
 	var mu sync.Mutex
