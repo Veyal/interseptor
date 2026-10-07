@@ -83,6 +83,8 @@ func Build(flows []*store.Flow, body func(hash string) []byte) []byte {
 	doc := har{Log: harLog{
 		Version: "1.2",
 		Creator: harNamed{Name: "Interseptor", Version: "0.1.0"},
+		// Non-nil so an empty project serializes "entries":[] and re-imports.
+		Entries: []harEntry{},
 	}}
 	for _, f := range flows {
 		reqBody := body(f.ReqBodyHash)
