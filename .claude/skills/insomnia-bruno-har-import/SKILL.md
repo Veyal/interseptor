@@ -1,0 +1,18 @@
+---
+name: insomnia-bruno-har-import
+description: Conventions and gotchas for the Insomnia, Bruno and HAR/Burp importers and the curl and native exporters (internal/collimport/{insomnia,bruno,har}, internal/collexport/{curl,native}): shared impkit helpers, quarantine, inherited headers, secrets and bounds.
+---
+
+# Insomnia / Bruno / HAR importers, curl / native exporters
+
+- Shared shaping lives in `internal/collimport/insomnia/impkit` (url object, headers, auth, raw body, script quarantine record, report finish). Bruno, HAR and the exporters import it; add shared helpers there, not copies. Report types are aliases of `postman.Report/Entry/Level`; `postman.Report.add/finish` are unexported so use `impkit.Finish`.
+- Output columns are Postman-v2.1-shaped like the curl/OpenAPI importers, so `collexec` and the Postman exporter treat every source alike. Each importer test also round-trips through `collexport/postman`.
+- Scripts are never run and never rewritten. Each one becomes an event `{listen, script:{type,exec[]}, dialect}` (`dialect` = insomnia|bruno) and a `ScriptList` row with `quarantined:true`. `impkit.RecordScript` marks scripts using `bru.* req.* res.* insomnia.*` as `unsupported` (no shim in this build); pm.*-only scripts are `partial`; API-free scripts are `supported`.
+- The execution pipeline applies only request headers (folder/collection auth and scripts do work). Folder and collection headers from Insomnia/Bruno are therefore copied into each request and reported `degraded inherited-headers`. If `collexec` ever applies folder headers, drop the copy to avoid doubled headers.
+- Insomnia templates: `{{ _.x }}` becomes `{{x}}`, `{% uuid %}`/`{% now %}`/`{% timestamp %}` become `$guid/$isoTimestamp/$timestamp`, `{% response ... %}` becomes `{{chain_N}}` plus an extractor descriptor in `Item.Vars.extract` (inert: nothing evaluates it yet, so the variable stays unresolved and the send is blocked, never a garbage tag on the wire). Any other tag/expression stays literal and is reported.
+- Bruno: `.bru` is parsed by `parseBru` (blocks at column 0, text blocks indented 2 spaces, `~` disables a row, `'''` multi-line). `assert` rows map to declarative assertions; operators/targets without an equivalent become `type:"unsupported"` assertions (the runner reports unsupported, never pass). `.env` files, `node_modules`, `.git`, symlink-like and `..`/absolute paths are skipped; callers pass file contents (the package never touches disk).
+- HAR/Burp: request only. Header order is lost (harx/burpx return maps), so headers are sorted by name; pseudo-headers and Content-Length dropped; non-UTF-8 bodies are dropped and reported (use the History import for exact bytes).
+- Secrets: values of secret-looking environment/variable keys go to `Result.SecretValues` (`json:"-"`), never into initial values or the report. Reports never contain credential values (canary-string tests per importer).
+- Exporters take a bundle from `store.ExportCollectionsBundle` with default (scrubbed) options: that is the single scrub function. `native.Decode` treats a file as hostile (size/count/depth caps, unique uids, parent validation, secret values blanked, `caps` cleared, `scopePolicy` reset to `block`). `curl` export single-quotes every value, strips newlines from comments, writes `REDACTED` where the scrub blanked a credential, and warns for file uploads (`@FILE_PATH`).
+- Bounds (each has a test): 64 MiB input, nesting depth 64, 100k items, 50k HAR entries, 8 MiB per HAR body / `.bru` file, 200 blocks per `.bru`, 20000 files.
+- Goldens: `go test ./internal/collimport/... ./internal/collexport/... -update`; review diffs. Fixtures use example.com and canary strings only.
