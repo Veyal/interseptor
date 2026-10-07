@@ -8,8 +8,14 @@ import (
 	"time"
 )
 
+// within fails when fn runs longer than max times raceSlack. The bounds exist to
+// catch quadratic blowups (which take many seconds), so they carry generous
+// slack for loaded CI runners under -race instead of flaking near the limit.
+const raceSlack = 5
+
 func within(t *testing.T, name string, max time.Duration, fn func()) {
 	t.Helper()
+	max *= raceSlack
 	start := time.Now()
 	fn()
 	if d := time.Since(start); d > max {
