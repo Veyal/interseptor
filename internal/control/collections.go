@@ -23,7 +23,6 @@ var (
 
 const (
 	maxRunItems       = 1000 // requests one run may execute
-	maxRunSteps       = 5000 // loop guard for setNextRequest
 	maxVariablesBatch = 5000
 	maxExamplesPerReq = 100
 )

@@ -18,3 +18,8 @@ All pure Go, no cgo. `gopkg.in/yaml.v3` (MIT/Apache-2.0) is approved but NOT add
 - Delta: +11,196,128 bytes (+38.6%, about +10.7 MiB).
 
 This is larger than the plan assumed. Accepted by the owner decision (pure-Go single binary is the priority); flagged for review. Levers if it matters: build with `-ldflags='-s -w'` for release, and avoid pulling `pprof/profile` (goja links it via its profiler).
+
+## Binary size after integration (measured 2026-10-07, same command)
+- `origin/main`: 29,004,242 bytes
+- `feat/collections` (all waves wired, worker re-exec, auth suite, six importers): 44,267,970 bytes
+- Delta: +15,263,728 bytes (+52.6%, about +14.6 MiB). `go.mod` gained only `goja` and `yaml.v3` as direct dependencies (plus goja's indirect `regexp2/v2`, `sourcemap`, `pprof`, and the `kr/text` / `rogpeppe/go-internal` test-graph entries `yaml.v3` pulls in); `go mod tidy` is clean and `go mod verify` passes. The same levers apply (`-ldflags='-s -w'`, avoid goja's `pprof/profile` import).
