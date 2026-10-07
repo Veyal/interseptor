@@ -1,0 +1,973 @@
+[
+ {
+  "name": "token refresh (test phase)",
+  "phase": "test",
+  "script": "const j = pm.response.json();\npm.test(\"has token\", () => { pm.expect(j).to.have.property(\"access_token\"); });\npm.environment.set(\"access_token\", j.access_token);\npm.environment.set(\"token_expiry\", Date.now() + j.expires_in * 1000);\npm.collectionVariables.set(\"refresh_token\", j.refresh_token);\npm.test(\"expiry in future\", () => pm.expect(pm.environment.get(\"token_expiry\")).to.be.above(Date.now()));",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "access_token": "tok_example_1"
+   },
+   "collection": {
+    "refresh_token": "ref_example_1"
+   },
+   "tests": [
+    [
+     "has token",
+     "pass"
+    ],
+    [
+     "expiry in future",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{\"access_token\":\"tok_example_1\",\"refresh_token\":\"ref_example_1\",\"expires_in\":3600}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "token refresh via pm.sendRequest (pre-request)",
+  "phase": "prerequest",
+  "script": "const expiry = Number(pm.environment.get(\"token_expiry\") || 0);\nif (!pm.environment.get(\"access_token\") || expiry < Date.now()) {\n  pm.sendRequest({\n    url: pm.environment.get(\"auth_url\") + \"/token\",\n    method: \"POST\",\n    header: { \"Content-Type\": \"application/x-www-form-urlencoded\" },\n    body: { mode: \"urlencoded\", urlencoded: [{ key: \"grant_type\", value: \"refresh_token\" }, { key: \"refresh_token\", value: pm.environment.get(\"refresh_token\") }] }\n  }, function (err, res) {\n    if (err) { throw err; }\n    pm.environment.set(\"access_token\", res.json().access_token);\n  });\n}\npm.request.headers.upsert({ key: \"Authorization\", value: \"Bearer \" + \"{{access_token}}\" });",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "access_token": "fresh_tok"
+   },
+   "sent": [
+    "https://auth.example.com/token"
+   ],
+   "request": {
+    "headers": {
+     "Authorization": "Bearer {{access_token}}"
+    }
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  },
+  "vars": {
+   "environment": {
+    "auth_url": "https://auth.example.com",
+    "refresh_token": "r1"
+   }
+  },
+  "sends": {
+   "https://auth.example.com/token": {
+    "code": 200,
+    "body": "{\"access_token\":\"fresh_tok\"}",
+    "headers": {
+     "Content-Type": "application/json",
+     "X-Request-Id": "abc"
+    }
+   }
+  }
+ },
+ {
+  "name": "HMAC signing",
+  "phase": "prerequest",
+  "script": "const secret = pm.environment.get(\"api_secret\");\nconst body = pm.request.body.raw;\nconst sig = CryptoJS.HmacSHA256(body, secret);\npm.request.headers.upsert({ key: \"X-Signature\", value: sig.toString(CryptoJS.enc.Hex) });\npm.request.headers.upsert({ key: \"X-Signature-B64\", value: CryptoJS.enc.Base64.stringify(sig) });\npm.environment.set(\"sig_len\", sig.toString().length);",
+  "expect": {
+   "status": "pass",
+   "request": {
+    "headers": {
+     "X-Signature": "8b5f48702995c1598c573db1e21866a9b825d4a794d169d7060a03605796360b",
+     "X-Signature-B64": "i19IcCmVwVmMVz2x4hhmqbgl1KeU0WnXBgoDYFeWNgs="
+    }
+   },
+   "env": {
+    "sig_len": 64
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/pay",
+   "headers": {},
+   "body": "message"
+  },
+  "vars": {
+   "environment": {
+    "api_secret": "secret"
+   }
+  }
+ },
+ {
+  "name": "HMAC via require('crypto')",
+  "phase": "test",
+  "script": "const crypto = require('crypto');\nconst h = crypto.createHmac('sha256', 'secret').update('message').digest('hex');\npm.test(\"hmac matches\", () => pm.expect(h).to.equal(\"8b5f48702995c1598c573db1e21866a9b825d4a794d169d7060a03605796360b\"));\npm.test(\"sha1\", () => pm.expect(crypto.createHash('sha1').update('hello').digest('hex')).to.equal(\"aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d\"));\npm.test(\"md5 b64\", () => pm.expect(crypto.createHash('md5').update('hello').digest('base64')).to.equal(\"XUFAKrxLKna5cZ2REBfFkg==\"));\npm.test(\"randomBytes\", () => pm.expect(crypto.randomBytes(8).length).to.equal(8));",
+  "expect": {
+   "status": "pass",
+   "tests": [
+    [
+     "hmac matches",
+     "pass"
+    ],
+    [
+     "sha1",
+     "pass"
+    ],
+    [
+     "md5 b64",
+     "pass"
+    ],
+    [
+     "randomBytes",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "CSRF extraction",
+  "phase": "test",
+  "script": "const html = pm.response.text();\nconst m = html.match(/name=\"csrf_token\"\\s+value=\"([^\"]+)\"/);\npm.test(\"csrf found\", () => { pm.expect(m).to.not.be.null; });\npm.collectionVariables.set(\"csrf\", m[1]);\nconst meta = /<meta name=\"csrf\" content=\"([^\"]+)\"/.exec(html);\npm.environment.set(\"csrf_meta\", meta ? meta[1] : \"none\");\npm.test(\"cookie header\", () => pm.response.to.have.header(\"Set-Cookie\"));",
+  "expect": {
+   "status": "pass",
+   "collection": {
+    "csrf": "c5rf-example-9"
+   },
+   "env": {
+    "csrf_meta": "meta-9"
+   }
+  },
+  "response": {
+   "code": 200,
+   "body": "<form><input type=\"hidden\" name=\"csrf_token\" value=\"c5rf-example-9\"></form><meta name=\"csrf\" content=\"meta-9\">",
+   "headers": {
+    "Content-Type": "text/html",
+    "Set-Cookie": "sid=1; Path=/"
+   }
+  }
+ },
+ {
+  "name": "AES-128-CBC body encrypt (key+iv)",
+  "phase": "prerequest",
+  "script": "const key = CryptoJS.enc.Hex.parse(\"000102030405060708090a0b0c0d0e0f\");\nconst iv = CryptoJS.enc.Hex.parse(\"0f0e0d0c0b0a09080706050403020100\");\nconst enc = CryptoJS.AES.encrypt(\"hello world 123\", key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });\npm.environment.set(\"ct\", enc.toString());\npm.request.body.update(JSON.stringify({ data: enc.toString() }));\npm.environment.set(\"ct_hex\", enc.ciphertext.toString(CryptoJS.enc.Hex));\nconst dec = CryptoJS.AES.decrypt(enc, key, { iv: iv });\npm.environment.set(\"pt\", dec.toString(CryptoJS.enc.Utf8));",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "ct": "UwZqIAhAxskozRbEXtrzsQ==",
+    "pt": "hello world 123"
+   },
+   "request": {
+    "body": "{\"data\":\"UwZqIAhAxskozRbEXtrzsQ==\"}"
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ },
+ {
+  "name": "AES-128-ECB",
+  "phase": "prerequest",
+  "script": "const key = CryptoJS.enc.Hex.parse(\"000102030405060708090a0b0c0d0e0f\");\nconst enc = CryptoJS.AES.encrypt(\"hello world 123\", key, { mode: CryptoJS.mode.ECB });\npm.environment.set(\"ct\", enc.toString());\npm.environment.set(\"pt\", CryptoJS.AES.decrypt(enc.toString(), key, { mode: CryptoJS.mode.ECB }).toString(CryptoJS.enc.Utf8));",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "ct": "/zYlQzGB3VweKR4z02P6vg==",
+    "pt": "hello world 123"
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ },
+ {
+  "name": "AES-128-CTR NoPadding",
+  "phase": "prerequest",
+  "script": "const key = CryptoJS.enc.Hex.parse(\"000102030405060708090a0b0c0d0e0f\");\nconst iv = CryptoJS.enc.Hex.parse(\"0f0e0d0c0b0a09080706050403020100\");\nconst enc = CryptoJS.AES.encrypt(\"hello world 123\", key, { iv: iv, mode: CryptoJS.mode.CTR, padding: CryptoJS.pad.NoPadding });\npm.environment.set(\"ct_hex\", enc.ciphertext.toString());",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "ct_hex": "48cc95fedb6c2c87767398fc5d9caa"
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ },
+ {
+  "name": "AES passphrase mode roundtrip + openssl vector",
+  "phase": "test",
+  "script": "const enc = CryptoJS.AES.encrypt(\"top secret payload\", \"pw\").toString();\npm.test(\"roundtrip\", () => pm.expect(CryptoJS.AES.decrypt(enc, \"pw\").toString(CryptoJS.enc.Utf8)).to.equal(\"top secret payload\"));\npm.test(\"openssl salted\", () => pm.expect(enc.slice(0, 10)).to.equal(\"U2FsdGVkX1\"));\npm.test(\"decrypt openssl output\", () => pm.expect(CryptoJS.AES.decrypt(\"U2FsdGVkX18BAgMEBQYHCEU24AP+2u3zMJEzVzvUI84=\", \"pw\").toString(CryptoJS.enc.Utf8)).to.equal(\"hello\"));",
+  "expect": {
+   "status": "pass",
+   "tests": [
+    [
+     "roundtrip",
+     "pass"
+    ],
+    [
+     "openssl salted",
+     "pass"
+    ],
+    [
+     "decrypt openssl output",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "CryptoJS hashes and encoders",
+  "phase": "test",
+  "script": "pm.test(\"md5\", () => pm.expect(CryptoJS.MD5(\"hello\").toString()).to.equal(\"5d41402abc4b2a76b9719d911017c592\"));\npm.test(\"sha256\", () => pm.expect(CryptoJS.SHA256(\"abc\").toString()).to.equal(\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"));\npm.test(\"b64\", () => pm.expect(CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(\"hello\"))).to.equal(\"aGVsbG8=\"));\npm.test(\"b64 parse\", () => pm.expect(CryptoJS.enc.Base64.parse(\"aGVsbG8=\").toString(CryptoJS.enc.Utf8)).to.equal(\"hello\"));\npm.test(\"pbkdf2\", () => pm.expect(CryptoJS.PBKDF2(\"password\", \"salt\", { keySize: 4, iterations: 2 }).toString()).to.equal(\"ea6c014dc72d6f8ccd1ed92ace1d41f0\"));\npm.test(\"wordarray\", () => pm.expect(CryptoJS.lib.WordArray.random(16).sigBytes).to.equal(16));\npm.test(\"utf8 multibyte\", () => pm.expect(CryptoJS.enc.Hex.stringify(CryptoJS.enc.Utf8.parse(\"\u00e9\"))).to.equal(\"c3a9\"));",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "chained requests setNextRequest",
+  "phase": "test",
+  "script": "pm.environment.set(\"order_id\", pm.response.json().id);\npm.execution.setNextRequest(\"Get Order\");\npm.test(\"created\", () => pm.response.to.have.status(201));",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "order_id": "o-1"
+   },
+   "next": "Get Order"
+  },
+  "response": {
+   "code": 201,
+   "body": "{\"id\":\"o-1\"}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "legacy postman.setNextRequest and stop",
+  "phase": "test",
+  "script": "postman.setNextRequest(null);\ntests[\"Status is 200\"] = responseCode.code === 200;\ntests[\"Body has id\"] = responseBody.indexOf(\"id\") !== -1;\npostman.setEnvironmentVariable(\"legacy\", \"yes\");\nvar j = JSON.parse(responseBody);\npostman.setGlobalVariable(\"gid\", j.id);",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "legacy": "yes"
+   },
+   "globals": {
+    "gid": 5
+   },
+   "nextStop": true,
+   "tests": [
+    [
+     "Status is 200",
+     "pass"
+    ],
+    [
+     "Body has id",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{\"id\":5}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "assertion-heavy chai",
+  "phase": "test",
+  "script": "const o = { a: 1, b: { c: [1, 2, 3] }, s: \"hello world\", n: null, t: true, e: [] };\npm.test(\"equal\", () => { pm.expect(o.a).to.equal(1); pm.expect(o.a).to.eql(1); pm.expect(o.a).to.not.equal(2); });\npm.test(\"deep\", () => { pm.expect(o.b).to.eql({ c: [1, 2, 3] }); pm.expect(o.b).to.deep.equal({ c: [1, 2, 3] }); pm.expect(o.b).to.not.equal({ c: [1, 2, 3] }); });\npm.test(\"include\", () => { pm.expect(o.s).to.include(\"world\"); pm.expect(o.s).to.contain(\"hello\"); pm.expect([1, 2, 3]).to.include(2); pm.expect(o.b.c).to.include.members([1, 3]); pm.expect({ a: 1, b: 2 }).to.include({ a: 1 }); });\npm.test(\"property\", () => { pm.expect(o).to.have.property(\"a\"); pm.expect(o).to.have.property(\"a\", 1); pm.expect(o).to.have.own.property(\"b\"); pm.expect(o).to.have.nested.property(\"b.c[1]\", 2); pm.expect(o).to.not.have.property(\"zzz\"); });\npm.test(\"types\", () => { pm.expect(o.s).to.be.a(\"string\"); pm.expect(o.b.c).to.be.an(\"array\"); pm.expect(o.n).to.be.null; pm.expect(o.t).to.be.true; pm.expect(o.b).to.be.an(\"object\"); pm.expect(undefined).to.be.undefined; pm.expect(1).to.be.a(\"number\"); });\npm.test(\"numeric\", () => { pm.expect(5).to.be.above(3); pm.expect(5).to.be.below(9); pm.expect(5).to.be.at.least(5); pm.expect(5).to.be.at.most(5); pm.expect(5).to.be.within(1, 10); pm.expect(5.1).to.be.closeTo(5, 0.2); });\npm.test(\"length\", () => { pm.expect(o.b.c).to.have.lengthOf(3); pm.expect(o.b.c).to.have.length(3); pm.expect(o.b.c).to.have.length.above(2); pm.expect(o.s).to.have.length.within(5, 20); pm.expect(o.e).to.be.empty; pm.expect(\"\").to.be.empty; pm.expect({}).to.be.empty; });\npm.test(\"oneOf match\", () => { pm.expect(200).to.be.oneOf([200, 201]); pm.expect(\"abc123\").to.match(/^[a-z]+\\d+$/); pm.expect(\"x\").to.exist; pm.expect(1).to.be.ok; pm.expect(0).to.not.be.ok; pm.expect(false).to.be.false; });\npm.test(\"keys\", () => { pm.expect({ a: 1, b: 2 }).to.have.all.keys(\"a\", \"b\"); pm.expect({ a: 1, b: 2 }).to.have.any.keys(\"a\", \"z\"); pm.expect({ a: 1, b: 2 }).to.contain.keys(\"a\"); pm.expect({ a: 1, b: 2 }).to.have.keys([\"a\", \"b\"]); });\npm.test(\"and chain\", () => { pm.expect(o.s).to.be.a(\"string\").and.include(\"hello\").and.have.lengthOf(11); });\npm.test(\"throws\", () => { pm.expect(() => { throw new Error(\"boom\"); }).to.throw(); pm.expect(() => { throw new TypeError(\"bad\"); }).to.throw(TypeError, \"bad\"); pm.expect(() => 1).to.not.throw(); });\npm.test(\"members satisfy\", () => { pm.expect([1, 2, 3]).to.have.members([3, 2, 1]); pm.expect(4).to.satisfy((n) => n % 2 === 0); pm.expect(NaN).to.be.NaN; });\npm.test(\"instanceof\", () => { pm.expect([]).to.be.instanceOf(Array); pm.expect(new Error(\"x\")).to.be.an.instanceof(Error); });",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "pm.response.to.* family",
+  "phase": "test",
+  "script": "pm.test(\"status\", () => { pm.response.to.have.status(200); pm.response.to.have.status(\"OK\"); pm.response.to.be.ok; pm.response.to.be.success; pm.response.to.not.be.error; pm.response.to.not.be.serverError; });\npm.test(\"header\", () => { pm.response.to.have.header(\"Content-Type\"); pm.response.to.have.header(\"x-request-id\", \"abc\"); pm.response.to.not.have.header(\"X-Nope\"); });\npm.test(\"body\", () => { pm.response.to.be.json; pm.response.to.have.jsonBody(\"a.b\", 2); pm.response.to.have.jsonBody(\"list[1]\", \"y\"); pm.response.to.have.body(\"\\\"a\\\"\"); pm.response.to.be.withBody; });\npm.test(\"expect(pm.response)\", () => { pm.expect(pm.response).to.have.status(200); pm.expect(pm.response).to.be.ok; });\npm.test(\"fields\", () => { pm.expect(pm.response.code).to.equal(200); pm.expect(pm.response.status).to.equal(\"OK\"); pm.expect(pm.response.responseTime).to.be.below(100); pm.expect(pm.response.responseSize).to.be.above(5); pm.expect(pm.response.size().body).to.be.above(5); pm.expect(pm.response.headers.get(\"content-type\")).to.include(\"json\"); });",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{\"a\":{\"b\":2},\"list\":[\"x\",\"y\"]}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "failing and skipped tests",
+  "phase": "test",
+  "script": "pm.test(\"good\", () => pm.expect(1).to.equal(1));\npm.test(\"bad\", () => pm.expect(1).to.equal(2));\npm.test.skip(\"later\", () => {});\npm.test(\"throws\", () => { null.x; });",
+  "expect": {
+   "status": "error",
+   "tests": [
+    [
+     "good",
+     "pass"
+    ],
+    [
+     "bad",
+     "fail"
+    ],
+    [
+     "later",
+     "skip"
+    ],
+    [
+     "throws",
+     "error"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "expected failure messages",
+  "phase": "test",
+  "script": "pm.test(\"msg\", () => pm.expect(5).to.equal(6));",
+  "expect": {
+   "status": "fail",
+   "tests": [
+    [
+     "msg",
+     "fail"
+    ]
+   ],
+   "messages": {
+    "msg": "expected 5 to equal 6"
+   }
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "variables replaceIn dynamic and precedence",
+  "phase": "test",
+  "script": "pm.variables.set(\"who\", \"local\");\npm.environment.set(\"who\", \"env\");\npm.globals.set(\"who\", \"glob\");\npm.collectionVariables.set(\"who\", \"coll\");\npm.test(\"precedence\", () => pm.expect(pm.variables.get(\"who\")).to.equal(\"local\"));\npm.variables.unset(\"who\");\npm.test(\"next\", () => pm.expect(pm.variables.get(\"who\")).to.equal(\"coll\"));\npm.test(\"replaceIn\", () => pm.expect(pm.variables.replaceIn(\"hi {{who}} {{missing}} {{$guid}}\")).to.match(/^hi coll \\{\\{missing\\}\\} [0-9a-f-]{36}$/));\npm.test(\"has\", () => { pm.expect(pm.environment.has(\"who\")).to.be.true; pm.expect(pm.environment.has(\"nope\")).to.be.false; pm.expect(pm.environment.toObject()).to.eql({ who: \"env\" }); });\npm.environment.unset(\"who\");\npm.test(\"unset\", () => pm.expect(pm.environment.get(\"who\")).to.be.undefined);",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "pm.info and iterationData",
+  "phase": "test",
+  "script": "pm.test(\"info\", () => { pm.expect(pm.info.eventName).to.equal(\"test\"); pm.expect(pm.info.iteration).to.equal(2); pm.expect(pm.info.requestName).to.equal(\"Login\"); pm.expect(pm.info.iterationCount).to.equal(5); });\npm.test(\"data\", () => { pm.expect(pm.iterationData.get(\"user\")).to.equal(\"bob\"); pm.expect(data.user).to.equal(\"bob\"); pm.expect(pm.iterationData.has(\"zzz\")).to.be.false; });",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  },
+  "vars": {
+   "iterationData": {
+    "user": "bob"
+   }
+  },
+  "info": {
+   "iteration": 2,
+   "iterationCount": 5,
+   "requestName": "Login"
+  }
+ },
+ {
+  "name": "pm.cookies",
+  "phase": "test",
+  "script": "pm.test(\"cookies\", () => { pm.expect(pm.cookies.get(\"sid\")).to.equal(\"s1\"); pm.expect(pm.cookies.has(\"sid\")).to.be.true; pm.expect(pm.cookies.toObject()).to.eql({ sid: \"s1\" }); });\nconst jar = pm.cookies.jar();\njar.set(\"https://api.example.com\", \"theme\", \"dark\", function (err) { if (err) throw err; });\njar.get(\"https://api.example.com\", \"sid\", function (err, c) { pm.environment.set(\"sid_via_jar\", c); });",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "sid_via_jar": "s1"
+   },
+   "cookieOps": [
+    "set:theme"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  },
+  "cookies": [
+   {
+    "name": "sid",
+    "value": "s1",
+    "domain": "api.example.com",
+    "path": "/"
+   }
+  ]
+ },
+ {
+  "name": "request mutation (url, method, headers)",
+  "phase": "prerequest",
+  "script": "pm.request.url.addQueryParams(\"b=2&c=3\");\npm.request.url.query.remove(\"a\");\npm.request.method = \"PUT\";\npm.request.headers.remove(\"Accept\");\npm.request.headers.add({ key: \"X-Trace\", value: \"t-1\" });\npm.request.headers.upsert({ key: \"content-type\", value: \"application/vnd.api+json\" });\npm.environment.set(\"host\", pm.request.url.getHost());\npm.environment.set(\"path\", pm.request.url.getPath());\npm.environment.set(\"proto\", pm.request.url.protocol);\npm.environment.set(\"pathq\", pm.request.url.getPathWithQuery());",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "host": "api.example.com",
+    "path": "/v1/login",
+    "proto": "https",
+    "pathq": "/v1/login?b=2&c=3"
+   },
+   "request": {
+    "method": "PUT",
+    "url": "https://api.example.com/v1/login?b=2&c=3",
+    "headers": {
+     "X-Trace": "t-1",
+     "Content-Type": "application/vnd.api+json"
+    },
+    "noHeaders": [
+     "Accept"
+    ]
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ },
+ {
+  "name": "urlencoded body update",
+  "phase": "prerequest",
+  "script": "pm.request.body.update({ mode: \"urlencoded\", urlencoded: [{ key: \"u\", value: \"a b\" }, { key: \"p\", value: \"x&y\" }] });\npm.environment.set(\"bodystr\", pm.request.body.toString());",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "bodystr": "u=a%20b&p=x%26y"
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ },
+ {
+  "name": "Buffer atob btoa",
+  "phase": "test",
+  "script": "pm.test(\"btoa\", () => pm.expect(btoa(\"hello\")).to.equal(\"aGVsbG8=\"));\npm.test(\"atob\", () => pm.expect(atob(\"aGVsbG8=\")).to.equal(\"hello\"));\npm.test(\"buffer b64\", () => pm.expect(Buffer.from(\"hello\").toString(\"base64\")).to.equal(\"aGVsbG8=\"));\npm.test(\"buffer hex\", () => pm.expect(Buffer.from(\"68656c6c6f\", \"hex\").toString(\"utf8\")).to.equal(\"hello\"));\npm.test(\"buffer concat\", () => pm.expect(Buffer.concat([Buffer.from(\"a\"), Buffer.from(\"b\")]).toString()).to.equal(\"ab\"));\npm.test(\"buffer alloc\", () => pm.expect(Buffer.alloc(4).length).to.equal(4));\npm.test(\"textencoder\", () => pm.expect(new TextEncoder().encode(\"\u00e9\").length).to.equal(2));",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "uuid and url modules",
+  "phase": "test",
+  "script": "const { v4 } = require(\"uuid\");\npm.test(\"uuid\", () => pm.expect(v4()).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/));\nconst u = new URL(\"https://api.example.com:8443/a/b?x=1&y=two#frag\");\npm.test(\"url\", () => { pm.expect(u.hostname).to.equal(\"api.example.com\"); pm.expect(u.port).to.equal(\"8443\"); pm.expect(u.pathname).to.equal(\"/a/b\"); pm.expect(u.searchParams.get(\"y\")).to.equal(\"two\"); });",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "async await sendRequest promise",
+  "phase": "test",
+  "script": "async function main() {\n  const res = await new Promise((resolve, reject) => pm.sendRequest(\"https://api.example.com/health\", (e, r) => e ? reject(e) : resolve(r)));\n  pm.test(\"health ok\", () => { pm.expect(res.code).to.equal(200); pm.expect(res.json().ok).to.be.true; });\n  const r2 = await pm.sendRequest({ url: \"https://api.example.com/v2\", method: \"GET\" });\n  pm.environment.set(\"v2\", r2.json().v);\n}\nawait main();",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "v2": 2
+   },
+   "tests": [
+    [
+     "health ok",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  },
+  "sends": {
+   "https://api.example.com/health": {
+    "code": 200,
+    "body": "{\"ok\":true}",
+    "headers": {
+     "Content-Type": "application/json",
+     "X-Request-Id": "abc"
+    }
+   },
+   "https://api.example.com/v2": {
+    "code": 200,
+    "body": "{\"v\":2}",
+    "headers": {
+     "Content-Type": "application/json",
+     "X-Request-Id": "abc"
+    }
+   }
+  }
+ },
+ {
+  "name": "timers use virtual time",
+  "phase": "test",
+  "script": "setTimeout(() => pm.environment.set(\"late\", \"yes\"), 5000);\npm.test(\"async test\", () => new Promise((resolve) => setTimeout(resolve, 100)).then(() => pm.expect(1).to.equal(1)));\npm.test(\"done style\", function (done) { setTimeout(() => { pm.expect(2).to.equal(2); done(); }, 10); });",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "late": "yes"
+   },
+   "tests": [
+    [
+     "async test",
+     "pass"
+    ],
+    [
+     "done style",
+     "pass"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "unsupported lodash require",
+  "phase": "test",
+  "script": "const _ = require(\"lodash\");\npm.test(\"never reached\", () => pm.expect(_.sum([1,2])).to.equal(3));",
+  "expect": {
+   "status": "unsupported",
+   "unsupported": [
+    "require(\"lodash\")"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "unsupported global moment",
+  "phase": "test",
+  "script": "pm.environment.set(\"d\", moment().format(\"YYYY\"));",
+  "expect": {
+   "status": "unsupported",
+   "unsupported": [
+    "moment"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "unsupported chai assertion is not a fail",
+  "phase": "test",
+  "script": "pm.test(\"exotic\", () => { pm.expect({a:1}).to.be.frozenish; });",
+  "expect": {
+   "status": "unsupported",
+   "tests": [
+    [
+     "exotic",
+     "unsupported"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "unsupported jsonSchema",
+  "phase": "test",
+  "script": "pm.test(\"schema\", () => { pm.response.to.have.jsonSchema({ type: \"object\" }); });",
+  "expect": {
+   "status": "unsupported",
+   "tests": [
+    [
+     "schema",
+     "unsupported"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "unsupported pm member",
+  "phase": "test",
+  "script": "pm.vault.get(\"x\");",
+  "expect": {
+   "status": "unsupported",
+   "unsupported": [
+    "pm.vault"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "JWT decode helper",
+  "phase": "test",
+  "script": "const t = \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1MSIsInJvbGUiOiJhZG1pbiJ9.sig\";\nconst payload = JSON.parse(atob(t.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));\npm.test(\"role\", () => pm.expect(payload.role).to.equal(\"admin\"));\npm.test(\"isp jwt\", () => pm.expect(isp.jwt.decode(t).payload.sub).to.equal(\"u1\"));",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "expect.fail and done error",
+  "phase": "test",
+  "script": "pm.test(\"explicit fail\", () => pm.expect.fail(\"nope\"));\npm.test(\"done err\", (done) => { done(new Error(\"late failure\")); });",
+  "expect": {
+   "status": "error",
+   "tests": [
+    [
+     "explicit fail",
+     "fail"
+    ],
+    [
+     "done err",
+     "error"
+    ]
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "globals and clear",
+  "phase": "test",
+  "script": "pm.globals.set(\"g1\", \"a\");\npm.globals.set(\"g2\", \"b\");\npm.globals.unset(\"g1\");\npm.collectionVariables.set(\"c1\", 1);\npm.collectionVariables.clear();\npm.test(\"globals\", () => pm.expect(pm.globals.toObject()).to.eql({ g2: \"b\" }));",
+  "expect": {
+   "status": "pass",
+   "globals": {
+    "g2": "b"
+   }
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "console levels",
+  "phase": "test",
+  "script": "console.log(\"a\", 1, {x:2});\nconsole.info(\"i\");\nconsole.warn(\"w\");\nconsole.error(\"e\");\nconsole.debug(\"d\");",
+  "expect": {
+   "status": "pass",
+   "console": [
+    "log:a 1 {\"x\":2}",
+    "info:i",
+    "warn:w",
+    "error:e",
+    "debug:d"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "skipRequest in pre-request",
+  "phase": "prerequest",
+  "script": "if (pm.environment.get(\"skip_login\") === \"1\") { pm.execution.skipRequest(); }",
+  "expect": {
+   "status": "pass",
+   "skip": true
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  },
+  "vars": {
+   "environment": {
+    "skip_login": "1"
+   }
+  }
+ },
+ {
+  "name": "isp namespace",
+  "phase": "test",
+  "script": "pm.test(\"codec\", () => { pm.expect(isp.codec.base64Encode(\"hi\")).to.equal(\"aGk=\"); pm.expect(isp.codec.hexEncode(\"hi\")).to.equal(\"6869\"); pm.expect(isp.codec.urlDecode(\"a%20b\")).to.equal(\"a b\"); });\npm.test(\"hmac\", () => pm.expect(isp.hmac(\"sha256\", \"secret\", \"message\")).to.equal(\"8b5f48702995c1598c573db1e21866a9b825d4a794d169d7060a03605796360b\"));\npm.test(\"scope\", () => { isp.assertScope(\"https://api.example.com/x\"); pm.expect(isp.scope.check(\"https://evil.example.org/\")).to.be.false; });\nisp.flow.next(\"After\");",
+  "expect": {
+   "status": "pass",
+   "next": "After"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  }
+ },
+ {
+  "name": "secret never printed",
+  "phase": "test",
+  "script": "console.log(\"token is\", pm.environment.get(\"api_key\"));\npm.test(\"leaks \" + pm.environment.get(\"api_key\"), () => pm.expect(pm.environment.get(\"api_key\")).to.equal(\"nope-\" + pm.environment.get(\"api_key\")));\npm.environment.set(\"api_key\", \"rotated-canary-2\");\nconsole.log(\"now\", pm.environment.get(\"api_key\"));",
+  "expect": {
+   "status": "fail",
+   "noLeak": [
+    "canary-secret-1",
+    "rotated-canary-2"
+   ]
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   }
+  },
+  "vars": {
+   "environment": {
+    "api_key": "canary-secret-1"
+   }
+  },
+  "secret": [
+   "api_key"
+  ]
+ },
+ {
+  "name": "Postman response size and cookies api",
+  "phase": "test",
+  "script": "pm.test(\"cookie list\", () => { pm.expect(pm.response.cookies.get(\"a\")).to.equal(\"1\"); pm.expect(postman.getResponseCookie(\"a\").value).to.equal(\"1\"); });\npm.test(\"header legacy\", () => pm.expect(postman.getResponseHeader(\"X-Request-Id\")).to.equal(\"abc\"));\npm.test(\"responseHeaders\", () => pm.expect(responseHeaders[\"X-Request-Id\"]).to.equal(\"abc\"));",
+  "expect": {
+   "status": "pass"
+  },
+  "response": {
+   "code": 200,
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc"
+   },
+   "cookies": [
+    {
+     "name": "a",
+     "value": "1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "basic auth header builder",
+  "phase": "prerequest",
+  "script": "const user = pm.environment.get(\"user\"), pass = pm.environment.get(\"pass\");\npm.request.headers.upsert({ key: \"Authorization\", value: \"Basic \" + btoa(user + \":\" + pass) });\npm.request.headers.upsert({ key: \"X-Nonce\", value: CryptoJS.lib.WordArray.random(8).toString() });\npm.request.headers.upsert({ key: \"X-Ts\", value: String(Math.floor(Date.now() / 1000)) });",
+  "expect": {
+   "status": "pass",
+   "request": {
+    "headers": {
+     "Authorization": "Basic YWxpY2U6cHc=",
+     "X-Ts": "1767323045"
+    }
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  },
+  "vars": {
+   "environment": {
+    "user": "alice",
+    "pass": "pw"
+   }
+  }
+ },
+ {
+  "name": "conditional token flow with legacy request object",
+  "phase": "prerequest",
+  "script": "var h = request.headers;\npm.environment.set(\"legacy_method\", request.method);\npm.environment.set(\"legacy_ct\", h[\"Content-Type\"]);\npm.environment.set(\"legacy_url\", request.url);",
+  "expect": {
+   "status": "pass",
+   "env": {
+    "legacy_method": "POST",
+    "legacy_ct": "application/json",
+    "legacy_url": "https://api.example.com/v1/login?a=1"
+   }
+  },
+  "request": {
+   "method": "POST",
+   "url": "https://api.example.com/v1/login?a=1",
+   "headers": {
+    "Content-Type": "application/json",
+    "Accept": "*/*"
+   },
+   "body": "{\"user\":\"alice\"}"
+  }
+ }
+]

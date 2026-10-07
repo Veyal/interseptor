@@ -241,3 +241,15 @@ func TestHeavyAllocationDoesNotCrashWithinTimeout(t *testing.T) {
 		t.Fatalf("%v %v", r.Value, err)
 	}
 }
+
+func TestEvalUsableAfterInterrupt(t *testing.T) {
+	rt := New(Options{Timeout: 50 * time.Millisecond})
+	defer rt.Close()
+	if _, err := rt.Eval(context.Background(), "a.js", `globalThis.keep = 7; while(true){}`); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("err=%v", err)
+	}
+	r, err := rt.Eval(context.Background(), "b.js", `globalThis.keep`)
+	if err != nil || r.Value != int64(7) {
+		t.Fatalf("runtime unusable after interrupt: %v %v", r.Value, err)
+	}
+}
