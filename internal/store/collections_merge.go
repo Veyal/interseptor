@@ -39,6 +39,77 @@ func (s *Store) MergeCollectionsFrom(peerDBPath string) (CollectionMergeStats, e
 	return s.mergeCollBundle(b)
 }
 
+// peerHasCollections reports whether the peer DB carries the collection tables.
+func peerHasCollections(peer *sql.DB) bool {
+	ok, _ := peerHasTable(peer, "ix_collections")
+	return ok
+}
+
+// mergeCollectionsFromDB merges the collections of an already-open peer DB.
+// hasColl is false (and nothing happens) for a peer without collection tables.
+func (s *Store) mergeCollectionsFromDB(peer *sql.DB) (st CollectionMergeStats, hasColl bool, err error) {
+	if !peerHasCollections(peer) {
+		return st, false, nil
+	}
+	b, err := loadCollBundle(peer)
+	if err != nil {
+		return st, true, fmt.Errorf("read peer collections: %w", err)
+	}
+	st, err = s.mergeCollBundle(b)
+	return st, true, err
+}
+
+// previewCollectionsFromDB counts what a collections merge would add without
+// writing. Matching mirrors mergeCollBundle (uid, then case-folded name); item
+// counts are an upper bound because signature-level dedupe is not simulated.
+func (s *Store) previewCollectionsFromDB(peer *sql.DB) (st CollectionMergeStats, hasColl bool, err error) {
+	if !peerHasCollections(peer) {
+		return st, false, nil
+	}
+	b, err := loadCollBundle(peer)
+	if err != nil {
+		return st, true, fmt.Errorf("read peer collections: %w", err)
+	}
+	local, err := loadCollBundle(s.db) // tolerates a project without collection tables
+	if err != nil {
+		return st, true, err
+	}
+	byUID, byName := map[string]bool{}, map[string]bool{}
+	for _, c := range local.Collections {
+		byUID[c.UID], byName[strings.ToLower(c.Name)] = true, true
+	}
+	isNew := map[string]bool{}
+	for _, c := range b.Collections {
+		if byUID[c.UID] || byName[strings.ToLower(c.Name)] {
+			st.CollectionsSkipped++
+		} else {
+			st.CollectionsAdded++
+			isNew[c.UID] = true
+		}
+	}
+	localItems := map[string]bool{}
+	for _, it := range local.Items {
+		localItems[it.UID] = true
+	}
+	for _, it := range b.Items {
+		if localItems[it.UID] {
+			st.ItemsSkipped++
+		} else {
+			st.ItemsAdded++
+		}
+	}
+	localEnv := map[string]bool{}
+	for _, e := range local.Environments {
+		localEnv[strings.ToLower(e.Name)+"\x00"+e.CollectionUID+"\x00"+e.Kind] = true
+	}
+	for _, e := range b.Environments {
+		if !localEnv[strings.ToLower(e.Name)+"\x00"+e.CollectionUID+"\x00"+e.Kind] {
+			st.EnvironmentsAdded++
+		}
+	}
+	return st, true, nil
+}
+
 // itemSig identifies an item by its place and shape when uids do not match.
 func itemSig(coll string, path []string, it *Item) string {
 	return coll + "\x00" + strings.Join(path, "\x01") + "\x00" + it.Kind + "\x00" + it.Name + "\x00" + it.Method + "\x00" + string(it.URL)
