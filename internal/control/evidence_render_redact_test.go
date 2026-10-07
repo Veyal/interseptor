@@ -41,6 +41,11 @@ func under(t *testing.T, name string, max time.Duration, fn func()) {
 	}
 }
 
+// renderBudget guards against super-linear blowups on hostile input (the
+// unbounded versions took many seconds); it is deliberately loose so a loaded
+// CI runner under -race does not flake (a 523ms run failed a 500ms bound).
+const renderBudget = 2 * time.Second
+
 func TestEvidenceAdaptersBoundHostileInput(t *testing.T) {
 	big := strings.Repeat("a", 64<<10)
 	fa := &store.Flow{ID: 1, Method: "GET", Scheme: "https", Host: "example.com", Path: "/" + big, Status: 200}
@@ -50,7 +55,7 @@ func TestEvidenceAdaptersBoundHostileInput(t *testing.T) {
 		BodyDeltas:   []bodyLineDelta{{Line: 1, A: big, B: big + "x"}},
 		Summary:      big,
 	}
-	under(t, "flow diff with 64KB inputs", 500*time.Millisecond, func() {
+	under(t, "flow diff with 64KB inputs", renderBudget, func() {
 		in := flowDiffInput(fa, fb, d, true)
 		if len(in.A.URL) > 2048 || len(in.HeaderDeltas[0].A) > 1024 || len(in.Summary) > 2048 {
 			t.Fatalf("inputs not bounded: url=%d hdr=%d sum=%d", len(in.A.URL), len(in.HeaderDeltas[0].A), len(in.Summary))
@@ -70,12 +75,12 @@ func TestEvidenceAdaptersBoundHostileInput(t *testing.T) {
 	rec.State.Results[1].Extracted = big
 	env, _ := newIntruderEnvelope(rec)
 	env.RunID = huge
-	under(t, "intruder timeline with 1MiB target", 500*time.Millisecond, func() {
+	under(t, "intruder timeline with 1MiB target", renderBudget, func() {
 		if _, err := preview.RenderIntruderTimeline(intruderTimelineInput(env), preview.Opts{}); err != nil {
 			t.Fatal(err)
 		}
 	})
-	under(t, "intruder race/strip with 64KB values", 500*time.Millisecond, func() {
+	under(t, "intruder race/strip with 64KB values", renderBudget, func() {
 		if _, err := preview.RenderIntruderRace(intruderRaceInput(env, true, 0), preview.Opts{}); err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +90,7 @@ func TestEvidenceAdaptersBoundHostileInput(t *testing.T) {
 	})
 
 	fake := fakeFinder{1: {ID: 1, Title: big, Severity: "High"}}
-	under(t, "chain with 64KB unbroken title", 500*time.Millisecond, func() {
+	under(t, "chain with 64KB unbroken title", renderBudget, func() {
 		in, err := chainInputFrom(fake, 1)
 		if err != nil {
 			t.Fatal(err)
@@ -99,7 +104,7 @@ func TestEvidenceAdaptersBoundHostileInput(t *testing.T) {
 	})
 
 	runs := []authzRunOut{{Method: "GET", Path: "/" + big, Results: []authzResult{{Name: big, Status: 200, Length: 10}}}}
-	under(t, "authz with 64KB label and identity", 500*time.Millisecond, func() {
+	under(t, "authz with 64KB label and identity", renderBudget, func() {
 		if _, err := preview.RenderAuthzMatrix(authzMatrixInput("r", runs), preview.Opts{}); err != nil {
 			t.Fatal(err)
 		}
