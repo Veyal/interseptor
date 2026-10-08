@@ -200,3 +200,33 @@ func TestUIFindingsChangelogEntry(t *testing.T) {
 		t.Error("CHANGELOG.md [Unreleased] needs a WP7 Findings workspace entry")
 	}
 }
+
+// Copy image: pure logic runs under node; the DOM wiring is pinned statically.
+func TestUIFindingsCopyImageContract(t *testing.T) {
+	node := requireNode(t)
+	cmd := exec.Command(node, "--test", "_js-tests/copy-image.test.mjs")
+	cmd.Dir = "ui"
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("copy-image node tests failed: %v\n%s", err, out)
+	}
+	pure := readUIAsset(t, "js/copy-image.js")
+	if regexp.MustCompile(`(?m)^import `).MatchString(pure) {
+		t.Error("js/copy-image.js must have no imports so it runs under node")
+	}
+	code := executableJS(pure)
+	if strings.Contains(code, `style="`) || strings.Contains(code, "cssText") || strings.Contains(code, "innerHTML") {
+		t.Error("js/copy-image.js must not write inline style or HTML")
+	}
+	requireUIContains(t, pure, "new win.ClipboardItem({ [PNG_MIME]: blob })", "https or localhost", "isCopyableImageURL")
+	core := readUIAsset(t, "js/core.js")
+	requireUIContains(t, core, "from './copy-image.js'", "js-copy-image", "Image copied", "copyImageFromButton", "saveFile(blob, copyImageFileName")
+	find := readUIAsset(t, "js/findings.js")
+	if n := strings.Count(find, "copyImageButton("); n < 4 { // editor image + editor flow + report image + report flow
+		t.Errorf("findings.js renders copyImageButton in %d places, want the editor and report image and flow previews", n)
+	}
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `id="imgLbCopy"`, `class="btn js-copy-image" id="imgLbCopy"`)
+	if !strings.Contains(index, `<use href="#i-copy"/></svg> Copy image`) {
+		t.Error("Copy image control must pair the existing copy icon symbol with a visible label")
+	}
+}

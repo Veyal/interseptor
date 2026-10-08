@@ -1,5 +1,5 @@
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
@@ -133,6 +133,11 @@ function proofChapterOf(role) {
 
 function flowPreviewURL(id) {
   return '/api/flows/' + id + '/preview.png?side=both&pretty=1&layout=vertical&theme=light';
+}
+
+function copyImageWhat(b, fallback) {
+  const proof = (b.proof || b.caption || '').trim().slice(0, 60);
+  return [b.role ? b.role + ' evidence' : fallback, proof].filter(Boolean).join(' — ');
 }
 
 function proofText(block) {
@@ -641,6 +646,7 @@ function renderBlockEl(b, i, total) {
       ${controls}${blockMetaEditor(b, i)}
       <figure class="find-doc-figure">
         <img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
+        <div class="find-evidence-actions">${copyImageButton(src, copyImageWhat(b, 'screenshot'), b.caption)}</div>
         <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}"
           placeholder="Caption (optional)" onclick="event.stopPropagation()">
       </figure>
@@ -676,6 +682,7 @@ function renderBlockEl(b, i, total) {
        <div class="find-evidence-actions">
         <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}" aria-label="Generate report image for attached flow #${esc(String(b.flowId))}">Generate report image</button>
          <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
+         ${copyImageButton(flowPreviewURL(b.flowId), 'request and response preview of flow #' + b.flowId, 'flow-' + b.flowId + '-preview')}
        </div>
      </div>
      <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}"
@@ -1535,7 +1542,7 @@ function renderProofVisual(b, findingId) {
     const src = b.url || ('/api/findings/images/' + (b.hash || ''));
     const provenance = b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : '';
     const proof = b.proof ? '' : '<div class="find-proof-needed">Proof annotation needed.</div>';
-    return `<figure class="find-auto-preview"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">${provenance}${proof}</figure>`;
+    return `<figure class="find-auto-preview"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">${provenance}${proof}<div class="find-evidence-actions">${copyImageButton(src, copyImageWhat(b, 'screenshot'), b.caption)}</div></figure>`;
   }
   if (b.type === 'flow') {
     if (b.missing || !b.flowId) return '';
@@ -1544,7 +1551,8 @@ function renderProofVisual(b, findingId) {
     <img src="${escAttr(flowPreviewURL(b.flowId))}" alt="Generated request and response preview for flow #${escAttr(String(b.flowId))}">
     <span>${esc(line)}</span>
   </a>
-  <p class="find-preview-note">Generated request and response. Not a browser screenshot.</p>`;
+  <p class="find-preview-note">Generated request and response. Not a browser screenshot.</p>
+  <div class="find-evidence-actions">${copyImageButton(flowPreviewURL(b.flowId), 'request and response preview of flow #' + b.flowId, 'flow-' + b.flowId + '-preview')}</div>`;
   }
   return '';
 }

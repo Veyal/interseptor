@@ -231,6 +231,14 @@ Image provenance is explicit:
 A generated flow preview must never be presented as a browser screenshot. It improves report
 readability; the attached flow remains the raw evidence.
 
+Every finding image, and the generated request and response preview of an attached flow, has a
+**Copy image** button in the finding editor and in the report-ready proof view; the image viewer has
+one too. It puts a PNG on the clipboard so you can paste the picture straight into Notion or any
+editor (JPEG, WebP, GIF, AVIF and BMP sources are converted to PNG first). The clipboard needs https
+or localhost: over plain http on a Tailscale address, or when the browser blocks clipboard access,
+the toast explains why and offers **Download** for the same PNG instead. Only the finding's own
+images are fetched.
+
 Redact passwords, tokens, API keys, unrelated personal information, and third-party data from images
 and prose. Keep original request/response evidence inside the protected project when an engagement
 requires it. Uploaded images are validated, content-addressed, and served only while referenced by a

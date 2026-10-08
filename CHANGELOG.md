@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Copy image** on finding images and flow previews. The finding editor, the report-ready proof view and the image viewer each get a visible button that puts the picture on the clipboard as a PNG, ready to paste into Notion or any editor. Other raster formats are converted to PNG first. Where the browser cannot write images (plain http on a Tailscale address, or permission denied) a toast says so and offers Download.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.7.1` release.

@@ -1848,6 +1848,12 @@ summary::-webkit-details-marker{display:none}
 /* Touch targets. Desktop density is unchanged; coarse pointers (phones and
    tablets) get 44px hit areas. Kept last so it wins the cascade. .trow is
    sized through --row-h because the History list is virtualized. */
+/* Copy image: compact, always visible (no hover reveal), wraps under a narrow viewport. */
+.js-copy-image{white-space:nowrap}
+.js-copy-image[aria-busy="true"]{opacity:.7;cursor:progress}
+.img-lightbox-bar .js-copy-image{flex:none}
+@media (max-width:480px){.img-lightbox-bar{flex-wrap:wrap}.img-lightbox-caption{flex-basis:100%;order:-1}}
+#toast .toast-item>.btn:not(.toast-dismiss){margin-left:var(--sp-2);vertical-align:middle}
 @media (pointer:coarse){
   .btn,.tab,.search,.ui-select-trigger,.settings-nav button,.btn.xs,.btn-compact,.rep-tab-add,.uisw,#themeToggle,.ui-select-opt,.ctx-item{min-height:44px}
   .search{height:auto}

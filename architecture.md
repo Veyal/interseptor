@@ -125,7 +125,8 @@ draws a finding's server-reported stage as `role=meter`. `report-preflight.js` i
 Report sub-view with gated export. `checklist.js` is the first-run checklist, derived from real
 state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (BottomSheet),
 `statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js` and
-`finder.js`. `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
+`finder.js`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
+conversion, a promise-valued `ClipboardItem`, secure-context fallbacks). `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
 
 Deliberate differences from the overhaul spec, recorded so they are not mistaken for gaps:
