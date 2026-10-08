@@ -1,0 +1,29 @@
+meta {
+  name: Get user
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/users/:id?expand=roles
+  body: none
+  auth: basic
+}
+
+params:query {
+  expand: roles
+  ~debug: 1
+}
+
+params:path {
+  id: 42
+}
+
+auth:basic {
+  username: alice
+  password: literal-bru-password
+}
+
+assert {
+  res.status: isNumber
+}

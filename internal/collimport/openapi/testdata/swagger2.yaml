@@ -1,0 +1,60 @@
+swagger: "2.0"
+info:
+  title: Legacy API
+  version: "0.9"
+host: api.example.com
+basePath: /v2
+schemes: [https, http]
+consumes: [application/json]
+securityDefinitions:
+  basic_auth: {type: basic}
+  key: {type: apiKey, in: query, name: api_key}
+  oa:
+    type: oauth2
+    flow: accessCode
+    authorizationUrl: https://auth.example.com/authorize
+    tokenUrl: https://auth.example.com/token
+    scopes: {read: Read}
+security:
+  - basic_auth: []
+tags:
+  - name: users
+paths:
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: Get user
+      parameters:
+        - {name: id, in: path, required: true, type: integer, "x-example": 5}
+        - {name: fields, in: query, type: string, default: "name,email"}
+      responses:
+        "200":
+          description: ok
+          examples:
+            application/json: {id: 5, name: Alice}
+    put:
+      tags: [users]
+      parameters:
+        - {name: id, in: path, required: true, type: integer}
+        - name: body
+          in: body
+          schema:
+            $ref: "#/definitions/User"
+      responses: {"200": {description: ok}}
+  /login:
+    post:
+      consumes: [application/x-www-form-urlencoded]
+      parameters:
+        - {name: user, in: formData, type: string, default: alice}
+        - {name: pass, in: formData, type: string}
+      security: [{key: []}]
+      responses: {"200": {description: ok}}
+definitions:
+  User:
+    type: object
+    properties:
+      id: {type: integer}
+      name: {type: string}
+      friends:
+        type: array
+        items: {$ref: "#/definitions/User"}

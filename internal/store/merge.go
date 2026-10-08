@@ -21,6 +21,9 @@ type MergeStats struct {
 	FindingsAdded   int `json:"findingsAdded"`
 	FindingsSkipped int `json:"findingsSkipped"`
 	BodiesAdded     int `json:"bodiesAdded"`
+	// Collections reports the collections/items/environments union; nil when
+	// the peer carries no collection tables (older project).
+	Collections *CollectionMergeStats `json:"collections,omitempty"`
 }
 
 // MergeFrom unions another project's flows and findings into this one (additive,
@@ -307,6 +310,15 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		}
 		seenFindings[sig] = true
 		stats.FindingsAdded++
+	}
+
+	// 4. Union collections (scrubbed, scripts quarantined, caps default-deny).
+	cstats, hasColl, err := s.mergeCollectionsFromDB(peer)
+	if err != nil {
+		return stats, fmt.Errorf("merge collections: %w", err)
+	}
+	if hasColl {
+		stats.Collections = &cstats
 	}
 
 	return stats, nil

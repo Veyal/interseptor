@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,43 @@ type projectBundle struct {
 	Scope    []store.ScopeRule `json:"scope"`
 	Settings map[string]string `json:"settings"`
 	Notes    string            `json:"notes,omitempty"`
+	// Collections is the scrubbed collections section (store.CollectionsBundle).
+	// Absent in version 1 bundles and when the project has no collections.
+	Collections json.RawMessage `json:"collections,omitempty"`
+}
+
+// projectBundleVersion is the portable project bundle schema version. Version 2
+// added the collections section; version 1 bundles import unchanged.
+const projectBundleVersion = 2
+
+// checkProjectBundleVersion rejects bundles written by a newer build while
+// tolerating the legacy empty and "1" versions.
+func checkProjectBundleVersion(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return fmt.Errorf("unsupported project bundle version %q", v)
+	}
+	if n > projectBundleVersion {
+		return fmt.Errorf("project bundle version %d is newer than supported %d", n, projectBundleVersion)
+	}
+	return nil
+}
+
+// exportCollectionsSection returns the scrubbed collections section, or nil
+// when the project has none.
+func exportCollectionsSection(st *store.Store) (json.RawMessage, error) {
+	cb, err := st.ExportCollectionsBundle(store.ScrubOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if len(cb.Collections) == 0 && len(cb.Environments) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(cb)
 }
 
 const maxPortableProjectImportBytes = 128 << 20
@@ -91,8 +129,13 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	collections, err := exportCollectionsSection(h.st)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	bundle := projectBundle{
-		Version: "1", HAR: json.RawMessage(harx.Build(flows, h.bodyBytes)), Rules: rules, Scope: scope, Notes: notes,
+		Version: strconv.Itoa(projectBundleVersion), Collections: collections, HAR: json.RawMessage(harx.Build(flows, h.bodyBytes)), Rules: rules, Scope: scope, Notes: notes,
 		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz,
 			originTLSVerifySettingKey: originVerify, originTLSVerifyBypassSettingKey: originBypass},
 	}
@@ -155,6 +198,17 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	var bundle projectBundle
 	if err := json.Unmarshal(data, &bundle); err != nil {
 		httpErr(w, http.StatusBadRequest, "not a valid project: "+err.Error())
+		return
+	}
+	if err := checkProjectBundleVersion(bundle.Version); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Decode the collections section up front so a malformed one is rejected
+	// before any other part of the bundle is applied.
+	collBundle, err := store.DecodeCollectionsBundle(bundle.Collections)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "project contains an invalid collections section: "+err.Error())
 		return
 	}
 
@@ -305,6 +359,12 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "notes.update"})
 	}
 
+	collStats, err := h.st.ImportCollectionsBundle(collBundle)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+
 	h.refreshRules()
 	h.refreshScope()
 	if flows > 0 {
@@ -313,6 +373,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
+		"importedCollections": collStats,
 	})
 }
 

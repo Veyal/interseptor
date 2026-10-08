@@ -19,6 +19,8 @@
 <link rel="stylesheet" href="/settings.css">
 <link rel="stylesheet" href="/report.css">
 <link rel="stylesheet" href="/css/evidence-render.css">
+<link rel="stylesheet" href="/css/collections.css">
+<link rel="stylesheet" href="/css/collections-matrix.css">
 <link rel="stylesheet" href="/mobile.css">
 <!-- Modulepreload hints for the tabs users most often visit right after Proxy
      (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
@@ -61,6 +63,7 @@
 <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 14h3V6h4v12h4V10h3v4h4"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><path d="M3 6h8M15 6h6M3 12h4M11 12h10M3 18h10M17 18h4"/><path d="M13 3v6M9 9v6M15 15v6"/></symbol>
 <symbol id="i-report" viewBox="0 0 24 24"><path d="M5 5l2-2h7l5 5v11l-2 2H7l-2-2z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+<symbol id="i-collection" viewBox="0 0 24 24"><path d="M3 4l1-1h4l1 1v4l-1 1H4L3 8z"/><path d="M6 10v10M6 15h4M6 20h4"/><path d="M12 6h9M13 15h8M13 20h8"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7l2-2h4l2 2h8l2 2v8l-2 2H5l-2-2z"/></symbol>
 <symbol id="i-scope" viewBox="0 0 24 24"><path d="M4 9V6l2-2h3M15 4h3l2 2v3M20 15v3l-2 2h-3M9 20H6l-2-2v-3"/><path d="M12 12h.01"/></symbol>
 <symbol id="i-target" viewBox="0 0 24 24"><path d="M9 6h6l3 3v6l-3 3h-6l-3-3v-6z"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><path d="M12 12h.01"/></symbol>
@@ -177,7 +180,7 @@
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
-<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="collections">Collections</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
@@ -190,6 +193,7 @@
     <div class="nav-rail-group-label">Test</div>
     <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test" title="Repeater"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg>Repeater</button>
     <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test" title="Intruder"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-intruder"/></svg>Intruder<span id="intrBadge" class="nav-dot" aria-hidden="true"></span></button>
+    <button class="tab" id="tab-collections" role="tab" aria-selected="false" aria-controls="panel-collections" data-tab="collections" data-group="Test" title="Collections"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-collection"/></svg>Collections<span id="collBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
@@ -240,6 +244,7 @@
         <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
         <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
         <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
+        <button type="button" class="uisw" id="histCollFilter" title="Show flows sent from collection requests and the runner" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-collection"/></svg> Collections</button>
       </div>
       <div id="tagBar" class="tagbar u-hidden" aria-label="Filter by tag"></div>
       <details class="flow-search-disc" id="flowSearchScripts">
@@ -676,6 +681,49 @@ Content-Type: application/json
   </div>
 
   <!-- /region:map -->
+  <!-- region:collections -->
+  <!-- Collections: tree | request editor | response, environments, scripts, import -->
+  <div class="panel" id="panel-collections" role="tabpanel" aria-labelledby="tab-collections" data-panel="collections">
+    <div class="toolbar coll-bar">
+      <label class="coll-field" for="collPicker"><span class="u-sr">Collection</span>
+        <select id="collPicker" class="btn btn-field" aria-label="Collection"></select></label>
+      <button type="button" class="btn" id="collNew" title="New collection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span class="lbl-long">Collection</span></button>
+      <button type="button" class="btn" id="collImport" title="Import a Postman, OpenAPI or curl file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg><span class="lbl-long">Import</span></button>
+      <div class="spacer"></div>
+      <span class="coll-env" id="collEnvWrap">
+        <span class="coll-dot" id="collEnvDot" data-state="none" role="img" aria-label="No environment selected"></span>
+        <label class="u-sr" for="collEnv">Active environment</label>
+        <select id="collEnv" class="btn btn-field" aria-label="Active environment"></select>
+        <button type="button" class="btn" id="collEnvEdit" aria-haspopup="dialog" title="Edit environment variables"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-storage"/></svg><span class="lbl-long">Variables</span></button>
+      </span>
+      <button type="button" class="btn coll-chip" id="collScripts" aria-haspopup="dialog" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg><span id="collScriptsText">Scripts</span></button>
+      <button type="button" class="btn" id="collRun" title="Run every request in the collection or the selected folder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg><span class="lbl-long">Run</span></button>
+      <button type="button" class="btn" id="collConsoleBtn" aria-pressed="false" aria-controls="collConsole" title="Show the console (Ctrl+`)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg><span class="lbl-long">Console</span></button>
+    </div>
+    <div id="collStatus" class="coll-status" role="status" aria-live="polite" hidden></div>
+    <div class="coll-root" id="collRoot">
+      <div class="split-list coll-tree-col">
+        <div class="coll-tree-head">
+          <input id="collFilter" class="btn btn-field" type="search" aria-label="Filter requests" placeholder="Filter (/)" spellcheck="false" autocomplete="off">
+          <button type="button" class="btn" id="collAddRequest" aria-label="New request"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></button>
+          <button type="button" class="btn" id="collAddFolder" aria-label="New folder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button>
+        </div>
+        <div id="collTree" class="coll-tree" role="tree" aria-label="Collection items"></div>
+        <div id="collTreeState" class="coll-state"></div>
+      </div>
+      <div class="split-detail coll-detail">
+        <div id="collWork" class="coll-work">
+          <div class="coll-phone-seg seg" id="collPhoneSeg"><button type="button" class="on" data-v="req" aria-pressed="true">Request</button><button type="button" data-v="res" aria-pressed="false">Response</button></div>
+          <div class="coll-main" id="collMain">
+            <section id="collEditor" class="coll-editor" aria-label="Request editor"></section>
+            <section id="collResponse" class="coll-response" aria-label="Response"></section>
+          </div>
+          <div id="collConsole" class="coll-console" role="region" aria-label="Console" hidden></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- /region:collections -->
   <!-- region:notes -->
   <!-- Project notes (markdown notebook) -->
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
@@ -1936,5 +1984,8 @@ Content-Type: application/json
 (function(){document.querySelectorAll('[data-init-hidden]').forEach(function(el){el.style.display='none';});})();
 </script>
 <script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/collections.js"></script>
+<script type="module" src="/js/runner.js"></script>
+<script type="module" src="/js/collections-matrix.js"></script>
 </body>
 </html>

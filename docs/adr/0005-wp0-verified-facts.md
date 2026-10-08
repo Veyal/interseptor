@@ -1,0 +1,10 @@
+# ADR 0005: Verified facts for later work packages
+
+Date: 2026-10-07. Read from `feat/collections` @ 925dfe6.
+
+1. `store.FlagCollection = 1<<9` is free. `store.go` flag consts jump from `FlagImported 1<<8` to `FlagAI 1<<10`. VERIFIED.
+2. Sender header ordering is NOT preserved. `sender.Request.Headers` is `map[string][]string` (sender.go L35); `Send` rebuilds `http.Header` (L433-441) and net/http writes headers sorted, with `Host` forced off the header map. Duplicate values per key survive; cross-key order, original casing, and duplicate keys differing in case do not. WP3 MUST add an ordered `RawHeaders []Header` path (plus raw wire writer) for collection items. Flow `ReqHeaders` is also `map[string][]string` via `reqHeaders(req)`, so the stored flow cannot show original order either. The ordered form must live in `ix_flow_ctx`/item, not in the flow row.
+3. Persist-hook parity differs from the MITM path. `Sender.persist` does synchronous `InsertFlow`, `cap.TagIfAuth`, then `onPersist` (wired to `Hub.FlowCaptured` in control.go L210, which only broadcasts `flow.new` and invalidates the endpoint cache). The MITM path (`proxy.record`, proxy.go L1400-1432) uses the async `EnqueueInsertFlow` queue and additionally calls `plugin.EmitFlowCaptured(flow.ID)`. Sender sends therefore do NOT fire extension/annotator hooks. WP4 should call `plugin.EmitFlowCaptured` after persist (best-effort, off the hot path) if hook parity is wanted; plugin package has no import cycle with sender (verify at WP4). Sender also sends `flow.new` only (no `flow.update`).
+4. `ui_state` caps: `maxUIStateBytes = 4 << 20` (control/ui_state.go L16) for the three keys `ui.repeaterTabs|ui.intruderTabs|ui.intruderPresets`. The plan's "200-tab cap" was NOT found in Go; if it exists it is client-side JS (not located). Conclusion stands: collections must not use these keys.
+5. Existing Postman code: `internal/postman` and `control/postman.go` (64 MiB import cap) exist; legacy "Import Postman to Repeater tabs" stays (owner decision 5).
+6. Request redirect/timeout defaults: Sender currently has no timeout/redirect knobs; WP3 `SendOptions` must default to today's behavior.

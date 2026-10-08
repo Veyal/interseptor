@@ -1241,6 +1241,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
 export const FLAG_WS=32;
 export const FLAG_TLS=16;
 export const FLAG_AI=1024;
+export const FLAG_COLLECTION=512; // sent from a collection request (store.FlagCollection)
 export const FLAG_DISCOVERY=4096;
 export const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light
 export const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)
@@ -1656,7 +1657,8 @@ export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="t
 export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
   // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
   // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
-  'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet'];
+  'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet','collEnvSheet','collScriptsSheet','collImportSheet','collRunSheet',
+  'collMatrixSheet','collCoverageSheet','collTimingSheet','collExampleDiffSheet'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];

@@ -1,0 +1,78 @@
+/* collections-matrix.css — identity matrix, OpenAPI coverage, run timing,
+   saved-example diff and Intruder handoff (js/collections-matrix.js). Shared
+   tokens only; coll-* conventions from collections.css (method colour, status
+   colour, sheet layout) are reused where the shape matches. Only transform
+   and opacity ever animate; app.css's reduced-motion block already zeroes
+   them for every selector here because none declares its own transition. */
+
+.cxm-wrap{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4)}
+.cxm-summary{margin:0;font-size:var(--fs-md);color:var(--fg)}
+.cxm-note{margin:0;color:var(--fg3);font-size:var(--fs-sm)}
+.cxm-hypotheses{display:flex;flex-direction:column;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border:1px solid var(--warnLine);background:var(--noteDim);border-radius:var(--r-md);color:var(--warnFg);font-size:var(--fs-sm)}
+.cxm-hypotheses p{margin:0}
+
+.cxm-scroll{overflow-x:auto;max-width:100%}
+.cxm-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.cxm-table th,.cxm-table td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;white-space:nowrap}
+.cxm-table th{color:var(--fg3);font-weight:600;font-size:var(--fs-xs)}
+.cxm-table th.cxm-baseline{color:var(--accent)}
+.cxm-table td.cxm-row-name{white-space:normal;max-width:11rem;overflow-wrap:anywhere}
+.cxm-method{font-family:var(--mono);font-weight:700;font-size:var(--fs-xs);color:var(--fg2);margin-right:4px}
+
+.cxm-cell{text-align:center;font-family:var(--mono)}
+/* Identity columns stay narrow so a three-identity matrix fits the side sheet; the wrapper still scrolls when there are more. */
+.cxm-table th:not(:first-child),.cxm-table td.cxm-cell{padding-inline:var(--sp-1)}
+.cxm-glyph{display:inline-block;min-width:1.2em}
+.cxm-status{color:var(--fg3);font-size:var(--fs-xs);margin-left:4px}
+.cxm-cell[data-class="success"] .cxm-glyph{color:var(--accent)}
+.cxm-cell[data-class="auth_failure"] .cxm-glyph,.cxm-cell[data-class="authz_failure"] .cxm-glyph{color:var(--blue)}
+.cxm-cell[data-class="validation_failure"] .cxm-glyph{color:var(--amber)}
+.cxm-cell[data-class="blocked"] .cxm-glyph,.cxm-cell[data-class="error"] .cxm-glyph{color:var(--red)}
+.cxm-cell[data-flag="violation"]{background:var(--redDim)}
+.cxm-cell[data-flag="violation"] .cxm-glyph{color:var(--dangerFg)}
+.cxm-cell[data-flag="unexpected_denial"]{background:var(--noteDim)}
+.cxm-cell[data-flag="unexpected_denial"] .cxm-glyph{color:var(--warnFg)}
+.cxm-cell.cxm-has-flow{cursor:pointer}
+.cxm-cell.cxm-has-flow:hover,.cxm-cell.cxm-has-flow:focus-visible{background:var(--bg2)}
+.cxm-cell:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+
+.cxm-legend{display:flex;flex-wrap:wrap;gap:var(--sp-3);color:var(--fg3);font-size:var(--fs-xs)}
+.cxm-legend-item{display:inline-flex;gap:4px;align-items:center}
+
+.cxm-timing-diff,.cxm-outliers{display:flex;flex-direction:column;gap:var(--sp-1)}
+.cxm-timing-diff h4,.cxm-outliers h4{margin:0;font-size:var(--fs-sm);color:var(--fg2)}
+.cxm-timing-diff ul,.cxm-outliers ul{margin:0;padding-left:var(--sp-4);font-size:var(--fs-sm);color:var(--fg2)}
+
+.cxm-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+
+/* coverage */
+.cxm-groups{display:flex;flex-direction:column;gap:var(--sp-1)}
+.cxm-group-row{display:grid;grid-template-columns:120px 1fr auto;gap:var(--sp-2);align-items:center;font-size:var(--fs-sm)}
+.cxm-group-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+.cxm-group-track{position:relative;height:8px;background:var(--bg2);border-radius:var(--r-sm);overflow:hidden}
+.cxm-group-fill{position:absolute;inset:0 auto 0 0;background:var(--accent)}
+.cxm-group-n{color:var(--fg3);font-size:var(--fs-xs);white-space:nowrap}
+
+.cxm-filter-row{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.cxm-filter-row input[type="search"]{flex:1;min-width:160px}
+
+.cxm-state-untested{color:var(--fg3)}
+.cxm-state-blocked{color:var(--amber)}
+.cxm-state-failing{color:var(--red)}
+.cxm-state-passing{color:var(--accent)}
+.cxm-chip{display:inline-flex;align-items:center;padding:0 6px;margin-left:4px;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-xs);color:var(--fg3)}
+
+/* timing */
+.cxm-phasebar{display:flex;height:10px;border-radius:var(--r-sm);overflow:hidden;background:var(--bg2)}
+.cxm-phase-requests{background:var(--accent)}
+.cxm-phase-tests{background:var(--blue)}
+.cxm-phase-other{background:var(--fg3)}
+
+/* saved-example diff */
+.cxm-headerdiff,.cxm-jsondiff{margin:0;padding-left:var(--sp-4);font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg2);display:flex;flex-direction:column;gap:2px}
+.cxm-diffview{border:1px solid var(--line);border-radius:var(--r-md);max-height:50vh;overflow:auto}
+
+@media (max-width:720px){
+  .cxm-wrap{padding:var(--sp-2) var(--sp-3)}
+  .cxm-group-row{grid-template-columns:84px 1fr auto}
+}

@@ -30,6 +30,7 @@ scripts/fix-findings-*.ps1
 docs/SPEC-agent-pentest*.md
 *-bounty.ps1
 *.har
+!internal/collimport/har/testdata/*.har
 
 # CI workflows live in .github/workflows/ (commit with git add -f if needed).
 

@@ -103,6 +103,15 @@ func (e *Engine) HostInScope(host string) bool {
 	return included
 }
 
+// URLInScope reports whether a destination is in scope using the full rule
+// (host, path, scheme and port), the same decision InScope makes for a
+// captured flow. Callers that know the whole URL before sending (the
+// collection pipeline) use it so a port- or path-pinned include rule is not
+// widened to every port and path of its host.
+func (e *Engine) URLInScope(scheme, host string, port int, path string) bool {
+	return e.InScope(&store.Flow{Scheme: scheme, Host: host, Port: port, Path: path})
+}
+
 // InScope reports whether a flow is in scope: it matches no exclude rule, and
 // (if any include rules exist) matches at least one include rule.
 func (e *Engine) InScope(f *store.Flow) bool {

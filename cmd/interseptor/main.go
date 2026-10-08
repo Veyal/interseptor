@@ -239,6 +239,7 @@ func run() error {
 	cm := &controlManager{}
 	hub := control.New(st, eng, ca, pm, sc)
 	defer hub.Close()
+	hub.ScriptRouter = newScriptRouter() // collection scripts run in the isolated worker
 	hub.SetControlRebinder(cm)
 	hub.WireIntruderRunSink() // persist finished Intruder runs for evidence renders
 	// User-authored Starlark scanner checks are global (shared across projects).

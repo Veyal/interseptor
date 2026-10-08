@@ -1,0 +1,19 @@
+headers {
+  X-Client: interseptor-test
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+vars:pre-request {
+  baseUrl: https://api.example.com
+}
+
+docs {
+  # Example collection
+}

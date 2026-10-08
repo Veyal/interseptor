@@ -153,3 +153,8 @@
   title: Session inspector
   text: Passive timelines and role comparisons for selected History captures, with redacted observations and no new requests.
   link: /workspace/#session-inspector
+- number: "32"
+  id: collections
+  title: Collections
+  text: Saved requests with environments, variables, auth, quarantined pm-compatible scripts, a runner, a CI command with JUnit output, and importers for Postman, OpenAPI, curl, Insomnia, Bruno, HAR, and Burp.
+  link: /collections/

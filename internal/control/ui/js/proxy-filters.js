@@ -16,6 +16,7 @@ export function activeFilterCount(st) {
   if (st.inScopeOnly) n++;
   if (st.showManual === false) n++;
   if (st.showAI === false) n++;
+  if (st.showCollection === false) n++;
   return n;
 }
 
@@ -27,6 +28,7 @@ export function popoverFilterCount(st) {
   if (st.notesOnly) n++;
   if (st.showManual === false) n++;
   if (st.showAI === false) n++;
+  if (st.showCollection === false) n++;
   if (f.tag) n++;
   if (st.hideTlsFailed === false) n++;
   return n;

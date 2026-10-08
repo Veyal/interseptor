@@ -1,0 +1,614 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Pet Store",
+    "description": "Example API at example.com\n\nVersion: 1.2.0",
+    "auth": {
+      "type": "bearer",
+      "bearer": [
+        {
+          "key": "token",
+          "type": "string",
+          "value": "{{bearerAuth_token}}"
+        }
+      ]
+    },
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "openapi-3.0.3",
+      "info": {
+        "title": "Pet Store",
+        "version": "1.2.0",
+        "description": "Example API at example.com"
+      }
+    },
+    "importReport": {
+      "format": "openapi",
+      "entries": [
+        {
+          "level": "degraded",
+          "path": "POST /pets",
+          "feature": "ref-cycle",
+          "message": "$ref cycle through Pet was cut in a generated example"
+        },
+        {
+          "level": "degraded",
+          "path": "DELETE /pets/{petId}",
+          "feature": "deprecated",
+          "message": "operation is marked deprecated (tagged \"deprecated\")"
+        },
+        {
+          "level": "converted",
+          "path": "servers",
+          "feature": "servers",
+          "message": "2 server(s) became environments with a baseUrl variable"
+        },
+        {
+          "level": "converted",
+          "feature": "auth:bearer",
+          "message": "security scheme bearerAuth became bearer auth with a secret variable"
+        },
+        {
+          "level": "converted",
+          "path": "GET /pets",
+          "feature": "response-examples",
+          "message": "2 saved response example(s) from declared examples"
+        },
+        {
+          "level": "converted",
+          "path": "GET /pets/{petId}",
+          "feature": "response-examples",
+          "message": "1 saved response example(s) from declared examples"
+        },
+        {
+          "level": "converted",
+          "feature": "auth:apikey",
+          "message": "security scheme apiKey became apikey auth with a secret variable"
+        }
+      ],
+      "counts": {
+        "converted": 5,
+        "degraded": 2
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 2,
+        "requests": 7,
+        "examples": 3,
+        "variables": 3,
+        "secretVariables": 2,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 2
+      },
+      "headline": "2 folders, 7 requests, 3 saved examples; 3 variables (2 secret), 2 environments; 0 need review"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "pets",
+      "descriptionMd": "Everything about pets",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "r",
+      "name": "store",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "i",
+      "name": "List pets",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/pets?status=available",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "pets"
+        ],
+        "query": [
+          {
+            "disabled": true,
+            "key": "limit",
+            "value": "20"
+          },
+          {
+            "key": "status",
+            "value": "available"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "disabled": true,
+          "key": "X-Trace",
+          "value": "t-1"
+        }
+      ],
+      "examples": [
+        {
+          "name": "200 one",
+          "status": "ok",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "[\n  {\n    \"id\": 1,\n    \"name\": \"Rex\"\n  }\n]",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "default error",
+          "status": "error",
+          "code": 0,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"code\": 500,\n  \"message\": \"boom\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ],
+      "tags": [
+        "pets"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/pets",
+          "method": "get",
+          "operationId": "listPets"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "r",
+      "name": "Create pet",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/pets",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "pets"
+        ]
+      },
+      "headers": [
+        {
+          "disabled": true,
+          "key": "X-Trace",
+          "value": "t-1"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Rex\",\n  \"tag\": \"string\",\n  \"owner\": {\n    \"email\": \"user@example.com\",\n    \"pets\": []\n  }\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "tags": [
+        "pets"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/pets",
+          "method": "post"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "v",
+      "name": "getPet",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/pets/:petId",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "pets",
+          ":petId"
+        ],
+        "variable": [
+          {
+            "key": "petId",
+            "value": "7"
+          }
+        ]
+      },
+      "headers": [],
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          {
+            "key": "key",
+            "type": "string",
+            "value": "X-API-Key"
+          },
+          {
+            "key": "value",
+            "type": "string",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "in",
+            "type": "string",
+            "value": "header"
+          }
+        ]
+      },
+      "examples": [
+        {
+          "name": "200 ok",
+          "status": "ok",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"id\": 7,\n  \"name\": \"Fido\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ],
+      "tags": [
+        "pets"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/pets/{petId}",
+          "method": "get",
+          "operationId": "getPet"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id009",
+      "collectionUid": "id001",
+      "parentUid": "id004",
+      "kind": "request",
+      "rank": "x",
+      "name": "DELETE /pets/{petId}",
+      "method": "DELETE",
+      "url": {
+        "raw": "{{baseUrl}}/pets/:petId",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "pets",
+          ":petId"
+        ],
+        "variable": [
+          {
+            "key": "petId",
+            "value": "{{petId}}"
+          }
+        ]
+      },
+      "headers": [],
+      "auth": {
+        "type": "noauth"
+      },
+      "tags": [
+        "pets",
+        "admin",
+        "deprecated"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/pets/{petId}",
+          "method": "delete"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id010",
+      "collectionUid": "id001",
+      "parentUid": "id005",
+      "kind": "request",
+      "rank": "i",
+      "name": "POST /orders",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/orders",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "orders"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/x-www-form-urlencoded"
+        }
+      ],
+      "body": {
+        "mode": "urlencoded",
+        "urlencoded": [
+          {
+            "key": "sku",
+            "value": "string"
+          },
+          {
+            "key": "qty",
+            "value": "1"
+          }
+        ]
+      },
+      "tags": [
+        "store"
+      ],
+      "sidecar": {
+        "openapi": {
+          "path": "/orders",
+          "method": "post"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id011",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "v",
+      "name": "POST /upload",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/upload",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "upload"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "multipart/form-data"
+        }
+      ],
+      "body": {
+        "mode": "formdata",
+        "formdata": [
+          {
+            "key": "file",
+            "type": "file",
+            "src": ""
+          },
+          {
+            "key": "note",
+            "type": "text",
+            "value": "string"
+          }
+        ]
+      },
+      "sidecar": {
+        "openapi": {
+          "path": "/upload",
+          "method": "post"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id012",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "x",
+      "name": "Health",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/health",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "health"
+        ]
+      },
+      "headers": [],
+      "auth": {
+        "type": "noauth"
+      },
+      "sidecar": {
+        "openapi": {
+          "path": "/health",
+          "method": "get"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "https://api.example.com/v1",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "bearerAuth_token",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "apiKey",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id002",
+        "name": "Production",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id002",
+          "key": "baseUrl",
+          "type": "default",
+          "initialValue": "https://api.example.com/v1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "environment": {
+        "uid": "id003",
+        "name": "Staging",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id003",
+          "key": "baseUrl",
+          "type": "default",
+          "initialValue": "https://staging.example.com/v1",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "openapi",
+    "entries": [
+      {
+        "level": "degraded",
+        "path": "POST /pets",
+        "feature": "ref-cycle",
+        "message": "$ref cycle through Pet was cut in a generated example"
+      },
+      {
+        "level": "degraded",
+        "path": "DELETE /pets/{petId}",
+        "feature": "deprecated",
+        "message": "operation is marked deprecated (tagged \"deprecated\")"
+      },
+      {
+        "level": "converted",
+        "path": "servers",
+        "feature": "servers",
+        "message": "2 server(s) became environments with a baseUrl variable"
+      },
+      {
+        "level": "converted",
+        "feature": "auth:bearer",
+        "message": "security scheme bearerAuth became bearer auth with a secret variable"
+      },
+      {
+        "level": "converted",
+        "path": "GET /pets",
+        "feature": "response-examples",
+        "message": "2 saved response example(s) from declared examples"
+      },
+      {
+        "level": "converted",
+        "path": "GET /pets/{petId}",
+        "feature": "response-examples",
+        "message": "1 saved response example(s) from declared examples"
+      },
+      {
+        "level": "converted",
+        "feature": "auth:apikey",
+        "message": "security scheme apiKey became apikey auth with a secret variable"
+      }
+    ],
+    "counts": {
+      "converted": 5,
+      "degraded": 2
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 2,
+      "requests": 7,
+      "examples": 3,
+      "variables": 3,
+      "secretVariables": 2,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 2
+    },
+    "headline": "2 folders, 7 requests, 3 saved examples; 3 variables (2 secret), 2 environments; 0 need review"
+  }
+}
