@@ -52,7 +52,7 @@ func TestUIFlowTimeColumnDefaultsAndCell(t *testing.T) {
 	if !regexp.MustCompile(`\.when-time\{[^}]*tabular-nums`).MatchString(css) || !strings.Contains(css, ".when-date{color:var(--fg3)") {
 		t.Error("app.css must style .when-time (tabular-nums) and a dim .when-date")
 	}
-	if !strings.Contains(css, "52px 64px 124px)}") {
+	if !strings.Contains(css, "52px 64px 124px var(--row-more-w))}") {
 		t.Error("the pre-JS fallback grid template must use the 124px time track")
 	}
 }

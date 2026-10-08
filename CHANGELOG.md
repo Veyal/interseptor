@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.0` release.
 
+### Fixed
+
+- **Proxy History: the row "More" (⋮) button is reachable at every width** (fixes #97). `.tr-more` was `display:none` above 720px, so the row actions menu could not be opened on desktop or on touch devices wider than a phone. It now owns a trailing grid track (`--row-more-w`: 28px, 44px on coarse pointers), is dimmed at rest only on hover-capable fine pointers and revealed on row hover, focus, selection and its own focus ring, and stays always visible on touch and phone cards. Row height and the virtual list are unchanged; Shift+F10 / the Menu key on a focused row still open the same menu from the keyboard.
+
 ## [2.8.0] - 2026-10-08
 
 > Feature release: finding images and flow previews can be copied to the clipboard as PNG, and the History inspector placement control is no longer ambiguous.
