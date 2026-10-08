@@ -1327,6 +1327,7 @@ export async function selectFlow(id){
   state.selId=id;
   if(switching)onAuthzSelectionChanged();
   if(!syncSelectedRow(prevSelId))renderRows();
+  else syncInspectorVisibility();
   openDockedDrawer(id);
   if(needsLoadingState)showInspectorLoading(id);
   try{
@@ -2567,7 +2568,7 @@ function openDockedDrawer(id){
     try{localStorage.setItem(DOCK_KEY,dockPref);}catch(e){}
     const drawer=syncDock();
     if(drawer&&state.selId!=null)openDockedDrawer(state.selId);
-    else if(!drawer)getHook('closeFlow')?.();
+    else if(!drawer){getHook('closeFlow')?.();syncInspectorVisibility();}
   };
   window.addEventListener('resize',()=>{const was=$('#panel-proxy')?.classList.contains('dock-drawer');if(!syncDock()&&was)getHook('closeFlow')?.();});
   syncDock();
