@@ -121,8 +121,14 @@ func TestUIProxyBulkBarCarriesTheSpecVerbs(t *testing.T) {
 func TestUIProxyInspectorActionsAndDock(t *testing.T) {
 	region := proxyRegion(t)
 	requireUIContains(t, region, `id="inspectCopyAs"`, `id="inspectDock"`, "Attach as evidence")
-	if !regexp.MustCompile(`<button[^>]*id="inspectDock"[^>]*aria-pressed="`).MatchString(region) {
-		t.Error("the dock toggle must expose aria-pressed")
+	// The placement control is a two-option group: each button names the placement it
+	// selects (and keeps that label), and only the active one is pressed. The side
+	// drawer option carries the right-panel icon, the bottom option the bottom-panel icon.
+	if !regexp.MustCompile(`(?s)id="inspectDock"[^>]*role="group".*?<button[^>]*data-dock="drawer"[^>]*aria-pressed="false"[^>]*>.*?#i-panel-right.*?Side drawer</button>\s*<button[^>]*data-dock="bottom"[^>]*aria-pressed="true"[^>]*>.*?#i-panel-bottom.*?Bottom inspector</button>`).MatchString(region) {
+		t.Error("the dock control must be a group of a Side drawer button (panel-right icon) and a Bottom inspector button (panel-bottom icon), with only the bottom one pressed by default")
+	}
+	if regexp.MustCompile(`<button[^>]*id="inspectDock"`).MatchString(region) {
+		t.Error("the dock control must not be a single state-labelled toggle button")
 	}
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
 	requireUIContains(t, src, "parseDockPref(", "resolveDock(", "proxy.dock", "openFlowDrawer(", "dock-drawer", "getHook('attachEvidence')")
@@ -131,6 +137,12 @@ func TestUIProxyInspectorActionsAndDock(t *testing.T) {
 	if selectStart < 0 || selectEnd < 0 || !strings.Contains(src[selectStart:selectStart+selectEnd], "syncInspectorVisibility(") {
 		t.Error("selecting a history row must reveal the bottom inspector even when the row highlight is patched in place")
 	}
+	for _, bad := range []string{"btn.innerHTML=icon(drawer?", "dockPref==='drawer'?'bottom':'drawer'"} {
+		if strings.Contains(src, bad) {
+			t.Errorf("proxy.js must not relabel or blindly flip the dock control (%s)", bad)
+		}
+	}
+	requireUIContains(t, src, "button[data-dock]", "dockOptionStates(")
 	css := readUIAsset(t, "panel-proxy.css")
 	requireUIContains(t, css, ".dock-drawer", "#inspectSplitter")
 }

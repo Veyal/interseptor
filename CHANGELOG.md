@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The History inspector placement control no longer reads as swapped. It was one button whose label named the current placement ("Bottom inspector") while clicking it switched to the other one, so choosing "Side drawer" appeared to open the bottom inspector and the reverse. It is now a two-option group: **Side drawer** always opens the drawer to the right of the list, **Bottom inspector** always opens the inspector below it, and the active option is the pressed one. The saved choice (`proxy.dock`, `drawer` or `bottom`) is unchanged, so existing preferences keep their meaning; unknown values fall back to the bottom inspector. Selecting a row and double-clicking for the large inspector behave as before, and phones keep the bottom sheet.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.7.1` release.

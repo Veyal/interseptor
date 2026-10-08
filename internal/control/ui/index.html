@@ -232,7 +232,10 @@
       <button type="button" class="btn" id="filtersBtn" title="Source, notes, tag and saved-search filters" aria-haspopup="true" aria-expanded="false" aria-controls="proxyFilters"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-filter"/></svg> Filters <span id="filtersCount" class="filters-count" hidden></span></button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <div class="spacer"></div>
-      <button type="button" class="btn" id="inspectDock" aria-pressed="false" title="Show the selected flow in the side drawer instead of the bottom inspector"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg> Bottom inspector</button>
+      <div class="seg" id="inspectDock" role="group" aria-label="Flow inspector placement">
+        <button type="button" data-dock="drawer" aria-pressed="false" title="Show the selected flow in the side drawer, beside the history list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-right"/></svg> Side drawer</button>
+        <button type="button" data-dock="bottom" aria-pressed="true" title="Show the selected flow in the inspector below the history list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg> Bottom inspector</button>
+      </div>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Cols</button>
     </div>
     <!-- The Filters popover holds the secondary filter state (source pills, notes,
