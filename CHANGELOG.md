@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.0` release.
+
 ## [2.8.0] - 2026-10-08
 
 > Feature release: finding images and flow previews can be copied to the clipboard as PNG, and the History inspector placement control is no longer ambiguous.
