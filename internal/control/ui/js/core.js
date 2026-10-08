@@ -7,6 +7,7 @@
 // to the shared `state` object are visible across modules (live object binding).
 
 import { placeFloatingSurface } from './surface-position.js';
+import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL } from './copy-image.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -1839,6 +1840,8 @@ export function openImageLightbox(src,caption){
   ensureImageLightbox();
   const{m,stage,img,cap}=imgLbEls();if(!m||!img||!src)return;
   if(cap)cap.textContent=caption||'Screenshot';
+  const cp=$('#imgLbCopy');
+  if(cp){const ok=isCopyableImageURL(src,location.origin);cp.hidden=!ok;cp.dataset.copySrc=ok?src:'';cp.dataset.copyName=caption||'';cp.setAttribute('aria-label','Copy image'+(caption?': '+caption:''));}
   img.removeAttribute('width');img.removeAttribute('height');
   img.alt=caption||'Screenshot';
   img.onload=()=>{requestAnimationFrame(imgLbFit);};
@@ -1943,6 +1946,45 @@ document.addEventListener('keydown',e=>{
 // Wire controls once DOM is ready (module scripts are deferred, but be safe).
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureImageLightbox);
 else ensureImageLightbox();
+
+// ---- Copy image (finding images and generated flow previews) ----
+// copyImageButton renders the shared compact "Copy image" control. src must be a
+// finding image or flow-preview URL (copy-image.js enforces that again on click);
+// what names the picture for assistive tech ("proof image", "flow #7 preview").
+export function copyImageButton(src, what, name) {
+  const label = 'Copy image' + (what ? ': ' + what : '');
+  return `<button type="button" class="btn xs js-copy-image" data-copy-src="${escAttr(src)}" data-copy-name="${escAttr(name || '')}" aria-label="${escAttr(label)}" title="Copy image to the clipboard (paste into Notion or any editor)">${icon('copy')} Copy image</button>`;
+}
+// The click handler starts the clipboard write synchronously (Safari keeps the
+// user gesture only for a ClipboardItem built from a promise inside the handler).
+export function copyImageFromButton(btn) {
+  const src = btn.dataset.copySrc || '';
+  if (btn.getAttribute('aria-busy') === 'true') return;
+  btn.setAttribute('aria-busy', 'true');
+  const run = copyImage(src);
+  run.result.then(res => {
+    if (res.ok) { toast('Image copied', 'success'); return; }
+    const t = toast(copyFailureMessage(res.reason), 'error');
+    if (!t) return;
+    // Offer Download whenever the picture itself loaded (everything but fetch/blocked).
+    run.blob.then(blob => {
+      const dl = document.createElement('button');
+      dl.type = 'button';
+      dl.className = 'btn xs';
+      dl.setAttribute('aria-label', 'Download image as PNG');
+      dl.innerHTML = icon('download') + ' Download';
+      dl.addEventListener('click', () => { void saveFile(blob, copyImageFileName(btn.dataset.copyName), 'image/png'); });
+      t.insertBefore(dl, t.querySelector('.toast-dismiss'));
+    }, () => {});
+  }).finally(() => btn.removeAttribute('aria-busy'));
+}
+document.addEventListener('click', e => {
+  const btn = e.target instanceof Element ? e.target.closest('.js-copy-image') : null;
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  copyImageFromButton(btn);
+});
 
 let activePromptFinish=null;
 let activeConfirmFinish=null;
