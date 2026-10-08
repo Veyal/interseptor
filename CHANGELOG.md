@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.9.0` release.
+
 ## [2.9.0] - 2026-10-08
 
 > Feature release: Interseptor now ships an AI-agent guide, `llms.txt` / `llms-full.txt`, and generated MCP/REST reference, so you can paste `https://veyal.github.io/interseptor` to any agent.
