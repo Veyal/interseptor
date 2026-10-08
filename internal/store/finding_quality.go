@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -123,16 +124,30 @@ func (f *Finding) capabilityClaimGaps() []string {
 	}
 	return gaps
 }
-func qualityChecks(gaps []string) []FindingQualityCheck {
-	hints := map[string][2]string{
-		"title": {"title", "Add a precise finding title."}, "summary": {"summary", "State the observed claim and its limits."}, "target": {"targets", "Add an affected endpoint or application."}, "target_evidence": {"targets", "Link retained evidence for each affected target."},
-		"impact": {"impact", "Describe the demonstrated impact."}, "why": {"why", "Explain the failed boundary or root cause."}, "evidence": {"blocks", "Attach a captured flow or screenshot."}, "proof": {"blocks.proof", "Explain what each attached artifact proves."}, "reproduction": {"blocks.role", "Order and label the reproduction steps."},
-		"action": {"proofReview.evidence.action", "Identify the recorded action."}, "result": {"proofReview.evidence.result", "Identify the observed result."}, "control": {"proofReview.evidence.control", "Identify the negative or control case."}, "execution": {"proofReview.execution", "Review whether the claimed impact was demonstrated."}, "execution_reason": {"proofReview.reason", "Explain the verification limit."},
-		"visual": {"blocks.source", "Classify and annotate a real browser/device result capture."}, "cvss": {"cvss", "Provide a valid CVSS v4.0 vector."}, "severity": {"severity", "Align severity with the calculated CVSS rating."}, "fix": {"fix", "Describe the recommended fix."}, "retest": {"retest", "Describe expected secure behavior, including a negative case."}, "confidence": {"confidence", "Record the evidence confidence."}, "evidence_missing": {"blocks", "Restore or replace missing evidence references or raw message bodies."}, "verification": {"status", "Resolve the outstanding verification status before final reporting."},
+
+// findingGapHints maps each readiness gap code to its field and fix hint.
+var findingGapHints = map[string][2]string{
+	"title": {"title", "Add a precise finding title."}, "summary": {"summary", "State the observed claim and its limits."}, "target": {"targets", "Add an affected endpoint or application."}, "target_evidence": {"targets", "Link retained evidence for each affected target."},
+	"impact": {"impact", "Describe the demonstrated impact."}, "why": {"why", "Explain the failed boundary or root cause."}, "evidence": {"blocks", "Attach a captured flow or screenshot."}, "proof": {"blocks.proof", "Explain what each attached artifact proves."}, "reproduction": {"blocks.role", "Order and label the reproduction steps."},
+	"action": {"proofReview.evidence.action", "Identify the recorded action."}, "result": {"proofReview.evidence.result", "Identify the observed result."}, "control": {"proofReview.evidence.control", "Identify the negative or control case."}, "execution": {"proofReview.execution", "Review whether the claimed impact was demonstrated."}, "execution_reason": {"proofReview.reason", "Explain the verification limit."},
+	"visual": {"blocks.source", "Classify and annotate a real browser/device result capture."}, "cvss": {"cvss", "Provide a valid CVSS v4.0 vector."}, "severity": {"severity", "Align severity with the calculated CVSS rating."}, "fix": {"fix", "Describe the recommended fix."}, "retest": {"retest", "Describe expected secure behavior, including a negative case."}, "confidence": {"confidence", "Record the evidence confidence."}, "evidence_missing": {"blocks", "Restore or replace missing evidence references or raw message bodies."}, "verification": {"status", "Resolve the outstanding verification status before final reporting."},
+}
+
+// FindingGapCodes lists the readiness gap codes with a fix hint, sorted. The
+// documentation generator checks the agent guide against it.
+func FindingGapCodes() []string {
+	out := make([]string, 0, len(findingGapHints))
+	for code := range findingGapHints {
+		out = append(out, code)
 	}
+	sort.Strings(out)
+	return out
+}
+
+func qualityChecks(gaps []string) []FindingQualityCheck {
 	out := []FindingQualityCheck{}
 	for _, gap := range gaps {
-		hint, ok := hints[gap]
+		hint, ok := findingGapHints[gap]
 		rule, capability := "completeness", ""
 		if gap == "evidence_missing" {
 			rule = "evidence_integrity"
