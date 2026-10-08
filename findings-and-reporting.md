@@ -173,6 +173,13 @@ Screenshots and generated HTTP previews belong with the part they illustrate. `s
 `observation`, and `retest` may follow; they do not replace the three parts. Readiness still
 requires a separate negative or normal control before a finding is report-ready.
 
+When a finding lists more than one affected target, the overview, evidence read view, and report
+show **Proof of** that target. Link the captured flow or screenshot with the target's `flow_ids`
+or `image_hashes`. Text that is not linked to one target stays in a shared explanation. Repeat the
+three-part proof for each target you tested. A target you did not test may be listed without its
+own proof; do not invent a request to fill the gap. Report-ready still asks for retained evidence
+on each affected target that has no setup or chain exception.
+
 ### Presets
 
 - **Report proof / Differential proof** — baseline → action → result. This is the story above.

@@ -315,6 +315,10 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .find-flow-shot img,.find-auto-preview img{display:block;width:100%;height:auto;border:1px solid var(--line);background:var(--bg)}
 .find-flow-shot span{font-family:var(--mono);font-size:var(--fs-sm);color:var(--fg2)}
 .find-flow-shot:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.find-target-proofs{display:grid;gap:var(--sp-4)}
+.find-target-proof{display:grid;gap:var(--sp-2);padding:var(--sp-3);border:1px solid var(--line);background:var(--bg);border-radius:var(--r-md)}
+.find-target-proof>h4{margin:0;font-size:var(--fs-md);font-weight:650;overflow-wrap:anywhere}
+.find-target-proof:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 /* SplitPane adoption: list | detail on wide screens. Phones keep the existing
    list/detail toggle, so the sash and grid are desktop-only. */

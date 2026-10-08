@@ -184,7 +184,7 @@ func mcpInstructions() string {
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
 		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
 		"SCAN: run_scanner (passive) → inspect list_issues and relevant flows → use send_request, start_intruder, authz_run, cross_host_token_replay, and oob_* deliberately for confirmation and blind callbacks.\n\n" +
-		"RECORD: write findings point-first — create_finding with claim/risk/target fields and a three-part proof of concept → attach captured requests with add_finding_poc → add a real browser/device screenshot when it visually proves the claim, or use render_flow_preview for a clearly labeled HTTP preview. The proof of concept is always Differential proof, in this order: baseline (what the application normally does), action (what we changed to trigger the issue), result (what the response changed to and the impact). Say each part in plain language in the proof field. Give every flow/image a proof statement and provenance. Never file a wall of prose or paste raw HTTP into detail/evidence.\n\n" +
+		"RECORD: write findings point-first — create_finding with claim/risk/target fields and a three-part proof of concept → attach captured requests with add_finding_poc → add a real browser/device screenshot when it visually proves the claim, or use render_flow_preview for a clearly labeled HTTP preview. The proof of concept is always Differential proof, in this order: baseline (what the application normally does), action (what we changed to trigger the issue), result (what the response changed to and the impact). Say each part in plain language in the proof field. When a finding lists more than one affected target, repeat that proof for each affected target you tested and link it with that target's flow_ids or image_hashes. A target you did not test may be listed without its own proof; do not invent a request to fill it. Give every flow/image a proof statement and provenance. Never file a wall of prose or paste raw HTTP into detail/evidence.\n\n" +
 		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
 		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
@@ -1434,6 +1434,7 @@ func (s *Server) registerTools() {
 				Confidence:               argStr(a, "confidence"),
 				Body:                     narrative,
 				VerificationInstructions: argStr(a, "verificationInstructions"),
+				Targets:                  findingTargetsArg(a["targets"]),
 			})
 			if hard != nil {
 				return "", hard
@@ -1628,6 +1629,7 @@ func (s *Server) registerTools() {
 					Body:                     narrative,
 					VerificationInstructions: argStr(a, "verificationInstructions"),
 					Partial:                  true,
+					Targets:                  findingTargetsArg(a["targets"]),
 				})
 				if hard != nil {
 					return "", hard

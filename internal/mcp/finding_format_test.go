@@ -123,7 +123,7 @@ func TestValidateFindingFormatWarnsCredentialsNotHighlighted(t *testing.T) {
 
 func TestMCPInstructionsRequireFindingFormat(t *testing.T) {
 	instr := mcpInstructions()
-	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof", "what the application normally does", "what we changed", "practical impact"} {
+	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof", "what the application normally does", "what we changed", "practical impact", "each affected target", "do not invent"} {
 		if !strings.Contains(instr, want) {
 			t.Fatalf("mcpInstructions missing %q:\n%s", want, instr)
 		}
@@ -182,6 +182,43 @@ func TestValidateFindingFormatWarnsWhenProofStoryIsIncomplete(t *testing.T) {
 	for _, want := range []string{"normally does", "role baseline", "role action", "role result"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing proof-story warning %q in %v", want, warns)
+		}
+	}
+}
+
+func TestValidateFindingFormatWarnsWhenAffectedTargetHasNoProof(t *testing.T) {
+	body := `[{"type":"text","role":"baseline","md":"An ordinary user sees only their own invoice."},{"type":"flow","role":"action","flowId":1,"proof":"We requested another account's invoice."},{"type":"text","role":"result","md":"The other invoice was returned."}]`
+	targets := json.RawMessage(`[{"url":"https://example.com/invoices/1","flow_ids":[1]},{"url":"https://example.com/invoices/2","relation":"affected"}]`)
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "High", Summary: "Invoice records cross accounts.", Impact: "Invoice data is disclosed.",
+		Why: "The invoice id is not checked against the session.", Target: "https://example.com/invoices/1",
+		Fix: "Authorize each invoice.", Retest: "A second account is denied.", Body: body, Targets: targets,
+	})
+	if err != nil {
+		t.Fatalf("a target without proof should warn, not reject: %v", err)
+	}
+	joined := strings.Join(warns, "\n")
+	if !strings.Contains(joined, "https://example.com/invoices/2") || !strings.Contains(joined, "no linked proof") || !strings.Contains(joined, "do not invent") {
+		t.Fatalf("missing per-target proof warning: %v", warns)
+	}
+	if strings.Contains(joined, "https://example.com/invoices/1") && strings.Contains(joined, "invoices/1) has no linked proof") {
+		t.Fatalf("linked target should not be warned: %v", warns)
+	}
+}
+
+func TestValidateFindingFormatSkipsProofWarningForUntestedSetupTarget(t *testing.T) {
+	targets := json.RawMessage(`[{"url":"https://example.com/invoices/1","flow_ids":[1]},{"url":"https://example.com/login","relation":"setup","evidenceException":"Login only."}]`)
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "Low", Summary: "Noted.", Impact: "Limited.", Why: "Boundary.", Target: "https://example.com/invoices/1",
+		Body:    `[{"type":"text","role":"baseline","md":"Normal."},{"type":"flow","role":"action","flowId":1,"proof":"Changed."},{"type":"text","role":"result","md":"Impact."}]`,
+		Targets: targets,
+	})
+	if err != nil {
+		t.Fatalf("setup exception should not reject: %v", err)
+	}
+	for _, w := range warns {
+		if strings.Contains(w, "no linked proof") {
+			t.Fatalf("setup target with an evidence exception should not demand proof: %v", warns)
 		}
 	}
 }

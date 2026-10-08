@@ -25,6 +25,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - result: what the response or application did differently, and the practical impact of that change.
    - Put the plain-language explanation in each block's proof field. Do not paste raw HTTP into text.
    - setup, control, observation, and retest may be added after those three. They do not replace them.
+   - When the finding lists more than one affected target, repeat this proof for each affected target you tested. Link that proof with the target's flow_ids or image_hashes. One capture may be linked to several targets when it truly proves each of them. A target you did not test may be listed without its own proof; do not invent a request to fill it.
    - Readiness still checks an evidenced action, observed result, and a negative or normal control. The baseline is the normal behavior; a separate control block is still required before report-ready.
 5. Evidence — every report-ready finding needs a captured flow and/or image, with a short proof statement
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
@@ -103,7 +104,8 @@ type findingFormatInput struct {
 	Confidence               string
 	Body                     string // JSON blocks array string
 	VerificationInstructions string
-	Partial                  bool // update calls may omit already-populated envelope fields
+	Partial                  bool            // update calls may omit already-populated envelope fields
+	Targets                  json.RawMessage // ordered targets, when this write includes them
 }
 
 var (
@@ -213,6 +215,7 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 	if substantial && (!a.roles["baseline"] || !a.roles["action"] || !a.roles["result"]) {
 		warns = append(warns, "proof of concept must describe what the application normally does (role baseline), what was changed to trigger the issue (role action), and what the response or impact changed to (role result)")
 	}
+	warns = append(warns, affectedTargetProofWarnings(in.Targets)...)
 
 	st := strings.ToLower(strings.TrimSpace(in.Status))
 	st = strings.ReplaceAll(st, "-", "_")
@@ -246,8 +249,54 @@ func secretLintWarnings(in findingFormatInput, a findingArtifacts) []string {
 	return warns
 }
 
+func findingTargetsArg(v any) json.RawMessage {
+	if v == nil {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+func affectedTargetProofWarnings(raw json.RawMessage) []string {
+	if strings.TrimSpace(string(raw)) == "" || string(raw) == "null" {
+		return nil
+	}
+	var targets []struct {
+		URL               string   `json:"url"`
+		Relation          string   `json:"relation"`
+		FlowIDs           []int64  `json:"flow_ids"`
+		ImageHashes       []string `json:"image_hashes"`
+		EvidenceException string   `json:"evidenceException"`
+	}
+	if err := json.Unmarshal(raw, &targets); err != nil || len(targets) < 2 {
+		return nil
+	}
+	var warns []string
+	for i, t := range targets {
+		rel := strings.ToLower(strings.TrimSpace(t.Relation))
+		if rel == "" {
+			rel = "affected"
+		}
+		if (rel == "setup" || rel == "chain") && strings.TrimSpace(t.EvidenceException) != "" {
+			continue
+		}
+		if len(t.FlowIDs) > 0 || len(t.ImageHashes) > 0 {
+			continue
+		}
+		url := strings.TrimSpace(t.URL)
+		if url == "" {
+			url = "unspecified"
+		}
+		warns = append(warns, fmt.Sprintf("affected target %d (%s) has no linked proof — link its captured flow or screenshot when you tested it; do not invent a request for a target you did not test", i+1, url))
+	}
+	return warns
+}
+
 func findingTargetsSchema() map[string]any {
-	return map[string]any{"type": "array", "maxItems": 64, "description": "Ordered affected targets; first is primary. Link captured evidence through flow_ids.", "items": obj(map[string]any{
+	return map[string]any{"type": "array", "maxItems": 64, "description": "Ordered affected targets; first is primary. Link proof for each target you tested through flow_ids or image_hashes. A target you did not test may omit its own proof.", "items": obj(map[string]any{
 		"url": pt("string"), "methods": map[string]any{"type": "array", "items": pt("string")}, "method": p("string", "single-method input alias"),
 		"role": p("string", "identity prerequisite"), "variant": p("string", "parameter, object identifier, or variant"), "relation": p("string", "affected|source|sink|setup|chain"), "note": pt("string"),
 		"flow_ids": map[string]any{"type": "array", "items": pt("integer")}, "image_hashes": map[string]any{"type": "array", "items": pt("string")}, "evidenceException": p("string", "documented reason for setup/chain target without its own evidence"),

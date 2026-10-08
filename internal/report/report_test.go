@@ -24,6 +24,27 @@ func TestProjectFlowRawChoosesSafeFenceAndRendersEvidenceProvenance(t *testing.T
 	}
 }
 
+func TestProjectGroupsProofByAffectedTarget(t *testing.T) {
+	out := Project([]store.Finding{{
+		ID: 1, Severity: "High", Title: "Two endpoints",
+		Targets: store.FindingTargets{
+			{URL: "https://example.com/a", Relation: "affected", FlowIDs: []int64{1}},
+			{URL: "https://example.com/b", Relation: "affected"},
+		},
+		Blocks: []store.FindingBlock{
+			{Type: "text", Role: "baseline", MD: "An ordinary user sees only their own record."},
+			{Type: "flow", FlowID: 1, Role: "result", Method: "GET", Host: "example.com", Path: "/a", Proof: "target A returned another account", Source: "captured_flow"},
+		},
+	}}, nil)
+	shared := strings.Index(out, "**Shared explanation:**")
+	first := strings.Index(out, "**Proof of `https://example.com/a`:**")
+	second := strings.Index(out, "**Proof of `https://example.com/b`:**")
+	flow := strings.Index(out, "target A returned another account")
+	if shared < 0 || first < shared || second < first || flow < first || flow > second || !strings.Contains(out, "_No proof recorded for this target yet._") {
+		t.Fatalf("proof was not grouped by target:\n%s", out)
+	}
+}
+
 func TestFindingsGroupsAndOrders(t *testing.T) {
 	issues := []store.Issue{
 		{Severity: "Low", Title: "Cookie weak", Target: "GET a/b", Detail: "d", Evidence: "Set-Cookie: x", Fix: "harden"},

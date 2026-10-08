@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Findings proof is a three-part story for agents and the UI: what the application normally does, what we changed, and what the response did. The overview shows screenshots and generated request/response previews, and opening a captured flow uses the centered inspector.
+- Findings with several affected targets show a proof section for each target. A target can be listed without its own proof. Agents are asked to link proof for every target they tested, and not to invent a request for one they did not.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
 
 ## [2.5.0] - 2026-10-07

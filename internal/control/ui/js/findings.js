@@ -139,14 +139,50 @@ function proofText(block) {
   return (block.proof || block.note || block.caption || (block.type === 'text' ? textChainLabel(block.md) : '') || '').trim();
 }
 
-function renderFindingStory(blocks, findingId, prefix) {
+function blockLinkedToTarget(block, target) {
+  if (!block || !target) return false;
+  if (block.type === 'flow' && block.flowId && (target.flow_ids || []).some(id => Number(id) === Number(block.flowId))) return true;
+  if (block.type === 'image' && block.hash && (target.image_hashes || []).includes(block.hash)) return true;
+  return false;
+}
+
+function targetProofLabel(target) {
+  const methods = (target.methods || []).filter(Boolean).join(', ');
+  return [methods, target.relation || 'affected', target.role].filter(Boolean).join(' · ');
+}
+
+function renderFindingProof(blocks, finding, prefix) {
+  const targets = finding?.targets || [];
+  const findingId = finding?.id;
+  if (targets.length < 2) return renderFindingStory(blocks, findingId, prefix);
+  const linked = new Set();
+  const cards = targets.map((target, i) => {
+    const own = (blocks || []).filter(block => {
+      if (!blockLinkedToTarget(block, target)) return false;
+      linked.add(block);
+      return true;
+    });
+    const url = target.url || ('Target ' + (i + 1));
+    const body = own.length
+      ? renderFindingStory(own, findingId, prefix + '-target-' + i, true)
+      : `<p class="find-story-empty">No proof recorded for this target yet.${target.note ? ' ' + esc(target.note) : ''}</p>`;
+    return `<section class="find-target-proof" id="${escAttr(prefix)}-target-${i}" tabindex="-1" aria-label="Proof of ${escAttr(url)}"><h4>Proof of ${esc(url)}</h4><p class="find-story-hint">${esc(targetProofLabel(target))}</p>${body}</section>`;
+  }).join('');
+  const shared = (blocks || []).filter(block => !linked.has(block) && !(block.type === 'text' && !textChainLabel(block.md) && !block.proof));
+  const sharedHTML = shared.length
+    ? `<section class="find-target-proof" id="${escAttr(prefix)}-shared" tabindex="-1" aria-label="Shared explanation"><h4>Shared explanation</h4><p class="find-story-hint">This applies across the affected targets.</p>${renderFindingStory(shared, findingId, prefix + '-shared', true)}</section>`
+    : '';
+  return `<div class="find-target-proofs">${sharedHTML}${cards}</div>`;
+}
+
+function renderFindingStory(blocks, findingId, prefix, onlyFilled) {
   prefix = prefix || 'find-story';
   const groups = { normal: [], trigger: [], impact: [], other: [] };
   (blocks || []).forEach(block => {
     if (block.type === 'text' && !textChainLabel(block.md) && !block.proof) return;
     groups[proofChapterOf(block.role)].push(block);
   });
-  const visible = PROOF_CHAPTERS.filter(chapter => chapter.id !== 'other' || groups.other.length);
+  const visible = PROOF_CHAPTERS.filter(chapter => chapter.id === 'other' ? groups.other.length : (!onlyFilled || groups[chapter.id].length));
   if (!visible.some(chapter => groups[chapter.id].length)) {
     return '<p class="find-story-empty">No proof yet. Record what the application normally does, what we changed, and what the response did.</p>';
   }
@@ -1214,7 +1250,7 @@ function renderFindingDetail() {
     ${metaStrip}
     <section class="find-sec find-proof-glance" id="find-sec-proof">
       <h3>Proof</h3>
-      ${renderFindingStory(f.blocks || [], f.id, 'find-glance')}
+      ${renderFindingProof(f.blocks || [], f, 'find-glance')}
     </section>
     <a href="${findingHref(f.id,'evidence')}" data-find-section="evidence" class="find-next-section"><span><strong>Edit the evidence</strong><small>${findingStepCount(f)} steps · ${findingPocCount(f)} attached items</small></span><span aria-hidden="true">→</span></a>
     </div>
@@ -1473,11 +1509,14 @@ function renderFindingDetail() {
 function renderFindReportBody(fid) {
   const container = $('#findBody');
   if (!container) return;
-  container.innerHTML = renderFindingStory(bodyBlocks, fid, 'find-story');
+  const saved = findings.find(x => x.id === fid) || {};
+  const finding = { ...saved, ...findingDrafts.values(fid), id: fid };
+  container.innerHTML = renderFindingProof(bodyBlocks, finding, 'find-story');
   wireFindingFlowOpens(container);
   const nav = $('#findStepNav');
   if (!nav) return;
-  const cards = [...container.querySelectorAll('.find-story-card')];
+  const grouped = [...container.querySelectorAll('.find-target-proof')];
+  const cards = grouped.length ? grouped : [...container.querySelectorAll('.find-story-card')];
   nav.innerHTML = cards.map((el, i) => `<a href="#${el.id}" data-step="${el.id}"><span>${i + 1}</span><span>${esc(el.querySelector('h4')?.textContent || 'Proof')}</span></a>`).join('');
   nav.querySelectorAll('[data-step]').forEach(link => link.onclick = event => {
     event.preventDefault();

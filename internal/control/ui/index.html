@@ -590,7 +590,7 @@ Content-Type: application/json
             <li><strong>Claim</strong> says who can do what, to which asset.</li>
             <li><strong>Impact</strong> states what an attacker gains.</li>
             <li><strong>Targets</strong> list every affected asset with CWE and a CVSS v4.0 vector.</li>
-            <li><strong>Proof</strong> says what the app normally does, what we changed, and what the response did.</li>
+            <li><strong>Proof</strong> says what the app normally does, what we changed, and what the response did. With several affected targets, each tested target has its own proof.</li>
             <li><strong>Evidence</strong> is a real capture, annotated and redacted.</li>
             <li><strong>Fix and retest</strong> record the failed control and the secure result.</li>
           </ol>
@@ -1698,7 +1698,7 @@ Content-Type: application/json
       <section><span class="find-guide-n">2</span><div><h3>Claim</h3><p>Summarize who can do what, to which asset, and under which missing or failed control in one sentence.</p></div></section>
       <section><span class="find-guide-n">3</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
       <section><span class="find-guide-n">4</span><div><h3>Technical context</h3><p>List all affected targets and their roles. Record environment, CWE, and a CVSS v4.0 vector; severity must match the calculated score.</p></div></section>
-      <section><span class="find-guide-n">5</span><div><h3>Reproduction</h3><p>Tell three things, in order, in plain language: what the application normally does, what we changed to trigger the issue, and what the response did differently. Attach the captured request for each part. A reachable prerequisite alone does not demonstrate the claimed impact.</p></div></section>
+      <section><span class="find-guide-n">5</span><div><h3>Reproduction</h3><p>Tell three things, in order, in plain language: what the application normally does, what we changed to trigger the issue, and what the response did differently. Attach the captured request for each part. When several targets are affected, repeat that proof for each one you tested. A target you did not test can stay without its own proof. A reachable prerequisite alone does not demonstrate the claimed impact.</p></div></section>
       <section><span class="find-guide-n">6</span><div><h3>Evidence</h3><p>For visual claims, attach a real browser capture of the observed result. Classify its origin; generated previews do not qualify. Annotate each item and redact secrets; use a length or digest where sufficient.</p></div></section>
       <section><span class="find-guide-n">7</span><div><h3>Remediation and retest</h3><p>Recommend the failed control, then record the expected secure result so another tester can verify the fix.</p></div></section>
       <div class="find-guide-check"><strong>Ready-to-report check</strong><span>Review highlights action, result, control, visual proof, CVSS, and target evidence separately. If impact was not demonstrated, record why and keep Needs verification. Never infer missing execution.</span></div>

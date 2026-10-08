@@ -41,6 +41,12 @@ Agents that file findings always write the report proof, in order, in plain lang
 one optional preset. `setup`, `control`, `observation`, and `retest` may follow. They do not replace
 the three parts. Readiness still requires a separate negative or normal control before report-ready.
 
+When a finding lists more than one affected target, repeat that proof for each affected target you
+tested and link it through that target's `flow_ids` or `image_hashes`. One capture may be linked to
+several targets when it proves each of them. A target you did not test may be listed without its own
+proof. Do not invent a request to fill it. The UI and report then show "Proof of" each target, with
+unlinked explanation kept once as a shared explanation.
+
 ## Evidence
 
 Every report-ready finding needs non-missing flow or image evidence. Every evidence block needs a

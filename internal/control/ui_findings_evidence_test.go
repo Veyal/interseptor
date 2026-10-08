@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+func TestFindingsProofGroupsMultipleTargets(t *testing.T) {
+	findings := readUIAsset(t, "js/findings.js")
+	for _, want := range []string{"function renderFindingProof", "find-target-proof", "No proof recorded for this target yet.", "image_hashes", "Proof of "} {
+		if !strings.Contains(findings, want) {
+			t.Errorf("findings UI missing per-target proof %q", want)
+		}
+	}
+	start := strings.Index(findings, "function renderFindingProof")
+	end := strings.Index(findings[start+1:], "\nfunction ")
+	if start < 0 || end < 0 {
+		t.Fatal("missing per-target proof renderer")
+	}
+	fn := findings[start : start+1+end]
+	if !strings.Contains(fn, "targets.length < 2") || !strings.Contains(fn, "renderFindingStory") {
+		t.Error("one affected target must keep the single three-part story")
+	}
+	if !strings.Contains(findings, "renderFindingProof(f.blocks || [], f, 'find-glance')") || !strings.Contains(findings, "renderFindingProof(bodyBlocks, finding, 'find-story')") {
+		t.Error("overview and evidence must both group proof by affected target")
+	}
+}
+
 func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	findings := readUIAsset(t, "js/findings.js")
