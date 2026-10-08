@@ -132,7 +132,7 @@ function proofChapterOf(role) {
 }
 
 function flowPreviewURL(id) {
-  return '/api/flows/' + id + '/preview.png?side=both&pretty=1&layout=horizontal&theme=light';
+  return '/api/flows/' + id + '/preview.png?side=both&pretty=1&layout=vertical&theme=light';
 }
 
 function proofText(block) {

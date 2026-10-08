@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -52,26 +51,13 @@ type faceKey struct {
 
 var fontData = map[fontKind][]byte{fontSans: goregular.TTF, fontBold: gobold.TTF, fontMono: gomono.TTF}
 
-// Parsed fonts are cached behind a mutex. Faces hold glyph caches and are not
-// safe for concurrent use, so each canvas builds its own faces from them.
-var (
-	parsedMu sync.Mutex
-	parsed   = map[fontKind]*opentype.Font{}
-)
-
+// newFace parses a private font for this face. *opentype.Font and font.Face
+// share glyph scratch buffers and panic when two canvases draw at once.
 func newFace(kind fontKind, size int) font.Face {
-	parsedMu.Lock()
-	f := parsed[kind]
-	if f == nil {
-		var err error
-		f, err = opentype.Parse(fontData[kind])
-		if err != nil {
-			parsedMu.Unlock()
-			panic(fmt.Sprintf("preview: embedded font: %v", err))
-		}
-		parsed[kind] = f
+	f, err := opentype.Parse(fontData[kind])
+	if err != nil {
+		panic(fmt.Sprintf("preview: embedded font: %v", err))
 	}
-	parsedMu.Unlock()
 	face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: float64(size), DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		panic(fmt.Sprintf("preview: face: %v", err))

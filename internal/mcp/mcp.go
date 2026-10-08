@@ -1901,7 +1901,7 @@ func (s *Server) registerTools() {
 			"flowId":    pt("integer"),
 			"side":      p("string", "both (default) | req | res"),
 			"pretty":    p("boolean", "indent JSON/XML bodies (default true)"),
-			"layout":    p("string", "horizontal (default, request left / response right) | vertical (stacked)"),
+			"layout":    p("string", "vertical (default, request above response) | horizontal (request left / response right)"),
 			"theme":     p("string", "light (default) | dark"),
 			"findingId": p("integer", "if set, attach the PNG to this finding"),
 			"caption":   pt("string"),
@@ -1950,8 +1950,6 @@ func (s *Server) registerTools() {
 			}
 			if layout != "" {
 				q.Set("layout", layout)
-			} else {
-				q.Set("layout", string(preview.LayoutHorizontal))
 			}
 			if theme != "" {
 				q.Set("theme", theme)

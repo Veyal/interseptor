@@ -32,7 +32,7 @@ flow attached as the inspectable raw evidence, and do not present a preview as a
 - MCP: `render_flow_preview` with `flowId` + optional `findingId` / `pretty` / `layout` / `theme` /
   `role` / `proof` (pass `findingId` to attach it)
 
-Defaults: `side=both`, `pretty=true`, `layout=horizontal` (request left / response right), `theme=light`.
+Defaults: `side=both`, `pretty=true`, `layout=vertical` (request above response), `theme=light`. Pass `layout=horizontal` for request left / response right.
 
 Generated PNGs use Interseptor chrome + monospace req/res panes (pure Go, no browser).
 
@@ -53,8 +53,8 @@ bound is marked unavailable rather than retaining a live API dependency.
 The canonical editor and evidence-first workflow live in `docs/findings-and-reporting.md`. Keep this
 skill focused on image storage and rendering instead of maintaining a second finding template.
 
-**＋ Screenshot** / flow attach / flow-preview PNG defaults: pretty, horizontal (request left /
-response right), light theme.
+**＋ Screenshot** / flow attach / flow-preview PNG defaults: pretty, vertical (request above
+response), light theme. Pass `layout=horizontal` for a side-by-side preview.
 
 Click any screenshot (or markdown `.md-img`) → full-viewport lightbox: scroll / ± / double-click to zoom, drag to pan, Fit or Esc to close.
 

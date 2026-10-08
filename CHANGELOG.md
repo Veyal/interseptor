@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Flow previews no longer panic when several previews render at once. The shared font was not safe to draw from overlapping requests.
+
 ### Changed
 
+- Flow previews default to a vertical layout, with the request above the response. `layout=horizontal` still draws them side by side.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.7.0` release.
 
 ## [2.7.0] - 2026-10-08
