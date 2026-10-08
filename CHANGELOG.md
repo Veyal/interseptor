@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-10-08
+
+> Patch release: concurrent flow previews no longer panic, and an omitted layout is vertical. History shows the selected flow in the bottom inspector and opens the large inspector on double-click. Delete is in the finding header.
+
 ### Fixed
 
 - Flow previews no longer panic when several previews render at once. The shared font was not safe to draw from overlapping requests.
