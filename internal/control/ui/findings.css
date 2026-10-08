@@ -170,6 +170,7 @@
   .find-workspace #findCopyLink{min-width:30px;padding:6px}
   .find-workspace #findCopyLink .lbl-long{display:none}
   .find-workspace .find-header-top #findCopyLink{grid-column:3;grid-row:1}
+  .find-workspace .find-header-top #findDelete{grid-column:1/-1;grid-row:4;justify-self:start}
   .find-workspace .find-header-top #findToggleEdit{grid-column:4;grid-row:1;padding:7px 10px}
   .find-section-nav{padding:0 16px;gap:18px}
   .find-section-nav a{font-size:var(--fs-sm);padding:11px 0}

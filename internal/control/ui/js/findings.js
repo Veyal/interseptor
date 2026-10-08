@@ -1227,6 +1227,7 @@ function renderFindingDetail() {
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
         <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview chain</button>
         <button type="button" class="btn" id="findCopyLink" title="Copy link to this section" aria-label="Copy link to this section"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="lbl-long"> Copy link</span></button>
+        <button type="button" class="btn danger" id="findDelete" title="Delete this finding. Restore it later from Deleted.">Delete</button>
         <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>
       <div class="find-context-line"><span class="find-target">${esc(f.target || 'Target not recorded')}</span><a href="${findingHref(f.id,'review')}" data-find-section="review" class="find-stage-link">${esc(findingReadinessLabel(readiness.stage))}${readiness.gaps.length ? ` · ${readiness.gaps.length} to complete` : ''}</a>${f.readiness ? readinessMeterHTML(f.readiness, { size: 'full', hrefFor: section => findingHref(f.id, section), labelFor: findingGapLabel, id: 'findMeter' }) : ''}</div>
@@ -1293,7 +1294,7 @@ function renderFindingDetail() {
         <label for="findEnv">Environment</label><select id="findEnv" aria-label="Environment">${envOpts}</select>
         <div id="findCvssEditor" class="cvss-editor">${renderCvssEditor(cvssPreview)}</div>
         <label for="findCwe">CWE</label><input id="findCwe" class="find-field-text" type="text" value="${escAttr(f.cwe || '')}">
-      </div><details class="find-danger"><summary>Delete finding</summary><p>Removes this finding and its evidence references.</p><button type="button" class="btn danger" id="findDelete">Delete finding</button></details>` : `<dl class="find-review-facts"><div><dt>Status</dt><dd>${esc(statusLabel(f.status))}</dd></div><div><dt>Confidence</dt><dd>${esc(f.confidence || 'Not set')}</dd></div></dl>`}
+      </div>` : `<dl class="find-review-facts"><div><dt>Status</dt><dd>${esc(statusLabel(f.status))}</dd></div><div><dt>Confidence</dt><dd>${esc(f.confidence || 'Not set')}</dd></div></dl>`}
     </div>
     </div>
   </article>`;

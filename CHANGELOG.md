@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Flow previews default to a vertical layout, with the request above the response. `layout=horizontal` still draws them side by side.
 - History keeps the selected flow in the bottom inspector. Double-click a history row to open the large centered inspector. The toolbar control still switches to the side drawer.
+- **Delete** is in the finding header while reading or editing. Confirm to remove the finding, then restore it from **Deleted** if needed. `DELETE /api/findings/{id}` and MCP `delete_finding` are unchanged.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.7.0` release.
 
 ## [2.7.0] - 2026-10-08
