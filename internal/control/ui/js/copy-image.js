@@ -145,14 +145,14 @@ export function copyImage(url, opts) {
 }
 
 const MESSAGES = {
-  insecure: 'Clipboard image copy needs https or localhost — use Download',
-  unsupported: 'This browser cannot copy images to the clipboard — use Download',
-  denied: 'Clipboard permission was denied — allow it for this site or use Download',
+  insecure: 'Clipboard image copy needs https or localhost — download it instead',
+  unsupported: 'This browser cannot copy images to the clipboard — download it instead',
+  denied: 'Clipboard permission was denied — allow it for this site or download it instead',
   fetch: 'Could not load the image to copy — reload Findings and try again',
-  convert: 'Could not convert the image to PNG for the clipboard — use Download',
-  'too-large': 'Image is too large to copy — use Download',
+  convert: 'Could not convert the image to PNG for the clipboard — download it instead',
+  'too-large': 'Image is too large to copy — download it instead',
   blocked: 'Only finding images can be copied',
-  failed: 'Copy image failed — use Download',
+  failed: 'Copy image failed — download it instead',
 };
 export function copyFailureMessage(reason) { return MESSAGES[reason] || MESSAGES.failed; }
 

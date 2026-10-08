@@ -146,7 +146,9 @@ test('copyImage rejects URLs outside the finding image routes', async () => {
 
 test('failure messages are actionable and name the fallback', () => {
   assert.match(copyFailureMessage('insecure'), /https or localhost/);
-  assert.match(copyFailureMessage('insecure'), /Download/);
+  assert.match(copyFailureMessage('insecure'), /download it instead/);
+  // The toast's Download button is read right after the message: the text must not repeat its label.
+  for (const r of ['insecure', 'unsupported', 'denied', 'convert', 'too-large', 'failed']) assert.doesNotMatch(copyFailureMessage(r), /Download/, r);
   for (const r of ['unsupported', 'denied', 'fetch', 'convert', 'too-large', 'blocked', 'failed']) assert.ok(copyFailureMessage(r).length > 10, r);
 });
 
