@@ -178,6 +178,10 @@ main .code-card .highlight { margin: 0; }
 .code-lang { color: var(--muted-fg); font: 800 11px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; }
 .code-bar .chip { min-height: 28px; padding: 1px 10px; font-size: 12px; }
 .code-bar .chip[data-state='copied'] { background: var(--candy-mint); color: var(--on-candy); }
+.agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 4px 0 24px; }
+.agent-actions .chip { min-height: 36px; padding: 4px 14px; font-size: 13px; }
+.agent-actions .chip[data-state='copied'] { background: var(--candy-mint); color: var(--on-candy); }
+.agent-actions .chip[data-state='failed'] { background: var(--candy-yellow); color: var(--on-candy); }
 
 /* Tables */
 main table { display: block; width: 100%; max-width: 100%; overflow: auto; border-collapse: separate; border-spacing: 0; margin: 24px 0; font-size: 14px; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: 4px 4px 0 var(--edge); }

@@ -77,11 +77,25 @@ proxy, trust the CA from **Settings** to decrypt HTTPS, and you're intersep-ing.
 Prebuilt binaries, `interseptor update`, building from source, environment variables, and running
 several projects at once are all in **[Getting started](docs/getting-started.md)**.
 
+## For AI agents
+
+Give any AI agent the URL below and it knows how to install Interseptor, connect over MCP or REST, stay
+in scope, and write findings in one consistent format:
+
+```text
+Read https://veyal.github.io/interseptor/llms-full.txt and follow it.
+```
+
+The guide lives in [docs/agents.md](docs/agents.md) (published as
+[Interseptor for AI agents](https://veyal.github.io/interseptor/ai-agents/)); `llms.txt` and
+`llms-full.txt` are generated from the docs by `go run ./tools/docscheck generate`.
+
 ## Docs
 
 | | |
 |---|---|
 | **[Getting started](docs/getting-started.md)** | Install, quick start, HTTPS setup, configuration, multi-project |
+| **[Interseptor for AI agents](docs/agents.md)** | One URL for agents: rules, install, MCP and REST setup, workflow, and the finding-writing contract |
 | **[Workspace guide](docs/workspace.md)** | Menus, captured response views, session inspection, Notes, Activity, Decoder |
 | **[Settings](docs/settings.md)** | Section map, search, saved changes, and project-switch recovery |
 | **[Full feature list](docs/FEATURES.md)** | Feature overview and guide links |

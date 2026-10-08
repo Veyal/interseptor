@@ -1,6 +1,10 @@
 package control
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Veyal/interseptor/internal/version"
+)
 
 // mcpHTTPClientConfig is the recommended Cursor / Streamable-HTTP MCP config.
 // It talks to the running Interseptor process, so MCP always matches the version
@@ -48,6 +52,7 @@ func mcpDescriptorForRequest(host string) map[string]any {
 		"Start Interseptor first (%s). Recommended for Cursor: paste clientConfig below — Streamable HTTP at /mcp uses the running process and updates when you restart after `interseptor update`. stdioClientConfig spawns `interseptor mcp` separately; on Windows use scripts/interseptor-mcp.cmd to resolve the latest binary on PATH.",
 		base,
 	)
+	out["documentation"] = version.Docs()
 	out["clientConfig"] = mcpHTTPClientConfig(base)
 	out["stdioClientConfig"] = mcpStdioClientConfig(base)
 	out["httpTransport"] = map[string]any{
