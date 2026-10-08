@@ -126,6 +126,11 @@ func TestUIProxyInspectorActionsAndDock(t *testing.T) {
 	}
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
 	requireUIContains(t, src, "parseDockPref(", "resolveDock(", "proxy.dock", "openFlowDrawer(", "dock-drawer", "getHook('attachEvidence')")
+	selectStart := strings.Index(src, "export async function selectFlow(")
+	selectEnd := strings.Index(src[selectStart:], "\nexport async function ")
+	if selectStart < 0 || selectEnd < 0 || !strings.Contains(src[selectStart:selectStart+selectEnd], "syncInspectorVisibility(") {
+		t.Error("selecting a history row must reveal the bottom inspector even when the row highlight is patched in place")
+	}
 	css := readUIAsset(t, "panel-proxy.css")
 	requireUIContains(t, css, ".dock-drawer", "#inspectSplitter")
 }

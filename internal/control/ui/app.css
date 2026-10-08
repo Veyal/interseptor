@@ -1267,6 +1267,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .find-header-top .find-status-badge{grid-column:4;grid-row:1;justify-self:end}
   .find-header-top .find-save-state{grid-column:4;grid-row:1;justify-self:end}
   .find-reading .find-save-state:empty{display:none}
+  .find-header-top #findDelete{grid-column:1/-1;grid-row:3;justify-self:start}
   .find-header-top #findToggleEdit{grid-column:5;grid-row:1}
   .find-header-top>.spacer{display:none}
 }

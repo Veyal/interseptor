@@ -515,6 +515,11 @@
     "url": "findings-and-reporting/#cleaning-up-affected-targets"
   },
   {
+    "title": "Delete a finding",
+    "text": "Open the finding and choose Delete in the header. Confirm the prompt. The finding leaves the list. Deleted in the Findings toolbar restores it with its targets, tags, evidence relationships, and verification record. DELETE /api/findings/{id} and MCP delete finding do the same removal.",
+    "url": "findings-and-reporting/#delete-a-finding"
+  },
+  {
     "title": "Evidence rules",
     "text": "Every report-ready finding needs at least one non-missing evidence artifact. Screenshot evidence is preferred when the visual state itself proves the issue. When the behavior passed through Interseptor, attach the captured flow as well so a reviewer can inspect the actual request and response. Each flow or image needs a short proof statement. A caption says what the artifact is; proof says what it establishes. “Response screenshot” is a caption. “The response contains another tenant's invoice number while using the current tenant's session” is proof. Image provenance is explicit: Source Meaning --- --- browser screenshot Operator-declared capture of real browser state; not independently authenticated. device screenshot Operator-declared capture of real device state; not independently authenticated. flow preview Generated Interseptor rendering of HTTP evidence; retains sourceFlowId. evidence render Generated render of recorded Intruder, authz, diff, waterfall or chain data; carries sourceRef (for example intruder: ), is labelled \"generated evidence render from recorded data; not browser proof\" in reports, and never qualifies as real visual proof. A render's PNG carries a gen",
     "url": "findings-and-reporting/#evidence-rules"

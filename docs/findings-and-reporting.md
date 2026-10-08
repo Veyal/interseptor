@@ -376,6 +376,14 @@ Numeric and UUID path segments may be proposed as `{id}`. A template is applied 
 selects it and chooses **Apply cleaned targets**. Preview and Cancel never mutate the finding. The
 same preview is available through `POST /api/finding-targets/preview` and MCP `preview_finding_targets`.
 
+## Delete a finding
+
+Open the finding and choose **Delete** in the header. Confirm the prompt. The finding leaves the
+list. **Deleted** in the Findings toolbar restores it with its targets, tags, evidence relationships,
+and verification record.
+
+`DELETE /api/findings/{id}` and MCP `delete_finding` do the same removal.
+
 ## Revision history and recovery
 
 Open Review → **Revision history** for append-only snapshots and field-level differences. **Restore

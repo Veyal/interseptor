@@ -453,6 +453,13 @@ function flowRowHTML(f){
 function wireFlowRow(r){
   const id=Number(r.dataset.id);
   r.onclick=e=>flowRowClick(id,e);
+  r.ondblclick=e=>{
+    if(e.target.closest&&e.target.closest('.flowtag,.rowOverflow,button,a,input,select,textarea'))return;
+    import('./flowmodal.js').then(m=>{
+      m.closeFlowPopup({updateRoute:false});
+      return m.flowPopup(id,{modal:true});
+    }).catch(err=>toastError('Open flow',err));
+  };
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
   const flow=flowStore.byId.get(id);
   r.setAttribute('aria-label',flow
@@ -1320,6 +1327,7 @@ export async function selectFlow(id){
   state.selId=id;
   if(switching)onAuthzSelectionChanged();
   if(!syncSelectedRow(prevSelId))renderRows();
+  else syncInspectorVisibility();
   openDockedDrawer(id);
   if(needsLoadingState)showInspectorLoading(id);
   try{
@@ -2529,11 +2537,11 @@ function setFiltersOpen(open,{restoreFocus=false}={}){
   syncFiltersButton();
 }
 
-// Inspector dock: at >=1100px selecting a flow opens the Flow Drawer and the
-// bottom inspector hides; "dock bottom" (or a narrower viewport) keeps the
-// classic bottom inspector. The preference persists in localStorage.
+// Inspector dock: the bottom inspector is the default. An explicit "drawer"
+// preference opens the side drawer at >=1100px. Double-click a history row
+// for the large centered inspector. The preference persists in localStorage.
 const DOCK_KEY='proxy.dock';
-let dockPref=(()=>{try{return parseDockPref(localStorage.getItem(DOCK_KEY));}catch(e){return 'drawer';}})();
+let dockPref=(()=>{try{return parseDockPref(localStorage.getItem(DOCK_KEY));}catch(e){return 'bottom';}})();
 function syncDock(){
   const panel=$('#panel-proxy'),btn=$('#inspectDock');
   const wide=resolveDock(dockPref,window.innerWidth)==='drawer';
@@ -2560,7 +2568,7 @@ function openDockedDrawer(id){
     try{localStorage.setItem(DOCK_KEY,dockPref);}catch(e){}
     const drawer=syncDock();
     if(drawer&&state.selId!=null)openDockedDrawer(state.selId);
-    else if(!drawer)getHook('closeFlow')?.();
+    else if(!drawer){getHook('closeFlow')?.();syncInspectorVisibility();}
   };
   window.addEventListener('resize',()=>{const was=$('#panel-proxy')?.classList.contains('dock-drawer');if(!syncDock()&&was)getHook('closeFlow')?.();});
   syncDock();

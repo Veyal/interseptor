@@ -11,6 +11,7 @@ import (
 	"image/draw"
 	"image/png"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/image/font"
@@ -63,7 +64,7 @@ const (
 // Options controls layout and truncation for Render.
 type Options struct {
 	Side     Side
-	Layout   Layout // horizontal (default) | vertical
+	Layout   Layout // vertical (default) | horizontal
 	Theme    Theme  // light (default) | dark
 	Pretty   *bool  // indent JSON/XML bodies; nil defaults to true
 	Title    string // subtitle under the product chrome (method host path → status)
@@ -93,13 +94,14 @@ func NormalizeSide(s string) Side {
 	}
 }
 
-// NormalizeLayout maps user input; unknown/empty → LayoutHorizontal.
+// NormalizeLayout maps user input. Empty and unknown values are vertical
+// (request above response). Explicit side-by-side aliases stay horizontal.
 func NormalizeLayout(s string) Layout {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "vertical", "vert", "column", "stack", "stacked":
-		return LayoutVertical
-	default:
+	case "horizontal", "horiz", "side", "split", "row", "columns":
 		return LayoutHorizontal
+	default:
+		return LayoutVertical
 	}
 }
 
@@ -158,9 +160,21 @@ func themePalette(t Theme) palette {
 	}
 }
 
-var faceCache font.Face
+// glyphMu serializes use of the shared sfnt font and face. golang.org/x/image
+// font caches are not safe for concurrent Glyph or MeasureString calls, which
+// panic when several preview.png requests render at once.
+var (
+	glyphMu   sync.Mutex
+	faceCache font.Face
+)
 
 func monoFace() (font.Face, error) {
+	glyphMu.Lock()
+	defer glyphMu.Unlock()
+	return monoFaceLocked()
+}
+
+func monoFaceLocked() (font.Face, error) {
 	if faceCache != nil {
 		return faceCache, nil
 	}
@@ -194,7 +208,7 @@ func Render(req, res []byte, opts Options) ([]byte, error) {
 	}
 	layout := opts.Layout
 	if layout == "" {
-		layout = LayoutHorizontal
+		layout = LayoutVertical
 	}
 	theme := opts.Theme
 	if theme == "" {
@@ -214,17 +228,6 @@ func Render(req, res []byte, opts Options) ([]byte, error) {
 	if opts.prettyOn() {
 		req = prettyHTTP(req)
 		res = prettyHTTP(res)
-	}
-
-	face, err := monoFace()
-	if err != nil {
-		return nil, err
-	}
-	metrics := face.Metrics()
-	lineH := (metrics.Ascent + metrics.Descent).Ceil() + lineGap
-	charW := font.MeasureString(face, "M").Ceil()
-	if charW < 1 {
-		charW = 7
 	}
 
 	var panes []pane
@@ -249,11 +252,9 @@ func Render(req, res []byte, opts Options) ([]byte, error) {
 	title := strings.TrimSpace(opts.Title)
 	brand := "Interseptor"
 
-	var img *image.RGBA
-	if layout == LayoutHorizontal && len(panes) >= 2 {
-		img = renderHorizontal(panes, face, metrics, lineH, charW, maxCols, title, brand, pal)
-	} else {
-		img = renderVertical(panes, face, metrics, lineH, charW, maxCols, title, brand, pal)
+	img, err := drawPreview(panes, layout, maxCols, title, brand, pal)
+	if err != nil {
+		return nil, err
 	}
 
 	var buf bytes.Buffer
@@ -271,6 +272,25 @@ func Render(req, res []byte, opts Options) ([]byte, error) {
 		return Render(req, res, opts2)
 	}
 	return out, nil
+}
+
+func drawPreview(panes []pane, layout Layout, maxCols int, title, brand string, pal palette) (*image.RGBA, error) {
+	glyphMu.Lock()
+	defer glyphMu.Unlock()
+	face, err := monoFaceLocked()
+	if err != nil {
+		return nil, err
+	}
+	metrics := face.Metrics()
+	lineH := (metrics.Ascent + metrics.Descent).Ceil() + lineGap
+	charW := font.MeasureString(face, "M").Ceil()
+	if charW < 1 {
+		charW = 7
+	}
+	if layout == LayoutHorizontal && len(panes) >= 2 {
+		return renderHorizontal(panes, face, metrics, lineH, charW, maxCols, title, brand, pal), nil
+	}
+	return renderVertical(panes, face, metrics, lineH, charW, maxCols, title, brand, pal), nil
 }
 
 func renderVertical(panes []pane, face font.Face, metrics font.Metrics, lineH, charW, maxCols int, title, brand string, pal palette) *image.RGBA {
