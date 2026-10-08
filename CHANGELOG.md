@@ -9,13 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+## [2.8.1] - 2026-10-08
 
-- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.0` release.
+> Patch release: the History row "More" (⋮) actions button is no longer hidden above 720px, so the row menu can be opened with mouse, touch and keyboard at every width.
 
 ### Fixed
 
 - **Proxy History: the row "More" (⋮) button is reachable at every width** (fixes #97). `.tr-more` was `display:none` above 720px, so the row actions menu could not be opened on desktop or on touch devices wider than a phone. It now owns a trailing grid track (`--row-more-w`: 28px, 44px on coarse pointers), is dimmed at rest only on hover-capable fine pointers and revealed on row hover, focus, selection and its own focus ring, and stays always visible on touch and phone cards. Row height and the virtual list are unchanged; Shift+F10 / the Menu key on a focused row still open the same menu from the keyboard.
+
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.0` release.
 
 ## [2.8.0] - 2026-10-08
 
