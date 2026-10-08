@@ -62,12 +62,12 @@ test('bulkVerbs enables verbs by selection size', () => {
   assert.ok(bulkVerbs(2).every((v) => typeof v.reason === 'string'));
 });
 
-test('dock preference defaults to the drawer on wide screens only', () => {
+test('dock preference defaults to the bottom inspector', () => {
   assert.equal(DRAWER_MIN_WIDTH, 1100);
   assert.equal(parseDockPref('bottom'), 'bottom');
   assert.equal(parseDockPref('drawer'), 'drawer');
-  assert.equal(parseDockPref('garbage'), 'drawer');
-  assert.equal(parseDockPref(null), 'drawer');
+  assert.equal(parseDockPref('garbage'), 'bottom');
+  assert.equal(parseDockPref(null), 'bottom');
   assert.equal(resolveDock('drawer', 1400), 'drawer');
   assert.equal(resolveDock('drawer', 1099), 'bottom');
   assert.equal(resolveDock('bottom', 1600), 'bottom');

@@ -70,7 +70,7 @@ export function bulkVerbs(n) {
   ];
 }
 
-export function parseDockPref(raw) { return raw === 'bottom' ? 'bottom' : 'drawer'; }
+export function parseDockPref(raw) { return raw === 'drawer' ? 'drawer' : 'bottom'; }
 
 // resolveDock returns where the inspector lives: the side drawer needs room, so
 // narrow viewports always use the bottom inspector.
