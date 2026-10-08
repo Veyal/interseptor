@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.1` release.
+
 ## [2.8.1] - 2026-10-08
 
 > Patch release: the History row "More" (⋮) actions button is no longer hidden above 720px, so the row menu can be opened with mouse, touch and keyboard at every width.
