@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.6.0` release.
+
 ## [2.6.0] - 2026-10-08
 
 > Feature release: Collections, the Postman replacement. Collections and environments with secret handling, `pm.*` pre-request and test scripts in a sandboxed worker, a runner with the `interseptor run` CLI (JUnit, JSON and HTML reports), importers for Postman, curl, OpenAPI, Insomnia, Bruno and HAR, an auth suite, an identity matrix and a Collections UI. Also the restyled documentation site (fixes #92, #93, #94) and a security pass that fixed four high-severity findings. This is a minor bump: a large new capability set on top of the existing surface.
