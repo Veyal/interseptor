@@ -42,6 +42,19 @@
     sidebar.scrollTop = Math.max(0, activePage.offsetTop - sidebar.offsetTop - sidebar.clientHeight / 2);
   }
 
+  // Copy text with the async clipboard API, falling back to a hidden textarea; returns success.
+  async function copyText(text, returnFocus) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) {
+      const area = document.createElement('textarea');
+      area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;top:-100px;opacity:0';
+      document.body.append(area); area.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (__) {}
+      area.remove(); returnFocus?.focus();
+      return ok;
+    }
+  }
+
   // Code cards: label and copy button. Without JavaScript the plain bordered block remains.
   document.querySelectorAll('main div.highlighter-rouge').forEach(block => {
     const code = block.querySelector('pre');
@@ -61,15 +74,7 @@
     copy.setAttribute('aria-label', `Copy ${lang} code`);
     let reset;
     copy.addEventListener('click', async () => {
-      const text = code.textContent.replace(/\n$/, '');
-      let ok = false;
-      try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
-        const area = document.createElement('textarea');
-        area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;top:-100px;opacity:0';
-        document.body.append(area); area.select();
-        try { ok = document.execCommand('copy'); } catch (__) {}
-        area.remove(); copy.focus();
-      }
+      const ok = await copyText(code.textContent.replace(/\n$/, ''), copy);
       copy.textContent = ok ? 'Copied' : 'Press Ctrl+C';
       copy.dataset.state = ok ? 'copied' : 'failed';
       clearTimeout(reset);
@@ -79,6 +84,52 @@
     block.replaceWith(card);
     card.append(bar, block);
   });
+  // Agent guide: one-click copy of the ready-to-paste prompt or the full llms-full.txt text.
+  // The fetch is same-origin; if it fails the prompt is copied instead.
+  if (/\/ai-agents\/?$/.test(location.pathname)) {
+    const base = document.body.dataset.baseurl || '/';
+    const fullUrl = new URL(`${base}llms-full.txt`, location.origin).href;
+    const prompt = `Read ${fullUrl} and follow it.`;
+    const anchor = document.querySelector('main h1 + p');
+    if (anchor) {
+      const row = document.createElement('div');
+      row.className = 'agent-actions';
+      const status = document.createElement('span');
+      status.className = 'sr-only';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      const make = (label, aria) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chip';
+        button.textContent = label;
+        button.setAttribute('aria-label', aria);
+        return button;
+      };
+      const flash = (button, label, ok, message) => {
+        button.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+        button.dataset.state = ok ? 'copied' : 'failed';
+        status.textContent = message;
+        clearTimeout(button._reset);
+        button._reset = setTimeout(() => { button.textContent = label; delete button.dataset.state; }, 2200);
+      };
+      const promptButton = make('Copy for agent', 'Copy the prompt that points an agent at llms-full.txt');
+      promptButton.addEventListener('click', async () => {
+        flash(promptButton, 'Copy for agent', await copyText(prompt, promptButton), 'Prompt copied');
+      });
+      const fullButton = make('Copy full guide text', 'Copy the complete agent guide as plain text');
+      fullButton.addEventListener('click', async () => {
+        let text = prompt, note = 'Could not load the guide; copied the prompt instead';
+        try {
+          const response = await fetch(fullUrl, { credentials: 'omit' });
+          if (response.ok) { text = await response.text(); note = 'Full guide copied'; }
+        } catch (_) {}
+        flash(fullButton, 'Copy full guide text', await copyText(text, fullButton), note);
+      });
+      row.append(promptButton, fullButton, status);
+      anchor.after(row);
+    }
+  }
   // Tables scroll inside their own focusable region instead of widening the page.
   document.querySelectorAll('main table').forEach(table => {
     if (table.parentElement.classList.contains('table-wrap')) return;

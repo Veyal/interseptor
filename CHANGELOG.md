@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Interseptor for AI agents.** A new guide, [docs/agents.md](docs/agents.md) (published at `/ai-agents/`), tells any agent how to install Interseptor, connect over MCP (Claude Code, Cursor, Codex CLI, Gemini CLI, generic clients) or REST, follow the hard rules, run the scope-to-report workflow, and write findings in one consistent format, with worked examples, a rejection-to-fix table, output conventions, and a tool and route reference generated from the live registries. Paste `Read https://veyal.github.io/interseptor/llms-full.txt and follow it.` into any agent.
+- **`llms.txt` and `llms-full.txt`.** `go run ./tools/docscheck generate` now writes both site-root files (llms.txt format; the full file bundles the agent guide, findings contract, API and MCP reference, and cookbook). `docscheck check` fails when they or the generated reference drift, when the hand-written guide names a tool, field, route, or flag that does not exist, and `check-site` verifies the built site serves them as raw text.
+- **Agent discovery pointers.** The MCP server instructions, `GET /api/mcp`, and `GET /api/mcp/capabilities` now carry the guide URLs (`documentation`). The guide page has "Copy for agent" and "Copy full guide text" buttons.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.8.0` release.

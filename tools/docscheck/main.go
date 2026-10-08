@@ -37,7 +37,7 @@ var (
 	publicDocs = map[string]pageMeta{
 		"docs/workspace.md":       {"workspace", "Workspace guide", "current"},
 		"docs/settings.md":        {"settings", "Settings", "current"},
-		"docs/getting-started.md": {"getting-started", "Getting started", "current"}, "docs/api-and-mcp.md": {"api-and-mcp", "API and MCP", "current"}, "docs/history-search.md": {"history-search", "History search", "current"}, "docs/architecture.md": {"architecture", "Architecture", "current"}, "docs/custom-checks.md": {"custom-checks", "Custom checks", "current"}, "docs/rule-packs.md": {"rule-packs", "Rule packs", "current"}, "docs/vault.md": {"vault", "Project vault", "current"}, "docs/collections.md": {"collections", "Collections", "current"}, "docs/engagement-closeout.md": {"engagement-closeout", "Engagement close-out", "current"}, "docs/content-discovery.md": {"content-discovery", "Content discovery", "current"}, "docs/http2.md": {"http2", "HTTP/2", "current"}, "docs/message-codecs.md": {"message-codecs", "Message codecs", "current"}, "docs/extensions.md": {"extensions", "Extensions", "current"}, "docs/benchmarks.md": {"benchmarks", "Benchmarks", "reference"}, "docs/product/mcp-cookbook.md": {"mcp-cookbook", "MCP cookbook", "current"},
+		"docs/getting-started.md": {"getting-started", "Getting started", "current"}, "docs/api-and-mcp.md": {"api-and-mcp", "API and MCP", "current"}, "docs/history-search.md": {"history-search", "History search", "current"}, "docs/architecture.md": {"architecture", "Architecture", "current"}, "docs/custom-checks.md": {"custom-checks", "Custom checks", "current"}, "docs/rule-packs.md": {"rule-packs", "Rule packs", "current"}, "docs/vault.md": {"vault", "Project vault", "current"}, "docs/collections.md": {"collections", "Collections", "current"}, "docs/engagement-closeout.md": {"engagement-closeout", "Engagement close-out", "current"}, "docs/content-discovery.md": {"content-discovery", "Content discovery", "current"}, "docs/http2.md": {"http2", "HTTP/2", "current"}, "docs/message-codecs.md": {"message-codecs", "Message codecs", "current"}, "docs/extensions.md": {"extensions", "Extensions", "current"}, "docs/benchmarks.md": {"benchmarks", "Benchmarks", "reference"}, "docs/product/mcp-cookbook.md": {"mcp-cookbook", "MCP cookbook", "current"}, "docs/agents.md": {"ai-agents", "Interseptor for AI agents", "current"},
 		"docs/proxy-and-tls.md": {"proxy-and-tls", "Proxy, TLS, and networking", "current"}, "docs/findings-and-reporting.md": {"findings-and-reporting", "Findings and reporting", "current"}, "docs/cli-reference.md": {"cli-reference", "CLI reference", "reference"}, "docs/projects-and-data.md": {"projects-and-data", "Projects and data", "current"}, "docs/mobile-testing.md": {"mobile-testing", "Mobile testing", "current"}, "docs/troubleshooting.md": {"troubleshooting", "Troubleshooting", "reference"},
 	}
 	markdownLink  = regexp.MustCompile(`\]\(([^)]+)\)`)
@@ -305,6 +305,9 @@ func generate(root string) error {
 	if err != nil {
 		return err
 	}
+	if err := writeAgentFiles(root); err != nil {
+		return err
+	}
 	for source, meta := range publicDocs {
 		content, err := pageContent(root, source, meta)
 		if err != nil {
@@ -345,6 +348,9 @@ func releaseJSON(root string) ([]byte, error) {
 func check(root string) error {
 	features, _, err := loadFeatures(root)
 	if err != nil {
+		return err
+	}
+	if err := checkAgentFiles(root); err != nil {
 		return err
 	}
 	for source, meta := range publicDocs {
@@ -575,6 +581,9 @@ func run(args []string) error {
 		err = check(cmd.root)
 	case "check-site":
 		err = validateBuiltSite(cmd.site, configuredBasePath(cmd.root))
+		if err == nil {
+			err = validateBuiltLLMS(cmd.site, cmd.root)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", cmd.name, err)
