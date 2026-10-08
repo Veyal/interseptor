@@ -110,18 +110,108 @@ function blockMetaEditor(b, i) {
 }
 
 const FINDING_OUTLINES = {
+  'Report proof': ['baseline', 'action', 'result'],
   'Differential proof': ['baseline', 'action', 'result'],
   'Input → Result': ['setup', 'action', 'result'],
   'Exposure proof': ['setup', 'result'],
   'Control failure': ['control', 'action', 'result'],
 };
 
+const PROOF_CHAPTERS = [
+  { id: 'normal', title: 'Normal behavior', hint: 'What the application does for an ordinary user.' },
+  { id: 'trigger', title: 'What we changed', hint: 'The request or step that triggers the issue.' },
+  { id: 'impact', title: 'What changed', hint: 'How the response differs, and what that lets someone do.' },
+  { id: 'other', title: 'Also recorded', hint: 'Extra context around the three-part proof.' },
+];
+
+function proofChapterOf(role) {
+  if (role === 'baseline' || role === 'control') return 'normal';
+  if (role === 'action' || role === 'setup') return 'trigger';
+  if (role === 'result') return 'impact';
+  return 'other';
+}
+
+function flowPreviewURL(id) {
+  return '/api/flows/' + id + '/preview.png?side=both&pretty=1&layout=horizontal&theme=light';
+}
+
+function proofText(block) {
+  return (block.proof || block.note || block.caption || (block.type === 'text' ? textChainLabel(block.md) : '') || '').trim();
+}
+
+function blockLinkedToTarget(block, target) {
+  if (!block || !target) return false;
+  if (block.type === 'flow' && block.flowId && (target.flow_ids || []).some(id => Number(id) === Number(block.flowId))) return true;
+  if (block.type === 'image' && block.hash && (target.image_hashes || []).includes(block.hash)) return true;
+  return false;
+}
+
+function targetProofLabel(target) {
+  const methods = (target.methods || []).filter(Boolean).join(', ');
+  return [methods, target.relation || 'affected', target.role].filter(Boolean).join(' · ');
+}
+
+function renderFindingProof(blocks, finding, prefix) {
+  const targets = finding?.targets || [];
+  const findingId = finding?.id;
+  if (targets.length < 2) return renderFindingStory(blocks, findingId, prefix);
+  const linked = new Set();
+  const cards = targets.map((target, i) => {
+    const own = (blocks || []).filter(block => {
+      if (!blockLinkedToTarget(block, target)) return false;
+      linked.add(block);
+      return true;
+    });
+    const url = target.url || ('Target ' + (i + 1));
+    const body = own.length
+      ? renderFindingStory(own, findingId, prefix + '-target-' + i, true)
+      : `<p class="find-story-empty">No proof recorded for this target yet.${target.note ? ' ' + esc(target.note) : ''}</p>`;
+    return `<section class="find-target-proof" id="${escAttr(prefix)}-target-${i}" tabindex="-1" aria-label="Proof of ${escAttr(url)}"><h4>Proof of ${esc(url)}</h4><p class="find-story-hint">${esc(targetProofLabel(target))}</p>${body}</section>`;
+  }).join('');
+  const shared = (blocks || []).filter(block => !linked.has(block) && !(block.type === 'text' && !textChainLabel(block.md) && !block.proof));
+  const sharedHTML = shared.length
+    ? `<section class="find-target-proof" id="${escAttr(prefix)}-shared" tabindex="-1" aria-label="Shared explanation"><h4>Shared explanation</h4><p class="find-story-hint">This applies across the affected targets.</p>${renderFindingStory(shared, findingId, prefix + '-shared', true)}</section>`
+    : '';
+  return `<div class="find-target-proofs">${sharedHTML}${cards}</div>`;
+}
+
+function renderFindingStory(blocks, findingId, prefix, onlyFilled) {
+  prefix = prefix || 'find-story';
+  const groups = { normal: [], trigger: [], impact: [], other: [] };
+  (blocks || []).forEach(block => {
+    if (block.type === 'text' && !textChainLabel(block.md) && !block.proof) return;
+    groups[proofChapterOf(block.role)].push(block);
+  });
+  const visible = PROOF_CHAPTERS.filter(chapter => chapter.id === 'other' ? groups.other.length : (!onlyFilled || groups[chapter.id].length));
+  if (!visible.some(chapter => groups[chapter.id].length)) {
+    return '<p class="find-story-empty">No proof yet. Record what the application normally does, what we changed, and what the response did.</p>';
+  }
+  return `<div class="find-story">${visible.map(chapter => {
+    const items = groups[chapter.id];
+    const body = items.length ? items.map(block => `<div class="find-story-item">${renderProofVisual(block, findingId)}${proofText(block) ? `<p>${esc(proofText(block))}</p>` : ''}</div>`).join('') : '<p class="find-story-empty">Not recorded yet.</p>';
+    return `<section class="find-story-card" id="${escAttr(prefix)}-${chapter.id}" data-chapter="${chapter.id}" tabindex="-1" aria-label="${escAttr(chapter.title)}"><h4>${esc(chapter.title)}</h4><p class="find-story-hint">${esc(chapter.hint)}</p>${body}</section>`;
+  }).join('')}</div>`;
+}
+
+function wireFindingFlowOpens(root) {
+  if (!root) return;
+  root.querySelectorAll('.find-open-flow').forEach(btn => {
+    btn.onclick = event => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const id = Number(btn.dataset.flow);
+      if (id) openFindingFlow(id);
+    };
+  });
+}
+
 function findingStepPlaceholder(role) {
   return ({
-    baseline: 'Describe the authorized or expected baseline…',
-    setup: 'Describe the required state, identity, or input…',
-    action: 'Describe the exact request or security-relevant action…',
-    result: 'Describe the observed result and why it differs from secure behavior…',
+    baseline: 'What does the application normally do here for an ordinary user?',
+    setup: 'What state or account did we need before the change?',
+    action: 'What did we change or send to trigger the issue?',
+    result: 'What was different in the response, and what does that let someone do?',
     control: 'Describe the observed negative or control case and how its result differs…',
     retest: 'Describe the fixed behavior to verify…',
     context: 'Add context needed to understand the reproduction…',
@@ -578,8 +668,12 @@ function renderBlockEl(b, i, total) {
      <div class="find-evidence-card">
        ${blockMetaEditor(b, i)}
        <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
+       <button type="button" class="find-open-flow find-flow-shot" data-flow="${b.flowId}" aria-label="Open request and response for flow #${escAttr(String(b.flowId))}">
+         <img src="${escAttr(flowPreviewURL(b.flowId))}" alt="Generated request and response preview for flow #${escAttr(String(b.flowId))}">
+         <span>Open request and response</span>
+       </button>
+       <p class="find-preview-note">Generated request and response. Not a browser screenshot.</p>
        <div class="find-evidence-actions">
-        <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}" aria-label="Inspect request for attached flow #${esc(String(b.flowId))}">Inspect request</button>
         <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}" aria-label="Generate report image for attached flow #${esc(String(b.flowId))}">Generate report image</button>
          <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
        </div>
@@ -672,16 +766,7 @@ function renderBodyEditor(container, fid) {
     };
   });
 
-  // Flow cards expose one explicit Inspect action. The request summary remains
-  // presentational so keyboard and pointer users do not encounter two targets
-  // with the same outcome.
-  container.querySelectorAll('.find-open-flow').forEach(btn => {
-    btn.onclick = event => {
-      event.stopPropagation();
-      const id = Number(btn.dataset.flow);
-      if (id) openFindingFlow(id);
-    };
-  });
+  wireFindingFlowOpens(container);
   wireFlowPreviewButtons(container);
   wireSendToRepeaterButtons(container);
 }
@@ -1056,10 +1141,6 @@ function renderFindingDetail() {
   const previousFocus = sameFinding ? captureFindingFocus() : null;
   const scrollTop = sameFinding ? box.querySelector('.find-workspace-content')?.scrollTop || 0 : 0;
   const expanded = new Set(sameFinding ? [...box.querySelectorAll('details[open][id]')].map(el => el.id) : []);
-  const openEvidence = sameFinding ? [...box.querySelectorAll('.find-inline-toggle[aria-expanded="true"]')].map(button => {
-    const inspector = $('#'+button.getAttribute('aria-controls'));
-    return {id:inspector.id,flow:button.dataset.flow,side:inspector.querySelector('[data-side][aria-pressed="true"]')?.dataset.side,scroll:inspector.querySelector('.find-inline-content')?.scrollTop||0};
-  }) : [];
   box.dataset.findingId = String(f.id);
   renderedFindingKey = key;
   for(const controller of findingEvidenceReads)controller.abort();
@@ -1167,7 +1248,11 @@ function renderFindingDetail() {
     </section>
     ${renderAffectedTargets(f, edit)}
     ${metaStrip}
-    <a href="${findingHref(f.id,'evidence')}" data-find-section="evidence" class="find-next-section"><span><strong>Explore the evidence</strong><small>${findingStepCount(f)} steps · ${findingPocCount(f)} attached items</small></span><span aria-hidden="true">→</span></a>
+    <section class="find-sec find-proof-glance" id="find-sec-proof">
+      <h3>Proof</h3>
+      ${renderFindingProof(f.blocks || [], f, 'find-glance')}
+    </section>
+    <a href="${findingHref(f.id,'evidence')}" data-find-section="evidence" class="find-next-section"><span><strong>Edit the evidence</strong><small>${findingStepCount(f)} steps · ${findingPocCount(f)} attached items</small></span><span aria-hidden="true">→</span></a>
     </div>
     <div class="find-workspace-panel" data-find-panel="evidence" tabindex="-1" role="region" aria-label="Finding evidence">
     <section class="find-sec" id="find-sec-poc">
@@ -1232,6 +1317,7 @@ function renderFindingDetail() {
     focusTarget?.scrollIntoView({block:'nearest'});
     focusTarget?.focus({preventScroll:true});
   }));
+  wireFindingFlowOpens(box.querySelector('#find-sec-proof'));
   $('#findCopyLink').onclick = () => copyText(location.origin + location.pathname + findingHref(f.id), 'Finding link copied');
   $('#findPreviewChain').onclick = () => import('./evidence-render.js').then(m => { const p = m.chainPreview(f.id); return m.open(p.kind, p.params, { opener: $('#findPreviewChain') }); }).catch(e => toastError('Preview failed', e));
   activateFindingSection(findSection, {navigate:false});
@@ -1251,13 +1337,6 @@ function renderFindingDetail() {
   $('#findSaveRetry').onclick=()=>retryFindingSaves(f.id);
   if (edit) renderFindBody(f.id);
   else { renderFindReportBody(f.id); renderEvidenceTray(f.id, false); }
-  for(const saved of openEvidence){
-    const button=box.querySelector(`.find-inline-toggle[aria-controls="${saved.id}"][data-flow="${saved.flow}"]`);
-    if(!button)continue;
-    const inspector=$('#'+saved.id);inspector.querySelector('.find-inline-content').dataset.restoreScroll=String(saved.scroll);
-    if(saved.side==='res')inspector.querySelector('[data-side="res"]').click();
-    button.click();
-  }
   bindFindingRevisions(box, f.id, {
     canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
     restored: async () => { renderedFindingKey=''; await loadFindings(); renderFindingDetail(); },
@@ -1430,125 +1509,43 @@ function renderFindingDetail() {
 function renderFindReportBody(fid) {
   const container = $('#findBody');
   if (!container) return;
-  if (!bodyBlocks.length) {
-    container.innerHTML = '<div class="find-doc-empty">No evidence yet — switch to Edit to add reproducible steps, screenshots, and captured flows.</div>';
-    return;
-  }
-  let step = 0;
-  container.innerHTML = bodyBlocks.map((b, index) => {
-    if (b.type === 'text') {
-      const md = (b.md || '').trim();
-      if (!md) return '';
-      step++;
-      return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody"><div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}</span>` : ''}</div>${renderMD(md)}${b.proof ? `<div class="find-proof-read"><b>Supports:</b> ${esc(b.proof)}</div>` : ''}</div></div>`;
-    }
-    if (b.type === 'image') {
-      step++;
-      const imageMeta = `<div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
-      if (b.missing) {
-        return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}<div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> Screenshot missing</div></div></div>`;
-      }
-      const src = b.url || ('/api/findings/images/' + (b.hash || ''));
-      return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}
-        <figure class="find-doc-figure"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
-        ${b.caption ? `<figcaption class="hint">${esc(b.caption)}</figcaption>` : ''}${b.proof ? `<div class="find-proof-read"><b>Proves:</b> ${esc(b.proof)}</div>` : '<div class="find-proof-needed">Proof annotation needed.</div>'}</figure></div></div>`;
-    }
-    if (b.type === 'flow') {
-      step++;
-      if (b.missing) {
-        return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div>
-          <div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
-      }
-      const reqLine = b.method
-        ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
-        : `flow #${esc(String(b.flowId))}`;
-       return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div>
-         <div class="find-report-stepbody">
-           <div class="find-report-flow">
-             <div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
-             <div class="find-poc-req">${reqLine}</div>
-             ${b.proof ? `<div class="find-proof-read"><b>Proves:</b> ${esc(b.proof)}</div>` : '<div class="find-proof-needed">Proof annotation needed.</div>'}
-           </div>
-           <div class="find-evidence-actions">
-             <button type="button" class="btn find-inline-toggle" data-flow="${b.flowId}" aria-expanded="false" aria-controls="find-inline-${index}">Inspect evidence</button>
-             <a class="btn xs find-open-flow" href="#finding-${fid}/flow-${b.flowId}" data-flow="${b.flowId}">Open inspector <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-external"/></svg></a>
-           </div>
-           <div class="find-inline-inspector" id="find-inline-${index}" hidden>
-             <div class="find-inline-toolbar"><div class="seg" role="group" aria-label="Evidence side"><button type="button" data-side="req" aria-pressed="true" class="on">Request</button><button type="button" data-side="res" aria-pressed="false">Response</button></div><button type="button" class="btn xs" data-copy-evidence>Copy</button></div>
-             <div class="find-inline-content" role="region" aria-label="Captured HTTP evidence" tabindex="0"></div>
-           </div>
-         </div></div>`;
-    }
-    return '';
-  }).join('');
-  container.querySelectorAll('.find-open-flow').forEach(btn => {
-    btn.onclick = event => { if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();const id = Number(btn.dataset.flow); if (id) openFindingFlow(id); };
-  });
-  container.querySelectorAll('.find-inline-toggle').forEach(btn => wireInlineEvidence(btn, fid));
+  const saved = findings.find(x => x.id === fid) || {};
+  const finding = { ...saved, ...findingDrafts.values(fid), id: fid };
+  container.innerHTML = renderFindingProof(bodyBlocks, finding, 'find-story');
+  wireFindingFlowOpens(container);
   const nav = $('#findStepNav');
-  if(nav){
-    const steps = [...container.querySelectorAll('.find-report-step[id]')];
-    nav.innerHTML = steps.map((el,i) => {
-      const index = Number(el.id.replace('find-evidence-','')), b = bodyBlocks[index];
-      const label = b.missing ? (b.type==='image'?'Missing screenshot':'Missing flow #'+b.flowId) : (b.caption || b.note || (b.type==='text' ? textChainLabel((b.md||'').split('\n')[0]) : `${b.method||'Flow'} ${b.path||'#'+b.flowId}`));
-      return `<a href="#${el.id}" data-step="${el.id}"><span>${i+1}</span><span>${esc(label.slice(0,70) || b.role || 'Evidence')}</span></a>`;
-    }).join('');
-    nav.querySelectorAll('[data-step]').forEach(link => link.onclick = event => {
-      event.preventDefault();
-      nav.querySelectorAll('[data-step]').forEach(item=>item.removeAttribute('aria-current'));
-      link.setAttribute('aria-current','step');
-      const step = $('#'+link.dataset.step);step?.scrollIntoView({block:'start'});step?.focus({preventScroll:true});
-    });
-  }
+  if (!nav) return;
+  const grouped = [...container.querySelectorAll('.find-target-proof')];
+  const cards = grouped.length ? grouped : [...container.querySelectorAll('.find-story-card')];
+  nav.innerHTML = cards.map((el, i) => `<a href="#${el.id}" data-step="${el.id}"><span>${i + 1}</span><span>${esc(el.querySelector('h4')?.textContent || 'Proof')}</span></a>`).join('');
+  nav.querySelectorAll('[data-step]').forEach(link => link.onclick = event => {
+    event.preventDefault();
+    nav.querySelectorAll('[data-step]').forEach(item => item.removeAttribute('aria-current'));
+    link.setAttribute('aria-current', 'step');
+    const step = $('#' + link.dataset.step);
+    step?.scrollIntoView({ block: 'start' });
+    step?.focus({ preventScroll: true });
+  });
 }
 
-function wireInlineEvidence(button, fid) {
-  const inspector = $('#'+button.getAttribute('aria-controls'));
-  const content = inspector.querySelector('.find-inline-content');
-  let side = 'req', epoch = 0, detail = null, rawText = '', controller = null;
-  const load = async () => {
-    controller?.abort();
-    if(controller)findingEvidenceReads.delete(controller);
-    controller=new AbortController();
-    const requestController=controller;
-    findingEvidenceReads.add(requestController);
-    const requestEpoch = ++epoch;
-    const current = () => requestEpoch === epoch && selFinding === fid && inspector.isConnected && !inspector.hidden;
-    content.innerHTML = '<span class="hint" role="status">Loading captured evidence…</span>';
-    rawText = '';
-    inspector.querySelector('[data-copy-evidence]').disabled = true;
-    try {
-      if(!detail)detail = await api('/api/flows/'+Number(button.dataset.flow),{signal:requestController.signal});
-      if(!current())return;
-      const mime=bodyMime(detail,side);
-      if(isBinaryMime(mime)||(side==='req'?detail.reqLen:detail.resLen)>RENDER_CAP){
-        content.innerHTML = `<pre>${highlightHTTP(headerBlockText(detail,side))}</pre><p>${isBinaryMime(mime)?'Binary content ('+esc(mime)+').':'Body is too large for inline viewing.'}</p><a class="btn" href="${flowBodyDownloadHref(Number(button.dataset.flow),side)}" download>Download body</a>`;
-        return;
-      }
-      const raw = await api('/api/flows/'+Number(button.dataset.flow)+'/raw?side='+side,{signal:requestController.signal});
-      if(!current())return;
-      rawText=String(raw);content.innerHTML='<pre>'+highlightHTTP(prettify(rawText))+'</pre>';
-      if(content.dataset.restoreScroll){content.scrollTop=Number(content.dataset.restoreScroll);delete content.dataset.restoreScroll;}
-      inspector.querySelector('[data-copy-evidence]').disabled=false;
-    } catch(error) {
-      if(error.name==='AbortError')return;
-      if(!current())return;
-      content.innerHTML = `<div class="state-error" role="alert"><p>${esc(error.message)}</p><button type="button" class="btn" data-retry-evidence>Retry</button></div>`;
-      content.querySelector('[data-retry-evidence]').onclick=load;
-    } finally {findingEvidenceReads.delete(requestController);}
-  };
-  button.onclick=()=>{
-    inspector.hidden=!inspector.hidden;
-    button.setAttribute('aria-expanded',String(!inspector.hidden));
-    button.textContent=inspector.hidden?'Inspect evidence':'Close evidence';
-    if(!inspector.hidden)void load();else {epoch++;controller?.abort();}
-  };
-  inspector.querySelectorAll('[data-side]').forEach(btn=>btn.onclick=()=>{
-    side=btn.dataset.side;
-    inspector.querySelectorAll('[data-side]').forEach(item=>{item.classList.toggle('on',item===btn);item.setAttribute('aria-pressed',String(item===btn));});
-    if(!inspector.hidden)void load();
-  });
-  inspector.querySelector('[data-copy-evidence]').onclick=()=>copyText(rawText,'Evidence copied');
+function renderProofVisual(b, findingId) {
+  if (b.type === 'image') {
+    if (b.missing) return '<p class="find-story-empty">Screenshot missing.</p>';
+    const src = b.url || ('/api/findings/images/' + (b.hash || ''));
+    const provenance = b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : '';
+    const proof = b.proof ? '' : '<div class="find-proof-needed">Proof annotation needed.</div>';
+    return `<figure class="find-auto-preview"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">${provenance}${proof}</figure>`;
+  }
+  if (b.type === 'flow') {
+    if (b.missing || !b.flowId) return '';
+    const line = b.method ? `${b.method} ${b.host || ''}${b.path || ''}${b.status ? ' → ' + b.status : ''}` : 'Flow #' + b.flowId;
+    return `<a class="find-report-flow find-open-flow find-flow-shot" href="#finding-${findingId}/flow-${b.flowId}" data-flow="${b.flowId}" aria-label="Open request and response for ${escAttr(line)}">
+    <img src="${escAttr(flowPreviewURL(b.flowId))}" alt="Generated request and response preview for flow #${escAttr(String(b.flowId))}">
+    <span>${esc(line)}</span>
+  </a>
+  <p class="find-preview-note">Generated request and response. Not a browser screenshot.</p>`;
+  }
+  return '';
 }
 
 function pocFlowIdsReady() {
@@ -1935,7 +1932,7 @@ function openFindingFlow(flowId) {
   } else {
     try { history.replaceState(null, '', `#flow-${flowId}`); } catch { /* ignore */ }
   }
-  flowPopup(flowId);
+  flowPopup(flowId, {modal:true});
 }
 
 // Deep-link: #finding-<id>, #finding-<id>/flow-<id>, #flow-<id>, #flow/<id>
@@ -1956,7 +1953,7 @@ export function handleAppHash() {
       activateFindingSection(section,{navigate:false});
       $('#findList')?.classList.remove('find-mobile-list-visible');
       $('#findDetail')?.classList.add('find-mobile-detail-visible');
-      if (flowId) flowPopup(flowId);
+      if (flowId) flowPopup(flowId, {modal:true});
     });
     return;
   }

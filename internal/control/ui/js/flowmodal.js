@@ -29,8 +29,14 @@ function fmFlowUrl(d){
   return (d.scheme||'http')+'://'+d.host+port+(d.path||'/');
 }
 
-export async function flowPopup(id){
+export async function flowPopup(id, opts={}){
+  // Findings pass modal so the request and response open in the centered dialog
+  // instead of the history sidebar. Other callers keep the drawer.
+  if(opts.modal){await openFlowModal(id);return;}
   if(openFlow(id,{source:'popup'}))return;
+  await openFlowModal(id);
+}
+async function openFlowModal(id){
   const epoch=++fmOpenEpoch;
   let d;
   try{d=await api('/api/flows/'+id);}catch(e){if(epoch===fmOpenEpoch)toast('flow: '+e.message);return;}

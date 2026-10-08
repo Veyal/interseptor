@@ -322,59 +322,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 		b.WriteString("**Reproduction & Evidence:**\n\n")
 	}
 	// Render interleaved PoC timeline (text + flows + images in author's order).
+	// Several affected targets each get the proof linked to that target.
 	if len(f.Blocks) > 0 {
-		hasDetailBlock := false
-		hasEvidenceBlock := false
-		for _, bl := range f.Blocks {
-			if meta := blockEvidenceMeta(bl); meta != "" {
-				label := "Evidence"
-				if bl.Type == "text" {
-					label = "Step"
-				}
-				b.WriteString("_" + label + ": " + meta + "._\n\n")
-			}
-			if bl.Type == "text" && bl.MD != "" {
-				hasDetailBlock = hasDetailBlock || bl.MD == f.Detail
-				hasEvidenceBlock = hasEvidenceBlock || bl.MD == f.Evidence
-				b.WriteString(sanitizeBody(bl.MD) + "\n\n")
-			} else if bl.Type == "flow" {
-				if bl.Missing {
-					// PoC flow was purged from history (prune_history / GC) — note
-					// that the evidence is gone instead of an empty/broken quote.
-					line := fmt.Sprintf("> ⚠ PoC flow #%d — evidence no longer in history", bl.FlowID)
-					if bl.Note != "" {
-						line += " — " + sanitizeBody(bl.Note)
-					}
-					b.WriteString(line + "\n>\n")
-					continue
-				}
-				line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
-				if bl.Status > 0 {
-					line += fmt.Sprintf(" → **%d**", bl.Status)
-				}
-				if bl.Note != "" {
-					line += " — " + sanitizeBody(bl.Note)
-				}
-				b.WriteString(line + "\n>\n")
-				renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
-			} else if bl.Type == "image" {
-				cap := bl.Caption
-				if cap == "" {
-					cap = "screenshot"
-				}
-				if bl.Missing {
-					b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n>\n", code(bl.Hash)))
-					continue
-				}
-				// Relative API URL works when the report is viewed from the control UI;
-				// offline MD exports keep the caption + hash for reference.
-				if bl.URL != "" {
-					b.WriteString(fmt.Sprintf("![%s](%s)\n\n", sanitizeLine(cap), bl.URL))
-				} else {
-					b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
-				}
-			}
-		}
+		hasDetailBlock, hasEvidenceBlock := renderFindingProofSections(b, f)
 		if f.Detail != "" && !hasDetailBlock {
 			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
@@ -421,10 +371,128 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	}
 }
 
+func renderFindingProofSections(b *strings.Builder, f store.Finding) (hasDetailBlock, hasEvidenceBlock bool) {
+	if len(f.Targets) < 2 {
+		return renderFindingBlocks(b, f.Blocks, f.Detail, f.Evidence)
+	}
+	perTarget := make([][]store.FindingBlock, len(f.Targets))
+	var shared []store.FindingBlock
+	for _, bl := range f.Blocks {
+		used := false
+		for i := range f.Targets {
+			if findingBlockLinkedToTarget(bl, f.Targets[i]) {
+				perTarget[i] = append(perTarget[i], bl)
+				used = true
+			}
+		}
+		if !used {
+			shared = append(shared, bl)
+		}
+	}
+	if len(shared) > 0 {
+		b.WriteString("**Shared explanation:**\n\n")
+		detail, evidence := renderFindingBlocks(b, shared, f.Detail, f.Evidence)
+		hasDetailBlock = hasDetailBlock || detail
+		hasEvidenceBlock = hasEvidenceBlock || evidence
+	}
+	for i, t := range f.Targets {
+		fmt.Fprintf(b, "**Proof of `%s`:**\n\n", code(t.URL))
+		if len(perTarget[i]) == 0 {
+			b.WriteString("_No proof recorded for this target yet._\n\n")
+			continue
+		}
+		detail, evidence := renderFindingBlocks(b, perTarget[i], f.Detail, f.Evidence)
+		hasDetailBlock = hasDetailBlock || detail
+		hasEvidenceBlock = hasEvidenceBlock || evidence
+	}
+	return hasDetailBlock, hasEvidenceBlock
+}
+
+func findingBlockLinkedToTarget(bl store.FindingBlock, t store.FindingTarget) bool {
+	if bl.Type == "flow" && bl.FlowID > 0 {
+		for _, id := range t.FlowIDs {
+			if id == bl.FlowID {
+				return true
+			}
+		}
+	}
+	if bl.Type == "image" && bl.Hash != "" {
+		for _, hash := range t.ImageHashes {
+			if hash == bl.Hash {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail, evidence string) (hasDetailBlock, hasEvidenceBlock bool) {
+	for _, bl := range blocks {
+		if meta := blockEvidenceMeta(bl); meta != "" {
+			label := "Evidence"
+			if bl.Type == "text" {
+				label = "Step"
+			}
+			b.WriteString("_" + label + ": " + meta + "._\n\n")
+		}
+		if bl.Type == "text" && bl.MD != "" {
+			hasDetailBlock = hasDetailBlock || bl.MD == detail
+			hasEvidenceBlock = hasEvidenceBlock || bl.MD == evidence
+			b.WriteString(sanitizeBody(bl.MD) + "\n\n")
+		} else if bl.Type == "flow" {
+			if bl.Missing {
+				line := fmt.Sprintf("> ⚠ PoC flow #%d — evidence no longer in history", bl.FlowID)
+				if bl.Note != "" {
+					line += " — " + sanitizeBody(bl.Note)
+				}
+				b.WriteString(line + "\n>\n")
+				continue
+			}
+			line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
+			if bl.Status > 0 {
+				line += fmt.Sprintf(" → **%d**", bl.Status)
+			}
+			if bl.Note != "" {
+				line += " — " + sanitizeBody(bl.Note)
+			}
+			b.WriteString(line + "\n>\n")
+			renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
+		} else if bl.Type == "image" {
+			cap := bl.Caption
+			if cap == "" {
+				cap = "screenshot"
+			}
+			if bl.Missing {
+				b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n>\n", code(bl.Hash)))
+				continue
+			}
+			if bl.URL != "" {
+				b.WriteString(fmt.Sprintf("![%s](%s)\n\n", sanitizeLine(cap), bl.URL))
+			} else {
+				b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
+			}
+		}
+	}
+	return hasDetailBlock, hasEvidenceBlock
+}
+
+func proofStoryLabel(role string) string {
+	switch role {
+	case "baseline", "control":
+		return " (normal behavior)"
+	case "action", "setup":
+		return " (what we changed)"
+	case "result":
+		return " (what changed)"
+	default:
+		return ""
+	}
+}
+
 func blockEvidenceMeta(bl store.FindingBlock) string {
 	var parts []string
 	if bl.Role != "" {
-		parts = append(parts, "role="+sanitizeLine(bl.Role))
+		parts = append(parts, "role="+sanitizeLine(bl.Role)+proofStoryLabel(bl.Role))
 	}
 	if bl.Proof != "" {
 		parts = append(parts, "proof="+sanitizeLine(bl.Proof))

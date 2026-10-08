@@ -16,11 +16,32 @@ func TestFindingsEmpty(t *testing.T) {
 
 func TestProjectFlowRawChoosesSafeFenceAndRendersEvidenceProvenance(t *testing.T) {
 	out := Project([]store.Finding{{ID: 1, Severity: "High", Status: "open", Title: "Fence", Summary: "short", Retest: "repeat it", Blocks: []store.FindingBlock{{Type: "flow", FlowID: 9, Method: "POST", Host: "example.com", Path: "/x", Role: "result", Proof: "response proves access", Source: "captured_flow", SourceFlowID: 9, ReqRaw: "POST /x HTTP/1.1\r\nX: ````\r\n\r\n"}}}}, nil)
-	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result, proof=response proves access, source=captured_flow") {
+	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result (what changed), proof=response proves access, source=captured_flow") {
 		t.Fatalf("canonical envelope missing: %s", out)
 	}
 	if !strings.Contains(out, "`````http") {
 		t.Fatalf("raw payload fence was not lengthened: %s", out)
+	}
+}
+
+func TestProjectGroupsProofByAffectedTarget(t *testing.T) {
+	out := Project([]store.Finding{{
+		ID: 1, Severity: "High", Title: "Two endpoints",
+		Targets: store.FindingTargets{
+			{URL: "https://example.com/a", Relation: "affected", FlowIDs: []int64{1}},
+			{URL: "https://example.com/b", Relation: "affected"},
+		},
+		Blocks: []store.FindingBlock{
+			{Type: "text", Role: "baseline", MD: "An ordinary user sees only their own record."},
+			{Type: "flow", FlowID: 1, Role: "result", Method: "GET", Host: "example.com", Path: "/a", Proof: "target A returned another account", Source: "captured_flow"},
+		},
+	}}, nil)
+	shared := strings.Index(out, "**Shared explanation:**")
+	first := strings.Index(out, "**Proof of `https://example.com/a`:**")
+	second := strings.Index(out, "**Proof of `https://example.com/b`:**")
+	flow := strings.Index(out, "target A returned another account")
+	if shared < 0 || first < shared || second < first || flow < first || flow > second || !strings.Contains(out, "_No proof recorded for this target yet._") {
+		t.Fatalf("proof was not grouped by target:\n%s", out)
 	}
 }
 

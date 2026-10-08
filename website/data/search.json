@@ -541,7 +541,7 @@
   },
   {
     "title": "Presets",
-    "text": "- Differential proof — baseline → action → result. Use for IDOR/BOLA, privilege changes, and state transitions. - Input → Result — action → result. Use for injection, reflection, and request-driven behavior. - Exposure proof — observation → result. Use for public data, missing controls, and passive issues. - Control failure — setup or baseline → observation → control/result. Use for configuration and policy defects. - Custom — any ordered roles that accurately reproduce the issue. Presets are authoring shortcuts. They do not change the stored schema or the exported format.",
+    "text": "- Report proof / Differential proof — baseline → action → result. This is the story above. Use it for every filed finding, including IDOR/BOLA, privilege changes, and state transitions. - Input → Result — action → result. Use for injection, reflection, and request-driven behavior. - Exposure proof — observation → result. Use for public data, missing controls, and passive issues. - Control failure — setup or baseline → observation → control/result. Use for configuration and policy defects. - Custom — any ordered roles that accurately reproduce the issue. Presets are authoring shortcuts. They do not change the stored schema or the exported format.",
     "url": "findings-and-reporting/#presets"
   },
   {
@@ -553,6 +553,11 @@
     "title": "Readiness and review",
     "text": "Readiness describes document completeness, not vulnerability truth: Stage Meaning --- --- draft The claim/risk envelope is incomplete or no evidence is attached. evidence attached Evidence exists, but impact verification, artifact roles, target links, or proof annotations remain incomplete. reproducible Required proof is recorded; remediation, retest, CVSS/severity, or confidence still needs review. report ready Claim, risk, all targets, action/result/control evidence, applicable visual proof, demonstrated impact review, CVSS/severity, remediation, retest, and confidence are complete. The legacy ready and missing fields remain available to existing clients. New clients should use the structured readiness object and show its gaps. visualProofRecommended is a recommendation, not a false claim that every server-side issue can be proven with a screenshot. Confidence is independent of severity: Confidence Use --- --- tentative Credible lead or indirect evidence; human confirmation is still required. firm Reproduced with direct evidence, but an independent control or retest may remain. certain Direct proof and expected controls establish the claim without a material alternative explanati",
     "url": "findings-and-reporting/#readiness-and-review"
+  },
+  {
+    "title": "Report proof",
+    "text": "Agents that file findings write this story every time, in this order, in language a non-technical reader and a developer can both follow: 1. Normal behavior (baseline) — what the application does for an ordinary authorized user. 2. What we changed (action) — the exact difference that triggers the issue. 3. What changed (result) — how the response or behavior differs, and the practical impact. Put that explanation in each block's proof field. Attach the captured request when it exists. Screenshots and generated HTTP previews belong with the part they illustrate. setup, control, observation, and retest may follow; they do not replace the three parts. Readiness still requires a separate negative or normal control before a finding is report-ready. When a finding lists more than one affected target, the overview, evidence read view, and report show Proof of that target. Link the captured flow or screenshot with the target's flow ids or image hashes. Text that is not linked to one target stays in a shared explanation. Repeat the three-part proof for each target you tested. A target you did not test may be listed without its own proof; do not invent a request to fill the gap. Report",
+    "url": "findings-and-reporting/#report-proof"
   },
   {
     "title": "Reproduction roles",

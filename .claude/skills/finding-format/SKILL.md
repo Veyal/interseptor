@@ -31,13 +31,21 @@ both.
 Allowed roles are `context`, `setup`, `baseline`, `action`, `result`, `control`, `observation`, and
 `retest`. `before` maps to `baseline`; `after`/`proof` map to `result`. Unknown roles are errors.
 
-`Before → Action → After` is only the **Differential proof** preset. Choose roles that match the
-actual issue:
+Agents that file findings always write the report proof, in order, in plain language:
 
-- authorization/state change: baseline → action → result;
-- injection/reflection: action → result;
-- exposure/misconfiguration: observation → result;
-- custom multi-step cases: the smallest accurate ordered sequence.
+- `baseline`: what the application normally does for an ordinary authorized user;
+- `action`: what we changed or sent to trigger the issue;
+- `result`: what the response did differently, and the practical impact.
+
+`Before → Action → After` is that same Differential proof, and it is the required story rather than
+one optional preset. `setup`, `control`, `observation`, and `retest` may follow. They do not replace
+the three parts. Readiness still requires a separate negative or normal control before report-ready.
+
+When a finding lists more than one affected target, repeat that proof for each affected target you
+tested and link it through that target's `flow_ids` or `image_hashes`. One capture may be linked to
+several targets when it proves each of them. A target you did not test may be listed without its own
+proof. Do not invent a request to fill it. The UI and report then show "Proof of" each target, with
+unlinked explanation kept once as a shared explanation.
 
 ## Evidence
 

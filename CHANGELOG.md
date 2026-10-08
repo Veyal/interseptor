@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-08
+
+> Feature release: Findings proof reads as what the application normally does, what we changed, and what the response did. The overview shows that story with screenshots and generated request previews, including one proof section for each affected target. Opening a captured flow uses the centered inspector.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.6.0` release.
+- Findings proof is a three-part story for agents and the UI: what the application normally does, what we changed, and what the response did. The overview shows screenshots and generated request/response previews, and opening a captured flow uses the centered inspector.
+- Findings with several affected targets show a proof section for each target. A target can be listed without its own proof. Agents are asked to link proof for every target they tested, and not to invent a request for one they did not.
 
 ## [2.6.0] - 2026-10-08
 
@@ -96,7 +102,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **Documentation site restyled to match veyal.github.io.** Design tokens (cream, ink, candy pink/yellow/mint/sky/grape, 1rem radius) with a dark variant, self-hosted Baloo 2 and Nunito (SIL OFL, latin and latin-ext subsets, no third-party requests), sticker-style header with a back link to the main site, sidebar current-page pill, bordered search results, footer, homepage cards, code cards with a Copy chip, scrollable tables, labelled callouts, 404 and feature cards. Keyboard focus, reduced motion, forced colors and 375px layouts are covered.
-- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
 
 ## [2.5.0] - 2026-10-07
 
