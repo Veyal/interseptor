@@ -161,11 +161,14 @@ function visibleFlowCols(){
 }
 function flowColGrid(){
   const phone=flowPhoneQuery&&flowPhoneQuery.matches;
+  // Desktop rows reserve a trailing track for the row actions (More) button;
+  // phone cards place it with grid-template-areas instead.
+  const more=phone?[]:['var(--row-more-w)'];
   return visibleFlowCols().map(k=>{
     if(phone)return PHONE_FLOW_COLS[k];
     const w=state.flowColW&&state.flowColW[k];
     return (typeof w==='number')?w+'px':FLOW_COLUMNS.find(c=>c.key===k).w;
-  }).join(' ');
+  }).concat(more).join(' ');
 }
 // Push the current column template into a CSS var the header and every row read
 // (.thead / .trow both use `grid-template-columns:var(--flow-cols)`), so a live

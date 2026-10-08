@@ -63,7 +63,7 @@
   /* Image lightbox — a blackout viewer, deliberately theme-independent. */
   --lightbox-bg:rgba(0,0,0,.82); --lightbox-bar:rgba(0,0,0,.55); --lightbox-stage:rgba(0,0,0,.35);
   --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
-  --row-h:30px; --toolbar-h:44px; --hit-min:32px; --cell-pad-x:6px;
+  --row-h:30px; --toolbar-h:44px; --hit-min:32px; --cell-pad-x:6px; --row-more-w:28px;
   --nav-rail-w:204px; --side-panel-w:280px; --rail-w-collapsed:56px;
   --topbar-h:48px; --ctxbar-h:48px;
   --drawer-w:420px; --drawer-min:320px; --drawer-max:640px;
@@ -354,7 +354,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* history table */
 /* --flow-cols is set by proxy.js (applyFlowGrid) on #flowHead and #rows; the
    fallback is the default visible-column template for the pre-JS/first paint. */
-.thead,.trow{display:grid;align-items:center;grid-template-columns:var(--flow-cols,44px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 64px 124px)}
+.thead,.trow{display:grid;align-items:center;grid-template-columns:var(--flow-cols,44px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 64px 124px var(--row-more-w))}
 .thead{flex:none;height:32px;background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;color:var(--fg2);padding:0 6px;backdrop-filter:none;position:sticky;top:0;z-index:5;cursor:pointer}
 .thead>div{padding:0 4px;cursor:pointer;user-select:none;transition:color var(--motion-fast) var(--motion-standard);position:relative}
 .thead>div.sorted{color:var(--accent)}
@@ -1866,6 +1866,7 @@ summary::-webkit-details-marker{display:none}
   /* A wrapping label is the touch target; pseudo-elements on inputs are not rendered by every engine. */
   label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:inline-flex;align-items:center;gap:var(--sp-2)}
   :root{--row-h:44px}
+  :root{--row-more-w:44px}
   /* Touch tier wins over a stored density: same specificity as the density
      selectors above, and this block comes last. */
   :root[data-density]{--row-h:44px;--toolbar-h:48px;--hit-min:44px;--cell-pad-x:8px}

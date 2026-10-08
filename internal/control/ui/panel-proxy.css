@@ -22,7 +22,16 @@
 .tr-held .icon{color:var(--accent)}
 .tr-wait{color:var(--fg3)}
 .trow:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
-.tr-more{display:none}
+/* Row actions button (opens the same menu as right-click). It owns the trailing
+   --row-more-w grid track so the row height and the virtual list are unchanged.
+   Always painted: fine hover-capable pointers only dim it at rest, touch and
+   keyboard focus never do (issue #97). */
+.tr-more{display:inline-flex;align-items:center;justify-content:center;justify-self:center;width:var(--row-more-w);height:24px;padding:0;background:none;border:0;border-radius:var(--r-sm);color:var(--fg2);cursor:pointer}
+.tr-more:hover{color:var(--fg);background:var(--bg3)}
+@media (hover:hover) and (pointer:fine){
+  .trow .tr-more{opacity:0}
+  .trow:hover .tr-more,.trow:focus-within .tr-more,.trow.sel .tr-more,.tr-more:focus-visible,.tr-more[aria-expanded="true"]{opacity:1}
+}
 
 /* ---- inspector docking: the side drawer replaces the bottom inspector ---- */
 #panel-proxy.dock-drawer #inspect,
@@ -32,7 +41,7 @@
 /* ---- pointer:coarse: 44px targets ---- */
 @media (pointer:coarse){
   .proxy-toolbar .btn,.proxy-toolbar .uisw,.proxy-filters-pop .uisw,.proxy-filters-pop .btn,.sel-bar .btn,.inspect-find .btn{min-height:var(--hit-min);min-width:var(--hit-min)}
-  .tr-more{min-height:var(--hit-min);min-width:var(--hit-min)}
+  .tr-more{min-height:var(--hit-min);min-width:var(--hit-min);height:var(--hit-min)}
 }
 
 /* ---- phones: Filters become a bottom sheet, rows become two-line cards ---- */
@@ -54,6 +63,6 @@
   #panel-proxy #rows .trow .tr-host{grid-area:host;color:var(--fg2)}
   #panel-proxy #rows .trow .tr-len{grid-area:len;text-align:right;color:var(--fg3)}
   #panel-proxy #rows .trow .tr-t{grid-area:t;text-align:right;color:var(--fg3)}
-  #panel-proxy #rows .trow .tr-more{grid-area:more;display:inline-flex;align-items:center;justify-content:center;min-height:var(--hit-min);min-width:var(--hit-min);background:none;border:0;color:var(--fg2);cursor:pointer}
+  #panel-proxy #rows .trow .tr-more{grid-area:more;width:auto;height:auto;opacity:1;min-height:var(--hit-min);min-width:var(--hit-min)}
 }
 .coach-tip{display:inline-flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-1) var(--sp-2);border:1px dashed var(--line2);border-radius:var(--r-md);font-size:var(--fs-xs)}

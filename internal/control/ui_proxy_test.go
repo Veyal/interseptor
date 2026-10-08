@@ -265,3 +265,34 @@ func TestUIProxyModuleImportsResolve(t *testing.T) {
 		readUIAsset(t, "js/"+m[1])
 	}
 }
+
+// Issue #97: the History row "More" button was display:none above 720px, so
+// the row actions menu was unreachable on desktop and on wide touch devices.
+// The button must be painted at every width; only its resting opacity may
+// depend on the pointer.
+func TestUIProxyRowMoreButtonIsReachableAtEveryWidth(t *testing.T) {
+	css := readUIAsset(t, "panel-proxy.css")
+	// 1. No unconditional (or width-gated) display:none on the control.
+	for _, m := range regexp.MustCompile(`(?m)([^{}]*\.tr-more[^{}]*)\{([^}]*)\}`).FindAllStringSubmatch(css, -1) {
+		if regexp.MustCompile(`display:\s*none`).MatchString(m[2]) {
+			t.Errorf("rule %q hides .tr-more; the row actions button must stay painted", strings.TrimSpace(m[1]))
+		}
+	}
+	// 2. The desktop base rule paints it, and it gets a grid track of its own.
+	requireUIContains(t, css, ".tr-more{display:inline-flex", "var(--row-more-w)")
+	app := readUIAsset(t, "app.css")
+	requireUIContains(t, app, "--row-more-w:", "var(--row-more-w")
+	// 3. Fine pointers may reveal on hover/focus/selection; touch and keyboard
+	// focus must always see it.
+	requireUIContains(t, css, "@media (hover:hover) and (pointer:fine)", ".trow:hover .tr-more", ".trow:focus-within .tr-more", ".tr-more:focus-visible")
+	// 4. Resting-opacity hiding is scoped to fine, hover-capable pointers only.
+	if i := strings.Index(css, ".tr-more{opacity:0"); i >= 0 {
+		head := css[:i]
+		if strings.LastIndex(head, "@media (hover:hover) and (pointer:fine)") < strings.LastIndex(head, "}}") {
+			t.Error("the opacity:0 resting state must live inside @media (hover:hover) and (pointer:fine)")
+		}
+	}
+	// 5. The JS grid reserves the trailing track on desktop (phone cards use areas).
+	js := executableJS(readUIAsset(t, "js/proxy.js"))
+	requireUIContains(t, js, "var(--row-more-w)", `aria-label="Actions for flow #`)
+}
