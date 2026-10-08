@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.7.1` release.
+
 ## [2.7.1] - 2026-10-08
 
 > Patch release: concurrent flow previews no longer panic, and an omitted layout is vertical. History shows the selected flow in the bottom inspector and opens the large inspector on double-click. Delete is in the finding header.
