@@ -15,7 +15,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, middleEllipsis } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
@@ -2543,14 +2543,16 @@ function setFiltersOpen(open,{restoreFocus=false}={}){
 const DOCK_KEY='proxy.dock';
 let dockPref=(()=>{try{return parseDockPref(localStorage.getItem(DOCK_KEY));}catch(e){return 'bottom';}})();
 function syncDock(){
-  const panel=$('#panel-proxy'),btn=$('#inspectDock');
+  const panel=$('#panel-proxy'),group=$('#inspectDock');
   const wide=resolveDock(dockPref,window.innerWidth)==='drawer';
   const drawer=wide&&!!getHook('openFlow');
   if(panel)panel.classList.toggle('dock-drawer',drawer);
-  if(btn){
-    btn.hidden=resolveDock('drawer',window.innerWidth)!=='drawer'||!getHook('openFlow');
-    btn.setAttribute('aria-pressed',drawer?'true':'false');
-    btn.innerHTML=icon(drawer?'panel-right':'panel-bottom')+(drawer?' Side drawer':' Bottom inspector');
+  if(group){
+    group.hidden=resolveDock('drawer',window.innerWidth)!=='drawer'||!getHook('openFlow');
+    for(const o of dockOptionStates(drawer?'drawer':'bottom')){
+      const b=group.querySelector(`button[data-dock="${o.value}"]`);
+      if(b)b.setAttribute('aria-pressed',o.pressed?'true':'false');
+    }
   }
   return drawer;
 }
@@ -2562,14 +2564,18 @@ function openDockedDrawer(id){
   if(!opened)$('#panel-proxy')?.classList.remove('dock-drawer');
 }
 {
-  const btn=$('#inspectDock');
-  if(btn)btn.onclick=()=>{
-    dockPref=dockPref==='drawer'?'bottom':'drawer';
-    try{localStorage.setItem(DOCK_KEY,dockPref);}catch(e){}
+  const group=$('#inspectDock');
+  if(group)group.addEventListener('click',e=>{
+    const b=e.target.closest&&e.target.closest('button[data-dock]');
+    if(!b)return;
+    const next=parseDockPref(b.dataset.dock);
+    if(next===dockPref)return;
+    dockPref=next;
+    try{localStorage.setItem(DOCK_KEY,dockPref);}catch(err){}
     const drawer=syncDock();
     if(drawer&&state.selId!=null)openDockedDrawer(state.selId);
     else if(!drawer){getHook('closeFlow')?.();syncInspectorVisibility();}
-  };
+  });
   window.addEventListener('resize',()=>{const was=$('#panel-proxy')?.classList.contains('dock-drawer');if(!syncDock()&&was)getHook('closeFlow')?.();});
   syncDock();
 }

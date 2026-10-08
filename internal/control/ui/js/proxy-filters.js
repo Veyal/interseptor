@@ -70,7 +70,22 @@ export function bulkVerbs(n) {
   ];
 }
 
+// The saved value is the placement itself: 'drawer' = side drawer (right of the
+// history list), anything else (missing, legacy, corrupt) = bottom inspector.
 export function parseDockPref(raw) { return raw === 'drawer' ? 'drawer' : 'bottom'; }
+
+// DOCK_OPTIONS is the single mapping from a placement to its control: label,
+// sprite icon and tooltip. The control is a two-option segmented group, so each
+// button always names the placement it selects (never the current one).
+export const DOCK_OPTIONS = [
+  { value: 'drawer', label: 'Side drawer', icon: 'panel-right', title: 'Show the selected flow in the side drawer, beside the history list' },
+  { value: 'bottom', label: 'Bottom inspector', icon: 'panel-bottom', title: 'Show the selected flow in the inspector below the history list' },
+];
+
+// dockOptionStates marks exactly the active placement as pressed.
+export function dockOptionStates(placement) {
+  return DOCK_OPTIONS.map((o) => ({ ...o, pressed: o.value === placement }));
+}
 
 // resolveDock returns where the inspector lives: the side drawer needs room, so
 // narrow viewports always use the bottom inspector.
