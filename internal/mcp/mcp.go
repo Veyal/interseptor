@@ -180,6 +180,7 @@ func (s *Server) handleLine(line []byte, out io.Writer) {
 // pentest workflow, plus a pointer to report bugs/gaps in Interseptor itself.
 func mcpInstructions() string {
 	return "Interseptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\n" +
+		"GUIDE: the complete agent guide (hard rules, workflow, finding-writing contract, REST and MCP reference) is plain text at " + version.LLMSFullURL + " (index: " + version.LLMSURL + "). Read it when you are unsure how to write a finding or call a tool, and follow it so every agent produces the same output.\n\n" +
 		"SETUP: check_readiness (structured JSON blockers: OOB, scope, auth identities, login macro) → fix blockers → scope_from_url → ca_info + route traffic through proxy. Re-run check_readiness if list_flows/scans come back empty.\n\n" +
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
 		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
@@ -281,6 +282,8 @@ func (s *Server) Capabilities() map[string]any {
 		"protocolVersion": protocolVersion,
 		"schemaVersion":   schemaVersion,
 		"schemaHash":      s.SchemaHash(),
+		// documentation points agents at the generated llms.txt/llms-full.txt guide.
+		"documentation": version.Docs(),
 		"finding": map[string]any{
 			"createFields": create,
 			"updateFields": update,
