@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-08
+
+> Feature release: Findings proof reads as what the application normally does, what we changed, and what the response did. The overview shows that story with screenshots and generated request previews, including one proof section for each affected target. Opening a captured flow uses the centered inspector.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.6.0` release.
