@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.10.1] - 2026-10-09
+
+> Patch release: the Proxy inspector's **More** menu opens again, and agents must now attach evidence to every finding, not only before report-readiness.
+
 ### Fixed
 
 - **The inspector's "More" button opens its menu again.** Clicking **More** in the Proxy inspector built the flow actions menu and then immediately hid it: the handler opened the menu during the bubbling click, and the app-wide click-to-close listener fired later in that same click, saw a target outside `#ctxmenu`, and closed it. The menu never painted. It now stops propagation before opening, the way the row overflow (⋮) button already did with a capture-phase `stopImmediatePropagation`. Right-click and Shift+F10 were unaffected, since neither is a `click`.
