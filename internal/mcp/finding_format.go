@@ -27,7 +27,9 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - setup, control, observation, and retest may be added after those three. They do not replace them.
    - When the finding lists more than one affected target, repeat this proof for each affected target you tested. Link that proof with the target's flow_ids or image_hashes. One capture may be linked to several targets when it truly proves each of them. A target you did not test may be listed without its own proof; do not invent a request to fill it.
    - Readiness still checks an evidenced action, observed result, and a negative or normal control. The baseline is the normal behavior; a separate control block is still required before report-ready.
-5. Evidence — every report-ready finding needs a captured flow and/or image, with a short proof statement
+5. Evidence — ALWAYS attach evidence. Every finding needs at least one captured flow or image, attached in the same run that files it. A title-only stub is an intermediate step, never a finished finding: create it, then attach, before you move on. A claim with nothing behind it is not a finding.
+   - Any form satisfies this: an attached flow (add_finding_poc), a real browser or device screenshot (add_finding_image), or a generated HTTP preview (render_flow_preview). Attaching something is never optional. What each form is worth as proof is a separate question, answered below.
+   - If you could not capture anything, say why in proofReview.reason and keep status=needs_verification. Do not file the claim bare and do not invent a request.
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
    - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot

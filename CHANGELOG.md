@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Findings must always carry evidence.** The MCP finding guide, `create_finding` / `update_finding` descriptions, `POST /api/findings` and the agent docs now require at least one captured flow or image on every finding, attached in the same run that files it. Any form satisfies it — an attached flow, a real browser or device screenshot, or a generated HTTP preview — while what each is worth as proof is unchanged. A title-only stub is an intermediate step, never a finished finding; when nothing could be captured, agents record why in `proofReview.reason` and keep `status=needs_verification` instead of filing a bare claim.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.10.0` release.
 
 ## [2.10.0] - 2026-10-09

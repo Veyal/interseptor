@@ -58,8 +58,13 @@ unlinked explanation kept once as a shared explanation.
 
 ## Evidence
 
-Every report-ready finding needs non-missing flow or image evidence. Every evidence block needs a
-string `proof` explaining the exact claim it establishes.
+Always attach evidence: every finding needs at least one captured flow or image, attached in the same
+run that files it. A title-only stub is an intermediate step, never a finished finding. If nothing
+could be captured, record why in `proofReview.reason` and keep `status=needs_verification`.
+
+Report-readiness then needs non-missing flow or image evidence, and only a real browser or device
+screenshot counts as visual proof. Every evidence block needs a string `proof` explaining the exact
+claim it establishes.
 
 - Attach an Interseptor flow whenever the relevant request was captured.
 - Prefer a real `browser_screenshot` when visual state proves the issue.

@@ -690,6 +690,7 @@ lead: `prerequisite_only`, `needs_verification`, `tentative`, no CVSS yet, and e
 - [ ] `list_findings` checked: no duplicate.
 - [ ] Title <=70, summary <=140, impact <=120, why <=100, fix <=160, retest <=100 characters; each block text <=100.
 - [ ] No background, hedging, narration, severity adjectives, restated title, or pasted HTTP; empty fields left blank.
+- [ ] **Evidence attached.** At least one captured flow or image is on the finding, attached in the same run that filed it. A title-only stub is never a finished finding. If nothing could be captured, `proofReview.reason` says why and `status=needs_verification`.
 - [ ] Baseline, action, result, and control each exist; every flow and image has a `proof`.
 - [ ] `proofReview.evidence` maps action, result, and control to attached artifacts.
 - [ ] CVSS 4.0 vector evaluated; `severity` equals its rating.

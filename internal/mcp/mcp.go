@@ -1376,7 +1376,7 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" Stub create with title only is OK. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
+		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" A title-only create is allowed only as an intermediate step: attach evidence in the same run with add_finding_poc or add_finding_image before you move on. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
 		obj(map[string]any{
 			"title":                    pt("string"),
 			"severity":                 pt("string"),

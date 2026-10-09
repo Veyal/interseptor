@@ -206,10 +206,17 @@ redacted prefix is enough to show access.
 
 ## Evidence rules
 
-Every report-ready finding needs at least one non-missing evidence artifact. Screenshot evidence is
-preferred when the visual state itself proves the issue. When the behavior passed through
-Interseptor, attach the captured flow as well so a reviewer can inspect the actual request and
-response.
+**Always attach evidence.** Every finding needs at least one captured flow or image, attached in the
+same run that files it — an attached flow, a real browser or device screenshot, or a generated HTTP
+preview all satisfy this. A title-only stub is an intermediate step, never a finished finding: create
+it, then attach. If nothing could be captured, record why in `proofReview.reason` and keep
+`status=needs_verification` rather than filing a bare claim.
+
+What each artifact is *worth* as proof is a separate question. Report-readiness needs at least one
+non-missing artifact, and only a real browser or device screenshot counts as visual proof; generated
+previews and evidence renders never do. Screenshot evidence is preferred when the visual state itself
+proves the issue. When the behavior passed through Interseptor, attach the captured flow as well so a
+reviewer can inspect the actual request and response.
 
 Each flow or image needs a short `proof` statement. A caption says what the artifact is; proof says
 what it establishes. “Response screenshot” is a caption. “The response contains another tenant's
