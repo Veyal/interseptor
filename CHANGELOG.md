@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.11.0` release.
+
 ## [2.11.0] - 2026-10-09
 
 > Feature release: the Findings workspace is rebuilt as one scrolling document with a properties rail, report readiness is report-time only, and agents must attach evidence to every finding.
