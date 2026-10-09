@@ -55,19 +55,20 @@
 .find-view.is-empty .find-browser-tools{max-width:520px;width:100%;align-self:center;border-bottom:0}
 .find-detail{padding:0;overflow:hidden;background:var(--bg2)}
 .find-workspace.find-article{display:flex;flex-direction:column;max-width:none;width:100%;height:100%;margin:0;padding:0;background:var(--bg2);border:0;border-radius:0;box-shadow:none}
-.find-workspace .find-header{position:static;flex:none;background:var(--bg2);padding:22px 28px 16px;margin:0;border:0}
-.find-workspace .find-header-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
-.find-workspace .find-header-top>.spacer{display:none}
-.find-workspace .find-id-badge{font:600 var(--fs-xs) var(--mono);letter-spacing:.05em;color:var(--fg3);background:none;padding:0;margin-right:4px}
+.find-workspace .find-header{position:static;flex:none;background:var(--bg2);padding:10px 20px 8px;margin:0;border:0;border-bottom:1px solid var(--line);display:grid;gap:6px;min-width:0}
+.find-workspace .find-header-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0;min-width:0}
+.find-workspace .find-header-top>.spacer{display:block;flex:1 1 0;min-width:0}
+.find-workspace .find-id-badge{font:500 var(--fs-xs) var(--mono);color:var(--fg3);background:none;padding:0}
 .find-workspace .find-header .sev{margin:0;font-size:var(--fs-xs)}
-.find-workspace .find-title-text{order:10;flex:1 0 100%;font-size:var(--fs-3xl);font-weight:650;line-height:1.3;letter-spacing:-.6px;margin:6px 0 0;overflow-wrap:anywhere}
-.find-workspace .find-save-state{margin-left:auto;min-width:0}
-.find-workspace .find-header-top .find-status-badge{order:0;margin:0}
-.find-workspace .find-header-top #findRename{order:11}
-.find-workspace .find-context-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--fs-xs);min-width:0}
-.find-context-line .find-target{color:var(--fg3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:120px}
-.find-stage-link{color:var(--fg2);text-decoration:none;border:1px solid var(--line);padding:4px 8px;border-radius:var(--r-sm);font-size:var(--fs-xs)}
-.find-stage-link:hover{color:var(--accent);border-color:var(--accent)}
+.find-workspace .find-sev-chip{display:inline-flex;align-items:baseline;gap:6px;text-transform:uppercase;letter-spacing:.05em;font-family:var(--mono)}
+.find-workspace .find-sev-score{font-weight:500;opacity:.85}
+.find-workspace .find-title-row{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.find-workspace .find-title-text{flex:1 1 auto;min-width:0;font-size:var(--fs-2xl);font-weight:650;line-height:1.3;letter-spacing:-.015em;margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.find-workspace .find-save-state{min-width:0;font-size:var(--fs-xs)}
+.find-workspace .find-save-state:empty{display:none}
+.find-workspace .find-context-line{display:flex;align-items:center;gap:2px 12px;flex-wrap:wrap;font:var(--fs-xs) var(--mono);color:var(--fg3);min-width:0}
+.find-context-line .find-target{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}
+.find-context-line .find-ctx-method{color:var(--accent);font-weight:600}
 .find-save-recovery{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-sm);font-size:var(--fs-xs);color:var(--fg2)}
 .find-save-recovery button{margin-left:auto}
 .find-section-nav{display:flex;align-items:stretch;gap:22px;flex:none;overflow-x:auto;padding:0 28px;border-bottom:1px solid var(--line);background:var(--bg2)}
@@ -159,10 +160,9 @@
   .find-step-nav a>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 @media(max-width:900px){
-  .find-workspace .find-header{padding:18px 20px 14px}
+  .find-workspace .find-header{padding:10px 16px 8px}
   .find-workspace-content{padding:22px 20px}
   .find-section-nav{padding:0 20px;gap:18px}
-  .find-workspace .find-title-text{font-size:var(--fs-2xl)}
   .findings-toolbar{padding:10px 14px}
   .findings-toolbar #findGuide{padding:8px}
   .findings-toolbar #findGuide .lbl-long{display:none}
@@ -181,25 +181,12 @@
   .findings-toolbar-actions .btn{padding:7px 9px;min-height:34px}
   .findings-toolbar-actions #findNew .lbl-long{display:none}
   .findings-toolbar-actions #findNew .lbl-short{display:inline}
-  .find-workspace .find-header{padding:12px 16px}
-  .find-workspace .find-header-top{display:grid;grid-template-columns:30px minmax(0,1fr) auto auto;gap:9px 7px;margin-bottom:10px}
-  .find-workspace .find-title-text{grid-column:1/-1;grid-row:3;min-width:0;font-size:var(--fs-2xl);line-height:1.35;margin:0}
-  .find-workspace .find-id-badge{grid-column:2;grid-row:1;font-size:var(--fs-xs)}
-  .find-workspace .find-save-state{grid-column:2;grid-row:2;font-size:var(--fs-xs);justify-self:end}
-  .find-workspace .find-save-state:empty{display:none}
-  .find-workspace .find-header-top>.sev:not(.find-status-badge),.find-workspace .find-header-top>.ui-select{grid-column:1/3;grid-row:2;justify-self:start}
-  .find-workspace .find-header-top>.find-status-badge{grid-column:3/5;grid-row:2;justify-self:end}
-  .find-workspace .find-header-top>#findRename{grid-column:4;grid-row:2}
-  .find-workspace .find-context-line{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
-  .find-workspace .find-stage-link{justify-self:start}
+  .find-workspace .find-header{padding:8px 12px 6px}
+  .find-workspace .find-title-text{font-size:var(--fs-xl)}
   .find-workspace .find-mobile-back{min-width:30px;padding:6px}
   .find-workspace .find-mobile-back .lbl-long{display:none}
-  .find-workspace .find-header-top .find-mobile-back{grid-column:1;grid-row:1}
-  .find-workspace #findCopyLink{min-width:30px;padding:6px}
-  .find-workspace #findCopyLink .lbl-long{display:none}
-  .find-workspace .find-header-top #findCopyLink{grid-column:3;grid-row:1}
-  .find-workspace .find-header-top #findDelete{grid-column:1/-1;grid-row:4;justify-self:start}
-  .find-workspace .find-header-top #findToggleEdit{grid-column:4;grid-row:1;padding:7px 10px}
+  .find-workspace .find-header-top .find-mode-chip span{display:none}
+  .find-workspace .find-header-top .find-mode-chip{padding-inline:6px}
   .find-section-nav{padding:0 16px;gap:18px}
   .find-section-nav a{font-size:var(--fs-sm);padding:11px 0}
   .find-section-nav a span{display:none}
@@ -389,9 +376,6 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .find-gate-ok.is-fail{color:var(--amber)}
 .find-workspace .find-header-top .find-mode-chip{color:var(--fg2);gap:var(--sp-1)}
 .find-workspace .find-header-top .find-mode-chip .icon{width:12px;height:12px;flex:none}
-@media(max-width:600px){
-  .find-workspace .find-header-top>.find-mode-chip{grid-column:1/-1;grid-row:5;justify-self:start}
-}
 @media(pointer:coarse){
   .find-mode-chip{min-height:44px}
 }

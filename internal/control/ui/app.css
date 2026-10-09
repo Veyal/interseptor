@@ -1262,14 +1262,8 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .findings-toolbar{align-items:flex-start;flex-wrap:wrap;gap:8px 16px}
   .findings-toolbar-actions{order:2;flex:1 1 100%;width:100%;flex-wrap:wrap}
   .findings-toolbar .find-groupby{margin-left:auto;align-self:center}
-  .find-header-top{display:grid;grid-template-columns:auto auto 1fr auto auto;align-items:center}
-  .find-header-top .find-title-text{grid-column:1/-1;grid-row:2;margin-top:4px}
-  .find-header-top .find-status-badge{grid-column:4;grid-row:1;justify-self:end}
-  .find-header-top .find-save-state{grid-column:4;grid-row:1;justify-self:end}
+  .find-header-top{display:flex;flex-wrap:wrap;align-items:center}
   .find-reading .find-save-state:empty{display:none}
-  .find-header-top #findDelete{grid-column:1/-1;grid-row:3;justify-self:start}
-  .find-header-top #findToggleEdit{grid-column:5;grid-row:1}
-  .find-header-top>.spacer{display:none}
 }
 @media (max-width:720px){
   body{min-width:0;overflow:hidden}
@@ -1322,9 +1316,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .find-detail{padding:12px}
   .find-article{padding:16px}
   .find-title-text{font-size:var(--fs-xl)}
-  .find-header-top{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center}
-  .find-header-top .find-title-text{grid-column:1/-1;grid-row:2;margin-top:4px}
-  .find-header-top>.spacer{display:none}
+  .find-header-top{display:flex;flex-wrap:wrap;align-items:center}
 }
 @media (max-width:480px){
   .icpt-cond{display:grid;grid-template-columns:auto minmax(0,1fr) auto}

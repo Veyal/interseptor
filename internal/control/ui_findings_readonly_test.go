@@ -41,7 +41,8 @@ func TestFindingsReadOnlyGate(t *testing.T) {
 		"if(findingsEditable()&&(findingDrafts.has(selFinding)||cvssPreviewDrafts.has(selFinding)))findEditMode=true;",
 		"if(!findingsEditable())return;",
 		"const edit = findEditMode && findingsEditable();",
-		"${findingsEditable() ? `<button type=\"button\" class=\"btn danger\" id=\"findDelete\"",
+		"findingsEditable() ? { label: 'Delete', icon: 'trash', danger: true",
+		"async function confirmDeleteFinding(f) {\n  if (!findingsEditable()) return;",
 		"findingsEditable() ? `<button class=\"btn ${edit ? '' : 'btn-primary'}\" id=\"findToggleEdit\"",
 		"syncFindingsEditChrome",
 	} {

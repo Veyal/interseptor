@@ -1,6 +1,6 @@
 import { openSettingsSection } from './settings.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
@@ -1293,6 +1293,48 @@ async function patchFinding(id, fields, onStaged) {
   }
 }
 
+function findingContext(f) {
+  const t = Array.isArray(f.targets) ? f.targets[0] : null;
+  const url = (t && t.url) || f.target || '';
+  const method = t ? ((t.methods && t.methods[0]) || t.method || '') : '';
+  return { url, method };
+}
+// Secondary header actions live in the More menu so the header stays three rows.
+async function confirmDeleteFinding(f) {
+  if (!findingsEditable()) return;
+  const visible = visibleFindings();
+  const at = visible.findIndex(x => x.id === f.id);
+  const next = visible[at + 1] || visible[at - 1] || null;
+  if (!await uiConfirm('Delete finding', `Delete <b>${esc(f.title)}</b>? You can recover it from Deleted findings.`, 'Delete', 'btn danger', 'var(--red)')) return;
+  try {
+    await deleteFinding(f.id);
+    if (selFinding === f.id) selFinding = next?.id || null;
+    renderFindings();
+    toast('finding deleted');
+    await loadFindings();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+function findingMoreSections(f) {
+  const related = (f.relatedFindings || []).length > 0;
+  return [{ items: [
+    { label: 'Copy link', icon: 'link', act: () => copyText(location.origin + location.pathname + findingHref(f.id), 'Finding link copied') },
+    { label: 'Preview chain', icon: 'image', act: () => {
+      if (!related) { toast('Link related findings first to preview a chain'); return; }
+      return import('./evidence-render.js').then(m => { const p = m.chainPreview(f.id); return m.open(p.kind, p.params, { opener: $('#findMore') }); }).catch(e => toastError('Preview failed', e));
+    } },
+    findingsEditable() ? { sep: true } : null,
+    findingsEditable() ? { label: 'Delete', icon: 'trash', danger: true, act: () => confirmDeleteFinding(f) } : null,
+  ] }];
+}
+function openFindingMore(e, trigger, f) {
+  // The app-wide click-to-close listener fires later in this same bubbling
+  // click and would hide the menu before it paints (see commit caae4e3).
+  if (e && e.stopPropagation) e.stopPropagation();
+  const r = trigger.getBoundingClientRect();
+  openCtxMenu(r.left, r.bottom + 2, findingMoreSections(f), trigger);
+}
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
   box.inert = findingDeletesPending.has(selFinding);
@@ -1321,6 +1363,7 @@ function renderFindingDetail() {
   findingEvidenceReads.clear();
   const narrativePresets = Object.keys(FINDING_OUTLINES);
   const readiness = findingReadiness(f);
+  const ctx = findingContext(f);
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
   const sevOpts = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(s => `<option value="${s}"${s === f.severity ? ' selected' : ''}>${s}</option>`).join('');
@@ -1389,23 +1432,22 @@ function renderFindingDetail() {
     <header class="find-header find-header-sticky">
       <div class="find-header-top">
         <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
-        <span class="find-id-badge">FINDING #${f.id}</span>
+        <span class="find-id-badge">#${f.id}</span>
         ${edit
-          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity">${sevOpts}</select>
-             <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
-             <button class="btn xs" id="findRename" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>`
-          : `<span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
-             <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
-             <span class="sev find-status-badge ${statusBadgeClass(f.status)}">${esc(statusLabel(f.status))}</span>`}
+          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity">${sevOpts}</select>`
+          : `<span class="sev find-sev-chip ${sevClass(f.severity)}">${esc(f.severity)}${f.cvssScore != null ? `<span class="find-sev-score">${esc(Number(f.cvssScore).toFixed(1))}</span>` : ''}</span>`}
+        <span class="sev find-status-badge ${statusBadgeClass(f.status)}">${esc(statusLabel(f.status))}</span>
         ${findingModeChipHTML()}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
-        <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview chain</button>
-        <button type="button" class="btn" id="findCopyLink" title="Copy link to this section" aria-label="Copy link to this section"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="lbl-long"> Copy link</span></button>
-        ${findingsEditable() ? `<button type="button" class="btn danger" id="findDelete" title="Delete this finding. Restore it later from Deleted.">Delete</button>` : ''}
         ${findingsEditable() ? `<button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>` : ''}
+        <button type="button" class="btn find-more-btn" id="findMore" aria-label="More finding actions" aria-haspopup="menu" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-more"/></svg></button>
       </div>
-      <div class="find-context-line"><span class="find-target">${esc(f.target || 'Target not recorded')}</span><a href="${findingHref(f.id,'review')}" data-find-section="review" class="find-stage-link">${esc(findingReadinessLabel(readiness.stage))}${readiness.gaps.length ? ` · ${readiness.gaps.length} to complete` : ''}</a>${f.readiness ? readinessMeterHTML(f.readiness, { size: 'full', hrefFor: section => findingHref(f.id, section), labelFor: findingGapLabel, id: 'findMeter' }) : ''}</div>
+      <div class="find-title-row">
+        <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
+        ${edit ? `<button class="btn xs" id="findRename" aria-label="Rename finding" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>` : ''}
+      </div>
+      <div class="find-context-line">${ctx.url ? `<span class="find-target"><span class="find-ctx-method">${esc(ctx.method)}</span> ${esc(ctx.url)}</span>` : `<span class="find-target">Target not recorded</span>`}${f.environment ? `<span>${esc(f.environment)}</span>` : ''}${f.cwe ? `<span>${esc(f.cwe)}</span>` : ''}</div>
       <div id="findSaveRecovery" class="find-save-recovery" hidden><span id="findSaveRecoveryMsg">Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button><button type="button" class="btn xs" id="findSaveDiscard" hidden>Discard changes</button></div>
     </header>
     <nav class="find-section-nav" aria-label="Finding sections">${FINDING_SECTIONS.map(s => `<a href="${findingHref(f.id,s.id)}" data-find-section="${s.id}">${s.label}${s.id === 'evidence' ? `<span>${findingPocCount(f)}</span>` : ''}</a>`).join('')}</nav>
@@ -1459,7 +1501,7 @@ function renderFindingDetail() {
     <section class="find-sec find-retest" id="find-sec-retest"><h3>Expected secure behavior / retest</h3>${edit ? `<textarea id="findRetest" class="find-field-text" rows="2" aria-label="Expected secure behavior and retest" placeholder="After the fix, what should the tester observe?…">${esc(f.retest || '')}</textarea>` : `<p>${f.retest ? esc(f.retest) : '<span class="hint">Not recorded.</span>'}</p>`}</section>
     </div>
     <div class="find-workspace-panel" data-find-panel="review" tabindex="-1" role="region" aria-label="Finding review">
-      <section class="find-sec" id="find-sec-review"><h3>Readiness</h3>${completeBar}</section>
+      <section class="find-sec" id="find-sec-review"><h3>Readiness</h3>${f.readiness ? readinessMeterHTML(f.readiness, { size: 'full', hrefFor: section => findingHref(f.id, section), labelFor: findingGapLabel, id: 'findMeter' }) : ''}${completeBar}</section>
       ${renderProofReview(f, edit)}
       ${verifBanner}${machineProof}
       ${renderFindingRevisions()}
@@ -1495,8 +1537,8 @@ function renderFindingDetail() {
   }));
   wireFindingFlowOpens(box.querySelector('#find-sec-proof'));
   $('#findModeChip')?.addEventListener('click', () => openSettingsSection('project'));
-  $('#findCopyLink').onclick = () => copyText(location.origin + location.pathname + findingHref(f.id), 'Finding link copied');
-  $('#findPreviewChain').onclick = () => import('./evidence-render.js').then(m => { const p = m.chainPreview(f.id); return m.open(p.kind, p.params, { opener: $('#findPreviewChain') }); }).catch(e => toastError('Preview failed', e));
+  const moreBtn = $('#findMore');
+  if (moreBtn) moreBtn.onclick = e => openFindingMore(e, moreBtn, f);
   activateFindingSection(findSection, {navigate:false});
   for (const id of expanded) { const el = box.querySelector('#' + id); if(el?.tagName==='DETAILS')el.open=true; }
   box.querySelector('.find-workspace-content').scrollTop = scrollTop;
@@ -1617,26 +1659,6 @@ function renderFindingDetail() {
     if (t == null || t === pendingFindingValue(f.id, 'title', f.title)) return;
     try { const result = await patchFinding(f.id, { title: t }); if (!result?.latest) return; f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
     catch (err) { toast(err.message); if(selFinding===f.id)renderFindingDetail(); }
-  };
-  const deleteBtn = $('#findDelete');
-  if (deleteBtn) deleteBtn.onclick = async () => {
-    const visible = visibleFindings();
-    const at = visible.findIndex(x => x.id === f.id);
-    const next = visible[at + 1] || visible[at - 1] || null;
-    if (!await uiConfirm('Delete finding', `Delete <b>${esc(f.title)}</b>? You can recover it from Deleted findings.`, 'Delete', 'btn danger', 'var(--red)')) return;
-    deleteBtn.disabled = true;
-    deleteBtn.setAttribute('aria-busy', 'true');
-    try {
-      await deleteFinding(f.id);
-      if (selFinding === f.id) selFinding = next?.id || null;
-      renderFindings();
-      toast('finding deleted');
-      await loadFindings();
-    } catch (err) {
-      deleteBtn.disabled = false;
-      deleteBtn.setAttribute('aria-busy', 'false');
-      toast(err.message);
-    }
   };
   $('#findEditTags') && ($('#findEditTags').onclick = async () => {
     const cur = (f.tags || []).join(' ');

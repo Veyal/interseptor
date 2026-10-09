@@ -127,9 +127,10 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if !strings.Contains(compactDesktop, ".findings-toolbar-actions{order:2;flex:1 1 100%;width:100%;flex-wrap:wrap}") {
 		t.Error("findings toolbar must wrap its actions before they collide at compact desktop widths")
 	}
-	if !strings.Contains(compactDesktop, ".find-header-top{display:grid;grid-template-columns:auto auto 1fr auto auto") ||
-		!strings.Contains(compactDesktop, ".find-header-top .find-title-text{grid-column:1/-1") ||
-		!strings.Contains(compactDesktop, ".find-header-top #findToggleEdit{grid-column:5;grid-row:1}") {
-		t.Error("finding titles must receive a full header row at compact desktop widths")
+	// The header is now three rows (status, title, context); the title sits in its own
+	// .find-title-row, so the compact block only has to let the status row wrap.
+	if !strings.Contains(compactDesktop, ".find-header-top{display:flex;flex-wrap:wrap;align-items:center}") ||
+		!strings.Contains(compactDesktop, ".find-reading .find-save-state:empty{display:none}") {
+		t.Error("finding status row must wrap at compact desktop widths")
 	}
 }
