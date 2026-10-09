@@ -358,8 +358,8 @@ the order below. Do not file prose essays.
 
 | Field | Rule |
 |---|---|
-| `title` | Sentence case, 80 characters or fewer, names the affected function and the failure, using the pattern table below. Roles and plural nouns, never individual users, ids, or account names. No severity word, no "vulnerability", no trailing period. |
-| `summary` | One sentence, 180 characters or fewer, `<METHOD path template> <what happens> to <role>.` Name roles ("a signed-in customer"), not people or ids; ids and names belong in `proof`. States only what the evidence shows. |
+| `title` | Sentence case, 70 characters or fewer (`<flaw> on <endpoint or parameter>`), names the affected function and the failure, using the pattern table below. Roles and plural nouns, never individual users, ids, or account names. No severity word, no "vulnerability", no trailing period. |
+| `summary` | One sentence, 140 characters or fewer, must not restate the title, `<METHOD path template> <what happens> to <role>.` Name roles ("a signed-in customer"), not people or ids; ids and names belong in `proof`. States only what the evidence shows. |
 | `severity` | `Critical`, `High`, `Medium`, `Low`, or `Info`. Always the `severity` returned for the CVSS vector (below). |
 | `cvss` | A `CVSS:4.0/...` vector. Required for report readiness. Evaluate it first with `evaluate_finding_cvss` or `POST /api/finding-cvss`. |
 | `cwe` | `CWE-<number>`, for example `CWE-639`, `CWE-285`, `CWE-79`. |
@@ -369,12 +369,12 @@ the order below. Do not file prose essays.
 | `source` | REST only: send `"ai"` in the create body. The MCP bridge sets it for you. |
 | `target` | The primary URL or app identifier. Set it equal to the first `targets` entry's `url`, path template included. |
 | `targets` | Ordered list of `{url, methods, role, variant, relation, flow_ids}`. Use a path template (`/orders/{id}`), uppercase methods, `relation` `affected`. `role` is the identity used (`customer`); `variant` is the parameter or identifier that varies (`id`, `q`). Link each target to every flow that supports it with `flow_ids` (baseline, action, and control alike); this is separate from how many times a flow is attached as a block. |
-| `impact` | One sentence, 180 characters or fewer: what an attacker gains. |
-| `why` | One sentence, 180 characters or fewer: the broken control or trust boundary. |
+| `impact` | One sentence, 120 characters or fewer: what the attacker gains, concretely. |
+| `why` | 100 characters or fewer: the failed control. Omit when the CWE already says it. |
 | `blocks` | Ordered reproduction and evidence (see below). |
 | `proofReview` | `{execution, reason, visual, evidence}`: your honest assessment (see below). |
-| `fix` | One imperative sentence, 180 characters or fewer, at the failed boundary. |
-| `retest` | `Repeat <action>; expect <secure result> while <normal case> still <works>.` |
+| `fix` | Imperative, 160 characters or fewer, at the failed boundary. |
+| `retest` | One sentence, 100 characters or fewer: the observable pass condition, `Repeat <action>; expect <secure result>.` |
 | `verificationInstructions` | Required when `status` is `needs_verification`: exact steps for the human. |
 | `tags` | Reuse tags from `list_finding_tags`. Scope labels: `cms`, `website`, `app`, `api`, `out-of-scope`. |
 
@@ -389,10 +389,19 @@ Title patterns, so equal findings get equal titles:
 | Disclosure | `<Endpoint> exposes <data>` | `Error page exposes stack traces` |
 
 Every prose field states only what the evidence shows: name a data item (for example "names") in
-`impact` only if it appears in a captured response. Point first: the claim, then the risk, then proof. Keep every sentence field to one sentence of 180
-characters or fewer. The MCP bridge rejects unstructured text of 180 characters or more in `detail` or
+`impact` only if it appears in a captured response. Point first: the claim, then the risk, then proof. Keep every sentence field to its budget in the table above (the house style). The MCP bridge rejects unstructured text of 180 characters or more in `detail` or
 in block text unless `impact` and `why` are set or the text uses headings; apply the same limit over
-REST. `detail` and `evidence` are legacy: do not use them. Do not send `body` together with `blocks`.
+REST: 180 is the hard reject, the table budgets are the target. Each `blocks[].text` is 100 characters or fewer and imperative, about 6 blocks at most. `detail` and `evidence` are legacy: do not use them. Do not send `body` together with `blocks`.
+
+The reader is a working pentester triaging a list. They already know the vulnerability class: say where it
+is and what you proved, nothing else.
+
+**Never write:** background or theory ("IDOR occurs when..."); a summary that restates the title; hedging
+("could potentially", "may be possible", "it appears"), state what the evidence shows; narration ("we then
+proceeded to"); raw HTTP, headers or payloads in prose, attach the flow; severity adjectives (severity is a
+field); anything already visible in an attached flow or screenshot; padding an empty field to look
+complete, leave it blank and readiness reports the gap.
+
 
 ### Blocks, roles, and proof
 
@@ -529,7 +538,7 @@ arrive as `400` with `{"error":...}`.
 
 | Message (shortened) | Fix |
 |---|---|
-| `error: detail is a wall of text` / `error: blocks is a wall of text (N characters; limit is 180 per field)` | Put sentences in `summary`, `impact`, `why`; keep each text block to one sentence of 180 characters or fewer. |
+| `error: detail is a wall of text` / `error: blocks is a wall of text (N characters; limit is 180 per field)` | Put sentences in `summary`, `impact`, `why`; keep each text block to 100 characters or fewer (180 is the hard reject). |
 | `error: body (or blocks) must be a JSON array of typed blocks` | Send `blocks` as a real JSON array of `{type,...}` objects, not a string. |
 | `error: confidence must be one of tentative, firm, certain` | Use one of those three words. |
 | `send blocks or legacy body, not both` | Send `blocks` only. |
@@ -679,7 +688,8 @@ lead: `prerequisite_only`, `needs_verification`, `tentative`, no CVSS yet, and e
 
 - [ ] Authorized, in scope, and listed in the engagement brief.
 - [ ] `list_findings` checked: no duplicate.
-- [ ] Title, summary, impact, why, fix, retest are single sentences of 180 characters or fewer.
+- [ ] Title <=70, summary <=140, impact <=120, why <=100, fix <=160, retest <=100 characters; each block text <=100.
+- [ ] No background, hedging, narration, severity adjectives, restated title, or pasted HTTP; empty fields left blank.
 - [ ] Baseline, action, result, and control each exist; every flow and image has a `proof`.
 - [ ] `proofReview.evidence` maps action, result, and control to attached artifacts.
 - [ ] CVSS 4.0 vector evaluated; `severity` equals its rating.
@@ -1029,7 +1039,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `retest` | string | expected secure behavior and negative verification case |
 | `severity` | string |  |
 | `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|fixed |
-| `summary` | string | concise statement of the vulnerable behavior |
+| `summary` | string | one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title |
 | `tags` | string | report-scope labels (comma/space-separated or array): cms, website, app, api, out-of-scope |
 | `target` | string | legacy primary target; first targets entry takes precedence |
 | `targets` | array | Ordered affected targets; first is primary. |
