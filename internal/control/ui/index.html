@@ -573,14 +573,37 @@ Content-Type: application/json
         <button type="button" class="btn findings-write" id="findDeletedOpen">Deleted</button>
       </div>
     </div>
+    <div id="findGuideAside" class="find-guide-aside" role="region" aria-label="Writing guide" hidden>
+      <ol class="find-guide-list">
+        <li><strong>Title</strong> names the weakness, action and asset.</li>
+        <li><strong>Claim</strong> says who can do what, to which asset.</li>
+        <li><strong>Impact</strong> states what an attacker gains.</li>
+        <li><strong>Targets</strong> list every affected asset with CWE and a CVSS v4.0 vector.</li>
+        <li><strong>Proof</strong> says what the app normally does, what we changed, and what the response did. With several affected targets, each tested target has its own proof.</li>
+        <li><strong>Evidence</strong> is a real capture, annotated and redacted.</li>
+        <li><strong>Fix and retest</strong> record the failed control and the secure result.</li>
+      </ol>
+      <button type="button" class="btn xs" id="findGuideDialog">Open full guide</button>
+    </div>
     <div id="scanFindingsView" class="find-view is-empty">
       <aside class="find-browser" aria-label="Browse findings">
         <div class="find-browser-tools">
-          <input id="findSearch" type="search" placeholder="Search findings…" aria-label="Search findings by title, target, tag or ID">
-          <div class="find-browser-filters">
-            <select id="findFilterSeverity" aria-label="Filter findings by severity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Info</option></select>
-            <select id="findFilterStatus" aria-label="Filter findings by status"><option value="">All statuses</option><option value="open">Open</option><option value="needs_verification">Needs verification</option><option value="verified">Verified</option><option value="fixed">Fixed</option><option value="false_positive">False positive</option><option value="wont_fix">Won't fix</option></select>
+          <div class="find-toolbar-row">
+            <input id="findSearch" type="search" placeholder="Search findings&hellip;" aria-label="Search findings by title, target, tag or ID">
+            <button type="button" class="btn find-filter-btn" id="findFilterBtn" aria-haspopup="true" aria-expanded="false" aria-controls="findFilters" aria-label="Filter findings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-filter"/></svg><span id="findFilterCount" class="filters-count" hidden></span></button>
+            <button type="button" class="btn btn-primary findings-write find-list-new" id="findListNew" aria-label="New finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></button>
+            <div id="findFilters" class="find-filters" role="group" aria-label="Filter findings" hidden>
+              <label class="find-filter-field" for="findFilterSeverity"><span>Severity</span>
+                <select id="findFilterSeverity" aria-label="Filter findings by severity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Info</option></select>
+              </label>
+              <label class="find-filter-field" for="findFilterStatus"><span>Status</span>
+                <select id="findFilterStatus" aria-label="Filter findings by status"><option value="">All statuses</option><option value="open">Open</option><option value="needs_verification">Needs verification</option><option value="verified">Verified</option><option value="fixed">Fixed</option><option value="false_positive">False positive</option><option value="wont_fix">Won't fix</option></select>
+              </label>
+              <div class="find-filter-field" id="findTagField" hidden><span id="findTagLabel">Tags</span><div id="findTagFilter" class="find-tag-filter" role="group" aria-labelledby="findTagLabel"></div></div>
+              <button type="button" class="uisw" id="findGroupToggle" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg> Group by severity</button>
+            </div>
           </div>
+          <div id="findFilterChips" class="find-filter-chips" aria-label="Active filters" hidden></div>
         </div>
         <form id="findInlineNew" class="find-inline-new" aria-label="New finding" novalidate hidden>
           <label class="find-inline-label" for="findInlineTitle">New finding title</label>
@@ -592,20 +615,6 @@ Content-Type: application/json
           </div>
           <div class="find-inline-foot"><span id="findInlineStatus" class="statusline" role="status" aria-live="polite" aria-atomic="true"></span><button type="button" class="btn xs" id="findNewDialog">Full form</button></div>
         </form>
-        <details id="findGuideAside" class="find-guide-aside">
-          <summary>Writing guide</summary>
-          <ol class="find-guide-list">
-            <li><strong>Title</strong> names the weakness, action and asset.</li>
-            <li><strong>Claim</strong> says who can do what, to which asset.</li>
-            <li><strong>Impact</strong> states what an attacker gains.</li>
-            <li><strong>Targets</strong> list every affected asset with CWE and a CVSS v4.0 vector.</li>
-            <li><strong>Proof</strong> says what the app normally does, what we changed, and what the response did. With several affected targets, each tested target has its own proof.</li>
-            <li><strong>Evidence</strong> is a real capture, annotated and redacted.</li>
-            <li><strong>Fix and retest</strong> record the failed control and the secure result.</li>
-          </ol>
-          <button type="button" class="btn xs" id="findGuideDialog">Open full guide</button>
-        </details>
-        <details id="findTagsDisclosure" class="find-tags-disclosure" hidden><summary id="findTagsSummary">Tags</summary><div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div></details>
         <div id="findOutsideFilter" class="find-outside-filter" hidden><span>Open finding is outside these filters.</span><button type="button" class="btn xs">Clear filters</button></div>
       <nav id="findList" class="scan-list" aria-label="Security findings">
         <div class="state-empty find-empty">

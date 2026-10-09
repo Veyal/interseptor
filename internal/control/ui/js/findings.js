@@ -1,6 +1,6 @@
 import { openSettingsSection } from './settings.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
@@ -59,6 +59,15 @@ function findingModeChipHTML(){
 }
 let findSection = 'overview';
 let findSearch = '', findSeverityFilter = '', findStatusFilter = '';
+const FIND_GROUP_KEY = () => projectStorageKey('findings.groupBySeverity');
+let findGroupBySeverity = true, findGroupKeyLoaded = '';
+function readFindGroupBySeverity() { try { return localStorage.getItem(FIND_GROUP_KEY()) !== '0'; } catch { return true; } }
+function setFindGroupBySeverity(on) {
+  findGroupBySeverity = !!on;
+  try { localStorage.setItem(FIND_GROUP_KEY(), findGroupBySeverity ? '1' : '0'); } catch { /* not persisted */ }
+  syncFindFilterButton();
+  renderFindings();
+}
 let renderedFindingKey = '';
 let findingNavigationEpoch = 0;
 const findingEvidenceReads = new Set();
@@ -287,19 +296,47 @@ function findingIsEmpty(f) {
   return !findingStepCount(f) && !textChainLabel(f.impact);
 }
 
-function findingListMeta(f) {
-  const st = f.status === 'needs_verification'
-    ? '<span class="find-needs-verif" title="Needs human verification"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg> needs verification</span>'
-    : esc(statusLabel(f.status));
-  const readiness = findingReadiness(f);
-  const ready = readiness.ready
-    ? '<span class="find-ready">Report ready</span>'
-    : `<span class="find-draft">${esc(findingReadinessLabel(readiness.stage))}</span>`;
-  const parts = [st];
-  const pocs = findingPocCount(f);
-  if (pocs) parts.push(pocs + ' evidence');
-  if (readiness.ready) parts.push(ready);
-  return `<span>${parts.join(' · ')}</span>${f.target ? `<span class="find-row-target" title="${escAttr(f.target)}">${esc(f.target)}${(f.targets?.length || f.targetCount || 0) > 1 ? ` · +${(f.targets?.length || f.targetCount) - 1} targets` : ''}</span>` : ''}`;
+// Row furniture. Severity is the stripe and group header, readiness lives in Report;
+// a row shows what a tester scans for: the claim, where it is, and whether it is backed up.
+const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+const severityKey = s => (SEVERITY_ORDER.includes(String(s).toLowerCase()) ? String(s).toLowerCase() : 'info');
+const findingStatusIcon = s => ({ verified: 'status-done', fixed: 'status-done', needs_verification: 'alert', false_positive: 'close', wont_fix: 'close' }[s] || 'status-todo');
+
+function findingHost(f) {
+  const raw = String(f.target || '').trim().replace(/^[A-Z]+\s+/, '');
+  if (!raw) return '';
+  try { return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : 'http://' + raw.replace(/^\/\//, '')).host || raw; } catch { return raw; }
+}
+
+function findingRowMeta(f) {
+  const parts = [`<span>#${f.id}</span>`,
+    `<span class="find-st ${statusBadgeClass(f.status)}">${icon(findingStatusIcon(f.status))}${esc(statusLabel(f.status))}</span>`];
+  const host = findingHost(f);
+  if (host) parts.push(`<span class="find-meta-host" title="${escAttr(f.target || host)}">${esc(host)}</span>`);
+  if (f.cwe) parts.push(`<span>${esc(f.cwe)}</span>`);
+  return parts.join('<span class="sep" aria-hidden="true">&middot;</span>');
+}
+
+const findingHasScreenshot = f => (f.blocks || []).some(b => b.type === 'image');
+
+function findingRowHTML(f, tab) {
+  const n = findingPocCount(f);
+  return `<a href="${findingHref(f.id,'overview')}" class="find-row find-row-sev-${severityKey(f.severity)}${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}"${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}" tabindex="${tab ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
+    <span class="find-title" title="${escAttr(f.title)}">${esc(f.title)}</span>
+    <span class="find-meta">${findingRowMeta(f)}</span>
+    <span class="find-ev${n ? '' : ' is-none'}" title="${n ? n + ' evidence' : 'No evidence attached'}">${icon(findingHasScreenshot(f) ? 'image' : 'attach')}${n}<span class="u-sr"> evidence</span></span>
+  </a>`;
+}
+
+// Critical to Info, then id. A flat list keeps the server order.
+function orderFindings(list) {
+  if (!findGroupBySeverity) return list;
+  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(severityKey(a.severity)) - SEVERITY_ORDER.indexOf(severityKey(b.severity)) || a.id - b.id);
+}
+
+function findingGroupHeaderHTML(severity, count) {
+  const key = severityKey(severity);
+  return `<div class="find-group find-row-sev-${key}"><span class="bar" aria-hidden="true"></span>${esc(key)}<span class="n">${count}</span></div>`;
 }
 
 function parseFindTags(s) {
@@ -320,6 +357,75 @@ $('#findSearch')?.addEventListener('input', e => { findSearch = e.target.value; 
 $('#findFilterSeverity')?.addEventListener('change', e => { findSeverityFilter = e.target.value; renderFindings(); });
 $('#findFilterStatus')?.addEventListener('change', e => { findStatusFilter = e.target.value; renderFindings(); });
 
+// Filters that narrow the list (the search box is visible on its own, so it is not a chip).
+function activeFindFilters() {
+  const out = [];
+  if (findSeverityFilter) out.push({ key: 'severity', label: 'Severity: ' + findSeverityFilter });
+  if (findStatusFilter) out.push({ key: 'status', label: 'Status: ' + statusLabel(findStatusFilter) });
+  if (findTagFilter) out.push({ key: 'tag', label: 'Tag: ' + findTagFilter });
+  return out;
+}
+
+function syncFindFilterButton() {
+  const n = activeFindFilters().length;
+  const badge = $('#findFilterCount');
+  if (badge) { badge.hidden = n === 0; badge.textContent = String(n); }
+  $('#findFilterBtn')?.setAttribute('aria-label', n ? `Filter findings, ${n} active` : 'Filter findings');
+  $('#findGroupToggle')?.setAttribute('aria-pressed', findGroupBySeverity ? 'true' : 'false');
+}
+
+function renderFindFilterChips() {
+  const box = $('#findFilterChips'); if (!box) return;
+  const active = activeFindFilters();
+  syncFindFilterButton();
+  const chipKey = active.map(f => f.label).join('|');
+  if (box.dataset.chipKey === chipKey) return;
+  box.dataset.chipKey = chipKey;
+  box.hidden = !active.length;
+  if (!active.length) { box.innerHTML = ''; return; }
+  box.innerHTML = active.map(f => `<span class="find-chip">${esc(f.label)}<button type="button" data-remove-filter="${f.key}" aria-label="Remove ${escAttr(f.label)} filter">${icon('close')}</button></span>`).join('') +
+    (active.length > 1 ? '<button type="button" class="find-chip-clear" data-remove-filter="all">Clear all</button>' : '');
+}
+
+function clearFindFilter(key) {
+  if (key === 'severity' || key === 'all') findSeverityFilter = '';
+  if (key === 'status' || key === 'all') findStatusFilter = '';
+  if (key === 'tag' || key === 'all') findTagFilter = '';
+  for (const [id, v] of [['findFilterSeverity', findSeverityFilter], ['findFilterStatus', findStatusFilter]]) {
+    const el = $('#' + id);
+    if (el) el.value = v;
+  }
+  renderFindTagFilter();
+  renderFindings();
+}
+$('#findFilterChips')?.addEventListener('click', e => {
+  const b = e.target.closest('[data-remove-filter]'); if (!b) return;
+  clearFindFilter(b.dataset.removeFilter);
+});
+
+function setFindFiltersOpen(open, { restoreFocus = false } = {}) {
+  const pop = $('#findFilters'), btn = $('#findFilterBtn');
+  if (!pop || !btn) return;
+  pop.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) pop.querySelector('button,input,select')?.focus();
+  else if (restoreFocus) btn.focus();
+}
+$('#findFilterBtn')?.addEventListener('click', e => { e.stopPropagation(); const pop = $('#findFilters'); setFindFiltersOpen(!!pop && pop.hidden); });
+$('#findGroupToggle')?.addEventListener('click', () => setFindGroupBySeverity(!findGroupBySeverity));
+// Esc closes the popover first and returns focus to its button; a click elsewhere
+// closes it too. The custom select menus are portaled to <body>, so they count as inside.
+document.addEventListener('keydown', e => {
+  const pop = $('#findFilters');
+  if (e.key !== 'Escape' || !pop || pop.hidden || document.querySelector('.ui-select-menu:not([hidden])')) return;
+  e.preventDefault(); e.stopImmediatePropagation(); setFindFiltersOpen(false, { restoreFocus: true });
+}, true);
+document.addEventListener('pointerdown', e => {
+  const pop = $('#findFilters');
+  if (pop && !pop.hidden && !e.target.closest('#findFilters,#findFilterBtn,.ui-select-menu')) setFindFiltersOpen(false);
+});
+$('#findListNew')?.addEventListener('click', () => $('#findNew')?.click());
+
 function renderFindTagFilter() {
   const box = $('#findTagFilter'); if (!box) return;
   const tags = findTagCounts.length ? findTagCounts : (() => {
@@ -327,11 +433,11 @@ function renderFindTagFilter() {
     for (const f of findings) for (const t of (f.tags || [])) m[t] = (m[t] || 0) + 1;
     return Object.keys(m).sort().map(tag => ({ tag, count: m[tag] }));
   })();
-  const wrapper = $('#findTagsDisclosure');if(wrapper)wrapper.hidden=!tags.length&&!findTagFilter;
-  const summary = $('#findTagsSummary');if(summary)summary.textContent=findTagFilter ? 'Tag: '+findTagFilter : 'Tags';
+  const field = $('#findTagField'); if (field) field.hidden = !tags.length && !findTagFilter;
+  renderFindFilterChips();
   if (!tags.length && !findTagFilter) { box.innerHTML = ''; return; }
   box.innerHTML = `<button type="button" class="btn xs find-tag-chip${!findTagFilter ? ' on' : ''}" data-tag="">All</button>` +
-    tags.map(t => `<button type="button" class="btn xs find-tag-chip${findTagFilter === t.tag ? ' on' : ''}" data-tag="${escAttr(t.tag)}">${esc(t.tag)} <span class="hint">${t.count}</span></button>`).join('');
+    tags.map(t => `<button type="button" class="btn xs find-tag-chip${findTagFilter === t.tag ? ' on' : ''}" data-tag="${escAttr(t.tag)}" aria-pressed="${findTagFilter === t.tag}">${esc(t.tag)} <span class="hint">${t.count}</span></button>`).join('');
   box.querySelectorAll('[data-tag]').forEach(b => {
     b.onclick = () => {
       findTagFilter = b.dataset.tag || '';
@@ -483,12 +589,16 @@ function restoreFindingFocus(focus) {
 // nothing visible leaves the 500-row list untouched (no rebuild, no lost focus).
 function findingRowKey(f) {
   const r = f.readiness;
-  return [f.id, f.title, f.severity, f.status, f.target || '', f.targets?.length || f.targetCount || 0, findingPocCount(f), r ? r.stage : '', r && Array.isArray(r.gaps) ? r.gaps.join(',') : '', findingsEditable() ? 'rw' : 'ro'].join('\u0001');
+  return [f.id, f.title, f.severity, f.status, f.target || '', f.cwe || '', f.targets?.length || f.targetCount || 0, findingPocCount(f), findingHasScreenshot(f) ? 'img' : '', r ? r.stage : '', r && Array.isArray(r.gaps) ? r.gaps.join(',') : '', findingsEditable() ? 'rw' : 'ro'].join('\u0001');
 }
 function renderFindings() {
   syncFindingsEditChrome();
   const box = $('#findList'); if (!box) return;
-  const list = visibleFindings();
+  const groupKey = FIND_GROUP_KEY();
+  if (groupKey !== findGroupKeyLoaded) { findGroupKeyLoaded = groupKey; findGroupBySeverity = readFindGroupBySeverity(); }
+  syncFindFilterButton();
+  renderFindFilterChips();
+  const list = orderFindings(visibleFindings());
   const excluded = selFinding && findings.some(f=>f.id===selFinding) && !list.some(f=>f.id===selFinding);
   const outside = $('#findOutsideFilter');
   if(outside){outside.hidden=!excluded;outside.querySelector('button').onclick=()=>{resetFindingFilters();renderFindings();};}
@@ -520,17 +630,20 @@ function renderFindings() {
     if (!selFinding) renderFindingDetail(); return;
   }
   if (!selFinding || (!findings.some(f => f.id === selFinding) && parseFindingRoute(location.hash)?.id !== selFinding)) selFinding = list[0].id;
-  const listKey = list.map(findingRowKey).join('\n') + '|' + selFinding;
+  const listKey = list.map(findingRowKey).join('\n') + '|' + selFinding + '|' + (findGroupBySeverity ? 'g' : 'f');
   const rowsChanged = box.dataset.listKey !== listKey;
   if (rowsChanged) {
     box.dataset.listKey = listKey;
-    box.innerHTML = list.map((f,i) => `<a href="${findingHref(f.id,'overview')}" class="find-row${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}"${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}" tabindex="${f.id === selFinding || (!list.some(x=>x.id===selFinding)&&i===0) ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
-    <span class="find-id">#${f.id}</span>
-    <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
-    <span class="find-title">${esc(f.title)}</span>
-    <span class="find-meta">${findingListMeta(f)}</span>
-    ${f.readiness ? `<span class="find-row-meter">${readinessMeterHTML(f.readiness, { size: 'compact', labelFor: findingGapLabel })}</span>` : ''}
-  </a>`).join('');
+    const focusable = list.some(x => x.id === selFinding);
+    const counts = {};
+    for (const f of list) counts[severityKey(f.severity)] = (counts[severityKey(f.severity)] || 0) + 1;
+    let group = '';
+    box.innerHTML = list.map((f, i) => {
+      const key = severityKey(f.severity);
+      const head = findGroupBySeverity && key !== group ? findingGroupHeaderHTML(key, counts[key]) : '';
+      group = key;
+      return head + findingRowHTML(f, f.id === selFinding || (!focusable && i === 0));
+    }).join('');
   }
   const selectRow = (id, moveToDetail) => {
     findingNavigationEpoch++;
@@ -1956,14 +2069,15 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
     }
   }
 });
-// The writing guide is a collapsible aside; the full dialog stays as a button inside it.
+// The toolbar button is the only Writing guide entry; the guide panel sits under the toolbar,
+// and the full dialog stays reachable from inside it.
 $('#findGuide') && ($('#findGuide').onclick = () => {
   const aside = $('#findGuideAside');
   if (!aside) { openModal($('#findGuideModal')); return; }
-  aside.open = !aside.open;
-  if (aside.open) aside.querySelector('summary')?.focus({ preventScroll: false });
+  aside.hidden = !aside.hidden;
+  $('#findGuide').setAttribute('aria-expanded', String(!aside.hidden));
+  if (!aside.hidden) aside.querySelector('button')?.focus({ preventScroll: false });
 });
-$('#findGuideAside')?.addEventListener('toggle', () => $('#findGuide')?.setAttribute('aria-expanded', String($('#findGuideAside').open)));
 $('#findGuideDialog') && ($('#findGuideDialog').onclick = () => openModal($('#findGuideModal')));
 $('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
 

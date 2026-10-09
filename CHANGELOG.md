@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Findings list is dense and grouped.** Each row is two lines (about 50px instead of about 150px): an ellipsized title, then a monospace `#id`, status, host and CWE line, with a 3px severity stripe and an evidence count (attachment or image icon) that replaces the three readiness circles; readiness stays in Report. Rows sit under sticky severity headers with counts (Critical to Info, then id), and a "Group by severity" toggle in the new Filter popover switches to a flat list and is remembered per project. Search, Filter (with an active-count badge) and New share one toolbar row; severity, status and tags moved into the popover, active filters show as removable chips, and the duplicate Writing guide disclosure in the list pane is gone (the toolbar button now opens the guide panel under the toolbar).
 - **Report readiness is report-time only.** The Findings tab badge, the context bar "N blockers" chip and the `Ready n/m` meter stay hidden while capturing and testing, and appear only while the Report view is open on the Findings panel. `report-preflight.js` publishes the signal through `shell-hooks.js` (`setReportOpen`) and `ctxbar.js` subscribes to it (`onReportOpenChange`), with no import between the two. The "Open report blockers" palette entry now opens the Report view, since the chip it used to click is hidden by default.
 
 ## [2.10.1] - 2026-10-09

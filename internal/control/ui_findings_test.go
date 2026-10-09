@@ -57,7 +57,8 @@ func TestUIFindingsReadinessIsDisplayedNeverDerived(t *testing.T) {
 	meter := readUIAsset(t, "js/readiness-meter.js")
 	requireUIContains(t, meter, "STAGES", "aria-valuetext", "role: 'meter'", "Readiness unknown")
 	findings := readUIAsset(t, "js/findings.js")
-	requireUIContains(t, findings, "readinessMeterHTML(f.readiness", "id: 'findMeter'", "findingRowKey")
+	// List rows no longer render the meter (they show an evidence count); the detail header still does.
+	requireUIContains(t, findings, "readinessMeterHTML(", "id: 'findMeter'", "findingRowKey")
 }
 
 func TestUIFindingsMarkupContract(t *testing.T) {
