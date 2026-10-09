@@ -48,6 +48,14 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
 Use structured blocks arrays when available; legacy body JSON remains accepted. Stub create (title only) is allowed.
 Do NOT file walls of freeform markdown. Put summary/impact/why/fix/retest in their fields, reproduction in text blocks, and raw proof in flow/image blocks.
 
+HOUSE STYLE: the reader is a working pentester triaging a list. They know the vulnerability class. Say where it is and what you proved, nothing else.
+- title <=70 chars: "<flaw> on <endpoint or parameter>"; no "Vulnerability:" prefix, no severity word
+- summary: ONE sentence <=140 chars: "<METHOD path template> <what happens> to <role>."; never restate the title
+- impact: ONE sentence <=120 chars, the concrete attacker gain; why <=100 chars, the failed control (omit when the CWE says it)
+- blocks[].text <=100 chars, imperative, ~6 blocks at most; fix <=160 chars, imperative; retest: ONE sentence <=100 chars, the observable pass condition
+NEVER WRITE: background or theory ("IDOR occurs when..."); restating the title in the summary; hedging ("could potentially", "may be possible", "it appears"), state what the evidence shows; narration ("we then proceeded to"); raw HTTP, headers or payloads in prose, attach the flow; severity adjectives (severity is a field); anything already visible in an attached flow or screenshot; padding an empty field, leave it blank and readiness reports the gap.
+These are targets; the hard reject below stays 180.
+
 RESPONSES: a line starting "error:" is a hard rejection and nothing was written; fix the named field and resend.
 A "warning:" line (under "FORMAT WARNINGS") is advisory and non-blocking: the write succeeded and a draft may stay as is.
 NARRATIVE LIMIT: 180 characters of unstructured text per field (detail, and the text of blocks/body) unless impact/why are set or the text uses headings. detail is DEPRECATED; prefer blocks.`

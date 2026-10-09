@@ -183,6 +183,7 @@ func TestUIFindingRefreshPreservesCustomSelection(t *testing.T) {
 	end := strings.Index(src[start:], "function refreshDeferredFindingDetail()")
 	script := `let bodyEditing=false,findingDetailPointerActive=false,bodySaveTimers=new Set(),selFinding=1,bodySavesInFlight=0,findingWritesInFlight=0,findEditMode=true,open=false;
 const findingDrafts=new Set();
+const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
 const detail={contains:el=>el?.inside,querySelector:()=>open?{}:null};const $=()=>detail;
 const document={activeElement:null};
 function focus(kind,inside=true){document.activeElement={inside,matches:selector=>selector.includes(kind)}}

@@ -602,7 +602,7 @@ func TestUISharedToggleAndSegmentContracts(t *testing.T) {
 		"notesFilter", "hideTlsFilter", "scopeToggle", "manualFilter", "aiFilter",
 		"interceptToggle", "respInterceptToggle", "mapHideNoise", "mapCollapseIdentical",
 		"sysProxyToggle", "capScopeToggle", "suppressTelemetryToggle",
-		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "autoBypassToggle",
+		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "findingsUIEditingToggle", "autoBypassToggle",
 		"proxyAuthToggle",
 	} {
 		pattern := regexp.MustCompile(`(?s)<button[^>]*id="` + id + `"[^>]*>`)

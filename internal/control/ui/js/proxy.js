@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng } from './core.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
@@ -783,6 +783,7 @@ export function syncInspectorVisibility(){
 export function closeInspector(){
   if(state.selId==null)return false;
   state.selId=null;state.detail=null;
+  setInspectorActionState(true);
   onAuthzSelectionChanged();
   if($('#panel-proxy')?.classList.contains('dock-drawer'))getHook('closeFlow')?.();
   renderRows();
@@ -1246,6 +1247,7 @@ function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   else if(!state.detail)showInspectorSelectionUnavailable(state.selId);
 }
 function setInspectorActionState(disabled){
+  mountFlowCopyPng($('#inspectCopyPng'),disabled?null:state.selId);
   ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
     const button=$(sel);if(!button)return;
     button.disabled=disabled;
@@ -2174,7 +2176,7 @@ export function showCtx(x,y,f,field){
   sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
   const fitems=ff.map(x=>({label:x.title,icon:'finding',val:x.severity,act:()=>openFinding(x.id)}));
-  fitems.push({label:'Add to finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
+  if(findingsEditable())fitems.push({label:'Add to finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
   sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
   if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
   const sendAsIds=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));

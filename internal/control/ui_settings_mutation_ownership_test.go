@@ -27,6 +27,7 @@ func TestUIImmediateSettingsMutationsSerializeLatestIntent(t *testing.T) {
 		"settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision)",
 		"settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision)",
 		"settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision)",
+		"settingsMutationValue('findingsUIEditing',!!s.findingsUIEditing,settingsRevision)",
 		"settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision)",
 	)
 
@@ -37,6 +38,7 @@ func TestUIImmediateSettingsMutationsSerializeLatestIntent(t *testing.T) {
 		"suppressBrowserTelemetry",
 		"suppressAndroidTelemetry",
 		"invisibleProxy",
+		"findingsUIEditing",
 		"autoBypassOnPinFailure",
 	} {
 		if !strings.Contains(settings, "saveBooleanSetting('"+key+"'") {

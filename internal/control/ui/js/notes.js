@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, renderLoadError, openFlow, icon } from './core.js';
+import { $, requireFindingsEditing, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, renderLoadError, openFlow, icon } from './core.js';
 import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest } from './notes-model.js';
 registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
@@ -222,6 +222,7 @@ function noteSelectionText(){
   return ta.value.slice(from,to<0?ta.value.length:to);
 }
 export async function promoteNoteSelection(){
+  if(!requireFindingsEditing())return;
   const req=promoteRequest(noteSelectionText());
   if(!req){toast('Select some text in the note to promote');return;}
   const btn=$('#notesPromote');

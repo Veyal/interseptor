@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
+import { $, requireFindingsEditing, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -861,7 +861,7 @@ export function renderScanDetail(){
     ${sevChip(g.severity)}
     <div class="scan-head">
       <h1 class="scan-title" tabindex="-1" data-split-focus>${esc(g.title)}</h1>
-      <button class="btn accent" id="scanPromote" title="Create a curated finding from this issue: title, detail, fix, and every PoC flow attached">${icon('plus')} Promote to Finding</button>
+      <button class="btn accent findings-write" id="scanPromote" title="Create a curated finding from this issue: title, detail, fix, and every PoC flow attached">${icon('plus')} Promote to Finding</button>
     </div>
     ${(shared&&first.detail)?`<p class="scan-detail-text">${esc(first.detail)}</p>`:''}
     <div class="micro-label scan-sec-label">AFFECTED TARGETS (${g.items.length})</div>
@@ -889,6 +889,7 @@ function scanTargetAction(act,issue,button){
 // its PoC flows attached), then opens it — bridging the two views of "vulns" that
 // were previously disconnected silos.
 async function promoteFinding(g){
+  if(!requireFindingsEditing())return;
   if(promoteFindingPending)return;
   const body=promoteBody(g);
   const flowIds=body.flowIds;

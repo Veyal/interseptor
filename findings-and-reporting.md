@@ -302,6 +302,21 @@ or image references remain visible rather than being silently removed.
 6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
 
+### House style
+
+The reader is a working pentester triaging a list. They already know the vulnerability class: say where it
+is and what you proved, nothing else. Targets: `title` <=70 chars (`<flaw> on <endpoint or parameter>`,
+no "Vulnerability:" prefix, no severity word); `summary` one sentence <=140; `impact` one sentence <=120;
+`why` <=100 (omit when the CWE already says it); each `blocks[].text` <=100, imperative, about 6 blocks
+at most; `fix` <=160, imperative; `retest` one sentence <=100 (the observable pass condition). 180
+characters per unstructured field remains the hard reject; the budgets above are the house style.
+
+**Never write:** background or theory ("IDOR occurs when..."); a summary that restates the title; hedging
+("could potentially", "may be possible", "it appears"), state what the evidence shows; narration ("we then
+proceeded to"); raw HTTP, headers or payloads in prose, attach the flow; severity adjectives (severity is a
+field); anything already visible in an attached flow or screenshot; padding an empty field to look
+complete, leave it blank and readiness reports the gap.
+
 AI-generated interpretation must remain distinguishable from attached raw evidence. If browser
 execution, OOB interaction, or a state change was not observed, record the status as
 `needs_verification`, state **NOT confirmed**, and give the human an exact verification procedure.

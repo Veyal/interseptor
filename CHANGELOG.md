@@ -9,8 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-09
+
+> Feature release: findings are agent-maintained in the web UI by default, a captured flow can be copied as a PNG for pasting into Notion, and the MCP finding guide now carries per-field brevity budgets.
+
+### Added
+
+- **Copy as PNG in History.** The Proxy inspector and flow drawer now have a **Copy as PNG** action that copies the selected flow's request and response as one image (rendered in the active light or dark theme) for pasting into Notion or reports.
+- **Findings editing switch.** A new persisted setting (`findingsUIEditing`, off by default) in Settings → Project & data controls whether the web UI allows editing findings; agents keep full write access over MCP and REST.
+
 ### Changed
 
+- **Finding writing house style.** The MCP finding guide, tool descriptions and agent docs now give per-field brevity budgets (title 70, summary 140, impact 120, why 100, block text 100, fix 160, retest 100 characters) and a never-write list (background, hedging, narration, pasted HTTP, severity adjectives). Targets only: the 180-character wall-of-text rejection is unchanged.
+- **Clearer insecure-context copy error.** Copy image buttons now say "Copying images needs HTTPS or localhost" and point to Download, instead of a vague clipboard message, when the UI is served over plain HTTP.
+- **Findings are agent-maintained in the web UI by default.** With Settings → Project & data → findings editing off, every control that writes a finding is removed or refuses to act: Edit, Delete, rename, tags, the evidence dock, screenshot paste/drop and the New finding entry points on the Findings page; "Add to finding" / "Attach as evidence" (History selection bar, inspector, flow context menu, flow popup, Repeater, Intruder, the `a` and `e` keys, drag-and-drop onto a finding, and the command palette); revision "Restore this version" and the Deleted list; and "Promote to finding" from Scanner, Notes and evidence renders. Keyboard and palette entries show "Findings editing is off. Enable it in Settings." instead of acting. The check is enforced at the write itself in `core.js` (`findingsEditable`, `requireFindingsEditing`, `assertFindingsWritable`), so a caller that was missed still cannot write. Switching editing off while a draft or failed save is pending cancels the debounced save, closes the editor, and offers Discard changes in the read view (Retry returns once editing is on again). This is a **UI-only guard**, not access control: agents keep full write access over MCP and `/api/findings`, and the setting itself can be changed through `PUT /api/settings`. A header chip (Agent-maintained / Editing on) links to the setting. Severity, status and gate colours moved from inline styles to `findings.css` classes.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.9.0` release.
 
 ## [2.9.0] - 2026-10-08

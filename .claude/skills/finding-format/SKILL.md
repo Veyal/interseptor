@@ -23,6 +23,15 @@ A report-ready finding contains:
 Title-only drafts remain valid. Read `readiness.stage` and `readiness.gaps`; do not treat legacy
 `ready` as proof that the vulnerability is true.
 
+## House style
+
+Reader: a working pentester triaging a list. Say where the flaw is and what you proved, nothing else.
+Budgets: `title` <=70 (`<flaw> on <endpoint or parameter>`), `summary` 1 sentence <=140 (no title
+restatement), `impact` 1 sentence <=120, `why` <=100 (omit if the CWE says it), `blocks[].text` <=100
+imperative (~6 blocks), `fix` <=160, `retest` 1 sentence <=100. 180 stays the hard reject.
+Never write: background or theory, hedging, narration, raw HTTP in prose, severity adjectives, anything
+already visible in an attached flow or screenshot, or filler in an empty field.
+
 ## Blocks
 
 Prefer the structured `blocks` array. Legacy `body` is a JSON string kept for old clients. Never send

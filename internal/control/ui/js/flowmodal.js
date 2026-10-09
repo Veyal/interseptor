@@ -136,7 +136,7 @@ function wireFlowPopupActions(){
   intruder.type='button';intruder.className='btn';intruder.id='fmIntruder';
   intruder.title='Load this flow into Intruder';intruder.innerHTML='Intruder '+icon('external');
   const finding=document.createElement('button');
-  finding.type='button';finding.className='btn';finding.id='fmFinding';
+  finding.type='button';finding.className='btn findings-write';finding.id='fmFinding';
   finding.title='Add this flow to a finding';finding.textContent='+ Finding';
   repeater.after(intruder,finding);
   intruder.onclick=()=>{

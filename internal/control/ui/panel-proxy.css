@@ -66,3 +66,6 @@
   #panel-proxy #rows .trow .tr-more{grid-area:more;width:auto;height:auto;opacity:1;min-height:var(--hit-min);min-width:var(--hit-min)}
 }
 .coach-tip{display:inline-flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-1) var(--sp-2);border:1px dashed var(--line2);border-radius:var(--r-md);font-size:var(--fs-xs)}
+
+/* Copy as PNG mounts hold one button each; they must not add a flex item of their own. */
+#inspectCopyPng,#fdCopyPng{display:contents}

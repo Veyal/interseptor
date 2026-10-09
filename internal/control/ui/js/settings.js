@@ -733,6 +733,8 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#suppressTelemetryToggle'))setSuppressTelemetry(settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision));
   if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision));
   if($('#invisibleProxyToggle'))setInvisibleProxy(settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision));
+  state.findingsUIEditing=!!s.findingsUIEditing;
+  if($('#findingsUIEditingToggle'))setFindingsUIEditing(settingsMutationValue('findingsUIEditing',!!s.findingsUIEditing,settingsRevision));
   if($('#proxyAuthToggle')?.dataset.settingsDirty!=='1')setProxyAuth(!!s.proxyAuthEnabled);
   if($('#proxyAuthUser')&&document.activeElement!==$('#proxyAuthUser')&&$('#proxyAuthUser').dataset.settingsDirty!=='1')$('#proxyAuthUser').value=s.proxyAuthUser||'';
   if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value=s.proxyAuthPassword||'';
@@ -748,7 +750,8 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   state.intercept.enabled=s.interceptEnabled;
   restoreDirtySettings(dirty);
   restoreDirtySettingsDerived(dirty);
-  if(loadState)loadState.style.display='none';}
+  if(loadState)loadState.style.display='none';
+  window.dispatchEvent(new CustomEvent('interseptor:findings-ui-editing'));}
   catch(e){if(epoch!==settingsLoadEpoch)return;renderLoadError(loadState,'Settings',e,loadSettings,true);}
   finally{if(epoch===settingsLoadEpoch&&loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
@@ -803,6 +806,7 @@ $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').oncl
     failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
   });
 });
+export function setFindingsUIEditing(on){state.findingsUIEditing=on;const b=$('#findingsUIEditingToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Findings editing is on':'Findings editing is off';}
 export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
 export function setProxyAuth(on){
   const b=$('#proxyAuthToggle');
@@ -837,6 +841,15 @@ $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
   return saveBooleanSetting('invisibleProxy',on,{control,lockControl:true,
     success:current=>{setInvisibleProxy(current);toast(current?'Invisible proxy enabled':'Invisible proxy disabled');},
     failure:e=>{toast('invisible: '+e.message);loadSettings();},
+  });
+});
+
+$('#findingsUIEditingToggle')&&($('#findingsUIEditingToggle').onclick=async()=>{
+  const control=$('#findingsUIEditingToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('findingsUIEditing',on,{control,lockControl:true,
+    success:current=>{setFindingsUIEditing(current);window.dispatchEvent(new CustomEvent('interseptor:findings-ui-editing'));toast(current?'Findings editing enabled':'Findings editing disabled');},
+    failure:e=>{toast('findings editing: '+e.message);loadSettings();},
   });
 });
 

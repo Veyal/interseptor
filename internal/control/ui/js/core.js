@@ -7,7 +7,7 @@
 // to the shared `state` object are visible across modules (live object binding).
 
 import { placeFloatingSurface } from './surface-position.js';
-import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL } from './copy-image.js';
+import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -40,7 +40,7 @@ export function projectSwitchBlocker(){
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
-  filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
+  filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false,findingsUIEditing:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
 // Errors and warnings are role=alert (announced assertively). Warnings live longer
@@ -102,6 +102,26 @@ export function toast(m, sev) {
   requestAnimationFrame(() => t.classList.add('show'));
   if (sev !== 'error') armToastTimer(t, sev === 'warn' ? 5000 : 2600);
   return t;
+}
+// Findings are agent-maintained: the web UI writes to them only while
+// Settings > findings.uiEditing is on. This is the ONE definition of that gate;
+// every UI path that writes a finding (and every control that exists only to
+// write one) goes through it. It is a UI guard only: agents keep full write
+// access over MCP and REST.
+export const FINDINGS_EDITING_OFF = 'Findings editing is off. Enable it in Settings.';
+export function findingsEditable(){ return !!state.findingsUIEditing; }
+// requireFindingsEditing is the gate for an action that was invoked anyway
+// (keyboard shortcut, palette entry, stale handler): it refuses and says why.
+export function requireFindingsEditing(){
+  if(findingsEditable())return true;
+  toast(FINDINGS_EDITING_OFF);
+  return false;
+}
+// assertFindingsWritable is the same gate for code that reports failure by
+// throwing (queued saves, deletes, evidence writes): re-check it at the write,
+// after any await, rather than trusting the state at render time.
+export function assertFindingsWritable(){
+  if(!findingsEditable())throw new Error(FINDINGS_EDITING_OFF);
 }
 // toastError(prefix, e) reports a failed action. e may be an Error, a string or
 // anything with a message; the prefix names the action ("Save failed"). A single
@@ -1951,14 +1971,32 @@ else ensureImageLightbox();
 // copyImageButton renders the shared compact "Copy image" control. src must be a
 // finding image or flow-preview URL (copy-image.js enforces that again on click);
 // what names the picture for assistive tech ("proof image", "flow #7 preview").
-export function copyImageButton(src, what, name) {
-  const label = 'Copy image' + (what ? ': ' + what : '');
-  return `<button type="button" class="btn xs js-copy-image" data-copy-src="${escAttr(src)}" data-copy-name="${escAttr(name || '')}" aria-label="${escAttr(label)}" title="Copy image to the clipboard (paste into Notion or any editor)">${icon('copy')} Copy image</button>`;
+export function copyImageButton(src, what, name, opts) {
+  const o = opts || {};
+  const label = o.ariaLabel || 'Copy image' + (what ? ': ' + what : '');
+  const extra = o.themeAware ? ' data-copy-theme' : '';
+  return `<button type="button" class="${escAttr(o.className || 'btn xs')} js-copy-image" data-copy-src="${escAttr(src)}"${extra} data-copy-name="${escAttr(name || '')}" aria-label="${escAttr(label)}" title="Copy image to the clipboard (paste into Notion or any editor)">${icon('copy')} ${esc(o.text || 'Copy image')}</button>`;
+}
+// flowCopyPngButton renders the History "Copy as PNG" control for one flow: the
+// server-rendered request+response preview, in the UI's active theme (re-read on
+// click, so a theme switch after render still applies).
+export function flowCopyPngButton(id, className) {
+  return copyImageButton(flowPreviewPngURL(id, { theme: activeFlowTheme(document.documentElement) }), '', 'flow-' + id + '-preview', {
+    className: className || 'btn btn-compact',
+    text: 'Copy as PNG',
+    ariaLabel: 'Copy flow #' + id + ' request and response as PNG',
+    themeAware: true,
+  });
+}
+// mountFlowCopyPng paints (or clears, when id is null) the Copy as PNG control into a mount element.
+export function mountFlowCopyPng(el, id, className) {
+  if (el) el.innerHTML = id == null ? '' : flowCopyPngButton(id, className);
 }
 // The click handler starts the clipboard write synchronously (Safari keeps the
 // user gesture only for a ClipboardItem built from a promise inside the handler).
 export function copyImageFromButton(btn) {
-  const src = btn.dataset.copySrc || '';
+  let src = btn.dataset.copySrc || '';
+  if (btn.hasAttribute('data-copy-theme')) src = src.replace(/([?&]theme=)\w+/, '$1' + activeFlowTheme(document.documentElement));
   if (btn.getAttribute('aria-busy') === 'true') return;
   btn.setAttribute('aria-busy', 'true');
   const run = copyImage(src);

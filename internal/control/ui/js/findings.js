@@ -1,5 +1,6 @@
+import { openSettingsSection } from './settings.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
@@ -44,6 +45,18 @@ function findingsLoadState() {
 }
 // Default Read/report view; Edit toggles the block editor.
 let findEditMode = false;
+// Findings are agent-maintained; the UI edits only when Settings opts in. The
+// gate (findingsEditable / requireFindingsEditing) lives in core.js.
+function syncFindingsEditChrome(){
+  const on = findingsEditable();
+  // CSS hides every static control that only exists to write a finding.
+  document.documentElement.dataset.findingsEditing = on ? 'on' : 'off';
+  for (const id of ['findNew', 'findEmptyNew']) { const b = $('#' + id); if (b) b.hidden = !on; }
+}
+function findingModeChipHTML(){
+  const on = findingsEditable();
+  return `<button type="button" class="btn xs find-mode-chip" id="findModeChip" aria-label="${on ? 'Finding editing is on. Open settings to change it.' : 'Findings are maintained by agents. Open settings to allow editing.'}">${on ? '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg>' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg>'}<span>${on ? 'Editing on' : 'Agent-maintained'}</span></button>`;
+}
 let findSection = 'overview';
 let findSearch = '', findSeverityFilter = '', findStatusFilter = '';
 let renderedFindingKey = '';
@@ -95,9 +108,9 @@ bindFindingPointerGuard($('#findDetail'));
 // pane mid-edit and discard the focused textarea + any unsaved keystrokes.
 let bodyEditing = false;
 
-const sevColor = s => ({ Critical: 'var(--red)', High: 'var(--red)', Medium: 'var(--amber)', Low: 'var(--blue)', Info: 'var(--fg3)' }[s] || 'var(--fg3)');
+const sevClass = s => 'sev-' + (['critical', 'high', 'medium', 'low', 'info'].includes(String(s).toLowerCase()) ? String(s).toLowerCase() : 'info');
 const statusLabel = s => ({ needs_verification: 'needs verification' }[s] || (s || '').replace(/_/g, ' '));
-const statusBadgeColor = s => ({ verified: 'var(--accent)', fixed: 'var(--accent)', needs_verification: 'var(--amber)', false_positive: 'var(--fg3)', wont_fix: 'var(--fg3)' }[s] || 'var(--fg3)');
+const statusBadgeClass = s => 'find-st-' + (['verified', 'fixed', 'needs_verification', 'false_positive', 'wont_fix'].includes(s) ? s : 'other');
 
 function textChainLabel(md) {
   return (md || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`~\[\]()]/g, '').replace(/\s+/g, ' ').trim();
@@ -367,7 +380,7 @@ function findingsEmptyHTML() {
     <div class="state-empty-title">No findings yet</div>
     <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
     <div class="find-empty-actions">
-      <button type="button" class="btn btn-primary" id="findEmptyNew">New finding</button>
+      ${findingsEditable() ? '<button type="button" class="btn btn-primary" id="findEmptyNew">New finding</button>' : ''}
        </div>
   </div>`;
 }
@@ -377,7 +390,7 @@ function wireFindingsEmptyActions(root) {
   if (!box) return;
   const neu = box.querySelector('#findEmptyNew');
 
-  if (neu) neu.onclick = openFindCreate;
+  if (neu && findingsEditable()) neu.onclick = openFindCreate;
 
 }
 
@@ -420,6 +433,9 @@ function bindFindingPointerGuard(detail) {
 function findingDetailEditPending() {
   const detail = $('#findDetail');
   const active = document.activeElement;
+  // With editing off there is no editor to protect: a pending draft must not
+  // hold the read view (or the editor itself) in place.
+  if (!findingsEditable()) return findingDetailPointerActive;
   return findingDetailPointerActive || bodyEditing || findingDrafts.has(selFinding) || bodySaveTimers.has(selFinding) || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
     !!(findEditMode && detail && (detail.querySelector('[role="combobox"][aria-expanded="true"]') ||
       (active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"],[role="combobox"]'))));
@@ -467,9 +483,10 @@ function restoreFindingFocus(focus) {
 // nothing visible leaves the 500-row list untouched (no rebuild, no lost focus).
 function findingRowKey(f) {
   const r = f.readiness;
-  return [f.id, f.title, f.severity, f.status, f.target || '', f.targets?.length || f.targetCount || 0, findingPocCount(f), r ? r.stage : '', r && Array.isArray(r.gaps) ? r.gaps.join(',') : ''].join('\u0001');
+  return [f.id, f.title, f.severity, f.status, f.target || '', f.targets?.length || f.targetCount || 0, findingPocCount(f), r ? r.stage : '', r && Array.isArray(r.gaps) ? r.gaps.join(',') : '', findingsEditable() ? 'rw' : 'ro'].join('\u0001');
 }
 function renderFindings() {
+  syncFindingsEditChrome();
   const box = $('#findList'); if (!box) return;
   const list = visibleFindings();
   const excluded = selFinding && findings.some(f=>f.id===selFinding) && !list.some(f=>f.id===selFinding);
@@ -507,9 +524,9 @@ function renderFindings() {
   const rowsChanged = box.dataset.listKey !== listKey;
   if (rowsChanged) {
     box.dataset.listKey = listKey;
-    box.innerHTML = list.map((f,i) => `<a href="${findingHref(f.id,'overview')}" class="find-row${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}" data-evidence-drop data-finding-id="${f.id}" tabindex="${f.id === selFinding || (!list.some(x=>x.id===selFinding)&&i===0) ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
+    box.innerHTML = list.map((f,i) => `<a href="${findingHref(f.id,'overview')}" class="find-row${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}"${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}" tabindex="${f.id === selFinding || (!list.some(x=>x.id===selFinding)&&i===0) ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
     <span class="find-id">#${f.id}</span>
-    <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
+    <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
     <span class="find-title">${esc(f.title)}</span>
     <span class="find-meta">${findingListMeta(f)}</span>
     ${f.readiness ? `<span class="find-row-meter">${readinessMeterHTML(f.readiness, { size: 'compact', labelFor: findingGapLabel })}</span>` : ''}
@@ -788,6 +805,7 @@ function wireFlowPreviewButtons(container) {
       try {
         await withFindingEvidenceWrite(fid, async () => {
           await settleFindingBodyBeforeEvidence(fid);
+          assertFindingsWritable();
           const sourceBlock = bodyBlocks.find(block => block.type === 'flow' && block.flowId === id);
           const updated = await api('/api/findings/' + fid + '/flow-preview', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ flowId: id, caption: 'Generated HTTP report preview for flow #' + id, role: sourceBlock?.role || 'result', proof: sourceBlock?.proof || '', source: 'flow_preview', sourceFlowId: id }) });
           applyFindingEvidenceResponse(updated);
@@ -922,6 +940,7 @@ function findingMutationBlocked(id) {
 }
 
 async function withFindingEvidenceWrite(id, write) {
+  assertFindingsWritable();
   if (findingMutationBlocked(id)) throw new Error('Finding is being deleted or is no longer available.');
   findingEvidenceWrites.set(id, (findingEvidenceWrites.get(id) || 0) + 1);
   try { return await write(); }
@@ -933,6 +952,7 @@ async function withFindingEvidenceWrite(id, write) {
 }
 
 async function deleteFinding(id) {
+  assertFindingsWritable();
   if (findingMutationBlocked(id)) throw new Error('Finding is being deleted or is no longer available.');
   captureActiveFindingTextEditor(id);
   const bodySave = flushPendingBodySave(id);
@@ -948,6 +968,7 @@ async function deleteFinding(id) {
       updateFindingSaveFeedback(id);
       throw new Error('Use Retry to save finding changes, or Apply/Discard the CVSS preview, before deleting.');
     }
+    assertFindingsWritable();
     await api('/api/findings/' + id, { method: 'DELETE' });
     findingsLoadEpoch++;
     findings = findings.filter(finding => finding.id !== id);
@@ -1013,6 +1034,7 @@ function acknowledgedFindingValue(id, key, fallback) {
 }
 
 function enqueueFindingPatch(id, fields, onStaged) {
+  if (!findingsEditable()) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
   if (findingMutationBlocked(id)) return Promise.reject(new Error('Finding is being deleted or is no longer available.'));
   const queue = findingWriteQueue(id);
   const tokens = findingDrafts.stage(id, fields);
@@ -1038,6 +1060,7 @@ async function drainFindingWrites(id) {
       queue.pendingFields = null;
       const waiters = queue.pendingWaiters.splice(0);
       try {
+        assertFindingsWritable(); // editing may have been switched off while this save waited
         await api('/api/findings/' + id, {
           method: 'PATCH', headers: { 'content-type': 'application/json' },
           body: JSON.stringify(fields),
@@ -1086,7 +1109,35 @@ function updateFindingSaveFeedback(id) {
   const status = $('#findSaveState');
   if (status && findEditMode) status.textContent = failed ? 'Save failed' : busy ? 'Saving…' : pending ? 'Unsaved changes' : 'Saved';
   const recovery = $('#findSaveRecovery');
-  if (recovery) recovery.hidden = !failed;
+  if (!recovery) return;
+  if (findingsEditable()) {
+    recovery.hidden = !failed;
+    $('#findSaveRetry') && ($('#findSaveRetry').hidden = false);
+    $('#findSaveDiscard') && ($('#findSaveDiscard').hidden = true);
+    $('#findSaveRecoveryMsg') && ($('#findSaveRecoveryMsg').textContent = 'Unsaved changes are kept in this tab.');
+    return;
+  }
+  // Editing was switched off with local changes unsent. Nothing may be written,
+  // so the only way out is Discard (or re-enable editing in Settings to Retry).
+  recovery.hidden = !(failed || pending || cvssPreviewDrafts.has(id));
+  $('#findSaveRetry') && ($('#findSaveRetry').hidden = true);
+  $('#findSaveDiscard') && ($('#findSaveDiscard').hidden = false);
+  $('#findSaveRecoveryMsg') && ($('#findSaveRecoveryMsg').textContent = FINDINGS_EDITING_OFF + ' Unsaved changes are kept in this tab until you discard them.');
+}
+
+// Drop every unsent local change for one finding. This performs no write; it is
+// the way out when editing is switched off while a draft or failed save is
+// pending (the project-switch guard stays closed until drafts are resolved).
+function discardPendingFindingChanges(id) {
+  clearTimeout(bodySaveTimers.get(id));
+  bodySaveTimers.delete(id);
+  bodySaveSnapshots.delete(id);
+  for (const key of Object.keys(findingDrafts.values(id))) findingDrafts.discard(id, key);
+  for (const key of Object.keys(cvssPreviewDrafts.values(id))) cvssPreviewDrafts.discard(id, key);
+  cvssApplyDraftTokens.delete(id);
+  renderedFindingKey = '';
+  if (selFinding === id) renderFindingDetail();
+  toast('Unsaved changes discarded');
 }
 
 async function retryFindingSaves(id) {
@@ -1138,11 +1189,14 @@ function renderFindingDetail() {
     box.innerHTML = `<div class="state-empty"><div class="state-empty-title">${selFinding ? 'Finding not found' : 'No finding selected'}</div><p class="state-empty-hint">${selFinding ? 'This finding may have been deleted or belong to another project.' : 'Select a finding to read its evidence.'}</p></div>`;
     return;
   }
-  const f = {...savedFinding, ...findingDrafts.values(selFinding)};
-  if(findingDrafts.has(selFinding)||cvssPreviewDrafts.has(selFinding))findEditMode=true;
+  // With editing off, unsaved local drafts are not merged into the read view; the
+  // recovery banner offers Discard (or turn editing back on to Retry).
+  const f = findingsEditable() ? {...savedFinding, ...findingDrafts.values(selFinding)} : {...savedFinding};
+  if(!findingsEditable())findEditMode=false;
+  if(findingsEditable()&&(findingDrafts.has(selFinding)||cvssPreviewDrafts.has(selFinding)))findEditMode=true;
   const cvssPreview = cvssPreviewDrafts.values(f.id).vector ?? f.cvss ?? '';
-  const edit = findEditMode;
-  const key = JSON.stringify([f, edit, cvssPreview]);
+  const edit = findEditMode && findingsEditable();
+  const key = JSON.stringify([f, edit, cvssPreview, findingsEditable()]);
   if (box.dataset.findingId === String(f.id) && renderedFindingKey === key && box.querySelector('.find-workspace')) return;
   const sameFinding = box.dataset.findingId === String(f.id);
   const previousFocus = sameFinding ? captureFindingFocus() : null;
@@ -1193,7 +1247,7 @@ function renderFindingDetail() {
           else if (k === 'oob') { ok = !!g.confirmed; detail = g.detail || (g.token ? 'token present' : ''); }
           else if (k === 'human') { ok = !!g.confirmed; detail = g.note || g.answeredBy || ''; }
           else { ok = g.ok === true || g.passed === true || g.confirmed === true || g.verdict === 'real'; detail = g.detail || g.reasoning || g.note || ''; }
-          return `<div class="find-gate-row"><span class="find-gate-name">${esc(k)}</span><span class="find-gate-ok" style="color:${ok ? 'var(--accent)' : 'var(--amber)'}">${ok ? 'pass' : 'fail'}</span>${detail ? `<span class="hint">${esc(String(detail).slice(0, 160))}</span>` : ''}</div>`;
+          return `<div class="find-gate-row"><span class="find-gate-name">${esc(k)}</span><span class="find-gate-ok ${ok ? 'is-pass' : 'is-fail'}">${ok ? 'pass' : 'fail'}</span>${detail ? `<span class="hint">${esc(String(detail).slice(0, 160))}</span>` : ''}</div>`;
         }).join('')
       : '<span class="hint">Gate detail unavailable</span>';
     return `<section class="find-machine-proof" aria-label="External-agent verification">
@@ -1215,7 +1269,7 @@ function renderFindingDetail() {
         : `${f.why ? `<section class="find-sec" id="find-sec-why"><h3>Why this matters</h3><div class="md">${renderMD(f.why)}</div></section>` : ''}`}
       ${(f.cvss || f.cwe || f.environment) ? `<p class="hint">${[f.cvss && 'CVSS ' + esc(f.cvss), f.cwe && esc(f.cwe), f.environment && esc(f.environment)].filter(Boolean).join(' · ')}</p>` : ''}
       <div class="find-tags-bar"><div class="find-tag-chips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">no tags</span>'}</div>
-        ${edit ? `<button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg> Tags</button>` : ''}</div>
+        ${edit && findingsEditable() ? `<button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg> Tags</button>` : ''}</div>
     </div></details>`;
 
   box.innerHTML = `<article class="find-article find-workspace${edit ? ' find-editing' : ' find-reading'}">
@@ -1224,21 +1278,22 @@ function renderFindingDetail() {
         <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
         <span class="find-id-badge">FINDING #${f.id}</span>
         ${edit
-          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity" style="color:${sevColor(f.severity)}">${sevOpts}</select>
+          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity">${sevOpts}</select>
              <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
              <button class="btn xs" id="findRename" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>`
-          : `<span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
+          : `<span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
              <h2 class="find-title-text" id="findTitleText" tabindex="-1">${esc(f.title)}</h2>
-             <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
+             <span class="sev find-status-badge ${statusBadgeClass(f.status)}">${esc(statusLabel(f.status))}</span>`}
+        ${findingModeChipHTML()}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
         <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview chain</button>
         <button type="button" class="btn" id="findCopyLink" title="Copy link to this section" aria-label="Copy link to this section"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="lbl-long"> Copy link</span></button>
-        <button type="button" class="btn danger" id="findDelete" title="Delete this finding. Restore it later from Deleted.">Delete</button>
-        <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
+        ${findingsEditable() ? `<button type="button" class="btn danger" id="findDelete" title="Delete this finding. Restore it later from Deleted.">Delete</button>` : ''}
+        ${findingsEditable() ? `<button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>` : ''}
       </div>
       <div class="find-context-line"><span class="find-target">${esc(f.target || 'Target not recorded')}</span><a href="${findingHref(f.id,'review')}" data-find-section="review" class="find-stage-link">${esc(findingReadinessLabel(readiness.stage))}${readiness.gaps.length ? ` · ${readiness.gaps.length} to complete` : ''}</a>${f.readiness ? readinessMeterHTML(f.readiness, { size: 'full', hrefFor: section => findingHref(f.id, section), labelFor: findingGapLabel, id: 'findMeter' }) : ''}</div>
-      <div id="findSaveRecovery" class="find-save-recovery" hidden><span>Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button></div>
+      <div id="findSaveRecovery" class="find-save-recovery" hidden><span id="findSaveRecoveryMsg">Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button><button type="button" class="btn xs" id="findSaveDiscard" hidden>Discard changes</button></div>
     </header>
     <nav class="find-section-nav" aria-label="Finding sections">${FINDING_SECTIONS.map(s => `<a href="${findingHref(f.id,s.id)}" data-find-section="${s.id}">${s.label}${s.id === 'evidence' ? `<span>${findingPocCount(f)}</span>` : ''}</a>`).join('')}</nav>
     <div class="find-workspace-content">
@@ -1264,19 +1319,19 @@ function renderFindingDetail() {
     </div>
     <div class="find-workspace-panel" data-find-panel="evidence" tabindex="-1" role="region" aria-label="Finding evidence">
     <section class="find-sec" id="find-sec-poc">
-      <div class="find-section-head"><h3>Reproduction &amp; evidence</h3>${edit ? `<div class="find-preset-label"><label for="findNarrativePreset">Step outline</label><select id="findNarrativePreset" class="btn btn-field" aria-label="Reproduction step outline"><option value="">Choose outline…</option>${narrativePresets.map(p => `<option value="${escAttr(p)}">${esc(p)}</option>`).join('')}</select><button type="button" class="btn xs" id="findApplyPreset" disabled>Add outline</button></div>` : `<span class="hint">${findingStepCount(f)} steps</span>`}</div>
+      <div class="find-section-head"><h3>Reproduction &amp; evidence</h3>${edit && findingsEditable() ? `<div class="find-preset-label"><label for="findNarrativePreset">Step outline</label><select id="findNarrativePreset" class="btn btn-field" aria-label="Reproduction step outline"><option value="">Choose outline…</option>${narrativePresets.map(p => `<option value="${escAttr(p)}">${esc(p)}</option>`).join('')}</select><button type="button" class="btn xs" id="findApplyPreset" disabled>Add outline</button></div>` : `<span class="hint">${findingStepCount(f)} steps</span>`}</div>
       <div id="findEvidenceTray" class="find-evidence-tray"></div>
       <div class="find-evidence-layout">
       ${edit ? '' : '<nav class="find-step-nav" id="findStepNav" aria-label="Evidence steps"></nav>'}
       <div class="find-evidence-rail" id="findEvidenceRail">
         <div class="find-doc" id="findBody"></div>
-        <div class="find-doc-actions" id="findDocActions" ${edit ? '' : 'hidden'}>
+        ${edit && findingsEditable() ? `<div class="find-doc-actions" id="findDocActions">
           <button class="btn btn-primary find-evidence-screenshot" id="findAddImage">Screenshot</button>
           <button class="btn find-attach-flow" id="findAddFlow">Attach flow<span id="findPocReady" class="hint"></span></button>
           <button class="btn" id="findAddText">Add step</button>
           <input type="file" id="findImageFile" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif" hidden>
           <span class="hint find-evidence-help">Paste or drop an image here. Flows can generate a report preview.</span>
-        </div>
+        </div>` : ''}
       </div>
       </div>
     </section>
@@ -1314,7 +1369,7 @@ function renderFindingDetail() {
   }));
   box.querySelectorAll('.find-gap-link').forEach(link => link.addEventListener('click', event => {
     event.preventDefault();
-    if(!findEditMode){findEditMode=true;findSection=findingSectionForGap(link.dataset.gap);renderFindingDetail();}
+    if(!findEditMode&&findingsEditable()){findEditMode=true;findSection=findingSectionForGap(link.dataset.gap);renderFindingDetail();}
     const target = box.querySelector('#' + findingGapTarget(link.dataset.gap));
     activateFindingSection(findingSectionForGap(link.dataset.gap),{focus:true});
     const details=target?.closest('details');if(details)details.open=true;
@@ -1326,6 +1381,7 @@ function renderFindingDetail() {
     focusTarget?.focus({preventScroll:true});
   }));
   wireFindingFlowOpens(box.querySelector('#find-sec-proof'));
+  $('#findModeChip')?.addEventListener('click', () => openSettingsSection('project'));
   $('#findCopyLink').onclick = () => copyText(location.origin + location.pathname + findingHref(f.id), 'Finding link copied');
   $('#findPreviewChain').onclick = () => import('./evidence-render.js').then(m => { const p = m.chainPreview(f.id); return m.open(p.kind, p.params, { opener: $('#findPreviewChain') }); }).catch(e => toastError('Preview failed', e));
   activateFindingSection(findSection, {navigate:false});
@@ -1343,10 +1399,11 @@ function renderFindingDetail() {
   bodyBlocks = (f.blocks || []).map(b => ({ ...b }));
   updateFindingSaveFeedback(f.id);
   $('#findSaveRetry').onclick=()=>retryFindingSaves(f.id);
+  $('#findSaveDiscard').onclick=()=>discardPendingFindingChanges(f.id);
   if (edit) renderFindBody(f.id);
   else { renderFindReportBody(f.id); renderEvidenceTray(f.id, false); }
   bindFindingRevisions(box, f.id, {
-    canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
+    canRestore: () => findingsEditable() && !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
     restored: async () => { renderedFindingKey=''; await loadFindings(); renderFindingDetail(); },
   });
   bindFindingAssessment(box, f, {
@@ -1379,7 +1436,7 @@ function renderFindingDetail() {
       } catch (err) { toast(err.message, 'error'); }
       finally {if(te.isConnected){te.disabled=false;te.textContent='Done';}updateFindingSaveFeedback(f.id);}
     }
-    else { findEditMode = true; renderFindingDetail(); $('#findDetail [data-find-panel]:not([hidden]) textarea')?.focus({preventScroll:true}); }
+    else { if(!findingsEditable())return; findEditMode = true; renderFindingDetail(); $('#findDetail [data-find-panel]:not([hidden]) textarea')?.focus({preventScroll:true}); }
   };
 
   const blurPatch = (id, key, getVal) => {
@@ -1481,7 +1538,7 @@ function renderFindingDetail() {
       await loadFindings();
     } catch (err) { toast(err.message); if(selFinding===f.id)renderFindingDetail(); }
   });
-  if (edit) {
+  if (edit && findingsEditable()) {
     $('#findAddText').onclick = () => {
       bodyBlocks.push({ type: 'text', md: '', role: 'observation' });
       renderFindBody(f.id);
@@ -1496,6 +1553,7 @@ function renderFindingDetail() {
         await withFindingEvidenceWrite(f.id, async () => {
           const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('failed to read image')); r.readAsDataURL(file); });
           await settleFindingBodyBeforeEvidence(f.id);
+          assertFindingsWritable();
           const updated = await api('/api/findings/' + f.id + '/images', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: dataUrl, mime: file.type, caption: file.name || 'Screenshot evidence', role: 'result', source: 'operator_upload' }) });
           applyFindingEvidenceResponse(updated);
           toast('screenshot attached');
@@ -1571,6 +1629,7 @@ export function updateFindPocBtn() {
 }
 
 async function attachFlowsToFinding(findingId, ids) {
+  if (!requireFindingsEditing()) return {attached:0,failed:(ids||[]).slice(),blocked:true};
   if (!ids.length) return {attached:0,failed:[]};
   findingId=Number(findingId);
   if(findingMutationBlocked(findingId)){toast('Finding is being deleted or is no longer available.', 'error');return {attached:0,failed:ids.slice()};}
@@ -1584,6 +1643,7 @@ async function attachFlowsToFinding(findingId, ids) {
     await settleFindingBodyBeforeEvidence(findingId);
     for (const fid of ids) {
       try{
+        assertFindingsWritable();
         latest = await api('/api/findings/' + findingId + '/flows', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ flowId: fid, role: 'result', source: 'captured_flow', sourceFlowId: fid }),
@@ -1686,9 +1746,9 @@ function renderFlowPickList(filter = '') {
       const on = flowPickSel.has(f.id);
       return `<label class="find-flow-pick${on ? ' on' : ''}" data-id="${f.id}">
         <input type="checkbox"${on ? ' checked' : ''} aria-label="Select flow #${f.id}">
-        <span class="m" style="color:${methodColor(f.method)}">${esc(f.method)}</span>
+        <span class="m find-m-${['GET','POST','PUT','PATCH','DELETE'].includes(f.method) ? f.method : 'other'}">${esc(f.method)}</span>
         <span class="p">${esc(f.host)}${esc(f.path || '/')}</span>
-        <span class="sts" style="color:${statusColor(f.status)}">${f.status || '—'}</span>
+        <span class="sts find-sts-${!f.status ? 'none' : f.status < 300 ? '2xx' : f.status < 400 ? '3xx' : f.status < 500 ? '4xx' : '5xx'}">${f.status || '—'}</span>
         <span class="hint">#${f.id}</span>
       </label>`;
     }).join('');
@@ -1779,6 +1839,7 @@ function resetFindingCreateButton(){
   setFindingCreateBusy(false);
 }
 function openFindCreate(event) {
+  if (!requireFindingsEditing()) return;
   findingCreateEpoch++;
   const trigger=event?.currentTarget;
   if(trigger?.focus)trigger.focus({preventScroll:true});
@@ -1799,6 +1860,7 @@ function setInlineStatus(message, kind = 'status') {
   el.dataset.kind = kind;
 }
 export function showInlineNewFinding(event) {
+  if (!requireFindingsEditing()) return;
   const form = $('#findInlineNew'), title = $('#findInlineTitle');
   if (!form || !title) { openFindCreate(event); return; }
   form.hidden = false;
@@ -1816,6 +1878,7 @@ function hideInlineNewFinding({ restoreFocus = true } = {}) {
 }
 async function submitInlineNewFinding(event) {
   event.preventDefault();
+  if (!requireFindingsEditing()) return;
   if (findingInlineBusy) return;
   const title = ($('#findInlineTitle')?.value || '').trim();
   if (!title) {
@@ -1833,7 +1896,7 @@ async function submitInlineNewFinding(event) {
     const created = await api('/api/findings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, severity: $('#findInlineSeverity')?.value || 'Medium', source: 'human' }) });
     hideInlineNewFinding({ restoreFocus: false });
     selFinding = Number(created.id) || null;
-    findEditMode = true;
+    if(findingsEditable())findEditMode = true;
     await loadFindings();
     projectState.refresh({ reason: 'finding-create' });
     toast('finding created');
@@ -1853,6 +1916,7 @@ $('#findInlineCancel')?.addEventListener('click', () => hideInlineNewFinding());
 $('#findInlineNew')?.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hideInlineNewFinding(); } });
 $('#fcClose') && ($('#fcClose').onclick = closeFindingCreate);
 $('#fcSave') && ($('#fcSave').onclick = async () => {
+  if (!requireFindingsEditing()) return;
   const button = $('#fcSave');
   const title = ($('#fcTitle')?.value || '').trim();
   if (!title) {
@@ -1878,7 +1942,7 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
     if(createEpoch!==findingCreateEpoch||modal?.style.display!=='flex')return;
     closeModal(modal);
     selFinding = Number(created.id) || null;
-    findEditMode = true;
+    if(findingsEditable())findEditMode = true;
     await loadFindings();
     if(createEpoch!==findingCreateEpoch)return;
     toast('finding created');
@@ -1982,11 +2046,13 @@ export function handleAppHash() {
 window.addEventListener('hashchange', handleAppHash);
 window.addEventListener('popstate', handleAppHash);
 export function addFlowToFinding(flowId) {
+  if (!requireFindingsEditing()) return;
   if (flowId) pickFindingForFlows([flowId]);
 }
 
 /* ---- "Add to finding" from the History selection bar ---- */
 export function pickFindingForSelection() {
+  if (!requireFindingsEditing()) return;
   pickFindingForFlows(state.selected ? [...state.selected] : []);
 }
 // One set of defaults for every finding created from captured flows (History,
@@ -2015,6 +2081,7 @@ function addOpenFindingAction(findingId, el) {
   el.append(' ', open);
 }
 async function createFindingFromFlows(ids, opts) {
+  if (!requireFindingsEditing()) return;
   const title = await uiPrompt({ title: 'Name the new finding', placeholder: 'e.g. IDOR on /api/user/{id}', value: opts.titleHint || '' });
   if (title == null || !String(title).trim()) return;
   let target = opts.target || '';
@@ -2032,6 +2099,7 @@ async function createFindingFromFlows(ids, opts) {
 // (pre-filled), note (context shown above the list), titleHint, extra (more
 // finding fields). It never navigates away; results offer an Open action.
 export function pickFindingForFlows(ids, opts = {}) {
+  if (!requireFindingsEditing()) return;
   if (!ids.length) { toast('select flows first'); return; }
   const list = $('#findPickList'); if (!list) return;
   const pickEpoch = ++findingPickEpoch;
@@ -2048,7 +2116,7 @@ export function pickFindingForFlows(ids, opts = {}) {
 function renderFindingPicker(list, items, ids, opts) {
   const pocCount = findingPocCount;
   const rows = items.map(f => `<button class="btn find-pick" data-id="${f.id}">
-    <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}
+    <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}
     <span class="hint">${esc(statusLabel(f.status))}${pocCount(f) ? ' · ' + pocCount(f) + ' PoC' : ''}</span></button>`).join('');
   const note = opts.note ? `<div class="hint find-pick-note">${esc(opts.note)}</div>` : '';
   list.innerHTML = `<div class="hint find-pick-lead">Add ${ids.length} flow${ids.length === 1 ? '' : 's'} to:</div>${note}${rows || '<div class="hint">No findings yet.</div>'}
@@ -2085,7 +2153,7 @@ $('#ffpAttach') && ($('#ffpAttach').onclick = async () => {
 $('#selAddFinding') && ($('#selAddFinding').onclick = pickFindingForSelection);
 
 $('#findDeletedOpen')?.addEventListener('click', () => openDeletedFindings({
- canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
+ canRestore: () => findingsEditable() && !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
  restored: async id => { renderedFindingKey=''; await loadFindings(); openFinding(id); },
 }));
 
@@ -2101,3 +2169,30 @@ $('#findDeletedOpen')?.addEventListener('click', () => openDeletedFindings({
     createSplitPane({ root, list, detail, key: 'findings-split', scopeKey: projectStorageKey, orientation: 'right', stackBelow: 0, min: [260, 420], default: 28, label: 'Resize findings list' });
   } catch (err) { /* the fixed 300px list remains */ }
 })();
+
+syncFindingsEditChrome();
+// The Settings switch flips the mode live. Never replace a detail that holds an
+// unsaved draft or an in-flight save; the deferred refresh re-renders it later.
+window.addEventListener('interseptor:findings-ui-editing', () => {
+  syncFindingsEditChrome();
+  if (!findingsEditable()) {
+    // Editing was switched off. Resolve pending state instead of stranding it:
+    // stop debounced saves (their drafts stay staged, marked failed, so they can
+    // be discarded now or retried after editing is re-enabled), and leave the
+    // editor immediately rather than deferring behind a draft that can no longer
+    // be saved.
+    for (const timer of bodySaveTimers.values()) clearTimeout(timer);
+    bodySaveTimers.clear();
+    bodySaveSnapshots.clear();
+    for (const id of findingDrafts.ids()) findingDrafts.fail(id, findingDrafts.tokens(id));
+    findEditMode = false;
+    findingDetailRefreshDeferred = false;
+    renderedFindingKey = '';
+    if (!$('#panel-findings')?.classList.contains('active')) return;
+    renderFindings();
+    return;
+  }
+  if (!$('#panel-findings')?.classList.contains('active')) return;
+  if (findingDrafts.hasAny() || cvssPreviewDrafts.hasAny() || findingDetailEditPending()) { findingDetailRefreshDeferred = true; return; }
+  renderFindings();
+});

@@ -343,6 +343,7 @@ async function togglePicker() {
 async function attach() {
   if (!session || !session.blob) return;
   const core = await loadCore();
+  if (!core.requireFindingsEditing()) return;
   const go = $id('evRenderPickGo');
   const sel = $id('evRenderFinding');
   let req;
