@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The inspector's "More" button opens its menu again.** Clicking **More** in the Proxy inspector built the flow actions menu and then immediately hid it: the handler opened the menu during the bubbling click, and the app-wide click-to-close listener fired later in that same click, saw a target outside `#ctxmenu`, and closed it. The menu never painted. It now stops propagation before opening, the way the row overflow (⋮) button already did with a capture-phase `stopImmediatePropagation`. Right-click and Shift+F10 were unaffected, since neither is a `click`.
+
 ### Changed
 
 - **Findings must always carry evidence.** The MCP finding guide, `create_finding` / `update_finding` descriptions, `POST /api/findings` and the agent docs now require at least one captured flow or image on every finding, attached in the same run that files it. Any form satisfies it — an attached flow, a real browser or device screenshot, or a generated HTTP preview — while what each is worth as proof is unchanged. A title-only stub is an intermediate step, never a finished finding; when nothing could be captured, agents record why in `proofReview.reason` and keep `status=needs_verification` instead of filing a bare claim.

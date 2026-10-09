@@ -2220,7 +2220,12 @@ if(inspectAddFinding)inspectAddFinding.onclick=()=>{const f=selectedInspectorFlo
 const inspectSendIntruder=$('#inspectSendIntruder');
 if(inspectSendIntruder)inspectSendIntruder.onclick=()=>{const f=selectedInspectorFlow();if(f)sendToIntruder(f);};
 const inspectMoreActions=$('#inspectMoreActions');
-if(inspectMoreActions)inspectMoreActions.onclick=()=>{
+if(inspectMoreActions)inspectMoreActions.onclick=e=>{
+  // The app-wide click-to-close listener below fires later in this same
+  // bubbling click, and the button is outside #ctxmenu, so without this the
+  // menu is built and then hidden again before it ever paints. The row
+  // overflow button solves it with a capture-phase stopImmediatePropagation.
+  if(e&&e.stopPropagation)e.stopPropagation();
   const f=selectedInspectorFlow();if(!f)return;
   const r=inspectMoreActions.getBoundingClientRect();
   showCtx(r.left,r.bottom+2,f,'');
