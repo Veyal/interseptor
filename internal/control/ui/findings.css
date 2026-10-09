@@ -346,3 +346,33 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
   .rm-seg.is-pass{border-color:Highlight;color:Highlight}
   .et,.et-tile{border-color:CanvasText}
 }
+
+/* Read-only mode: severity, status and gate colours come from classes. */
+.sev-critical,.sev-high{color:var(--red)}
+.sev-medium{color:var(--amber)}
+.sev-low{color:var(--blue)}
+.sev-info,.find-st-false_positive,.find-st-wont_fix,.find-st-other{color:var(--fg3)}
+.find-st-verified,.find-st-fixed{color:var(--accent)}
+.find-st-needs_verification{color:var(--amber)}
+.find-gate-ok.is-pass{color:var(--accent)}
+.find-gate-ok.is-fail{color:var(--amber)}
+.find-workspace .find-header-top .find-mode-chip{color:var(--fg2);gap:var(--sp-1)}
+.find-workspace .find-header-top .find-mode-chip .icon{width:12px;height:12px;flex:none}
+@media(max-width:600px){
+  .find-workspace .find-header-top>.find-mode-chip{grid-column:1/-1;grid-row:5;justify-self:start}
+}
+@media(pointer:coarse){
+  .find-mode-chip{min-height:44px}
+}
+
+/* Flow picker method and status colours. */
+.find-m-GET,.find-sts-3xx{color:var(--blue)}
+.find-m-POST,.find-sts-2xx{color:var(--accent)}
+.find-m-PUT,.find-sts-4xx{color:var(--amber)}
+.find-m-PATCH{color:var(--violet)}
+.find-m-DELETE,.find-sts-5xx{color:var(--red)}
+.find-m-other{color:var(--fg2)}
+.find-sts-none{color:var(--fg3)}
+
+/* findings.uiEditing off: controls that only exist to write a finding are removed, not left as dead ends. */
+:root:not([data-findings-editing="on"]) .findings-write{display:none}

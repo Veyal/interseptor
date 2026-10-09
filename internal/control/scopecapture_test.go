@@ -92,6 +92,52 @@ func TestInvisibleProxySetting(t *testing.T) {
 	}
 }
 
+// findingsUIEditing defaults to false, round-trips through PUT/GET, and can be
+// turned back off. It gates the web UI only; nothing server-side acts on it.
+func TestFindingsUIEditingSetting(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	get := func() any {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/settings")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var s map[string]any
+		json.NewDecoder(resp.Body).Decode(&s)
+		return s["findingsUIEditing"]
+	}
+	put := func(v bool) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"findingsUIEditing": v})
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT settings: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("PUT settings status %d", resp.StatusCode)
+		}
+	}
+
+	if v := get(); v != false {
+		t.Fatalf("default findingsUIEditing = %v, want false", v)
+	}
+	put(true)
+	if v := get(); v != true {
+		t.Fatalf("after PUT true findingsUIEditing = %v, want true", v)
+	}
+	put(false)
+	if v := get(); v != false {
+		t.Fatalf("after PUT false findingsUIEditing = %v, want false", v)
+	}
+}
+
 // PUT /api/settings {tlsBypassHosts, autoBypassOnPinFailure} normalizes + persists
 // the list, calls the wired proxy hooks, and GET reflects the choices.
 func TestUpstreamProxyCASetting(t *testing.T) {

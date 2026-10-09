@@ -1,4 +1,4 @@
-import { $, api, esc, escAttr, openModal, closeModal, uiConfirm, toast, saveFile, registerProjectSwitchGuard } from './core.js';
+import { $, findingsEditable, requireFindingsEditing, assertFindingsWritable, api, esc, escAttr, openModal, closeModal, uiConfirm, toast, saveFile, registerProjectSwitchGuard } from './core.js';
 let restoring = false;
 registerProjectSwitchGuard(() => restoring ? 'Wait for the finding restoration to finish.' : '');
 const when = ts => new Date(ts).toLocaleString();
@@ -48,8 +48,10 @@ export function bindFindingRevisions(root, findingId, { canRestore, restored }) 
             const { revision, diff } = await api(`/api/finding-revisions/${findingId}/${item.dataset.revision}`);
             if (!item.isConnected || owner !== epoch) return;
             loaded = true;
-            detail.innerHTML = `<p class="hint">${esc(revision.actor)} · ${esc(revision.source)}${revision.reason ? ' · ' + esc(revision.reason) : ''}</p>${diff.map(d => `<details class="find-revision-field"><summary>${esc(d.field)}</summary><div class="find-revision-diff"><section><h4>Before</h4><pre>${esc(value(d.before).slice(0, 12000))}</pre></section><section><h4>After</h4><pre>${esc(value(d.after).slice(0, 12000))}</pre></section></div></details>`).join('')}<button class="btn" type="button" data-restore aria-label="Restore this version — ${escAttr(revision.action)} from ${escAttr(when(revision.ts))}">Restore this version</button>`;
-            detail.querySelector('[data-restore]').onclick = () => restore(findingId, revision.id, detail.querySelector('[data-restore]'), canRestore, restored);
+            const canWrite = findingsEditable();
+            detail.innerHTML = `<p class="hint">${esc(revision.actor)} · ${esc(revision.source)}${revision.reason ? ' · ' + esc(revision.reason) : ''}</p>${diff.map(d => `<details class="find-revision-field"><summary>${esc(d.field)}</summary><div class="find-revision-diff"><section><h4>Before</h4><pre>${esc(value(d.before).slice(0, 12000))}</pre></section><section><h4>After</h4><pre>${esc(value(d.after).slice(0, 12000))}</pre></section></div></details>`).join('')}${canWrite ? `<button class="btn" type="button" data-restore aria-label="Restore this version — ${escAttr(revision.action)} from ${escAttr(when(revision.ts))}">Restore this version</button>` : ''}`;
+            const restoreButton = detail.querySelector('[data-restore]');
+            if (restoreButton) restoreButton.onclick = () => restoreFindingRevision(findingId, revision.id, restoreButton, canRestore, restored);
           } catch (error) { if (item.isConnected) showErrorState(detail, error.message + ' Close and reopen to retry.'); }
         });
       });
@@ -59,13 +61,15 @@ export function bindFindingRevisions(root, findingId, { canRestore, restored }) 
     await loadPage(0);
   });
 }
-async function restore(findingId, revisionId, button, canRestore, restored) {
+export async function restoreFindingRevision(findingId, revisionId, button, canRestore, restored) {
   if (restoring) return;
+  if (!requireFindingsEditing()) return;
   if (!canRestore()) { toast('Save or retry your current changes before restoring.', 'error'); return; }
   if (!await uiConfirm('Restore finding', 'Restore this version? Current content stays in revision history.', 'Restore')) return;
-  if (!button.isConnected || !canRestore() || restoring) return;
+  if (!button.isConnected || !canRestore() || restoring || !requireFindingsEditing()) return;
   restoring = true; button.disabled = true; button.textContent = 'Restoring…';
   try {
+    assertFindingsWritable();
     await api(`/api/finding-revisions/${findingId}/${revisionId}/restore`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'Restored from revision history' }) });
     await restored(findingId);
     toast('Finding restored');
@@ -73,6 +77,7 @@ async function restore(findingId, revisionId, button, canRestore, restored) {
   finally { restoring = false; if (button.isConnected) { button.disabled = false; button.textContent = 'Restore this version'; } }
 }
 export async function openDeletedFindings({ canRestore, restored }) {
+  if (!requireFindingsEditing()) return;
   let modal = $('#findDeletedModal');
   if (!modal) {
     modal = document.createElement('div'); modal.id = 'findDeletedModal'; modal.className = 'modal-overlay'; modal.style.display = 'none';
@@ -87,6 +92,6 @@ export async function openDeletedFindings({ canRestore, restored }) {
     const { revisions } = await api('/api/findings/deleted');
     if (modal.style.display !== 'flex') return;
     list.innerHTML = revisions.length ? revisions.map(r => `<article class="find-deleted-row"><div><strong>${esc(r.snapshot?.title || 'Untitled')}</strong><p class="hint">Deleted ${esc(when(r.ts))}</p></div><button class="btn" data-finding="${r.findingId}" data-revision="${r.id}" aria-label="Restore deleted finding ${escAttr(r.snapshot?.title || 'Untitled')}">Restore</button></article>`).join('') : '<p class="hint">No deleted findings to restore.</p>';
-    list.querySelectorAll('[data-revision]').forEach(button => { button.onclick = () => restore(Number(button.dataset.finding), Number(button.dataset.revision), button, canRestore, async id => { closeModal(modal); await restored(id); }); });
+    list.querySelectorAll('[data-revision]').forEach(button => { button.onclick = () => restoreFindingRevision(Number(button.dataset.finding), Number(button.dataset.revision), button, canRestore, async id => { closeModal(modal); await restored(id); }); });
   } catch (error) { showErrorState(list, error.message + ' Reopen to retry.'); }
 }

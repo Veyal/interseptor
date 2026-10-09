@@ -16,6 +16,7 @@ func TestUIFindingsDeferredRefreshWaitsForPointerClick(t *testing.T) {
 	pendingEnd := strings.Index(source[end:], "function refreshDeferredFindingDetail(")
 	script := `
 let findingDetailPointerActive=false, refreshes=0;
+const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
 let bodyEditing=false,selFinding=1,bodySavesInFlight=0,findingWritesInFlight=0,findEditMode=true;
 const findingDrafts={has:()=>false},bodySaveTimers=new Map(),document={activeElement:null};
 const target=()=>({handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},querySelector(){return null;}});

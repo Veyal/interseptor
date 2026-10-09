@@ -28,6 +28,7 @@ func TestFindingDeleteSharedWriteBoundary(t *testing.T) {
  const findingWriteQueues=new Map(),bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),cvssApplyDraftTokens=new Map(),findingEvidenceWrites=new Map();
  const findingDeletesPending=new Set(),findingAttachPending=new Set();
  const findingDrafts=createFindingDraftStore(),cvssPreviewDrafts=createFindingDraftStore();
+ const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
  const controls={findDetail:{inert:false},findSaveState:{},findSaveRecovery:{},findSaveRetry:{focus(){}}};
  const $=s=>controls[s.slice(1)],toast=()=>{},refreshDeferredFindingDetail=()=>{},loadFindings=async()=>{};
  const captureActiveFindingTextEditor=()=>{},registerProjectSwitchGuard=fn=>guard=fn;

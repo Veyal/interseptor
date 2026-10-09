@@ -969,7 +969,7 @@ function wireRepeaterActions(){
   const group=document.createElement('div');
   group.id='repActions';group.className='rep-actions';group.setAttribute('role','group');group.setAttribute('aria-label','Request actions');
   group.innerHTML='<button type="button" class="btn xs" id="repToIntruder" title="Load this request into Intruder">Intruder</button>'
-    +'<button type="button" class="btn xs" id="repAddFinding" title="Add this response flow to a finding">+ Finding</button>'
+    +'<button type="button" class="btn xs findings-write" id="repAddFinding" title="Add this response flow to a finding">+ Finding</button>'
     +'<button type="button" class="btn xs" id="repCopyCurl" title="Copy this request as a cURL command">Copy cURL</button>';
   head.insertBefore(group,$('#repResSeg'));
   $('#repToIntruder').onclick=repToIntruder;

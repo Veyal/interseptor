@@ -12,6 +12,9 @@
 // The pure helpers at the top have no imports and run under `node --test`;
 // everything that touches the DOM loads core.js lazily, so importing this file
 // from node (or before core.js) has no side effects.
+//
+// Findings are agent-maintained: attachEvidence and send() refuse (core.js owns
+// the wording of the toast) unless the UI-editing setting is on, so the `e` key, drag-and-drop and any stale caller are inert.
 
 export const EVIDENCE_KINDS = ['flow', 'shot', 'ws', 'note'];
 export const MAX_REFS = 32;
@@ -111,7 +114,11 @@ function el(tag, cls, text) {
   return e;
 }
 
+// Every request below this file sends is a finding write (create, attach,
+// undo). Findings are agent-maintained unless Settings opts the UI in, so the
+// gate is re-checked here, at the write, whoever the caller was.
 async function send(core, req) {
+  core.assertFindingsWritable();
   const init = { method: req.method };
   if (req.body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(req.body); }
   return core.api(req.path, init);
@@ -319,6 +326,7 @@ function pickFinding(core, anchor) {
 export async function attachEvidence(spec, { findingId, anchor } = {}) {
   if (!spec || !EVIDENCE_KINDS.includes(spec.kind)) return { attached: 0 };
   const core = await loadCore();
+  if (!core.requireFindingsEditing()) return { attached: 0, blocked: true };
   if (findingId) return performAttach(core, spec, { id: Number(findingId) });
   const choice = await pickFinding(core, anchor || document.activeElement);
   if (!choice) return { attached: 0, cancelled: true };

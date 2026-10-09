@@ -345,6 +345,7 @@ type settingsJSON struct {
 	SuppressBrowserTelemetry   bool     `json:"suppressBrowserTelemetry"`
 	SuppressAndroidTelemetry   bool     `json:"suppressAndroidTelemetry"`
 	InvisibleProxy             bool     `json:"invisibleProxy"`
+	FindingsUIEditing          bool     `json:"findingsUIEditing"`
 	OriginTLSVerify            bool     `json:"originTLSVerify"`
 	TLSBypassHosts             []string `json:"tlsBypassHosts"`
 	OriginTLSVerifyBypassHosts []string `json:"originTLSVerifyBypassHosts"`
@@ -1460,6 +1461,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	suppressAndroid, andOK, _ := h.st.GetSetting("capture.suppressAndroidTelemetry")
 	suppressAndroidOn := !andOK || suppressAndroid == "1"
 	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
+	findingsUIEditing, _, _ := h.st.GetSetting("findings.uiEditing")
 	originTLSVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
 	originTLSVerifyBypassRaw, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
@@ -1476,7 +1478,8 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		UpstreamProxy: up, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
 		CaptureScopeOnly: scopeOnly == "1", SuppressBrowserTelemetry: suppressTelemetryOn,
 		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
-		OriginTLSVerify: originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
+		FindingsUIEditing: findingsUIEditing == "1",
+		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
 		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPassword: proxyAuthPassword,
 	})
@@ -1610,6 +1613,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
 		SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
 		InvisibleProxy             *bool     `json:"invisibleProxy"`
+		FindingsUIEditing          *bool     `json:"findingsUIEditing"`
 		OriginTLSVerify            *bool     `json:"originTLSVerify"`
 		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
@@ -1680,6 +1684,16 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SetInvisibleProxy != nil {
 			h.SetInvisibleProxy(*in.InvisibleProxy)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.FindingsUIEditing != nil {
+		v := "0"
+		if *in.FindingsUIEditing {
+			v = "1"
+		}
+		if !h.persistSetting(w, "findings.uiEditing", v) {
+			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}

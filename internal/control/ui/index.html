@@ -273,7 +273,7 @@
       <span id="selCount" class="sel-count"></span>
       <button class="btn" id="selSendTo" aria-haspopup="menu" title="Send the selection to Repeater, Intruder or Scanner">Send to <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
-      <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
+      <button class="btn findings-write" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
       <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
             <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
@@ -292,9 +292,10 @@
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
           <div class="spacer"></div>
-          <button class="btn btn-compact accent" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-attach"/></svg> Attach as evidence</button>
+          <button class="btn btn-compact accent findings-write" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-attach"/></svg> Attach as evidence</button>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
+          <span id="inspectCopyPng"></span>
           <button class="btn btn-compact" id="inspectCopyAs" aria-label="Copy selected flow as" aria-haspopup="menu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
           <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
 
@@ -494,7 +495,7 @@ Content-Type: application/json
             <button type="button" data-f="error" aria-pressed="false">Errors</button>
           </span>
           <span class="evr-split" id="intrRender"><button type="button" class="btn evr-main" id="intrRenderBtn" aria-disabled="true" title="Preview needs a finished run with a run ID" aria-describedby="intrRenderStatus"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Preview image</button><button type="button" class="btn evr-caret" id="intrRenderMenuBtn" aria-label="Choose preview image kind" aria-haspopup="menu" aria-expanded="false" aria-controls="intrRenderMenu" aria-disabled="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button><div class="evr-menu" id="intrRenderMenu" role="menu" aria-label="Preview image kind" hidden></div><span class="u-sr" id="intrRenderStatus" role="status" aria-live="polite"></span></span>
-          <button class="btn" id="intrToFinding" title="Create a Finding from interesting attempts (attaches their flows as PoCs)">→ Finding</button>
+          <button class="btn findings-write" id="intrToFinding" title="Create a Finding from interesting attempts (attaches their flows as PoCs)">→ Finding</button>
           <span id="intrStats" class="hint"></span><button type="button" class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)" aria-controls="intrHistory" aria-expanded="false">⟲ History</button></div>
         <div class="intr-progbar u-hidden" id="intrProgBar"><div id="intrProgFill"></div></div>
         <div class="intr-head"><div data-sort="id" title="Sort by #">#</div><div data-sort="payload" title="Sort by payload">Payload</div><div class="ta-c" data-sort="status" title="Sort by status code">St</div><div class="ta-r" data-sort="length" title="Sort by response length">Len</div><div class="ta-r" data-sort="timeMs" title="Sort by response time">Time</div></div>
@@ -569,7 +570,7 @@ Content-Type: application/json
         <button class="btn" id="findGuide" aria-expanded="false" aria-controls="findGuideAside" title="How to write a clear, reproducible technical finding" aria-label="Writing guide"><svg class="icon mob-ico" aria-hidden="true" focusable="false"><use href="#i-info"/></svg><span class="lbl-long">Writing guide</span></button>
 
         <span class="toolbar-divider"></span>
-        <button type="button" class="btn" id="findDeletedOpen">Deleted</button>
+        <button type="button" class="btn findings-write" id="findDeletedOpen">Deleted</button>
       </div>
     </div>
     <div id="scanFindingsView" class="find-view is-empty">
@@ -734,7 +735,7 @@ Content-Type: application/json
       <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
       <button type="button" class="btn" id="notesSaveRetry" hidden>Retry save</button>
-      <button type="button" class="btn" id="notesPromote" title="Create a draft finding from the selected text, or the current line">Promote to finding</button>
+      <button type="button" class="btn findings-write" id="notesPromote" title="Create a draft finding from the selected text, or the current line">Promote to finding</button>
 
       <div class="spacer"></div>
     </div>
@@ -1309,6 +1310,11 @@ Content-Type: application/json
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><h2>Project &amp; data</h2></header>
           <div id="settingsChecklistMount" hidden></div>
           <div class="section">
+            <h3>Findings editing</h3>
+            <p class="hint u-mb-2">Findings are written by agents over MCP and REST. The Findings page is read-only so an agent's evidence and revision trail cannot be changed by a stray click. <b>Off</b> by default. Turning this on does not change what agents can do.</p>
+            <div class="row u-gap-3"><button type="button" class="uisw" id="findingsUIEditingToggle" aria-pressed="false">Findings editing is off</button></div>
+          </div>
+          <div class="section">
             <h3>Project</h3>
             <div id="projectLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
             <p class="hint u-mb-3">Each project has its own history, rules, and scope, kept under <code>~/.interseptor/projects/&lt;name&gt;/</code> by default — or a folder you choose below. CA and checks are shared globally. Switching restarts Interseptor.</p>
@@ -1424,6 +1430,7 @@ Content-Type: application/json
       <button type="button" class="btn" id="fdRepeater" title="Send this flow to Repeater">Repeater</button>
       <button type="button" class="btn" id="fdIntruder" title="Load this flow into Intruder">Intruder</button>
       <button type="button" class="btn" id="fdScanner" title="Run a scanner check against this flow">Scanner check</button>
+      <span id="fdCopyPng"></span>
       <button type="button" class="btn" id="fdMore" aria-haspopup="menu" aria-expanded="false">More</button>
     </footer>
   </aside>
@@ -1868,7 +1875,7 @@ Content-Type: application/json
         <p class="evr-pick-status" id="evRenderPickStatus"></p>
       </div>
       <button type="button" class="btn" id="evRenderDownload" disabled>Download PNG</button>
-      <button type="button" class="btn btn-primary" id="evRenderAttach" aria-expanded="false" aria-controls="evRenderPick" disabled>+ Finding</button>
+      <button type="button" class="btn btn-primary findings-write" id="evRenderAttach" aria-expanded="false" aria-controls="evRenderPick" disabled>+ Finding</button>
     </div>
     <p class="u-sr" id="evRenderStatus" role="status" aria-live="polite"></p>
   </div>

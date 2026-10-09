@@ -82,6 +82,7 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  };
  ` + strings.ReplaceAll(workspace, "export ", "") + strings.ReplaceAll(source, "export ", "") + `
  const findingWriteQueues=new Map(),cvssApplyDraftTokens=new Map(),cvssPreviewDrafts=createFindingDraftStore(),findingDrafts=createFindingDraftStore();
+ const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
  const findings=[{id:1,cvss:'',severity:'Info'},{id:2,cvss:'B',severity:'Low'}];
  let bodyFindingId=1,selFinding=1,findingWritesInFlight=0,bodySavesInFlight=0,findEditMode=true,renders=0,guard;
  const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingAttachPending=new Set(),findingDeletesPending=new Set(),findingEvidenceWrites=new Map();

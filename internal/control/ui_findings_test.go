@@ -128,7 +128,8 @@ func TestUIFindingsEvidenceTrayContract(t *testing.T) {
 	// Attaching by drag uses the WP5 delegated handler through the same attributes.
 	attach := readUIAsset(t, "js/evidence-attach.js")
 	requireUIContains(t, attach, "[data-evidence-drop]", "z.dataset.findingId")
-	requireUIContains(t, findings, `data-evidence-drop data-finding-id="${f.id}"`)
+	// Finding rows are drop targets only while editing is on (findings_readonly_test.go).
+	requireUIContains(t, findings, `${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}"`)
 	// Move and remove must stay reachable by buttons as well as by keys.
 	if !strings.Contains(tray, `aria-label="Move earlier:`) || !strings.Contains(tray, `aria-label="Remove from evidence:`) {
 		t.Error("tray tiles need labelled move and remove buttons (keyboard and pointer alternative to drag)")
@@ -217,7 +218,7 @@ func TestUIFindingsCopyImageContract(t *testing.T) {
 	if strings.Contains(code, `style="`) || strings.Contains(code, "cssText") || strings.Contains(code, "innerHTML") {
 		t.Error("js/copy-image.js must not write inline style or HTML")
 	}
-	requireUIContains(t, pure, "new win.ClipboardItem({ [PNG_MIME]: blob })", "https or localhost", "isCopyableImageURL")
+	requireUIContains(t, pure, "new win.ClipboardItem({ [PNG_MIME]: blob })", "HTTPS or localhost", "isCopyableImageURL")
 	core := readUIAsset(t, "js/core.js")
 	requireUIContains(t, core, "from './copy-image.js'", "js-copy-image", "Image copied", "copyImageFromButton", "saveFile(blob, copyImageFileName")
 	find := readUIAsset(t, "js/findings.js")

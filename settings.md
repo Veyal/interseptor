@@ -43,8 +43,13 @@ the inspector reads existing captures and does not refresh a session.
 
 | Section | Use it for |
 |---|---|
-| Project & data | Active project, saved projects, imports, exports, retention, and storage. |
+| Project & data | Active project, saved projects, the Findings editing switch, imports, exports, retention, and storage. |
 | API & MCP | Client connections, API keys, network allowlist, and MCP contract information. |
+
+**Findings editing** (Project & data) is off by default. Findings are written by agents over MCP
+and REST, so the web UI does not write to findings (edit, delete, restore, add or attach evidence,
+promote) unless you turn this on. It is a UI guard only, not access control: it does not change what
+agents can do through `/api/findings` or MCP, and the setting itself can be changed with `PUT /api/settings`.
 
 For backups and migrations, choose the export format for the data you need to preserve.
 A report, HAR, portable JSON, and a full project archive serve different purposes. See
