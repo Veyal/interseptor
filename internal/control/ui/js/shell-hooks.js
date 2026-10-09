@@ -40,6 +40,24 @@ export function runSseHooks(message, onError = () => {}) {
 export function setShellApi(api) { shellApi = { ...shellApi, ...api }; }
 export const getShellApi = () => shellApi;
 
+// Report-open signal: report-preflight publishes whether report work is on
+// screen; the context bar reads it to show report-time readiness (blocker chip,
+// Findings tab badge). One direction only: publisher -> subscribers.
+let reportOpen = false;
+const reportListeners = new Set();
+export const isReportOpen = () => reportOpen;
+export function setReportOpen(on) {
+  const next = !!on;
+  if (next === reportOpen) return;
+  reportOpen = next;
+  for (const fn of [...reportListeners]) { try { fn(next); } catch { /* one listener never blocks the rest */ } }
+}
+export function onReportOpenChange(fn) {
+  if (typeof fn !== 'function') return () => {};
+  reportListeners.add(fn);
+  return () => reportListeners.delete(fn);
+}
+
 export const TAB_CHANGE_EVENT = 'interseptor:tabchange';
 export function emitTabChange(tab, previous, target = globalThis.document) {
   if (!target || typeof globalThis.CustomEvent !== 'function') return false;

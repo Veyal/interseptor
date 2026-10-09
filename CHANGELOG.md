@@ -10,7 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- Fixed an intruder test that could hang until the package timeout in CI: `TestStopCancelsRunAndAllowsSubsequentStart` dropped its "request started" signal (unbuffered channel, non-blocking send) when the handler ran before the test was receiving, then waited on it with no deadline. The signal is now latched and the wait is bounded; production code was unaffected.
+
+- **An intruder test could hang until the package timeout in CI.** `TestStopCancelsRunAndAllowsSubsequentStart` dropped its "request started" signal (unbuffered channel, non-blocking send) when the handler ran before the test was receiving, then waited on it with no deadline. The signal is now latched and the wait is bounded; production code was unaffected.
+
+### Changed
+
+- **Report readiness is report-time only.** The Findings tab badge, the context bar "N blockers" chip and the `Ready n/m` meter stay hidden while capturing and testing, and appear only while the Report view is open on the Findings panel. `report-preflight.js` publishes the signal through `shell-hooks.js` (`setReportOpen`) and `ctxbar.js` subscribes to it (`onReportOpenChange`), with no import between the two. The "Open report blockers" palette entry now opens the Report view, since the chip it used to click is hidden by default.
 
 ## [2.10.1] - 2026-10-09
 

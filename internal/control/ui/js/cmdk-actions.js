@@ -80,7 +80,7 @@ export function builtinActions() {
     { t: 'Toggle scope on or off', kw: 'engagement scope switch in scope only', group: 'Actions', run: () => clickLater('#ctxScope') },
     { t: 'Run readiness check', kw: 'findings readiness blockers ready report', group: 'Actions', run: () => openReport() },
     { t: 'Export report', kw: 'export findings report preflight draft', group: 'Actions', run: () => openReport() },
-    { t: 'Open report blockers', kw: 'blockers readiness gaps strip popover', group: 'Actions', run: () => clickLater('#ctxBlockers') },
+    { t: 'Open report blockers', kw: 'blockers readiness gaps report preflight', group: 'Actions', run: () => openReport() },
     {
       t: singleKeyShortcutsOn() ? 'Turn single-key shortcuts off' : 'Turn single-key shortcuts on',
       kw: 'keyboard hotkeys wcag letters shortcuts switch', group: 'Actions',

@@ -12,7 +12,7 @@
 
 import { $, esc, escAttr, api, saveFile, toast, projectStorageKey } from './core.js';
 import { handleAppHash, settleFindingsBeforeExport } from './findings.js';
-import { setShellApi } from './shell-hooks.js';
+import { setShellApi, setReportOpen, TAB_CHANGE_EVENT } from './shell-hooks.js';
 import { projectState } from './project-state.js';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
@@ -174,11 +174,16 @@ function wire() {
   wireActions();
 }
 
+// Report counts as open for the strip only while the Findings panel is showing.
+let onFindings = true;
+function publishOpen(open = S.open) { setReportOpen(open && onFindings); }
+
 function setOpen(on) {
   S.open = on;
   if (mount) mount.hidden = !on;
   const list = $('#scanFindingsView');
   if (list) list.hidden = on;
+  publishOpen(on);
   if (toggle) { toggle.setAttribute('aria-pressed', on ? 'true' : 'false'); toggle.setAttribute('aria-expanded', on ? 'true' : 'false'); }
 }
 
@@ -229,6 +234,7 @@ function init() {
   mount.setAttribute('role', 'region');
   mount.setAttribute('aria-label', 'Report preflight');
   projectState.subscribe(onProjectState);
+  document.addEventListener(TAB_CHANGE_EVENT, (e) => { onFindings = !e.detail || e.detail.tab === 'findings'; publishOpen(); });
   window.addEventListener('hashchange', () => { if (S.open && /^#finding-/.test(location.hash)) closeView(false); });
 }
 

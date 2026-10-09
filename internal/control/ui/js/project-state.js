@@ -144,6 +144,13 @@ export function nextActionFrom(s) {
   return { kind: 'export', label: 'Export report' };
 }
 
+// shouldShowReadinessSignals decides report-time chrome: the blockers chip and
+// the Findings tab badge show only while Report work is on screen.
+export function shouldShowReadinessSignals(reportOpen, blockerCount, loaded) {
+  const open = reportOpen === true;
+  return { badge: open && !!loaded && int(blockerCount) > 0, chip: open };
+}
+
 export function readinessValuetext(findings, blockers) {
   const total = int(findings && findings.total), ready = int(findings && findings.ready);
   if (!total) return 'No findings yet';

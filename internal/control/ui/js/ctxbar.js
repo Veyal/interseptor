@@ -10,9 +10,9 @@
 
 import {
   projectState, scopeChipModel, evidenceSummary, readinessValuetext, identityHue, identityInitials,
-  createBlockerAnnouncer, blockersByFinding,
+  createBlockerAnnouncer, blockersByFinding, shouldShowReadinessSignals,
 } from './project-state.js';
-import { getShellApi } from './shell-hooks.js';
+import { getShellApi, isReportOpen, onReportOpenChange } from './shell-hooks.js';
 
 const SEGMENT_CAP = 10;
 const POPOVER_ROW_CAP = 50;
@@ -121,19 +121,29 @@ function renderReady(s) {
   setText('ctxReadyText', s.loaded ? (total ? ready + '/' + total : 'No findings') : '…');
   setUse($('ctxReadyIcon'), total && ready === total ? 'status-done' : 'readiness');
   const wrap = $('ctxReady');
-  if (wrap) { wrap.dataset.stale = s.stale.findings ? 'true' : 'false'; wrap.title = s.stale.findings ? 'Could not refresh findings' : valuetext; }
+  if (wrap) {
+    // Ready n/m is report-time information like the blockers chip, so it
+    // follows the same signal. Leaving one readiness surface visible while the
+    // other two hide reads as a bug, not as restraint.
+    wrap.hidden = !shouldShowReadinessSignals(isReportOpen(), s.blockers.length, s.loaded).chip;
+    wrap.dataset.stale = s.stale.findings ? 'true' : 'false';
+    wrap.title = s.stale.findings ? 'Could not refresh findings' : valuetext;
+  }
 }
 
 function renderBlockers(s) {
   const chip = $('ctxBlockers');
   if (!chip) return;
   const n = s.blockers.length;
+  const show = shouldShowReadinessSignals(isReportOpen(), n, s.loaded).chip;
+  chip.hidden = !show;
+  if (!show && popOpen) closeBlockerPopover();
   const label = !s.loaded ? '…' : n ? n + (n === 1 ? ' blocker' : ' blockers') : 'No blockers';
   setText('ctxBlockersText', label);
   setUse($('ctxBlockersIcon'), n ? 'stop' : 'status-done');
   chip.dataset.count = String(n);
   chip.setAttribute('aria-label', s.loaded ? label + '. Show what blocks the report.' : 'Blockers: loading');
-  if (announcer && s.loaded) announcer.update(n);
+  if (announcer && s.loaded && show) announcer.update(n);
   if (popOpen) fillBlockerList();
 }
 
@@ -158,7 +168,7 @@ function renderRailBadge(s) {
   }
   const n = s.blockers.length;
   badge.firstChild.textContent = String(n);
-  badge.classList.toggle('u-hidden', !s.loaded || n === 0);
+  badge.classList.toggle('u-hidden', !shouldShowReadinessSignals(isReportOpen(), n, s.loaded).badge);
 }
 
 export function renderCtxbar(s = projectState.get()) {
@@ -350,6 +360,7 @@ export function initCtxbar(d = {}) {
     if (popOpen && e.relatedTarget && !pop.contains(e.relatedTarget) && e.relatedTarget !== $('ctxBlockers')) closeBlockerPopover();
   });
   window.addEventListener('resize', () => { if (popOpen) placePopover(); });
+  onReportOpenChange(() => renderCtxbar(projectState.get()));
   let restored = false;
   projectState.subscribe((s) => {
     // The saved default identity applies once, after the first successful load.
