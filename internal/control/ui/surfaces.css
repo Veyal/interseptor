@@ -45,7 +45,7 @@
   from { opacity: .72; transform: translateY(var(--surface-offset)); }
   to { opacity: 1; transform: translateY(0); }
 }
-.tab,.find-section-nav a,.ctx-item {
+.tab,.ctx-item {
   transition: color var(--motion-fast) var(--motion-standard),background-color var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard),box-shadow var(--motion-fast) var(--motion-standard);
 }
 .btn:active:not(:disabled) { box-shadow: inset 0 1px 3px var(--shadow); transition-duration: var(--motion-instant); }

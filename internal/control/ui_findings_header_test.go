@@ -65,8 +65,8 @@ func TestFindingHeaderDropsReadinessAndDangerousActions(t *testing.T) {
 		}
 	}
 	js := readUIAsset(t, "js/findings.js")
-	// The meter still belongs on the Review panel.
-	review := js[strings.Index(js, `data-find-panel="review"`):]
+	// The meter still belongs with review material: the Report prep fold.
+	review := js[strings.Index(js, `id="findReportPrep"`):]
 	requireUIContains(t, review, "readinessMeterHTML(f.readiness", "id: 'findMeter'")
 }
 

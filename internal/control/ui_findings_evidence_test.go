@@ -5,24 +5,24 @@ import (
 	"testing"
 )
 
+// One document has one proof renderer. The old glance + story pair (two
+// renderFindingProof call sites) is gone: each affected target lists the
+// evidence that proves it, and the reproduction timeline holds the evidence itself.
 func TestFindingsProofGroupsMultipleTargets(t *testing.T) {
 	findings := readUIAsset(t, "js/findings.js")
-	for _, want := range []string{"function renderFindingProof", "find-target-proof", "No proof recorded for this target yet.", "image_hashes", "Proof of "} {
-		if !strings.Contains(findings, want) {
-			t.Errorf("findings UI missing per-target proof %q", want)
+	doc := readUIAsset(t, "js/finding-document.js")
+	for _, want := range []string{"export function affectedRows", "image_hashes", "flow_ids", "needs evidence", "find-evref", "targets.length", "rows.length < 2"} {
+		if !strings.Contains(doc, want) && !strings.Contains(doc, strings.ReplaceAll(want, "targets.length", "rows.length")) {
+			t.Errorf("finding document missing per-target proof %q", want)
 		}
 	}
-	start := strings.Index(findings, "function renderFindingProof")
-	end := strings.Index(findings[start+1:], "\nfunction ")
-	if start < 0 || end < 0 {
-		t.Fatal("missing per-target proof renderer")
+	for _, gone := range []string{"function renderFindingProof", "function renderFindingStory", "renderFindingProof("} {
+		if strings.Contains(findings, gone) {
+			t.Errorf("findings.js still has the duplicate proof renderer %q", gone)
+		}
 	}
-	fn := findings[start : start+1+end]
-	if !strings.Contains(fn, "targets.length < 2") || !strings.Contains(fn, "renderFindingStory") {
-		t.Error("one affected target must keep the single three-part story")
-	}
-	if !strings.Contains(findings, "renderFindingProof(f.blocks || [], f, 'find-glance')") || !strings.Contains(findings, "renderFindingProof(bodyBlocks, finding, 'find-story')") {
-		t.Error("overview and evidence must both group proof by affected target")
+	if !strings.Contains(findings, "readDocumentHTML(f,") || !strings.Contains(findings, "buildReproductionSteps(bodyBlocks)") {
+		t.Error("the read view must render claim/affected/reproduction from the document model")
 	}
 }
 
