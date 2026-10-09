@@ -34,6 +34,13 @@ Open **Proxy** and select a History row. The inspector shows the request and res
 capture. Search and filters narrow the list without editing stored traffic. Notes and tags help
 you find an observation later; see [History search]({{ "/history-search/" | relative_url }}).
 
+**Copy as PNG** in the inspector (bottom dock) and the flow drawer (side dock) copies the selected
+flow as one image, request above response, ready to paste into Notion or a report. It uses the same
+server-rendered preview as Findings (`GET /api/flows/{id}/preview.png`) and follows the active UI
+theme: light renders light, dark and high contrast render dark. Browsers only allow image copy on
+HTTPS or `localhost`; over plain HTTP (for example a Tailscale `http://` address) the toast says so and
+offers **Download** instead.
+
 Response views show different representations of the same captured body. **Raw** preserves the
 text representation, **Pretty** formats supported content, and **Render**
 previews HTML. Available views depend on the response. Message codecs can add a **Decoded** view;

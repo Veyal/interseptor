@@ -9,7 +9,7 @@
 // renderFlowBody in flowbody.js (shared with the Proxy inspector); raw text is
 // never requested for binary bodies or bodies above 1 MB.
 
-import { $, api, state, toastError, openModal, closeModal, registerHook, projectStorageKey, highlightHTTP, prettify, isBinaryMime, bodyMime, headerBlockText, flowBodyDownloadHref, copyText } from './core.js';
+import { $, api, state, toastError, openModal, closeModal, registerHook, projectStorageKey, highlightHTTP, prettify, isBinaryMime, bodyMime, headerBlockText, flowBodyDownloadHref, copyText, mountFlowCopyPng } from './core.js';
 import { renderState } from './statepanel.js';
 import { readSingleKeyPref, isTypingTarget } from './keys.js';
 import { createFinder } from './finder.js';
@@ -145,6 +145,7 @@ function paintHeader() {
   const d = cur.detail;
   $('#fdTitle').textContent = `${d.method} ${flowUrl(d)}`;
   $('#fdStatus').textContent = d.status ? `${d.status}${d.durationMs ? ' in ' + d.durationMs + ' ms' : ''}` : (d.error || 'No response');
+  mountFlowCopyPng($('#fdCopyPng'), cur.id, 'btn');
   syncSteps();
 }
 function syncSteps() {
@@ -327,6 +328,7 @@ export function openFlow(id, opts = {}) {
   cur.open = true;
   $('#fdTitle').textContent = 'Flow #' + flowId;
   $('#fdStatus').textContent = '';
+  mountFlowCopyPng($('#fdCopyPng'), null);
   $('#fdLinked').textContent = '';
   $('#fdTabs').textContent = '';
   syncSteps();

@@ -145,7 +145,7 @@ export function copyImage(url, opts) {
 }
 
 const MESSAGES = {
-  insecure: 'Clipboard image copy needs https or localhost — download it instead',
+  insecure: 'Copying images needs HTTPS or localhost: use the download button, or serve the UI over HTTPS.',
   unsupported: 'This browser cannot copy images to the clipboard — download it instead',
   denied: 'Clipboard permission was denied — allow it for this site or download it instead',
   fetch: 'Could not load the image to copy — reload Findings and try again',
@@ -155,6 +155,27 @@ const MESSAGES = {
   failed: 'Copy image failed — download it instead',
 };
 export function copyFailureMessage(reason) { return MESSAGES[reason] || MESSAGES.failed; }
+
+// activeFlowTheme maps the UI theme (data-theme: light | hc | unmarked dark) to
+// the preview renderer's theme. High contrast is a black ground, so it is dark.
+export function activeFlowTheme(root) {
+  const t = root && root.getAttribute ? root.getAttribute('data-theme') : null;
+  return t === 'light' ? 'light' : 'dark';
+}
+
+// flowPreviewPngURL builds the server-rendered request+response PNG URL for a
+// flow. Defaults suit pasting into a document: both sides, pretty, request above
+// response, light theme.
+export function flowPreviewPngURL(id, opts) {
+  const o = opts || {};
+  const pick = (v, allowed, d) => (allowed.includes(v) ? v : d);
+  const side = pick(o.side, ['both', 'req', 'res'], 'both');
+  const layout = pick(o.layout, ['vertical', 'horizontal'], 'vertical');
+  const theme = pick(o.theme, ['light', 'dark'], 'light');
+  const pretty = o.pretty === 0 || o.pretty === false || o.pretty === '0' ? 0 : 1;
+  const n = Number(id);
+  return `/api/flows/${Number.isSafeInteger(n) && n > 0 ? n : 0}/preview.png?side=${side}&pretty=${pretty}&layout=${layout}&theme=${theme}`;
+}
 
 // copyImageFileName: a safe .png download name from a caption.
 export function copyImageFileName(caption) {
