@@ -226,7 +226,10 @@ func TestConcurrentCloseIsIdempotent(t *testing.T) {
 }
 
 func TestStopCancelsRunAndAllowsSubsequentStart(t *testing.T) {
-	started := make(chan struct{})
+	// started is buffered so the handler's signal is latched even when it fires
+	// before the test reaches its receive; an unbuffered channel with a
+	// non-blocking send drops the signal and hangs the test under CI scheduling.
+	started := make(chan struct{}, 1)
 	unblock := make(chan struct{})
 
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +264,7 @@ func TestStopCancelsRunAndAllowsSubsequentStart(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	<-started
+	awaitLifecycle(t, started, "first in-flight request")
 	e.Stop()
 	awaitEngine(t, e)
 

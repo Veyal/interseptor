@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fixed an intruder test that could hang until the package timeout in CI: `TestStopCancelsRunAndAllowsSubsequentStart` dropped its "request started" signal (unbuffered channel, non-blocking send) when the handler ran before the test was receiving, then waited on it with no deadline. The signal is now latched and the wait is bounded; production code was unaffected.
+
 ## [2.10.1] - 2026-10-09
 
 > Patch release: the Proxy inspector's **More** menu opens again, and agents must now attach evidence to every finding, not only before report-readiness.
