@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.10.0` release.
+
 ## [2.10.0] - 2026-10-09
 
 > Feature release: findings are agent-maintained in the web UI by default, a captured flow can be copied as a PNG for pasting into Notion, and the MCP finding guide now carries per-field brevity budgets.
