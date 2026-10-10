@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.0` release.
+
 ## [2.12.0] - 2026-10-10
 
 > Feature release: Collections is rebuilt around importing anything, exporting safely and never sending in bulk by surprise. Postman imports keep their credentials again, GraphQL, `.http`/`.rest` and WSDL/SoapUI files import, a collection can be exported as Postman, curl or native JSON with secrets always removed, every bulk run is reviewed and confirmed before a request leaves, the runner stops calling unasserted requests "Passed", environments can be managed from the UI, tree rows show their path, and an edit or a delete can be undone.
