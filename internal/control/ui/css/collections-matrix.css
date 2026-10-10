@@ -76,3 +76,19 @@
   .cxm-wrap{padding:var(--sp-2) var(--sp-3)}
   .cxm-group-row{grid-template-columns:84px 1fr auto}
 }
+
+/* Run review: what an identity-matrix run would send, shown before it sends. */
+.cxm-review h4{margin:0;font-size:var(--fs-md)}
+.cxm-facts{display:grid;grid-template-columns:max-content 1fr;gap:var(--sp-1) var(--sp-3);margin:0;font-size:var(--fs-sm)}
+.cxm-facts dt{color:var(--fg3)}
+.cxm-facts dd{margin:0;overflow-wrap:anywhere}
+.cxm-methods{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:0;padding:0;list-style:none}
+.cxm-method-row{display:inline-flex;align-items:center;padding:var(--sp-1) var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm)}
+.cxm-state-changing{border-color:var(--warnLine);background:var(--noteDim);color:var(--warnFg)}
+.cxm-chip-warn{border-color:var(--warnLine);color:var(--warnFg)}
+.cxm-phrase{display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm);color:var(--warnFg)}
+.cxm-phrase input{max-width:12rem;font-family:var(--mono)}
+.cxm-review .cxm-actions button:disabled{opacity:.5;cursor:not-allowed}
+@media (max-width:720px){
+  .cxm-facts{grid-template-columns:1fr}
+}

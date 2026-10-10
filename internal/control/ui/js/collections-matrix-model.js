@@ -50,6 +50,29 @@ export function identityChoices(known, skipped) {
   return (known || []).filter((n) => !skip.has(n));
 }
 
+// MATRIX_MAX_IDENTITIES mirrors collmatrix.MaxIdentities: the server truncates
+// beyond it, so the run plan must count the same.
+export const MATRIX_MAX_IDENTITIES = 12;
+
+// matrixRunIdentities lists the identities the server will actually send as:
+// every saved identity that is not broken and carries headers, then
+// anonymous (see collmatrix resolveIdentities). The run plan multiplies the
+// collection by this list, so it has to match what the server does.
+export function matrixRunIdentities(saved) {
+  const out = [];
+  const seen = new Set();
+  for (const id of Array.isArray(saved) ? saved : []) {
+    const name = String((id && id.name) || '').trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key) || key === 'anonymous') continue;
+    if (id.broken || !String(id.headers || '').trim()) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  out.push('anonymous');
+  return out.slice(0, MATRIX_MAX_IDENTITIES);
+}
+
 // ---- coverage ----------------------------------------------------------------
 
 export const COVERAGE_RANK = { untested: 0, blocked: 1, failing: 2, passing: 3 };

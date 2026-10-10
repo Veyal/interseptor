@@ -11,6 +11,7 @@ import { openSheet, closeSheet } from './sheet.js';
 import { renderState } from './statepanel.js';
 import { createDiffView, diffLines, normalizeBody } from './diff.js';
 import * as MM from './collections-matrix-model.js';
+import { buildRunPlan, planSummary, methodBreakdown, planConfirmed, CONFIRM_PHRASE } from './collections-run-plan.js';
 
 function injectStylesheet() {
   if (document.querySelector('link[href="/css/collections-matrix.css"]')) return;
@@ -52,15 +53,6 @@ async function pickCollection() {
 }
 
 /* ------------------------------------------------------------------ identity matrix */
-
-async function fetchIdentities() {
-  try {
-    const r = await api('/api/authz');
-    return (r.identities || []).map((i) => i.name).filter(Boolean);
-  } catch (e) {
-    return [];
-  }
-}
 
 function matrixTable(m) {
   const t = el('table', 'cxm-table');
@@ -161,26 +153,114 @@ function renderMatrix(body, m, timingDiffs) {
   body.append(wrap);
 }
 
+// openMatrixSheet only ever opens the review step. Nothing is sent from here:
+// the sheet loads the collection and the identities, shows exactly what a run
+// would send, and runMatrix is reachable only from the confirm button there.
 async function openMatrixSheet() {
   injectStylesheet();
   const collectionUid = await pickCollection();
   if (!collectionUid) return;
   openSheet({
     id: 'collMatrixSheet', title: 'Identity matrix', detents: ['half', 'full'], detent: 'full',
-    content: (body) => { renderState(body, 'loading', { title: 'Loading identities' }); runMatrix(collectionUid, body); return body; },
+    content: (body) => { renderState(body, 'loading', { title: 'Loading what a run would send' }); loadReview(collectionUid, body); return body; },
   });
 }
 
-async function runMatrix(collectionUid, body) {
-  const known = await fetchIdentities();
-  if (!known.length) {
-    renderState(body, 'empty-first', { title: 'No saved authz identities', hint: 'Add identities in the Authz panel first, or run with anonymous only.' });
+async function loadReview(collectionUid, body) {
+  try {
+    const [coll, authz] = await Promise.all([
+      api('/api/collections/' + encodeURIComponent(collectionUid)),
+      api('/api/authz').catch(() => ({ identities: [] })),
+    ]);
+    const plan = buildRunPlan(coll.items || [], {
+      scope: 'collection',
+      collectionName: coll.collection && coll.collection.name,
+      identities: MM.matrixRunIdentities(authz.identities),
+    });
+    renderReview(body, collectionUid, plan);
+  } catch (e) {
+    renderState(body, 'error', { title: 'Could not work out what a run would send', message: e.message, status: e.status, onRetry: () => loadReview(collectionUid, body) });
   }
+}
+
+// renderReview states the scope, the live request count, who it is sent as,
+// the per-method breakdown and the hosts BEFORE anything is sent. All text is
+// set with textContent; plan strings are never parsed as markup.
+function renderReview(body, collectionUid, plan) {
+  body.textContent = '';
+  const wrap = el('div', 'cxm-wrap cxm-review');
+  wrap.append(el('h4', '', 'Review before running'), el('p', 'cxm-summary', planSummary(plan)));
+  const actions = el('div', 'cxm-actions');
+  const cancel = btn('Cancel', () => closeSheet('collMatrixSheet'), 'btn');
+  if (plan.empty) {
+    wrap.append(el('p', 'cxm-note', 'Nothing to send: this collection has no requests, so there is nothing to run.'));
+    actions.append(cancel);
+    wrap.append(actions);
+    body.append(wrap);
+    return;
+  }
+  const facts = el('dl', 'cxm-facts');
+  const fact = (k, v) => { facts.append(el('dt', '', k), el('dd', '', v)); };
+  fact('Scope', plan.scopeLabel + ' (' + plan.requests + ' request' + (plan.requests === 1 ? '' : 's') + ', not a folder)');
+  fact('Identities', plan.identityNames.length + ': ' + plan.identityNames.join(', '));
+  fact('Live requests', String(plan.liveRequests));
+  fact('Target hosts', plan.hosts.length ? plan.hosts.join(', ') : 'taken from variables at send time (not known until it runs)');
+  wrap.append(facts);
+
+  const ul = el('ul', 'cxm-methods');
+  ul.setAttribute('aria-label', 'Live requests by method');
+  methodBreakdown(plan).forEach((m) => {
+    const li = el('li', m.stateChanging ? 'cxm-method-row cxm-state-changing' : 'cxm-method-row');
+    li.append(el('span', 'cxm-method', m.method), document.createTextNode(' x ' + m.count));
+    if (m.stateChanging) li.append(el('span', 'cxm-chip cxm-chip-warn', 'changes state'));
+    ul.append(li);
+  });
+  wrap.append(ul);
+
+  let typed = '';
+  const run = btn('Send ' + plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's'), null, 'btn accent');
+  const sync = () => { run.disabled = !planConfirmed(plan, typed); };
+  const go = () => {
+    if (!planConfirmed(plan, typed)) return;
+    runMatrix(plan, collectionUid, body, typed);
+  };
+  run.addEventListener('click', go);
+  let input = null;
+  if (plan.needsPhrase) {
+    const lab = el('label', 'cxm-phrase');
+    lab.append(el('span', '', plan.destructive + ' of these requests change state on the target. Type ' + CONFIRM_PHRASE + ' (capitals) to send them.'));
+    input = document.createElement('input');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Type ' + CONFIRM_PHRASE + ' to confirm');
+    input.placeholder = CONFIRM_PHRASE;
+    input.addEventListener('input', () => { typed = input.value; sync(); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    lab.append(input);
+    wrap.append(lab);
+  }
+  sync();
+  actions.append(cancel, run);
+  wrap.append(actions);
+  body.append(wrap);
+  setTimeout(() => (input || cancel).focus(), 0);
+}
+
+// runMatrix is the only function that talks to /api/collmatrix/run, and it
+// refuses to unless the plan is non-empty and planConfirmed() accepts what was
+// typed. Retry re-enters here, so a retry is gated the same way.
+async function runMatrix(plan, collectionUid, body, typed) {
+  if (!plan || plan.empty || !planConfirmed(plan, typed)) {
+    toast('Run not confirmed; nothing was sent');
+    return;
+  }
+  renderState(body, 'loading', { title: 'Running ' + plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's') + ' (' + plan.scopeLabel + ')' });
   try {
     const r = await api('/api/collmatrix/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ collectionUid, envUid: activeEnv() }) });
     renderMatrix(body, r.matrix, r.timing);
   } catch (e) {
-    renderState(body, 'error', { title: 'Could not run the identity matrix', message: e.message, status: e.status, onRetry: () => runMatrix(collectionUid, body) });
+    renderState(body, 'error', { title: 'Could not run the identity matrix', message: e.message, status: e.status, onRetry: () => runMatrix(plan, collectionUid, body, typed) });
   }
 }
 
