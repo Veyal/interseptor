@@ -266,10 +266,10 @@ export function paintImport(body, initialText) {
   const wrap = el('div', 'coll-sheet');
   body.append(wrap);
   wrap.append(el('h3', '', 'Import a collection'));
-  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML), Insomnia (v4 or v5), Bruno (.bru files; choose several for a folder), HAR, Burp XML or a curl command. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
+  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML), Insomnia (v4 or v5), Bruno (.bru files; choose several for a folder), HAR, Burp XML, a curl command, GraphQL (introspection result or SDL), .http/.rest files (VS Code REST Client or JetBrains dialect), and WSDL 1.1/2.0 or SoapUI projects. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
   const row = el('div', 'coll-sheet-row');
   const file = document.createElement('input');
-  file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,application/json';
+  file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,.graphql,.gql,.sdl,.http,.rest,.wsdl,application/json';
   file.setAttribute('aria-label', 'Choose a collection file, or several .bru files for a Bruno folder');
   file.hidden = true;
   // The native file control is replaced by the app button (custom-ui-controls); the hidden input stays the value adapter.
