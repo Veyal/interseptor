@@ -1,0 +1,180 @@
+# Example storefront schema (example.com only).
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+scalar DateTime
+scalar JSON
+
+directive @auth(role: Role = USER) on FIELD_DEFINITION | OBJECT
+
+"""
+Anything with a globally unique id.
+"""
+interface Node {
+  id: ID!
+}
+
+interface Timestamped {
+  createdAt: DateTime!
+  updatedAt: DateTime
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  USER
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  CANCELLED
+}
+
+enum SortOrder { ASC DESC }
+
+type User implements Node & Timestamped {
+  id: ID!
+  email: String!
+  name: String
+  role: Role!
+  createdAt: DateTime!
+  updatedAt: DateTime
+  friends(first: Int = 10): [User!]!
+  orders(status: OrderStatus): [Order!]!
+  address: Address
+  legacyToken: String @deprecated(reason: "Use sessions instead.")
+}
+
+type Address {
+  line1: String!
+  line2: String
+  city: String!
+  country: String!
+  geo: GeoPoint
+}
+
+type GeoPoint {
+  lat: Float!
+  lng: Float!
+}
+
+type Category implements Node {
+  id: ID!
+  name: String!
+  parent: Category
+  children: [Category!]!
+  products(first: Int, after: String): ProductConnection!
+}
+
+type Product implements Node & Timestamped {
+  id: ID!
+  sku: String!
+  title: String!
+  description: String
+  priceCents: Int!
+  inStock: Boolean!
+  tags: [String!]
+  category: Category
+  reviews(first: Int = 5): [Review!]!
+  createdAt: DateTime!
+  updatedAt: DateTime
+  attributes: JSON
+}
+
+type ProductConnection {
+  edges: [ProductEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProductEdge {
+  cursor: String!
+  node: Product!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type Review {
+  id: ID!
+  rating: Int!
+  body: String
+  author: User!
+  product: Product!
+}
+
+type Order implements Node & Timestamped {
+  id: ID!
+  status: OrderStatus!
+  totalCents: Int!
+  user: User!
+  lines: [OrderLine!]!
+  createdAt: DateTime!
+  updatedAt: DateTime
+}
+
+type OrderLine {
+  product: Product!
+  quantity: Int!
+}
+
+union SearchResult = Product | User | Category
+
+input ProductFilter {
+  categoryId: ID
+  minPriceCents: Int
+  maxPriceCents: Int
+  inStock: Boolean
+  tags: [String!]
+}
+
+input OrderLineInput {
+  productId: ID!
+  quantity: Int! = 1
+}
+
+input CreateOrderInput {
+  lines: [OrderLineInput!]!
+  couponCode: String
+  note: String
+}
+
+type Query {
+  "Fetch any node by id."
+  node(id: ID!): Node
+  me: User
+  user(id: ID!): User
+  users(first: Int = 20, after: String, role: Role): [User!]!
+  product(sku: String!): Product
+  products(filter: ProductFilter, sort: SortOrder, first: Int, after: String): ProductConnection!
+  categories(ids: [ID!]!): [Category]!
+  order(id: ID!): Order
+  search(term: String!, limit: Int = 10): [SearchResult!]!
+  serverTime: DateTime!
+  health: String @deprecated
+}
+
+type Mutation {
+  login(email: String!, password: String!): String
+  createOrder(input: CreateOrderInput!): Order!
+  cancelOrder(id: ID!, reason: String): Order
+  updateProfile(name: String, address: [String!]): User
+  deleteUser(id: ID!): Boolean!
+  setFlags(flags: [Boolean!]!, matrix: [[Int!]!]): Boolean
+}
+
+type Subscription {
+  orderUpdated(orderId: ID!): Order!
+  productPriceChanged: Product
+}
+
+extend type Query {
+  adminStats(since: DateTime!): JSON
+}

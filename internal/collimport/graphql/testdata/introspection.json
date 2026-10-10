@@ -1,0 +1,58 @@
+{
+  "data": {
+    "__schema": {
+      "queryType": {"name": "Query"},
+      "mutationType": {"name": "Mutation"},
+      "subscriptionType": null,
+      "types": [
+        {"kind": "OBJECT", "name": "Query", "description": null,
+          "fields": [
+            {"name": "pet", "description": "Look a pet up.", "isDeprecated": false, "deprecationReason": null,
+              "args": [{"name": "id", "defaultValue": null, "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "ID", "ofType": null}}}],
+              "type": {"kind": "INTERFACE", "name": "Pet", "ofType": null}},
+            {"name": "owners", "description": null, "isDeprecated": true, "deprecationReason": "Use pet.owner.",
+              "args": [{"name": "limit", "defaultValue": "10", "type": {"kind": "SCALAR", "name": "Int", "ofType": null}}],
+              "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "LIST", "name": null, "ofType": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "OBJECT", "name": "Owner", "ofType": null}}}}}
+          ], "inputFields": null, "interfaces": [], "enumValues": null, "possibleTypes": null},
+        {"kind": "OBJECT", "name": "Mutation", "description": null,
+          "fields": [
+            {"name": "adopt", "description": null, "isDeprecated": false, "deprecationReason": null,
+              "args": [{"name": "input", "defaultValue": null, "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "INPUT_OBJECT", "name": "AdoptInput", "ofType": null}}}],
+              "type": {"kind": "SCALAR", "name": "Boolean", "ofType": null}}
+          ], "inputFields": null, "interfaces": [], "enumValues": null, "possibleTypes": null},
+        {"kind": "INTERFACE", "name": "Pet", "description": null,
+          "fields": [
+            {"name": "name", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "String", "ofType": null}}},
+            {"name": "owner", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "OBJECT", "name": "Owner", "ofType": null}}
+          ], "inputFields": null, "interfaces": null, "enumValues": null,
+          "possibleTypes": [{"kind": "OBJECT", "name": "Dog", "ofType": null}, {"kind": "OBJECT", "name": "Cat", "ofType": null}]},
+        {"kind": "OBJECT", "name": "Dog", "description": null,
+          "fields": [
+            {"name": "name", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "String", "ofType": null}}},
+            {"name": "owner", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "OBJECT", "name": "Owner", "ofType": null}},
+            {"name": "barkVolume", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "SCALAR", "name": "Int", "ofType": null}}
+          ], "inputFields": null, "interfaces": [{"kind": "INTERFACE", "name": "Pet", "ofType": null}], "enumValues": null, "possibleTypes": null},
+        {"kind": "OBJECT", "name": "Cat", "description": null,
+          "fields": [
+            {"name": "name", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "String", "ofType": null}}},
+            {"name": "owner", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "OBJECT", "name": "Owner", "ofType": null}},
+            {"name": "lives", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "SCALAR", "name": "Int", "ofType": null}}
+          ], "inputFields": null, "interfaces": [{"kind": "INTERFACE", "name": "Pet", "ofType": null}], "enumValues": null, "possibleTypes": null},
+        {"kind": "OBJECT", "name": "Owner", "description": null,
+          "fields": [
+            {"name": "id", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "ID", "ofType": null}}},
+            {"name": "pets", "description": null, "isDeprecated": false, "deprecationReason": null, "args": [], "type": {"kind": "LIST", "name": null, "ofType": {"kind": "INTERFACE", "name": "Pet", "ofType": null}}}
+          ], "inputFields": null, "interfaces": [], "enumValues": null, "possibleTypes": null},
+        {"kind": "INPUT_OBJECT", "name": "AdoptInput", "description": null, "fields": null,
+          "inputFields": [{"name": "petId", "defaultValue": null, "type": {"kind": "NON_NULL", "name": null, "ofType": {"kind": "SCALAR", "name": "ID", "ofType": null}}}],
+          "interfaces": null, "enumValues": null, "possibleTypes": null},
+        {"kind": "SCALAR", "name": "String", "description": null, "fields": null, "inputFields": null, "interfaces": null, "enumValues": null, "possibleTypes": null},
+        {"kind": "SCALAR", "name": "ID", "description": null, "fields": null, "inputFields": null, "interfaces": null, "enumValues": null, "possibleTypes": null},
+        {"kind": "SCALAR", "name": "Int", "description": null, "fields": null, "inputFields": null, "interfaces": null, "enumValues": null, "possibleTypes": null},
+        {"kind": "SCALAR", "name": "Boolean", "description": null, "fields": null, "inputFields": null, "interfaces": null, "enumValues": null, "possibleTypes": null},
+        {"kind": "OBJECT", "name": "__Schema", "description": null, "fields": [], "inputFields": null, "interfaces": [], "enumValues": null, "possibleTypes": null}
+      ],
+      "directives": []
+    }
+  }
+}

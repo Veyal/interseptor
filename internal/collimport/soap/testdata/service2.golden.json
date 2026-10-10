@@ -1,0 +1,208 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "GreetingService",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "wsdl-2.0"
+    },
+    "importReport": {
+      "format": "wsdl-2.0",
+      "entries": [
+        {
+          "level": "unsupported",
+          "path": "GreetingService/SoapEndpoint/notify",
+          "feature": "no-input",
+          "message": "operation has no input message; there is nothing to send"
+        },
+        {
+          "level": "unsupported",
+          "path": "GreetingService/HttpEndpoint",
+          "feature": "non-soap-binding",
+          "message": "binding type http://www.w3.org/ns/wsdl/http is not the WSDL 2.0 SOAP binding; skipped"
+        },
+        {
+          "level": "needs-review",
+          "path": "greeting.example.com",
+          "feature": "target-host",
+          "message": "1 request(s) target greeting.example.com; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "degraded",
+          "feature": "wsdl2-partial",
+          "message": "WSDL 2.0 support is partial: SOAP-bound operations with an input element are synthesized as document/literal; HTTP bindings, rpc signatures, #any/#other messages, features/properties and modules are reported but not generated"
+        },
+        {
+          "level": "converted",
+          "path": "GreetingService/SoapEndpoint/greet",
+          "feature": "operation-style",
+          "message": "SOAP 1.2 document/literal (WSDL 2.0)"
+        }
+      ],
+      "counts": {
+        "converted": 1,
+        "degraded": 1,
+        "needs-review": 1,
+        "unsupported": 2
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 2,
+        "requests": 1,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "2 folders, 1 requests from wsdl-2.0; 1 need review, 1 degraded, 2 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "GreetingService",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "folder",
+      "rank": "i",
+      "name": "SoapEndpoint",
+      "descriptionMd": "Binding: GreetingSoap",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "i",
+      "name": "greet",
+      "descriptionMd": "SOAP 1.2 document/literal (WSDL 2.0)\n\nSOAPAction: \"http://example.com/greeting/greet\"",
+      "method": "POST",
+      "url": {
+        "raw": "http://greeting.example.com/soap",
+        "protocol": "http",
+        "host": [
+          "greeting",
+          "example",
+          "com"
+        ],
+        "path": [
+          "soap"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/soap+xml; charset=utf-8; action=\"http://example.com/greeting/greet\""
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/greeting/greet\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:tns=\"http://example.com/greeting\"\u003e\n   \u003csoapenv:Header/\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:greet\u003e\n         \u003ctns:name\u003e?\u003c/tns:name\u003e\n      \u003c/tns:greet\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "GreetingSoap",
+          "operation": "greet",
+          "port": "SoapEndpoint",
+          "service": "GreetingService",
+          "soapAction": "http://example.com/greeting/greet",
+          "soapVersion": "1.2",
+          "style": "document/literal",
+          "wsdl": "2.0"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": null,
+  "report": {
+    "format": "wsdl-2.0",
+    "entries": [
+      {
+        "level": "unsupported",
+        "path": "GreetingService/SoapEndpoint/notify",
+        "feature": "no-input",
+        "message": "operation has no input message; there is nothing to send"
+      },
+      {
+        "level": "unsupported",
+        "path": "GreetingService/HttpEndpoint",
+        "feature": "non-soap-binding",
+        "message": "binding type http://www.w3.org/ns/wsdl/http is not the WSDL 2.0 SOAP binding; skipped"
+      },
+      {
+        "level": "needs-review",
+        "path": "greeting.example.com",
+        "feature": "target-host",
+        "message": "1 request(s) target greeting.example.com; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "degraded",
+        "feature": "wsdl2-partial",
+        "message": "WSDL 2.0 support is partial: SOAP-bound operations with an input element are synthesized as document/literal; HTTP bindings, rpc signatures, #any/#other messages, features/properties and modules are reported but not generated"
+      },
+      {
+        "level": "converted",
+        "path": "GreetingService/SoapEndpoint/greet",
+        "feature": "operation-style",
+        "message": "SOAP 1.2 document/literal (WSDL 2.0)"
+      }
+    ],
+    "counts": {
+      "converted": 1,
+      "degraded": 1,
+      "needs-review": 1,
+      "unsupported": 2
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 2,
+      "requests": 1,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "2 folders, 1 requests from wsdl-2.0; 1 need review, 1 degraded, 2 unsupported"
+  }
+}

@@ -1,0 +1,494 @@
+{
+  "kind": "collection",
+  "collection": {
+    "uid": "id001",
+    "name": "HTTP file import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "httpfile",
+      "extra": {
+        "dialect": "vscode"
+      }
+    },
+    "importReport": {
+      "format": "httpfile",
+      "entries": [
+        {
+          "level": "needs-review",
+          "path": "variables",
+          "feature": "secret-variable",
+          "message": "variable apiToken holds a secret value; it was moved out of the shareable initial value (offered as a local current value only)"
+        },
+        {
+          "level": "needs-review",
+          "path": "Chained",
+          "item": "id004",
+          "feature": "request-chaining",
+          "message": "{{listUsers.response.body.$[0].id}} refers to another request's response and cannot be resolved at import; it stays literal and blocks the send until a variable of that name is set",
+          "suggestion": "Extract the value with a script or set the variable by hand"
+        },
+        {
+          "level": "needs-review",
+          "path": "Upload",
+          "item": "id005",
+          "feature": "needs-asset",
+          "message": "form field file uploads file ./fixtures/a.png; files are never read at import",
+          "suggestion": "Attach the file in the form editor"
+        },
+        {
+          "level": "needs-review",
+          "path": "From file",
+          "item": "id006",
+          "feature": "needs-asset",
+          "message": "body is read from file ./body.json; files are never read at import",
+          "suggestion": "Attach the file to the request body"
+        },
+        {
+          "level": "needs-review",
+          "path": "Encoded",
+          "item": "id007",
+          "feature": "needs-asset",
+          "message": "body is read from file ./body.txt; files are never read at import",
+          "suggestion": "Attach the file to the request body"
+        },
+        {
+          "level": "degraded",
+          "path": "POST {{host}}/users",
+          "item": "id003",
+          "feature": "timeout-unit-assumed",
+          "message": "@timeout 5000 has no unit; milliseconds were assumed",
+          "suggestion": "Check the value"
+        },
+        {
+          "level": "degraded",
+          "path": "Env",
+          "item": "id008",
+          "feature": "host-header-folded",
+          "message": "request path combined with the Host header into a full URL (http assumed); the Host header was folded into the URL",
+          "suggestion": "Check the scheme"
+        },
+        {
+          "level": "converted",
+          "feature": "dialect",
+          "message": "detected dialect: vscode (vscode, jetbrains or common; both are parsed with the same rules)"
+        }
+      ],
+      "counts": {
+        "converted": 1,
+        "degraded": 2,
+        "needs-review": 5
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 0,
+        "requests": 7,
+        "examples": 0,
+        "variables": 3,
+        "secretVariables": 1,
+        "disabledRows": 0,
+        "needsAsset": 3,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "0 folder(s), 7 request(s) from an HTTP file; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 5 need review, 2 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "listUsers",
+      "method": "GET",
+      "url": {
+        "raw": "{{host}}/users?limit=10\u0026page=2",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "users"
+        ],
+        "query": [
+          {
+            "key": "limit",
+            "value": "10"
+          },
+          {
+            "key": "page",
+            "value": "2"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "application/json"
+        },
+        {
+          "key": "Authorization",
+          "value": "Bearer {{apiToken}}"
+        }
+      ],
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 8
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "POST {{host}}/users",
+      "method": "POST",
+      "url": {
+        "raw": "{{host}}/users",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "users"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "X-Request-Id",
+          "value": "{{$guid}}"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Ada\",\n  \"id\": \"{{$guid}}\",\n  \"n\": {{$randomInt}},\n  \"at\": \"{{$isoTimestamp}}\"\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "settings": {
+        "followRedirects": false,
+        "timeoutMs": 5000
+      },
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 16
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "v",
+      "name": "Chained",
+      "method": "GET",
+      "url": {
+        "raw": "{{host}}/users/{{listUsers.response.body.$[0].id}}",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "users",
+          "{{listUsers.response.body.$[0].id}}"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "application/json"
+        }
+      ],
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 28
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "x",
+      "name": "Upload",
+      "method": "POST",
+      "url": {
+        "raw": "{{host}}/upload",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "upload"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "multipart/form-data; boundary=----Boundary123"
+        }
+      ],
+      "body": {
+        "formdata": [
+          {
+            "key": "title",
+            "type": "text",
+            "value": "hello"
+          },
+          {
+            "contentType": "image/png",
+            "fileName": "a.png",
+            "key": "file",
+            "src": "",
+            "type": "file"
+          }
+        ],
+        "mode": "formdata"
+      },
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 32
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "y",
+      "name": "From file",
+      "method": "POST",
+      "url": {
+        "raw": "{{host}}/import",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "import"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "file": {
+          "src": ""
+        },
+        "mode": "file"
+      },
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 47
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "z",
+      "name": "Encoded",
+      "method": "POST",
+      "url": {
+        "raw": "{{host}}/import",
+        "host": [
+          "{{host}}"
+        ],
+        "path": [
+          "import"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain"
+        }
+      ],
+      "body": {
+        "file": {
+          "src": ""
+        },
+        "mode": "file"
+      },
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 53
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "zi",
+      "name": "Env",
+      "method": "GET",
+      "url": {
+        "raw": "http://staging.example.com/health",
+        "protocol": "http",
+        "host": [
+          "staging",
+          "example",
+          "com"
+        ],
+        "path": [
+          "health"
+        ]
+      },
+      "headers": [],
+      "sidecar": {
+        "extra": {
+          "dialect": "vscode",
+          "line": 59
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "host",
+      "type": "default",
+      "initialValue": "https://api.example.com",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "apiToken",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "userId",
+      "type": "default",
+      "initialValue": "42",
+      "enabled": true
+    }
+  ],
+  "report": {
+    "format": "httpfile",
+    "entries": [
+      {
+        "level": "needs-review",
+        "path": "variables",
+        "feature": "secret-variable",
+        "message": "variable apiToken holds a secret value; it was moved out of the shareable initial value (offered as a local current value only)"
+      },
+      {
+        "level": "needs-review",
+        "path": "Chained",
+        "item": "id004",
+        "feature": "request-chaining",
+        "message": "{{listUsers.response.body.$[0].id}} refers to another request's response and cannot be resolved at import; it stays literal and blocks the send until a variable of that name is set",
+        "suggestion": "Extract the value with a script or set the variable by hand"
+      },
+      {
+        "level": "needs-review",
+        "path": "Upload",
+        "item": "id005",
+        "feature": "needs-asset",
+        "message": "form field file uploads file ./fixtures/a.png; files are never read at import",
+        "suggestion": "Attach the file in the form editor"
+      },
+      {
+        "level": "needs-review",
+        "path": "From file",
+        "item": "id006",
+        "feature": "needs-asset",
+        "message": "body is read from file ./body.json; files are never read at import",
+        "suggestion": "Attach the file to the request body"
+      },
+      {
+        "level": "needs-review",
+        "path": "Encoded",
+        "item": "id007",
+        "feature": "needs-asset",
+        "message": "body is read from file ./body.txt; files are never read at import",
+        "suggestion": "Attach the file to the request body"
+      },
+      {
+        "level": "degraded",
+        "path": "POST {{host}}/users",
+        "item": "id003",
+        "feature": "timeout-unit-assumed",
+        "message": "@timeout 5000 has no unit; milliseconds were assumed",
+        "suggestion": "Check the value"
+      },
+      {
+        "level": "degraded",
+        "path": "Env",
+        "item": "id008",
+        "feature": "host-header-folded",
+        "message": "request path combined with the Host header into a full URL (http assumed); the Host header was folded into the URL",
+        "suggestion": "Check the scheme"
+      },
+      {
+        "level": "converted",
+        "feature": "dialect",
+        "message": "detected dialect: vscode (vscode, jetbrains or common; both are parsed with the same rules)"
+      }
+    ],
+    "counts": {
+      "converted": 1,
+      "degraded": 2,
+      "needs-review": 5
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 0,
+      "requests": 7,
+      "examples": 0,
+      "variables": 3,
+      "secretVariables": 1,
+      "disabledRows": 0,
+      "needsAsset": 3,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "0 folder(s), 7 request(s) from an HTTP file; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 5 need review, 2 degraded, 0 unsupported"
+  }
+}

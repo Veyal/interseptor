@@ -38,11 +38,12 @@ const harFixture = `{"log":{"version":"1.2","creator":{"name":"t","version":"1"}
 func TestImportRoutesAcceptEveryFormat(t *testing.T) {
 	cases := []struct {
 		name, format, body, wantItem string
+		hasScript                    bool // only a file that carries scripts has anything quarantined
 	}{
-		{"insomnia", "insomnia", insomniaFixture, "Get thing"},
-		{"bruno", "bruno", brunoFixture, "Get bru thing"},
-		{"har", "har", harFixture, "/har"},
-		{"curl", "curl", "curl https://example.com/c -H 'X-A: 1'", ""},
+		{"insomnia", "insomnia", insomniaFixture, "Get thing", false},
+		{"bruno", "bruno", brunoFixture, "Get bru thing", true},
+		{"har", "har", harFixture, "/har", false},
+		{"curl", "curl", "curl https://example.com/c -H 'X-A: 1'", "", false},
 	}
 	for _, c := range cases {
 		for _, format := range []string{c.format, "auto"} {
@@ -53,8 +54,8 @@ func TestImportRoutesAcceptEveryFormat(t *testing.T) {
 					Quarantined bool   `json:"scriptsQuarantined"`
 				}
 				f.must("POST", "/api/import/collection/preview?format="+format, c.body, asUI, 200, &pv)
-				if !pv.Quarantined {
-					t.Fatal("preview must announce quarantine")
+				if pv.Quarantined != c.hasScript {
+					t.Fatalf("scriptsQuarantined=%v, want %v (file has scripts: %v)", pv.Quarantined, c.hasScript, c.hasScript)
 				}
 				var list struct {
 					Collections []store.Collection `json:"collections"`
@@ -110,11 +111,19 @@ func TestImportedBrunoScriptsAreQuarantined(t *testing.T) {
 	}
 }
 
+// "wsdl" used to stand in for an unknown format here; it is a real format now,
+// so the probe has to be a name no importer claims.
 func TestImportUnknownFormatListsSupportedOnes(t *testing.T) {
 	f := newCollFixture(t)
-	code, body := f.do("POST", "/api/import/collection/preview?format=wsdl", "x", asUI)
+	code, body := f.do("POST", "/api/import/collection/preview?format=not-a-format", "x", asUI)
 	if code != 400 || !strings.Contains(body, "insomnia") || !strings.Contains(body, "bruno") || !strings.Contains(body, "har") {
 		t.Fatalf("unsupported format = %d %s", code, body)
+	}
+	// The list is what the UI shows, so a format that works must be advertised.
+	for _, f := range []string{"graphql", "httpfile", "soap"} {
+		if !strings.Contains(body, f) {
+			t.Errorf("the supported-format list omits %q: %s", f, body)
+		}
 	}
 }
 

@@ -1,0 +1,910 @@
+{
+  "kind": "collection",
+  "collection": {
+    "uid": "id001",
+    "name": "GraphQL import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "graphql"
+    },
+    "importReport": {
+      "format": "graphql",
+      "entries": [
+        {
+          "level": "degraded",
+          "path": "Subscriptions/orderUpdated",
+          "item": "id024",
+          "feature": "subscription",
+          "message": "subscriptions normally run over WebSocket (graphql-transport-ws / graphql-ws) or SSE; this request is sent as a plain POST, which many servers reject",
+          "suggestion": "Use a WebSocket client for real subscription testing"
+        },
+        {
+          "level": "degraded",
+          "path": "Subscriptions/productPriceChanged",
+          "item": "id025",
+          "feature": "subscription",
+          "message": "subscriptions normally run over WebSocket (graphql-transport-ws / graphql-ws) or SSE; this request is sent as a plain POST, which many servers reject",
+          "suggestion": "Use a WebSocket client for real subscription testing"
+        },
+        {
+          "level": "degraded",
+          "feature": "selection-depth",
+          "message": "46 object field(s) were not expanded because selection depth is limited to 3",
+          "suggestion": "Raise the depth (maximum 5) or extend the selection by hand"
+        },
+        {
+          "level": "degraded",
+          "feature": "selection-recursion",
+          "message": "40 field(s) were not expanded because their type is already being expanded on the same path (recursive types)"
+        },
+        {
+          "level": "converted",
+          "feature": "root-fields",
+          "message": "20 root field(s) became requests"
+        }
+      ],
+      "counts": {
+        "converted": 1,
+        "degraded": 4
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 3,
+        "requests": 21,
+        "examples": 0,
+        "variables": 1,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "3 folder(s), 21 request(s) from GraphQL; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 4 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "Introspection query",
+      "descriptionMd": "The standard introspection query. Send it first to learn the schema; if the server disables introspection, try field suggestions (\"Did you mean ...\") or the aliases and batching tests.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query IntrospectionQuery {\n  __schema {\n    queryType { name }\n    mutationType { name }\n    subscriptionType { name }\n    types {\n      ...FullType\n    }\n    directives {\n      name\n      description\n      locations\n      args {\n        ...InputValue\n      }\n    }\n  }\n}\n\nfragment FullType on __Type {\n  kind\n  name\n  description\n  fields(includeDeprecated: true) {\n    name\n    description\n    args {\n      ...InputValue\n    }\n    type {\n      ...TypeRef\n    }\n    isDeprecated\n    deprecationReason\n  }\n  inputFields {\n    ...InputValue\n  }\n  interfaces {\n    ...TypeRef\n  }\n  enumValues(includeDeprecated: true) {\n    name\n    description\n    isDeprecated\n    deprecationReason\n  }\n  possibleTypes {\n    ...TypeRef\n  }\n}\n\nfragment InputValue on __InputValue {\n  name\n  description\n  type { ...TypeRef }\n  defaultValue\n}\n\nfragment TypeRef on __Type {\n  kind\n  name\n  ofType {\n    kind\n    name\n    ofType {\n      kind\n      name\n      ofType {\n        kind\n        name\n        ofType {\n          kind\n          name\n          ofType {\n            kind\n            name\n            ofType {\n              kind\n              name\n              ofType {\n                kind\n                name\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "r",
+      "name": "Queries",
+      "descriptionMd": "Root type Query",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "i",
+      "name": "node",
+      "descriptionMd": "`Query.node(id: ID!): Node`\n\nFetch any node by id.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Node($id: ID!) {\n  node(id: $id) {\n    __typename\n    id\n    ... on User {\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      orders {\n        id\n        status\n        totalCents\n        createdAt\n        updatedAt\n        lines {\n          quantity\n        }\n      }\n      address {\n        line1\n        line2\n        city\n        country\n        geo {\n          lat\n          lng\n        }\n      }\n    }\n    ... on Category {\n      name\n      products {\n        totalCount\n        edges {\n          cursor\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n    ... on Product {\n      sku\n      title\n      description\n      priceCents\n      inStock\n      tags\n      createdAt\n      updatedAt\n      attributes\n      category {\n        id\n        name\n        products {\n          totalCount\n        }\n      }\n      reviews {\n        id\n        rating\n        body\n        author {\n          id\n          email\n          name\n          role\n          createdAt\n          updatedAt\n          legacyToken\n        }\n      }\n    }\n    ... on Order {\n      status\n      totalCents\n      createdAt\n      updatedAt\n      user {\n        id\n        email\n        name\n        role\n        createdAt\n        updatedAt\n        legacyToken\n        address {\n          line1\n          line2\n          city\n          country\n        }\n      }\n      lines {\n        quantity\n        product {\n          id\n          sku\n          title\n          description\n          priceCents\n          inStock\n          tags\n          createdAt\n          updatedAt\n          attributes\n        }\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"id\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "r",
+      "name": "me",
+      "descriptionMd": "`Query.me: User`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Me {\n  me {\n    id\n    email\n    name\n    role\n    createdAt\n    updatedAt\n    legacyToken\n    orders {\n      id\n      status\n      totalCents\n      createdAt\n      updatedAt\n      lines {\n        quantity\n      }\n    }\n    address {\n      line1\n      line2\n      city\n      country\n      geo {\n        lat\n        lng\n      }\n    }\n  }\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "v",
+      "name": "user",
+      "descriptionMd": "`Query.user(id: ID!): User`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query User($id: ID!) {\n  user(id: $id) {\n    id\n    email\n    name\n    role\n    createdAt\n    updatedAt\n    legacyToken\n    orders {\n      id\n      status\n      totalCents\n      createdAt\n      updatedAt\n      lines {\n        quantity\n      }\n    }\n    address {\n      line1\n      line2\n      city\n      country\n      geo {\n        lat\n        lng\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"id\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "x",
+      "name": "users",
+      "descriptionMd": "`Query.users(first: Int, after: String, role: Role): [User!]!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Users($first: Int, $after: String, $role: Role) {\n  users(first: $first, after: $after, role: $role) {\n    id\n    email\n    name\n    role\n    createdAt\n    updatedAt\n    legacyToken\n    orders {\n      id\n      status\n      totalCents\n      createdAt\n      updatedAt\n      lines {\n        quantity\n      }\n    }\n    address {\n      line1\n      line2\n      city\n      country\n      geo {\n        lat\n        lng\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"first\": null,\n  \"after\": null,\n  \"role\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "y",
+      "name": "product",
+      "descriptionMd": "`Query.product(sku: String!): Product`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Product($sku: String!) {\n  product(sku: $sku) {\n    id\n    sku\n    title\n    description\n    priceCents\n    inStock\n    tags\n    createdAt\n    updatedAt\n    attributes\n    category {\n      id\n      name\n      products {\n        totalCount\n      }\n    }\n    reviews {\n      id\n      rating\n      body\n      author {\n        id\n        email\n        name\n        role\n        createdAt\n        updatedAt\n        legacyToken\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"sku\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id009",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "z",
+      "name": "products",
+      "descriptionMd": "`Query.products(filter: ProductFilter, sort: SortOrder, first: Int, after: String): ProductConnection!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Products($filter: ProductFilter, $sort: SortOrder, $first: Int, $after: String) {\n  products(filter: $filter, sort: $sort, first: $first, after: $after) {\n    totalCount\n    edges {\n      cursor\n      node {\n        id\n        sku\n        title\n        description\n        priceCents\n        inStock\n        tags\n        createdAt\n        updatedAt\n        attributes\n      }\n    }\n    pageInfo {\n      hasNextPage\n      endCursor\n    }\n  }\n}\n",
+          "variables": "{\n  \"filter\": null,\n  \"sort\": null,\n  \"first\": null,\n  \"after\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id010",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zi",
+      "name": "categories",
+      "descriptionMd": "`Query.categories(ids: [ID!]!): [Category]!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Categories($ids: [ID!]!) {\n  categories(ids: $ids) {\n    id\n    name\n    products {\n      totalCount\n      edges {\n        cursor\n      }\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"ids\": []\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id011",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zr",
+      "name": "order",
+      "descriptionMd": "`Query.order(id: ID!): Order`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Order($id: ID!) {\n  order(id: $id) {\n    id\n    status\n    totalCents\n    createdAt\n    updatedAt\n    user {\n      id\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      address {\n        line1\n        line2\n        city\n        country\n      }\n    }\n    lines {\n      quantity\n      product {\n        id\n        sku\n        title\n        description\n        priceCents\n        inStock\n        tags\n        createdAt\n        updatedAt\n        attributes\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"id\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id012",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zv",
+      "name": "search",
+      "descriptionMd": "`Query.search(term: String!, limit: Int): [SearchResult!]!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Search($term: String!, $limit: Int) {\n  search(term: $term, limit: $limit) {\n    __typename\n    ... on Product {\n      id\n      sku\n      title\n      description\n      priceCents\n      inStock\n      tags\n      createdAt\n      updatedAt\n      attributes\n      category {\n        id\n        name\n        products {\n          totalCount\n        }\n      }\n      reviews {\n        id\n        rating\n        body\n        author {\n          id\n          email\n          name\n          role\n          createdAt\n          updatedAt\n          legacyToken\n        }\n      }\n    }\n    ... on User {\n      id\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      orders {\n        id\n        status\n        totalCents\n        createdAt\n        updatedAt\n        lines {\n          quantity\n        }\n      }\n      address {\n        line1\n        line2\n        city\n        country\n        geo {\n          lat\n          lng\n        }\n      }\n    }\n    ... on Category {\n      id\n      name\n      products {\n        totalCount\n        edges {\n          cursor\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"term\": \"\",\n  \"limit\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id013",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zx",
+      "name": "serverTime",
+      "descriptionMd": "`Query.serverTime: DateTime!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query ServerTime {\n  serverTime\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id014",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zy",
+      "name": "health",
+      "descriptionMd": "`Query.health: String`\n\n**Deprecated**",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Health {\n  health\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id015",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "zz",
+      "name": "adminStats",
+      "descriptionMd": "`Query.adminStats(since: DateTime!): JSON`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query AdminStats($since: DateTime!) {\n  adminStats(since: $since)\n}\n",
+          "variables": "{\n  \"since\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id016",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "v",
+      "name": "Mutations",
+      "descriptionMd": "Root type Mutation",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id017",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "i",
+      "name": "login",
+      "descriptionMd": "`Mutation.login(email: String!, password: String!): String`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation Login($email: String!, $password: String!) {\n  login(email: $email, password: $password)\n}\n",
+          "variables": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id018",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "r",
+      "name": "createOrder",
+      "descriptionMd": "`Mutation.createOrder(input: CreateOrderInput!): Order!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation CreateOrder($input: CreateOrderInput!) {\n  createOrder(input: $input) {\n    id\n    status\n    totalCents\n    createdAt\n    updatedAt\n    user {\n      id\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      address {\n        line1\n        line2\n        city\n        country\n      }\n    }\n    lines {\n      quantity\n      product {\n        id\n        sku\n        title\n        description\n        priceCents\n        inStock\n        tags\n        createdAt\n        updatedAt\n        attributes\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"input\": {}\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id019",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "v",
+      "name": "cancelOrder",
+      "descriptionMd": "`Mutation.cancelOrder(id: ID!, reason: String): Order`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation CancelOrder($id: ID!, $reason: String) {\n  cancelOrder(id: $id, reason: $reason) {\n    id\n    status\n    totalCents\n    createdAt\n    updatedAt\n    user {\n      id\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      address {\n        line1\n        line2\n        city\n        country\n      }\n    }\n    lines {\n      quantity\n      product {\n        id\n        sku\n        title\n        description\n        priceCents\n        inStock\n        tags\n        createdAt\n        updatedAt\n        attributes\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"id\": \"\",\n  \"reason\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id020",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "x",
+      "name": "updateProfile",
+      "descriptionMd": "`Mutation.updateProfile(name: String, address: [String!]): User`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation UpdateProfile($name: String, $address: [String!]) {\n  updateProfile(name: $name, address: $address) {\n    id\n    email\n    name\n    role\n    createdAt\n    updatedAt\n    legacyToken\n    orders {\n      id\n      status\n      totalCents\n      createdAt\n      updatedAt\n      lines {\n        quantity\n      }\n    }\n    address {\n      line1\n      line2\n      city\n      country\n      geo {\n        lat\n        lng\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"name\": null,\n  \"address\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id021",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "y",
+      "name": "deleteUser",
+      "descriptionMd": "`Mutation.deleteUser(id: ID!): Boolean!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation DeleteUser($id: ID!) {\n  deleteUser(id: $id)\n}\n",
+          "variables": "{\n  \"id\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id022",
+      "collectionUid": "id001",
+      "parentUid": "id016",
+      "kind": "request",
+      "rank": "z",
+      "name": "setFlags",
+      "descriptionMd": "`Mutation.setFlags(flags: [Boolean!]!, matrix: [[Int!]!]): Boolean`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation SetFlags($flags: [Boolean!]!, $matrix: [[Int!]!]) {\n  setFlags(flags: $flags, matrix: $matrix)\n}\n",
+          "variables": "{\n  \"flags\": [],\n  \"matrix\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id023",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "x",
+      "name": "Subscriptions",
+      "descriptionMd": "Root type Subscription",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id024",
+      "collectionUid": "id001",
+      "parentUid": "id023",
+      "kind": "request",
+      "rank": "i",
+      "name": "orderUpdated",
+      "descriptionMd": "`Subscription.orderUpdated(orderId: ID!): Order!`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "subscription OrderUpdated($orderId: ID!) {\n  orderUpdated(orderId: $orderId) {\n    id\n    status\n    totalCents\n    createdAt\n    updatedAt\n    user {\n      id\n      email\n      name\n      role\n      createdAt\n      updatedAt\n      legacyToken\n      address {\n        line1\n        line2\n        city\n        country\n      }\n    }\n    lines {\n      quantity\n      product {\n        id\n        sku\n        title\n        description\n        priceCents\n        inStock\n        tags\n        createdAt\n        updatedAt\n        attributes\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"orderId\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id025",
+      "collectionUid": "id001",
+      "parentUid": "id023",
+      "kind": "request",
+      "rank": "r",
+      "name": "productPriceChanged",
+      "descriptionMd": "`Subscription.productPriceChanged: Product`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "subscription ProductPriceChanged {\n  productPriceChanged {\n    id\n    sku\n    title\n    description\n    priceCents\n    inStock\n    tags\n    createdAt\n    updatedAt\n    attributes\n    category {\n      id\n      name\n      products {\n        totalCount\n      }\n    }\n    reviews {\n      id\n      rating\n      body\n      author {\n        id\n        email\n        name\n        role\n        createdAt\n        updatedAt\n        legacyToken\n      }\n    }\n  }\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "https://example.com",
+      "enabled": true
+    }
+  ],
+  "report": {
+    "format": "graphql",
+    "entries": [
+      {
+        "level": "degraded",
+        "path": "Subscriptions/orderUpdated",
+        "item": "id024",
+        "feature": "subscription",
+        "message": "subscriptions normally run over WebSocket (graphql-transport-ws / graphql-ws) or SSE; this request is sent as a plain POST, which many servers reject",
+        "suggestion": "Use a WebSocket client for real subscription testing"
+      },
+      {
+        "level": "degraded",
+        "path": "Subscriptions/productPriceChanged",
+        "item": "id025",
+        "feature": "subscription",
+        "message": "subscriptions normally run over WebSocket (graphql-transport-ws / graphql-ws) or SSE; this request is sent as a plain POST, which many servers reject",
+        "suggestion": "Use a WebSocket client for real subscription testing"
+      },
+      {
+        "level": "degraded",
+        "feature": "selection-depth",
+        "message": "46 object field(s) were not expanded because selection depth is limited to 3",
+        "suggestion": "Raise the depth (maximum 5) or extend the selection by hand"
+      },
+      {
+        "level": "degraded",
+        "feature": "selection-recursion",
+        "message": "40 field(s) were not expanded because their type is already being expanded on the same path (recursive types)"
+      },
+      {
+        "level": "converted",
+        "feature": "root-fields",
+        "message": "20 root field(s) became requests"
+      }
+    ],
+    "counts": {
+      "converted": 1,
+      "degraded": 4
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 3,
+      "requests": 21,
+      "examples": 0,
+      "variables": 1,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "3 folder(s), 21 request(s) from GraphQL; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 4 degraded, 0 unsupported"
+  }
+}

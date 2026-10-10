@@ -1,0 +1,462 @@
+{
+  "kind": "collection",
+  "collection": {
+    "uid": "id001",
+    "name": "HTTP file import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "httpfile",
+      "extra": {
+        "dialect": "jetbrains"
+      }
+    },
+    "importReport": {
+      "format": "httpfile",
+      "entries": [
+        {
+          "level": "unsupported",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-api:jetbrains",
+          "message": "jetbrains HTTP-client script API (client.*, response.*) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "unsupported",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-api:jetbrains",
+          "message": "jetbrains HTTP-client script API (client.*, response.*) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "blocked",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-quarantined",
+          "message": "jetbrains prerequest script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 5c9da31c35df, then trust it"
+        },
+        {
+          "level": "blocked",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-quarantined",
+          "message": "jetbrains test script (2 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 64c7c09fb7f2, then trust it"
+        },
+        {
+          "level": "needs-review",
+          "path": "Profile",
+          "item": "id003",
+          "feature": "needs-asset",
+          "message": "response handler file ./checks/profile.js is referenced but never read at import; the handler is not imported",
+          "suggestion": "Paste the script into the request or attach it"
+        },
+        {
+          "level": "needs-review",
+          "path": "login",
+          "feature": "environment-variable",
+          "message": "{{password}} is not defined in this file; it most likely comes from http-client.env.json / settings.json (or a prompt), which are not read",
+          "suggestion": "Create an Interseptor environment variable named password"
+        },
+        {
+          "level": "needs-review",
+          "path": "Profile",
+          "feature": "environment-variable",
+          "message": "{{token}} is not defined in this file; it most likely comes from http-client.env.json / settings.json (or a prompt), which are not read",
+          "suggestion": "Create an Interseptor environment variable named token"
+        },
+        {
+          "level": "degraded",
+          "path": "Profile",
+          "item": "id003",
+          "feature": "response-redirect",
+          "message": "response redirect (\u003e\u003e file) is not performed: responses are not written to disk"
+        },
+        {
+          "level": "preserved-inert",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-inert",
+          "message": "prerequest script kept as an inert event (dialect jetbrains); never executed or translated"
+        },
+        {
+          "level": "preserved-inert",
+          "path": "login",
+          "item": "id002",
+          "feature": "script-inert",
+          "message": "test script kept as an inert event (dialect jetbrains); never executed or translated"
+        },
+        {
+          "level": "converted",
+          "feature": "dialect",
+          "message": "detected dialect: jetbrains (vscode, jetbrains or common; both are parsed with the same rules)"
+        },
+        {
+          "level": "converted",
+          "path": "GraphQL",
+          "item": "id004",
+          "feature": "body.graphql",
+          "message": "GraphQL query and variables preserved (X-REQUEST-TYPE header consumed)"
+        }
+      ],
+      "counts": {
+        "blocked": 2,
+        "converted": 2,
+        "degraded": 1,
+        "needs-review": 3,
+        "preserved-inert": 2,
+        "unsupported": 2
+      },
+      "scripts": {
+        "total": 2,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 2
+      },
+      "scriptList": [
+        {
+          "path": "login",
+          "item": "id002",
+          "listen": "prerequest",
+          "sourceHash": "5c9da31c35dfebb34a362aa2411462c5c2881baf7a7656de65bf89b002c08e3b",
+          "lines": 1,
+          "status": "unsupported",
+          "quarantined": true
+        },
+        {
+          "path": "login",
+          "item": "id002",
+          "listen": "test",
+          "sourceHash": "64c7c09fb7f2558fd57dc75afd95a8bd3ef77637a0fd946916cf0ce85e98f255",
+          "lines": 2,
+          "status": "unsupported",
+          "quarantined": true
+        }
+      ],
+      "stats": {
+        "folders": 0,
+        "requests": 4,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 1,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "0 folder(s), 4 request(s) from an HTTP file; 2 scripts: 0 fully supported, 0 partial, 2 using unsupported APIs (all quarantined until trusted); 3 need review, 1 degraded, 2 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "login",
+      "method": "POST",
+      "url": {
+        "raw": "https://auth.example.com/login",
+        "protocol": "https",
+        "host": [
+          "auth",
+          "example",
+          "com"
+        ],
+        "path": [
+          "login"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\"user\": \"ada\", \"pass\": \"{{password}}\", \"id\": \"{{$guid}}\"}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "events": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "request.variables.set(\"ts\", Date.now())"
+            ]
+          },
+          "dialect": "jetbrains"
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "client.global.set(\"token\", response.body.token);",
+              "client.test(\"ok\", function() { client.assert(response.status === 200); });"
+            ]
+          },
+          "dialect": "jetbrains"
+        }
+      ],
+      "sidecar": {
+        "extra": {
+          "dialect": "jetbrains",
+          "line": 6
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "Profile",
+      "method": "GET",
+      "url": {
+        "raw": "https://api.example.com/me",
+        "protocol": "https",
+        "host": [
+          "api",
+          "example",
+          "com"
+        ],
+        "path": [
+          "me"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Authorization",
+          "value": "Bearer {{token}}"
+        }
+      ],
+      "sidecar": {
+        "extra": {
+          "dialect": "jetbrains",
+          "line": 17
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "v",
+      "name": "GraphQL",
+      "method": "POST",
+      "url": {
+        "raw": "https://api.example.com/graphql",
+        "protocol": "https",
+        "host": [
+          "api",
+          "example",
+          "com"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Me($id: ID!) {\n  user(id: $id) { name }\n}",
+          "variables": {
+            "id": "{{$guid}}"
+          }
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {
+        "extra": {
+          "dialect": "jetbrains",
+          "line": 23
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "x",
+      "name": "Bare URL",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/ping",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "ping"
+        ]
+      },
+      "headers": [],
+      "sidecar": {
+        "extra": {
+          "dialect": "jetbrains",
+          "line": 34
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": null,
+  "report": {
+    "format": "httpfile",
+    "entries": [
+      {
+        "level": "unsupported",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-api:jetbrains",
+        "message": "jetbrains HTTP-client script API (client.*, response.*) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "unsupported",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-api:jetbrains",
+        "message": "jetbrains HTTP-client script API (client.*, response.*) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "blocked",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-quarantined",
+        "message": "jetbrains prerequest script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 5c9da31c35df, then trust it"
+      },
+      {
+        "level": "blocked",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-quarantined",
+        "message": "jetbrains test script (2 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 64c7c09fb7f2, then trust it"
+      },
+      {
+        "level": "needs-review",
+        "path": "Profile",
+        "item": "id003",
+        "feature": "needs-asset",
+        "message": "response handler file ./checks/profile.js is referenced but never read at import; the handler is not imported",
+        "suggestion": "Paste the script into the request or attach it"
+      },
+      {
+        "level": "needs-review",
+        "path": "login",
+        "feature": "environment-variable",
+        "message": "{{password}} is not defined in this file; it most likely comes from http-client.env.json / settings.json (or a prompt), which are not read",
+        "suggestion": "Create an Interseptor environment variable named password"
+      },
+      {
+        "level": "needs-review",
+        "path": "Profile",
+        "feature": "environment-variable",
+        "message": "{{token}} is not defined in this file; it most likely comes from http-client.env.json / settings.json (or a prompt), which are not read",
+        "suggestion": "Create an Interseptor environment variable named token"
+      },
+      {
+        "level": "degraded",
+        "path": "Profile",
+        "item": "id003",
+        "feature": "response-redirect",
+        "message": "response redirect (\u003e\u003e file) is not performed: responses are not written to disk"
+      },
+      {
+        "level": "preserved-inert",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-inert",
+        "message": "prerequest script kept as an inert event (dialect jetbrains); never executed or translated"
+      },
+      {
+        "level": "preserved-inert",
+        "path": "login",
+        "item": "id002",
+        "feature": "script-inert",
+        "message": "test script kept as an inert event (dialect jetbrains); never executed or translated"
+      },
+      {
+        "level": "converted",
+        "feature": "dialect",
+        "message": "detected dialect: jetbrains (vscode, jetbrains or common; both are parsed with the same rules)"
+      },
+      {
+        "level": "converted",
+        "path": "GraphQL",
+        "item": "id004",
+        "feature": "body.graphql",
+        "message": "GraphQL query and variables preserved (X-REQUEST-TYPE header consumed)"
+      }
+    ],
+    "counts": {
+      "blocked": 2,
+      "converted": 2,
+      "degraded": 1,
+      "needs-review": 3,
+      "preserved-inert": 2,
+      "unsupported": 2
+    },
+    "scripts": {
+      "total": 2,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 2
+    },
+    "scriptList": [
+      {
+        "path": "login",
+        "item": "id002",
+        "listen": "prerequest",
+        "sourceHash": "5c9da31c35dfebb34a362aa2411462c5c2881baf7a7656de65bf89b002c08e3b",
+        "lines": 1,
+        "status": "unsupported",
+        "quarantined": true
+      },
+      {
+        "path": "login",
+        "item": "id002",
+        "listen": "test",
+        "sourceHash": "64c7c09fb7f2558fd57dc75afd95a8bd3ef77637a0fd946916cf0ce85e98f255",
+        "lines": 2,
+        "status": "unsupported",
+        "quarantined": true
+      }
+    ],
+    "stats": {
+      "folders": 0,
+      "requests": 4,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 1,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "0 folder(s), 4 request(s) from an HTTP file; 2 scripts: 0 fully supported, 0 partial, 2 using unsupported APIs (all quarantined until trusted); 3 need review, 1 degraded, 2 unsupported"
+  }
+}

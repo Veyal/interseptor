@@ -1,0 +1,260 @@
+{
+  "kind": "collection",
+  "collection": {
+    "uid": "id001",
+    "name": "GraphQL import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "graphql"
+    },
+    "importReport": {
+      "format": "graphql",
+      "entries": [
+        {
+          "level": "degraded",
+          "feature": "selection-recursion",
+          "message": "2 field(s) were not expanded because their type is already being expanded on the same path (recursive types)"
+        },
+        {
+          "level": "converted",
+          "feature": "root-fields",
+          "message": "3 root field(s) became requests"
+        }
+      ],
+      "counts": {
+        "converted": 1,
+        "degraded": 1
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 2,
+        "requests": 4,
+        "examples": 0,
+        "variables": 1,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "2 folder(s), 4 request(s) from GraphQL; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 1 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "Introspection query",
+      "descriptionMd": "The standard introspection query. Send it first to learn the schema; if the server disables introspection, try field suggestions (\"Did you mean ...\") or the aliases and batching tests.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query IntrospectionQuery {\n  __schema {\n    queryType { name }\n    mutationType { name }\n    subscriptionType { name }\n    types {\n      ...FullType\n    }\n    directives {\n      name\n      description\n      locations\n      args {\n        ...InputValue\n      }\n    }\n  }\n}\n\nfragment FullType on __Type {\n  kind\n  name\n  description\n  fields(includeDeprecated: true) {\n    name\n    description\n    args {\n      ...InputValue\n    }\n    type {\n      ...TypeRef\n    }\n    isDeprecated\n    deprecationReason\n  }\n  inputFields {\n    ...InputValue\n  }\n  interfaces {\n    ...TypeRef\n  }\n  enumValues(includeDeprecated: true) {\n    name\n    description\n    isDeprecated\n    deprecationReason\n  }\n  possibleTypes {\n    ...TypeRef\n  }\n}\n\nfragment InputValue on __InputValue {\n  name\n  description\n  type { ...TypeRef }\n  defaultValue\n}\n\nfragment TypeRef on __Type {\n  kind\n  name\n  ofType {\n    kind\n    name\n    ofType {\n      kind\n      name\n      ofType {\n        kind\n        name\n        ofType {\n          kind\n          name\n          ofType {\n            kind\n            name\n            ofType {\n              kind\n              name\n              ofType {\n                kind\n                name\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "variables": "{}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "r",
+      "name": "Queries",
+      "descriptionMd": "Root type Query",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "i",
+      "name": "pet",
+      "descriptionMd": "`Query.pet(id: ID!): Pet`\n\nLook a pet up.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Pet($id: ID!) {\n  pet(id: $id) {\n    __typename\n    name\n    owner {\n      id\n    }\n    ... on Dog {\n      barkVolume\n    }\n    ... on Cat {\n      lives\n    }\n  }\n}\n",
+          "variables": "{\n  \"id\": \"\"\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "r",
+      "name": "owners",
+      "descriptionMd": "`Query.owners(limit: Int): [Owner!]!`\n\n**Deprecated**: Use pet.owner.",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "query Owners($limit: Int) {\n  owners(limit: $limit) {\n    id\n    pets {\n      __typename\n      name\n      ... on Dog {\n        barkVolume\n      }\n      ... on Cat {\n        lives\n      }\n    }\n  }\n}\n",
+          "variables": "{\n  \"limit\": null\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "v",
+      "name": "Mutations",
+      "descriptionMd": "Root type Mutation",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id006",
+      "kind": "request",
+      "rank": "i",
+      "name": "adopt",
+      "descriptionMd": "`Mutation.adopt(input: AdoptInput!): Boolean`",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/graphql",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "mutation Adopt($input: AdoptInput!) {\n  adopt(input: $input)\n}\n",
+          "variables": "{\n  \"input\": {}\n}"
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "https://example.com",
+      "enabled": true
+    }
+  ],
+  "report": {
+    "format": "graphql",
+    "entries": [
+      {
+        "level": "degraded",
+        "feature": "selection-recursion",
+        "message": "2 field(s) were not expanded because their type is already being expanded on the same path (recursive types)"
+      },
+      {
+        "level": "converted",
+        "feature": "root-fields",
+        "message": "3 root field(s) became requests"
+      }
+    ],
+    "counts": {
+      "converted": 1,
+      "degraded": 1
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 2,
+      "requests": 4,
+      "examples": 0,
+      "variables": 1,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "2 folder(s), 4 request(s) from GraphQL; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 0 need review, 1 degraded, 0 unsupported"
+  }
+}

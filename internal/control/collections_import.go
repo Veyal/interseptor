@@ -1,12 +1,15 @@
 package control
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/collimport/curl"
+	"github.com/Veyal/interseptor/internal/collimport/graphql"
+	"github.com/Veyal/interseptor/internal/collimport/httpfile"
 	"github.com/Veyal/interseptor/internal/collimport/openapi"
 	"github.com/Veyal/interseptor/internal/collimport/postman"
 	"github.com/Veyal/interseptor/internal/store"
@@ -17,6 +20,7 @@ import (
 // HAR/Burp are supported; every format is normalised to a postman.Result so
 // preview and commit share one path. "auto" sniffs the content.
 func parseCollectionImport(data []byte, format string) (*postman.Result, int, error) {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // a UTF-8 BOM is not part of the file
 	switch f := strings.ToLower(format); f {
 	case "", "auto":
 		return parseAutoImport(data)
@@ -36,6 +40,12 @@ func parseCollectionImport(data []byte, format string) (*postman.Result, int, er
 		return parseHARImport(data)
 	case "burp":
 		return parseBurpImport(data)
+	case "graphql":
+		return parseGraphQLImport(data)
+	case "httpfile", "http", "rest":
+		return parseHTTPFileImport(data)
+	case "soap", "wsdl", "soapui":
+		return parseSOAPImport(data)
 	default:
 		return nil, http.StatusBadRequest, errors.New("import format " + format + " is not supported (supported: " + importFormatsList + ")")
 	}
@@ -48,15 +58,28 @@ func parseAutoImport(data []byte) (*postman.Result, int, error) {
 	case looksLikeBru(data):
 		return parseBrunoImport(data)
 	case looksLikeXML(data):
+		// Both WSDL/SoapUI and Burp saved items are XML, so the SOAP roots are
+		// checked first; otherwise a WSDL would be read as an empty Burp export.
+		if looksLikeSOAP(data) {
+			return parseSOAPImport(data)
+		}
 		return parseBurpImport(data)
 	case json.Valid(data):
 		return sniffJSON(data)
 	case looksLikeInsomniaYAML(data):
 		return parseInsomniaImport(data)
+	case graphql.Sniff(data):
+		// SDL has no magic bytes, so this runs after every JSON/YAML format.
+		return parseGraphQLImport(data)
+	}
+	if httpfile.Looks(data) {
+		// The weakest detector of all, so it goes last: only text that already
+		// declined every structured format reaches it.
+		return parseHTTPFileImport(data)
 	}
 	res, code, err := parseOpenAPIImport(data)
 	if err != nil && code == http.StatusUnsupportedMediaType {
-		return nil, http.StatusBadRequest, errors.New("the file is not valid JSON, YAML, a curl command, a .bru file or Burp XML")
+		return nil, http.StatusBadRequest, errors.New("the file is not valid JSON, YAML, a curl command, a .bru file, Burp or WSDL XML, a GraphQL schema or a .http file")
 	}
 	return res, code, err
 }
@@ -136,7 +159,7 @@ func (c *collectionsAPI) importPreview(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, code, err.Error())
 		return
 	}
-	pv := importPreview{Kind: res.Kind, Report: res.Report, Quarantined: true}
+	pv := importPreview{Kind: res.Kind, Report: res.Report, Quarantined: scriptsQuarantined(res.Report)}
 	if res.Kind == postman.KindCollection {
 		pv.Name = res.Collection.Name
 	}
@@ -144,6 +167,29 @@ func (c *collectionsAPI) importPreview(w http.ResponseWriter, r *http.Request) {
 		pv.Environments = append(pv.Environments, e.Environment.Name)
 	}
 	writeJSON(w, http.StatusOK, pv)
+}
+
+// scriptsQuarantined reports whether the file carried scripts (every importer
+// records each one as a script-quarantined entry, and the store merge never
+// carries trust). A file with no scripts has nothing to quarantine.
+func scriptsQuarantined(r postman.Report) bool {
+	if r.Scripts.Total > 0 {
+		return true
+	}
+	for _, e := range r.Entries {
+		if e.Feature == "script-quarantined" {
+			return true
+		}
+	}
+	return false
+}
+
+func skippedForReport(skips []store.MergeSkip) []postman.SkippedItem {
+	out := make([]postman.SkippedItem, 0, len(skips))
+	for _, k := range skips {
+		out = append(out, postman.SkippedItem{Item: k.Item, Path: k.Path, Method: k.Method, Reason: k.Reason})
+	}
+	return out
 }
 
 // importCommit stores a parsed import. Scripts arrive quarantined: the store
@@ -159,12 +205,13 @@ func (c *collectionsAPI) importCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.mu.Lock()
-	stats, err := c.h.st.ImportCollectionsBundle(res.Bundle())
+	stats, skips, err := c.h.st.ImportUserCollectionsBundle(res.Bundle())
 	c.mu.Unlock()
 	if err != nil {
 		collErr(w, err)
 		return
 	}
+	res.Report.AddSkippedDuplicates(skippedForReport(skips))
 	var logged int
 	storedUID := ""
 	if res.Kind == postman.KindCollection {
@@ -181,7 +228,7 @@ func (c *collectionsAPI) importCommit(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 	}
-	out := map[string]any{"stats": stats, "report": res.Report, "scriptsQuarantined": true, "importLogged": logged == 1}
+	out := map[string]any{"stats": stats, "report": res.Report, "scriptsQuarantined": scriptsQuarantined(res.Report), "importLogged": logged == 1}
 	if res.Kind == postman.KindCollection {
 		out["collectionUid"] = storedUID
 	}

@@ -1,0 +1,34 @@
+### Login
+< {%
+  request.variables.set("ts", Date.now())
+%}
+# @name login
+POST https://auth.example.com/login
+Content-Type: application/json
+
+{"user": "ada", "pass": "{{password}}", "id": "{{$random.uuid}}"}
+
+> {%
+  client.global.set("token", response.body.token);
+  client.test("ok", function() { client.assert(response.status === 200); });
+%}
+
+### Profile
+GET https://api.example.com/me
+Authorization: Bearer {{token}}
+> ./checks/profile.js
+>> out/profile.json
+
+### GraphQL
+POST https://api.example.com/graphql
+Content-Type: application/json
+X-REQUEST-TYPE: GraphQL
+
+query Me($id: ID!) {
+  user(id: $id) { name }
+}
+
+{"id": "{{$uuid}}"}
+
+### Bare URL
+https://example.com/ping
