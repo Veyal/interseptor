@@ -141,7 +141,25 @@ func (s *Store) ImportCollectionsBundle(b CollectionsBundle) (CollectionMergeSta
 	if b.Version > CollectionsBundleVersion {
 		return CollectionMergeStats{}, fmt.Errorf("collections bundle version %d is newer than supported %d", b.Version, CollectionsBundleVersion)
 	}
-	return s.mergeCollBundle(b)
+	st, _, err := s.mergeCollBundle(b, true)
+	return st, err
+}
+
+// ImportUserCollectionsBundle merges a bundle the user deliberately imported
+// from their own file (Postman, Insomnia, Bruno, HAR, Burp, OpenAPI, curl).
+// Unlike ImportCollectionsBundle it keeps literal credentials: they are the
+// user's own data, real secret values already live at rest in ix_var_current,
+// and blanking them on the way in silently turns every authenticated request
+// into a 401. Every export path still scrubs (ExportCollectionsBundle,
+// BackupToScrubbed), so keeping them at rest does not widen what leaves the
+// project. The skips name the requests that were not imported because an
+// identical one already exists. Everything else (quarantined scripts, default-deny caps, scope
+// policy off downgraded to block) is identical to ImportCollectionsBundle.
+func (s *Store) ImportUserCollectionsBundle(b CollectionsBundle) (CollectionMergeStats, []MergeSkip, error) {
+	if b.Version > CollectionsBundleVersion {
+		return CollectionMergeStats{}, nil, fmt.Errorf("collections bundle version %d is newer than supported %d", b.Version, CollectionsBundleVersion)
+	}
+	return s.mergeCollBundle(b, false)
 }
 
 // DecodeCollectionsBundle parses a bundle section; null/empty yields an empty

@@ -36,7 +36,8 @@ func (s *Store) MergeCollectionsFrom(peerDBPath string) (CollectionMergeStats, e
 	if err != nil {
 		return CollectionMergeStats{}, fmt.Errorf("read peer collections: %w", err)
 	}
-	return s.mergeCollBundle(b)
+	st, _, err := s.mergeCollBundle(b, true)
+	return st, err
 }
 
 // peerHasCollections reports whether the peer DB carries the collection tables.
@@ -55,7 +56,7 @@ func (s *Store) mergeCollectionsFromDB(peer *sql.DB) (st CollectionMergeStats, h
 	if err != nil {
 		return st, true, fmt.Errorf("read peer collections: %w", err)
 	}
-	st, err = s.mergeCollBundle(b)
+	st, _, err = s.mergeCollBundle(b, true)
 	return st, true, err
 }
 
@@ -110,11 +111,6 @@ func (s *Store) previewCollectionsFromDB(peer *sql.DB) (st CollectionMergeStats,
 	return st, true, nil
 }
 
-// itemSig identifies an item by its place and shape when uids do not match.
-func itemSig(coll string, path []string, it *Item) string {
-	return coll + "\x00" + strings.Join(path, "\x01") + "\x00" + it.Kind + "\x00" + it.Name + "\x00" + it.Method + "\x00" + string(it.URL)
-}
-
 // itemPaths maps uid -> ancestor name path for a set of items.
 func itemPaths(items []Item) map[string][]string {
 	byUID := make(map[string]*Item, len(items))
@@ -147,20 +143,25 @@ func itemPaths(items []Item) map[string][]string {
 	return paths
 }
 
-func (s *Store) mergeCollBundle(b CollectionsBundle) (CollectionMergeStats, error) {
+// mergeCollBundle merges b into this project. scrub is true for untrusted
+// input (a peer project or a project bundle) and false only for a file the
+// user deliberately chose to import; see ImportUserCollectionsBundle.
+func (s *Store) mergeCollBundle(b CollectionsBundle, scrub bool) (CollectionMergeStats, []MergeSkip, error) {
 	var st CollectionMergeStats
 	if len(b.Collections) == 0 && len(b.Environments) == 0 {
-		return st, nil
+		return st, nil, nil
 	}
 	if err := s.ensureCollections(); err != nil {
-		return st, err
+		return st, nil, err
 	}
 	local, err := loadCollBundle(s.db)
 	if err != nil {
-		return st, err
+		return st, nil, err
 	}
-	// Incoming data is never trusted to be clean.
-	scrubBundle(&b)
+	if scrub {
+		// A peer or project bundle is never trusted to be clean.
+		scrubBundle(&b)
+	}
 
 	localCollByUID := map[string]*Collection{}
 	localCollByName := map[string]*Collection{}
@@ -178,7 +179,7 @@ func (s *Store) mergeCollBundle(b CollectionsBundle) (CollectionMergeStats, erro
 				upd.UID, upd.Rev = lc.UID, 0
 				upd.ScopePolicy, upd.Caps = lc.ScopePolicy, lc.Caps // policy/caps stay local
 				if _, err := s.UpdateCollection(upd); err != nil {
-					return st, err
+					return st, nil, err
 				}
 				st.CollectionsUpdated++
 			} else {
@@ -200,29 +201,34 @@ func (s *Store) mergeCollBundle(b CollectionsBundle) (CollectionMergeStats, erro
 			nc.Name = "Imported collection"
 		}
 		if _, err := s.CreateCollection(nc); err != nil {
-			return st, fmt.Errorf("merge collection %q: %w", pc.Name, err)
+			return st, nil, fmt.Errorf("merge collection %q: %w", pc.Name, err)
 		}
 		collMap[pc.UID] = nc.UID
 		st.CollectionsAdded++
 	}
 
-	if err := s.mergeCollItems(b, local, collMap, &st); err != nil {
-		return st, err
+	skips, err := s.mergeCollItems(b, local, collMap, &st)
+	if err != nil {
+		return st, skips, err
 	}
 	if err := s.mergeCollEnvs(b, local, collMap, &st); err != nil {
-		return st, err
+		return st, skips, err
 	}
-	return st, nil
+	return st, skips, nil
 }
 
-func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, collMap map[string]string, st *CollectionMergeStats) error {
+func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, collMap map[string]string, st *CollectionMergeStats) ([]MergeSkip, error) {
+	var skips []MergeSkip
 	localByUID := map[string]*Item{}
-	localPaths := itemPaths(local.Items)
-	localSig := map[string]string{} // signature -> uid
+	// signature -> local uids in rank order. Each local item can satisfy one
+	// incoming item, so identical requests inside one file are all kept on a
+	// fresh import and a re-import matches them one to one.
+	localSig := map[string][]string{}
 	for i := range local.Items {
 		it := &local.Items[i]
 		localByUID[it.UID] = it
-		localSig[itemSig(it.CollectionUID, localPaths[it.UID], it)] = it.UID
+		k := itemSig(it.CollectionUID, it.ParentUID, it)
+		localSig[k] = append(localSig[k], it.UID)
 	}
 	// Order peer items so parents come before children (stable by depth).
 	peerPaths := itemPaths(b.Items)
@@ -250,11 +256,11 @@ func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, col
 				upd := pi
 				upd.Rev, upd.ParentUID, upd.Rank = 0, parent, li.Rank
 				if _, err := s.UpdateItem(upd, CollChange{Actor: "merge", Source: "merge"}); err != nil {
-					return err
+					return skips, err
 				}
 				// Keep the peer's revision number so "higher rev wins" converges.
 				if _, err := s.db.Exec(`UPDATE ix_items SET rev=? WHERE uid=?`, pi.Rev, pi.UID); err != nil {
-					return err
+					return skips, err
 				}
 				st.ItemsUpdated++
 			} else {
@@ -264,10 +270,15 @@ func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, col
 		}
 		cand := pi
 		cand.CollectionUID, cand.ParentUID = lcoll, parent
-		path := localPathFor(local.Items, localPaths, parent, s)
-		if uid, ok := localSig[itemSig(lcoll, path, &cand)]; ok {
-			itemMap[pi.UID] = uid
+		sig := itemSig(lcoll, parent, &cand)
+		if q := localSig[sig]; len(q) > 0 {
+			itemMap[pi.UID] = q[0]
+			localSig[sig] = q[1:]
 			st.ItemsSkipped++
+			if pi.Kind != "folder" && len(skips) < maxMergeSkips {
+				skips = append(skips, MergeSkip{Item: pi.UID, Path: strings.Join(append(append([]string{}, peerPaths[pi.UID]...), pi.Name), "/"),
+					Method: pi.Method, Reason: "an identical request (same place, name, method, URL and body) already exists"})
+			}
 			continue
 		}
 		if _, taken := localByUID[pi.UID]; taken {
@@ -275,16 +286,15 @@ func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, col
 		}
 		ni, err := s.CreateItem(cand)
 		if err != nil {
-			return fmt.Errorf("merge item %q: %w", pi.Name, err)
+			return skips, fmt.Errorf("merge item %q: %w", pi.Name, err)
 		}
 		itemMap[pi.UID] = ni.UID
 		ni.ParentUID = parent
 		localByUID[ni.UID] = ni
-		localSig[itemSig(lcoll, path, ni)] = ni.UID
 		st.ItemsAdded++
 	}
 	// Variables owned by collections/items follow the uid maps; add-missing only.
-	return s.mergeOwnedVars(b.Variables, func(kind, uid string) (string, bool) {
+	return skips, s.mergeOwnedVars(b.Variables, func(kind, uid string) (string, bool) {
 		switch kind {
 		case VarOwnerCollection:
 			u, ok := collMap[uid]
@@ -295,26 +305,6 @@ func (s *Store) mergeCollItems(b CollectionsBundle, local CollectionsBundle, col
 		}
 		return "", false
 	}, st)
-}
-
-// localPathFor returns the ancestor name path of a local parent item uid
-// (including the parent itself), looking in loaded items and the live DB for
-// rows created earlier in this merge.
-func localPathFor(items []Item, paths map[string][]string, parent string, s *Store) []string {
-	if parent == "" {
-		return nil
-	}
-	var names []string
-	cur := parent
-	for depth := 0; cur != "" && depth < 64; depth++ {
-		var name, up string
-		if err := s.db.QueryRow(`SELECT name,parent_uid FROM ix_items WHERE uid=?`, cur).Scan(&name, &up); err != nil {
-			break
-		}
-		names = append([]string{name}, names...)
-		cur = up
-	}
-	return names
 }
 
 func (s *Store) mergeOwnedVars(vars []Variable, mapOwner func(kind, uid string) (string, bool), st *CollectionMergeStats) error {

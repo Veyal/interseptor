@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -90,7 +91,7 @@ func blankable(v any) bool {
 // whose "key"/"name" is a secret name (Postman key/value pairs). When
 // authCtx is true a pair keyed "value" is also blanked (apikey auth stores
 // the secret under the literal key "value"). {{template}} references stay.
-func scrubValue(v any, authCtx bool, n *int) any {
+func scrubValue(v any, authCtx bool, n *tally) any {
 	switch t := v.(type) {
 	case []any:
 		for i := range t {
@@ -98,20 +99,20 @@ func scrubValue(v any, authCtx bool, n *int) any {
 		}
 		return t
 	case map[string]any:
-		pairSecret := false
+		pairSecret, pairName := false, ""
 		for _, kk := range []string{"key", "name"} {
 			if s, ok := t[kk].(string); ok && (secretName(s) || (authCtx && kk == "key" && strings.EqualFold(s, "value"))) {
-				pairSecret = true
+				pairSecret, pairName = true, s
 			}
 		}
 		for k, val := range t {
 			switch {
 			case pairSecret && k == "value" && blankable(val):
 				t[k] = ""
-				*n++
+				n.hit(pairName)
 			case secretName(k) && blankable(val):
 				t[k] = ""
-				*n++
+				n.hit(k)
 			default:
 				t[k] = scrubValue(val, authCtx, n)
 			}
@@ -132,16 +133,31 @@ func scrubJSON(raw string, authCtx bool) (string, int) {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		return raw, 0
 	}
-	n := 0
-	v = scrubValue(v, authCtx, &n)
-	if n == 0 {
+	n := &tally{}
+	v = scrubValue(v, authCtx, n)
+	if n.n == 0 {
 		return raw, 0
 	}
 	out, err := json.Marshal(v)
 	if err != nil {
 		return raw, 0
 	}
-	return string(out), n
+	return string(out), n.n
+}
+
+// tally counts blanked credentials and, when collect is set, remembers the
+// name of each field (never its value) so importers can report them.
+type tally struct {
+	n       int
+	collect bool
+	names   []string
+}
+
+func (t *tally) hit(name string) {
+	t.n++
+	if t.collect {
+		t.names = append(t.names, name)
+	}
 }
 
 func scrubRaw(r *json.RawMessage, authCtx bool) int {
@@ -152,15 +168,35 @@ func scrubRaw(r *json.RawMessage, authCtx bool) int {
 	return n
 }
 
+// scrubRawNames is scrubRaw that also collects the credential field names.
+func scrubRawNames(r *json.RawMessage, authCtx bool, t *tally) {
+	var v any
+	if len(*r) == 0 || json.Unmarshal(*r, &v) != nil {
+		return
+	}
+	scrubValue(v, authCtx, t)
+}
+
 // scrubItemSecrets blanks literal credentials in an item's auth, headers,
 // params, URL (userinfo and secret-named query values) and body.
 // Returns the number of blanked values.
+// The sidecar holds the imported document verbatim so Postman export can be
+// byte-exact, and examples hold captured request/response pairs. Both therefore
+// carry a second copy of any credential the live columns hold. They must be
+// scrubbed with everything else: a user import now keeps credentials at rest,
+// so an unwalked copy would reach archive, vault, bundle, peer merge and the AI
+// read. A scrubbed export is meant to lose credentials, so losing byte-exactness
+// here is the intended trade — the lossless round-trip is an unscrubbed-path
+// guarantee.
 func scrubItemSecrets(it *Item) int {
 	return scrubRaw(&it.Auth, true) + scrubRaw(&it.Headers, false) + scrubRaw(&it.Params, false) +
-		scrubURLSecrets(&it.URL) + scrubBodySecrets(&it.Body)
+		scrubURLSecrets(&it.URL) + scrubBodySecrets(&it.Body) +
+		scrubRaw(&it.Sidecar, true) + scrubRaw(&it.Examples, true)
 }
 
-func scrubCollectionSecrets(c *Collection) int { return scrubRaw(&c.Auth, true) }
+func scrubCollectionSecrets(c *Collection) int {
+	return scrubRaw(&c.Auth, true) + scrubRaw(&c.Sidecar, true)
+}
 
 func scrubVariables(vs []Variable) int {
 	n := 0
@@ -393,7 +429,7 @@ func decodeQueryKey(k string) string {
 
 // scrubQueryString blanks the values of secret-named keys in a k=v&k=v string,
 // keeping {{template}} references and every other pair byte for byte.
-func scrubQueryString(q string, n *int) string {
+func scrubQueryString(q string, n *tally) string {
 	parts := strings.Split(q, "&")
 	for i, p := range parts {
 		eq := strings.IndexByte(p, '=')
@@ -402,7 +438,7 @@ func scrubQueryString(q string, n *int) string {
 		}
 		if secretName(decodeQueryKey(p[:eq])) && blankable(p[eq+1:]) {
 			parts[i] = p[:eq+1]
-			*n++
+			n.hit(decodeQueryKey(p[:eq]))
 		}
 	}
 	return strings.Join(parts, "&")
@@ -410,10 +446,10 @@ func scrubQueryString(q string, n *int) string {
 
 // scrubURLString blanks literal credentials in a URL string: the userinfo
 // password and the values of secret-named query keys. The fragment is kept.
-func scrubURLString(s string, n *int) string {
+func scrubURLString(s string, n *tally) string {
 	if m := urlUserinfoRe.FindStringSubmatch(s); m != nil && blankable(m[2]) {
 		s = m[1] + ":@" + s[len(m[0]):]
-		*n++
+		n.hit("userinfo password")
 	}
 	qi := strings.IndexByte(s, '?')
 	if qi < 0 {
@@ -429,7 +465,7 @@ func scrubURLString(s string, n *int) string {
 
 // scrubBodyText blanks literal credentials in raw body text: JSON string
 // members with a secret name, form-encoded pairs and simple XML elements.
-func scrubBodyText(s string, n *int) string {
+func scrubBodyText(s string, n *tally) string {
 	if strings.ContainsAny(s, "{[") {
 		s = jsonStrPairRe.ReplaceAllStringFunc(s, func(m string) string {
 			sm := jsonStrPairRe.FindStringSubmatch(m)
@@ -438,7 +474,7 @@ func scrubBodyText(s string, n *int) string {
 				return m
 			}
 			if secretName(key) && blankable(sm[2]) {
-				*n++
+				n.hit(key)
 				return sm[1] + `""`
 			}
 			return m
@@ -448,7 +484,7 @@ func scrubBodyText(s string, n *int) string {
 		s = xmlElemRe.ReplaceAllStringFunc(s, func(m string) string {
 			sm := xmlElemRe.FindStringSubmatch(m)
 			if sm[1] == sm[3] && secretName(sm[1]) && blankable(sm[2]) {
-				*n++
+				n.hit(sm[1])
 				return "<" + sm[1] + "></" + sm[3] + ">"
 			}
 			return m
@@ -461,7 +497,7 @@ func scrubBodyText(s string, n *int) string {
 
 // scrubStringLeaves applies fn to the string members named in keys (and to a
 // bare string root) anywhere inside decoded JSON.
-func scrubStringLeaves(v any, keys map[string]bool, fn func(string, *int) string, n *int) any {
+func scrubStringLeaves(v any, keys map[string]bool, fn func(string, *tally) string, n *tally) any {
 	switch t := v.(type) {
 	case string:
 		return fn(t, n)
@@ -481,24 +517,30 @@ func scrubStringLeaves(v any, keys map[string]bool, fn func(string, *int) string
 	return v
 }
 
-func scrubStringLeavesRaw(r *json.RawMessage, keys map[string]bool, fn func(string, *int) string) int {
+func scrubStringLeavesRaw(r *json.RawMessage, keys map[string]bool, fn func(string, *tally) string) int {
+	n := &tally{}
+	scrubStringLeavesRawT(r, keys, fn, n)
+	return n.n
+}
+
+// scrubStringLeavesRawT blanks (in r) and tallies credentials in the string
+// members named in keys; r is rewritten only when something was blanked.
+func scrubStringLeavesRawT(r *json.RawMessage, keys map[string]bool, fn func(string, *tally) string, n *tally) {
 	if len(*r) == 0 {
-		return 0
+		return
 	}
 	var v any
 	if err := json.Unmarshal(*r, &v); err != nil {
-		return 0
+		return
 	}
-	n := 0
-	v = scrubStringLeaves(v, keys, fn, &n)
-	if n == 0 {
-		return 0
+	before := n.n
+	v = scrubStringLeaves(v, keys, fn, n)
+	if n.n == before {
+		return
 	}
 	if out, err := json.Marshal(v); err == nil {
 		*r = json.RawMessage(out)
-		return n
 	}
-	return 0
 }
 
 var (
@@ -523,11 +565,42 @@ func scrubBodySecrets(r *json.RawMessage) int {
 // members of the body) without modifying its arguments. Importers use it to
 // raise the same embedded-credential warning headers and auth already get.
 func CountURLBodyCredentials(urlRaw, body json.RawMessage) int {
-	// A URL object carries the same query twice (raw and the parsed array), so
-	// count each representation alone and take the larger.
+	return len(URLCredentialFields(urlRaw)) + len(BodyCredentialFields(body))
+}
+
+func uniqueNames(names []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// URLCredentialFields names (never the values) the literal credentials in a
+// request URL: secret-named query keys and a userinfo password. The input is
+// not modified. A URL object carries its query twice (raw and the parsed
+// array); each representation is inspected and the names are merged.
+func URLCredentialFields(urlRaw json.RawMessage) []string {
 	u1 := append(json.RawMessage(nil), urlRaw...)
 	u2 := append(json.RawMessage(nil), urlRaw...)
-	un := max(scrubRaw(&u1, false), scrubStringLeavesRaw(&u2, urlLeafKeys, scrubURLString))
-	b := append(json.RawMessage(nil), body...)
-	return un + scrubBodySecrets(&b)
+	t := &tally{collect: true}
+	scrubRawNames(&u1, false, t)
+	scrubStringLeavesRawT(&u2, urlLeafKeys, scrubURLString, t)
+	return uniqueNames(t.names)
+}
+
+// BodyCredentialFields names the literal credentials in a request body (form
+// pairs and secret members of raw, text and graphql-variables text).
+func BodyCredentialFields(body json.RawMessage) []string {
+	b1 := append(json.RawMessage(nil), body...)
+	b2 := append(json.RawMessage(nil), body...)
+	t := &tally{collect: true}
+	scrubRawNames(&b1, false, t)
+	scrubStringLeavesRawT(&b2, bodyLeafKeys, scrubBodyText, t)
+	return uniqueNames(t.names)
 }

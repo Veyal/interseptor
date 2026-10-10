@@ -39,3 +39,35 @@ func RankBetween(a, b string) string {
 		}
 	}
 }
+
+// EvenRanks returns n strictly increasing, fixed-width ranks spread evenly over
+// the key space with headroom between neighbours. Bulk inserts (importers) use
+// it instead of appending one RankBetween(prev, "") per item, which grows the
+// key by about one character every few items (500 characters for 3000 items).
+// Later RankBetween calls between two neighbours still have room to work.
+func EvenRanks(n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	const base = len(rankAlphabet)
+	width, space := 1, base
+	for space < (n+1)*4 {
+		width++
+		space *= base
+	}
+	stride := space / (n + 1)
+	out := make([]string, n)
+	buf := make([]byte, width)
+	for i := range out {
+		v := (i + 1) * stride
+		if v%base == 0 { // a trailing minimum digit would make RankBetween ambiguous
+			v++
+		}
+		for j := width - 1; j >= 0; j-- {
+			buf[j] = rankAlphabet[v%base]
+			v /= base
+		}
+		out[i] = string(buf)
+	}
+	return out
+}
