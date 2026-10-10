@@ -319,10 +319,21 @@ func TestExternalImportReportedNotFetched(t *testing.T) {
 	}
 }
 
-// The package must never gain the ability to fetch or read from disk.
+// This package's own files must not reach the network or the disk: a WSDL
+// names schema locations and a SoapUI project names files, and resolving either
+// one would turn an import into an SSRF or a file read. The check is on this
+// package's direct imports only -- it deliberately proves nothing about the
+// transitive closure, which legitimately pulls in os and net through
+// internal/store. Any path under a forbidden root counts, so a future
+// net/http/httputil or os/user cannot slip past an exact-match list; net/url is
+// allowed because it parses without dialling.
 func TestNoNetworkOrDiskImports(t *testing.T) {
-	forbidden := map[string]bool{"net": true, "net/http": true, "os": true, "os/exec": true, "io/ioutil": true, "io/fs": true, "syscall": true}
+	forbiddenRoots := []string{"net", "os", "io/ioutil", "io/fs", "syscall"}
+	allowed := map[string]bool{"net/url": true}
 	files, _ := filepath.Glob("*.go")
+	if len(files) == 0 {
+		t.Fatal("no source files found; the glob is relative to the package directory")
+	}
 	fset := token.NewFileSet()
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
@@ -333,8 +344,14 @@ func TestNoNetworkOrDiskImports(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, imp := range af.Imports {
-			if p, _ := strconv.Unquote(imp.Path.Value); forbidden[p] {
-				t.Errorf("%s imports %s", f, p)
+			p, _ := strconv.Unquote(imp.Path.Value)
+			if allowed[p] {
+				continue
+			}
+			for _, root := range forbiddenRoots {
+				if p == root || strings.HasPrefix(p, root+"/") {
+					t.Errorf("%s imports %s", f, p)
+				}
 			}
 		}
 	}
