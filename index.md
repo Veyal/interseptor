@@ -40,8 +40,14 @@ sections:
             <span class="shot-chrome-label">Interseptor · History</span>
           </div>
           <div class="shot-media" style="--shot-ratio: 1440 / 900">
-            <img class="shot-img shot-img-light" src="{{ '/website/assets/img/history-inspector-light.png' | relative_url }}" width="1440" height="900" decoding="async" alt="The history list of captured requests, with one request and its response opened side by side in the inspector.">
-            <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/history-inspector-dark.png' | relative_url }}" width="1440" height="900" decoding="async" alt="" aria-hidden="true">
+            <picture>
+              <source type="image/webp" srcset="{{ '/website/assets/img/history-inspector-light.webp' | relative_url }}">
+              <img class="shot-img shot-img-light" src="{{ '/website/assets/img/history-inspector-light.png' | relative_url }}" width="1440" height="900" decoding="async" alt="The history list of captured requests, with one request and its response opened side by side in the inspector.">
+            </picture>
+            <picture>
+              <source type="image/webp" srcset="{{ '/website/assets/img/history-inspector-dark.webp' | relative_url }}">
+              <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/history-inspector-dark.png' | relative_url }}" width="1440" height="900" decoding="async" alt="" aria-hidden="true">
+            </picture>
           </div>
         </div>
       </figure>
@@ -125,8 +131,14 @@ sections:
           <div class="shot-frame">
             <div class="shot-chrome" aria-hidden="true"><span class="shot-dots"><i></i><i></i><i></i></span><span class="shot-chrome-label">Interseptor · Findings</span></div>
             <div class="shot-media" style="--shot-ratio: 1440 / 900">
-              <img class="shot-img shot-img-light" src="{{ '/website/assets/img/findings-document-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A finding open as a single document, with its attached evidence listed beneath the reproduction steps.">
-              <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/findings-document-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/findings-document-light.webp' | relative_url }}">
+                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/findings-document-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A finding open as a single document, with its attached evidence listed beneath the reproduction steps.">
+              </picture>
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/findings-document-dark.webp' | relative_url }}">
+                <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/findings-document-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              </picture>
             </div>
           </div>
         </figure>
@@ -146,8 +158,14 @@ sections:
           <div class="shot-frame">
             <div class="shot-chrome" aria-hidden="true"><span class="shot-dots"><i></i><i></i><i></i></span><span class="shot-chrome-label">Interseptor · Collections</span></div>
             <div class="shot-media" style="--shot-ratio: 1440 / 900">
-              <img class="shot-img shot-img-light" src="{{ '/website/assets/img/collections-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A collection tree beside an open request and its response, with the environment selector in the toolbar.">
-              <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/collections-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/collections-light.webp' | relative_url }}">
+                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/collections-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A collection tree beside an open request and its response, with the environment selector in the toolbar.">
+              </picture>
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/collections-dark.webp' | relative_url }}">
+                <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/collections-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              </picture>
             </div>
           </div>
         </figure>
@@ -167,8 +185,14 @@ sections:
           <div class="shot-frame">
             <div class="shot-chrome" aria-hidden="true"><span class="shot-dots"><i></i><i></i><i></i></span><span class="shot-chrome-label">Interseptor · Intruder</span></div>
             <div class="shot-media" style="--shot-ratio: 1440 / 900">
-              <img class="shot-img shot-img-light" src="{{ '/website/assets/img/intruder-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="An Intruder run in progress, listing per-request results with anomalies flagged.">
-              <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/intruder-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/intruder-light.webp' | relative_url }}">
+                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/intruder-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="An Intruder run in progress, listing per-request results with anomalies flagged.">
+              </picture>
+              <picture>
+                <source type="image/webp" srcset="{{ '/website/assets/img/intruder-dark.webp' | relative_url }}">
+                <img class="shot-img shot-img-dark" src="{{ '/website/assets/img/intruder-dark.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="" aria-hidden="true">
+              </picture>
             </div>
           </div>
         </figure>
