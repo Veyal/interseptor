@@ -102,8 +102,12 @@ Rules that differ from what you may expect:
   `hmac:KEY`, `upper`, `lower`, `trim`.
 - **Limits.** Expansion depth is 8, expansions per resolve 10,000, output 1 MiB. Cycles and
   overruns are reported problems, never hangs.
-- **Environments** can be bound to an identity label and carry a base-target pin so a mis-selected
-  environment cannot send to a different target.
+- **Environments** are managed from the **Environments** button in the Collections toolbar: create,
+  rename, duplicate or delete one, with the variable count and the active environment marked. When a
+  collection has none, a **New environment** button sits beside the picker. Duplicating copies
+  variable names and initial values only, never a secret or a locally held current value. They can
+  be bound to an identity label and carry a base-target pin so a mis-selected environment cannot
+  send to a different target.
 
 ## Requests and auth
 
@@ -255,6 +259,26 @@ request still runs, the script does not, and the result says how many scripts we
 view does not stop it. The view follows it live with a progress bar, per-request results with their
 tests and console, and Pause, Resume and Abort.
 
+Before anything is sent, the Run sheet shows the plan: its scope in the title (`Folder "Users"` or
+`Whole collection "Demo API"`), the number of live requests, a per-method breakdown with
+state-changing methods marked, and the target hosts. A run that contains a POST, PUT, PATCH or
+DELETE needs `RUN` typed to confirm, because those can change state on the target. The same review
+gates the identity matrix, which multiplies the request count by every identity it runs as.
+
+A request's verdict distinguishes what was asserted from what merely happened:
+
+| Verdict | Meaning |
+| --- | --- |
+| Passed | Assertions ran and all of them passed |
+| Sent 200 | Sent, nothing asserted, the response was below 400 |
+| 401 Unauthorized | Sent, nothing asserted, the response was 400 or above |
+| Failed | An assertion failed |
+| Error, Blocked, Skipped, Unsupported | As before |
+
+Only an assertion can produce a pass, so an imported collection with no tests reports what the
+target actually returned instead of a column of green rows. The run summary counts the groups apart,
+and 4xx/5xx rows appear under **Show problems only** and **Rerun failed**.
+
 - **Iterations and data.** Upload a CSV or JSON data file (max 10,000 rows, 32 MiB). Each row is one
   iteration and its columns are the `data` variable layer. The run records the data file's hash.
 - **Options:** stop on first failure or error, delay between requests, requests per second, rerun
@@ -268,6 +292,11 @@ tests and console, and Pause, Resume and Abort.
   passes.
 - **Scope policy.** Runner, MCP and script sends use the collection's policy, default `block`.
   Interactive single sends default to `warn`.
+- **Getting work back.** The editor status line always says whether what you see matches the stored
+  request, with **Revert** while it differs. Sending an edited request saves it, and the version it
+  replaced is offered as **Restore previous version**. Deleting a request or folder offers **Undo**
+  for 15 seconds. Both are in-session only and are lost on reload, and a restored item drops any
+  script that was not already trusted.
 
 REST and MCP reach the same runner. See [API and MCP]({{ "/api-and-mcp/" | relative_url }}#collections-api-and-mcp).
 
