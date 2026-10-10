@@ -451,6 +451,12 @@ main.landing > :first-child { margin-top: 0; }
 .btn-large { min-height: 52px; padding: 12px 24px; font-size: 15px; border-radius: 14px; box-shadow: 5px 5px 0 var(--edge); }
 .btn-large:hover { box-shadow: 7px 7px 0 var(--edge); }
 .hero-install { margin-top: 24px; max-width: 560px; }
+/* The install line is 58 characters, which overflows the hero column at the
+   shared 13.5px and wrapped "@latest" across lines. A slightly smaller face in
+   the hero only keeps it to one or two clean lines without shrinking the
+   command blocks elsewhere. */
+.hero-install .command-text { font-size: 12px; }
+.hero-install .copy-button { align-self: flex-start; }
 .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 16px 0 0; color: var(--muted-fg); font-size: 13.5px; font-weight: 700; }
 .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
 .hero-meta span::before { content: ''; width: 8px; height: 8px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-mint); flex-shrink: 0; }
