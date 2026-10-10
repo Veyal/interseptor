@@ -80,6 +80,20 @@ func TestUIRunnerModelNeverRendersUnsupportedAsPass(t *testing.T) {
 	}
 }
 
+func TestUIRunnerModelNeverRendersUnassertedAsPass(t *testing.T) {
+	model := readUIAsset(t, "js/runner-model.js")
+	for _, want := range []string{"unexpected: 'HTTP error'", "sent: 'Sent'", "returned 4xx/5xx"} {
+		if !strings.Contains(model, want) {
+			t.Errorf("runner-model.js lacks %s; a request without assertions must not read as passed", want)
+		}
+	}
+	css := readUIAsset(t, "css/collections.css")
+	requireUIContains(t, css, ".chip.run-sent", ".chip.run-unexpected")
+	if strings.Contains(readUIAsset(t, "js/runner.js"), "Every request passed") {
+		t.Error("runner.js must not claim every request passed; nothing may have been asserted")
+	}
+}
+
 func TestUIHistoryCollectionChip(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	requireUIContains(t, index, `id="histCollFilter"`, `aria-pressed="true"`, `#i-collection`)

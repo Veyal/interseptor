@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildRunBody, normalizeRows, rowState, summarize, failedItemUids, filterRows, summaryText, clampDelay,
+  buildRunBody, normalizeRows, rowState, summarize, failedItemUids, filterRows, summaryText, clampDelay, stateLabel, stateIcon,
   newLive, applyProgress, applyEvent, runControls, phaseLabel, isFinishedStatus, PERSIST_MODES,
 } from '../js/runner-model.js';
 
@@ -21,12 +21,69 @@ test('row state is derived from outcome and tests, with text for every state', (
   assert.equal(n[0].n, 1);
   assert.equal(n[1].testsText, '1/3');
   assert.equal(n[2].testsText, '-');
-  assert.equal(rowState({ outcome: 'sent', tests: {} }), 'pass');
+  assert.equal(rowState({ outcome: 'sent', tests: {} }), 'sent', 'no assertions is never a pass');
   assert.equal(rowState(null), 'error');
 });
 
 test('unsupported is never reported as a pass', () => {
   assert.notEqual(rowState({ outcome: 'sent', tests: { unsupported: 2, pass: 5 } }), 'pass');
+});
+
+test('a sent request with no assertions is sent or unexpected, never passed', () => {
+  assert.equal(rowState({ outcome: 'sent', status: 200, tests: {} }), 'sent');
+  assert.equal(rowState({ outcome: 'sent', status: 302, tests: [] }), 'sent');
+  assert.equal(rowState({ outcome: 'sent', tests: undefined }), 'sent');
+  assert.equal(rowState({ outcome: 'sent', status: 401, tests: {} }), 'unexpected');
+  assert.equal(rowState({ outcome: 'sent', status: 500, tests: {} }), 'unexpected');
+  assert.equal(rowState({ outcome: 'sent', status: 399, tests: {} }), 'sent');
+  assert.equal(rowState({ outcome: 'sent', status: 400, tests: {} }), 'unexpected');
+  const [a, b, c] = normalizeRows([
+    { outcome: 'sent', status: 200, tests: {} }, { outcome: 'sent', status: 401, tests: {} }, { outcome: 'sent', status: 418, tests: {} },
+  ]);
+  assert.equal(a.label, 'Sent 200');
+  assert.equal(b.label, '401 Unauthorized');
+  assert.equal(c.label, 'HTTP 418');
+});
+
+test('assertions are authoritative: all-pass on a 401 is a pass, any fail still wins', () => {
+  assert.equal(rowState({ outcome: 'sent', status: 401, tests: { pass: 1 } }), 'pass');
+  assert.equal(rowState({ outcome: 'sent', status: 200, tests: [{ status: 'pass' }] }), 'pass');
+  assert.equal(rowState({ outcome: 'sent', status: 200, tests: { pass: 3, fail: 1 } }), 'fail');
+  assert.equal(rowState({ outcome: 'sent', status: 500, tests: { fail: 1 } }), 'fail');
+  assert.equal(rowState({ outcome: 'sent', status: 200, tests: { unsupported: 1 } }), 'unsupported');
+});
+
+test('a 40-request run with no assertions reads honestly', () => {
+  const rs = [];
+  for (let i = 0; i < 40; i++) rs.push({ itemUid: 'u' + i, name: 'r' + i, outcome: 'sent', status: i < 12 ? 401 : 200, tests: {} });
+  const s = summarize(normalizeRows(rs));
+  assert.equal(s.pass, 0);
+  assert.equal(s.unexpected, 12);
+  assert.equal(s.sent, 28);
+  assert.equal(s.assertions, 0);
+  assert.equal(summaryText(s), '40 requests, 0 assertions, 12 returned 4xx/5xx');
+  assert.doesNotMatch(summaryText(s), /passed/);
+});
+
+test('mixed runs keep passed to asserted requests only', () => {
+  const s = summarize(normalizeRows([
+    { outcome: 'sent', status: 200, tests: { pass: 2 } },
+    { outcome: 'sent', status: 200, tests: {} },
+    { outcome: 'sent', status: 404, tests: {} },
+  ]));
+  assert.equal(summaryText(s), '3 requests, 1 passed, 0 failed, 1 returned 4xx/5xx, 1 sent without assertions, tests 2 passed, 0 failed');
+});
+
+test('unexpected is a problem: filtered in, and rerun with failed', () => {
+  const n = normalizeRows([
+    { itemUid: 'a', outcome: 'sent', status: 200, tests: {} },
+    { itemUid: 'b', outcome: 'sent', status: 401, tests: {} },
+  ]);
+  assert.deepEqual(filterRows(n, 'problems').map((r) => r.itemUid), ['b']);
+  assert.deepEqual(failedItemUids(n), ['b']);
+  for (const st of ['pass', 'sent', 'unexpected', 'fail', 'error', 'blocked', 'skipped', 'unsupported']) {
+    assert.ok(stateLabel(st).length > 2 && stateIcon(st), st);
+  }
 });
 
 test('summary counts rows and tests', () => {
@@ -82,7 +139,7 @@ test('item results carry a tests array and scripts instead of count maps', () =>
     item(3, 'nosupport', { tests: [{ name: 'a', status: 'unsupported' }] }),
     item(4, 'q', { scripts: [{ reason: 'quarantined: not trusted' }, { reason: 'ran' }] }),
   ]);
-  assert.deepEqual(n.map((r) => r.state), ['pass', 'fail', 'unsupported', 'pass']);
+  assert.deepEqual(n.map((r) => r.state), ['pass', 'fail', 'unsupported', 'sent']);
   assert.equal(n[1].testsText, '1/2');
   assert.equal(n[3].quarantined, 1);
   assert.equal(n[1].detail.tests[1].message, 'nope');

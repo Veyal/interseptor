@@ -146,7 +146,12 @@ export function mountRunner(host, opts = {}) {
       renderState(body, 'empty-first', { title: 'No run yet', hint: 'Choose options and press Run.' });
       return;
     }
-    if (!shown.length) { renderState(body, 'empty-filtered', { title: 'No problems', hint: 'Every request passed.', onClear: toggleFilter }); return; }
+    if (!shown.length) {
+      const sm = summarize(rows);
+      const hint = sm.assertions ? 'No failed, blocked or HTTP error requests.' : `No problems found, but nothing was asserted: ${sm.total} request${sm.total === 1 ? ' was' : 's were'} sent without assertions.`;
+      renderState(body, 'empty-filtered', { title: 'No problems', hint, onClear: toggleFilter });
+      return;
+    }
     const wrap = el('div', 'md-table-wrap');
     const tbl = el('table', 'rules-tbl');
     tbl.setAttribute('aria-label', 'Run results');
