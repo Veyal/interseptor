@@ -232,6 +232,7 @@ sections:
             <p class="terminal-line terminal-out">create_finding → #41, evidence: flow 1042 attached</p>
           </div>
         </div>
+        <p class="shot-caption">Illustration of the shape of a session. <code>collection_identity_matrix</code> and <code>create_finding</code> are real tools; the numbers are made up.</p>
       </article>
     </div>
     <p class="section-lede">The core is model-free: no provider keys, no built-in chat, no autonomous loop. You bring the agent; Interseptor supplies deterministic tools and keeps the receipts.</p>
