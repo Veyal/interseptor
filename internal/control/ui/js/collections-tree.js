@@ -2,11 +2,46 @@
 import { $, esc, api, toast, toastError, icon, openCtxMenu, uiPrompt, uiConfirm } from './core.js';
 import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
+import * as V from './varscope-model.js';
 import { S, X, announce, btn, el, itemByUid, jsend, setStatus } from './collections-core.js';
 import { focusEditorUrl, openItem } from './collections-editor.js';
 import { expandTo } from './collections-env.js';
 import { sendCurrent } from './collections-response.js';
 import { openImportSheet, runCollection } from './collections-sheets.js';
+
+// The host shared by most requests is not repeated on every row. Computed once
+// per render, memoised on the items array so a re-render without edits is free.
+let domHost = '';
+let domFor = null;
+let domVal = '';
+function dominantHostOf(items) {
+  if (domFor !== items) { domFor = items; domVal = M.dominantHost(items); }
+  return domVal;
+}
+
+// refreshScope() in collections-env.js replaces S.scope after the tree first
+// painted (environment switch, collection load). Rows that flag unresolved
+// variables must follow, so repaint once whenever the scope is replaced.
+let scopeVal = S.scope, repaintQueued = false;
+Object.defineProperty(S, 'scope', {
+  configurable: true, enumerable: true,
+  get() { return scopeVal; },
+  set(v) {
+    scopeVal = v;
+    if (repaintQueued) return;
+    repaintQueued = true;
+    queueMicrotask(() => { repaintQueued = false; if (S.collection) repaintKeepingFocus(); });
+  },
+});
+function repaintKeepingFocus() {
+  const host = $('#collTree');
+  if (!host) return;
+  const focus = host.contains(document.activeElement) ? document.activeElement.dataset.uid : '';
+  const top = host.scrollTop;
+  renderTree();
+  host.scrollTop = top;
+  if (focus) focusRow(focus);
+}
 
 export function renderTree() {
   const host = $('#collTree');
@@ -29,6 +64,7 @@ export function renderTree() {
   state.textContent = '';
   state.removeAttribute('data-state');
   S.treeRows = rows;
+  domHost = dominantHostOf(S.items);
   const frag = document.createDocumentFragment();
   rows.forEach((r, i) => frag.append(treeRow(r, i === 0)));
   host.append(frag);
@@ -43,6 +79,42 @@ export function highlightMatch(span, text) {
   span.append(document.createTextNode(text.slice(0, at)));
   const m = el('mark', 'coll-match', text.slice(at, at + q.length));
   span.append(m, document.createTextNode(text.slice(at + q.length)));
+}
+
+const NONE = Object.freeze([]);
+
+// fillPath writes path text into a span: plain text with the search highlight,
+// or, when it holds {{variables}}, tokens styled like the URL editor (.coll-vt).
+function fillPath(span, text) {
+  if (!text.includes('{{')) { highlightMatch(span, text); return; }
+  for (const t of V.annotate(text, S.scope)) {
+    if (t.kind === 'var') {
+      const v = el('span', 'coll-vt', t.text);
+      v.dataset.s = t.status;
+      span.append(v);
+    } else if (S.filter.trim()) {
+      const p = el('span');
+      highlightMatch(p, t.text);
+      span.append(p);
+    } else span.append(document.createTextNode(t.text));
+  }
+}
+
+// pathLine is the muted second line: optional host, then the path. The head of
+// the path ellipsizes, the tail never does, so /users/1 and /users/1/roles stay
+// distinguishable.
+function pathLine(line) {
+  const p = el('span', 'coll-path');
+  if (line.showHost) {
+    const h = el('span', 'coll-host');
+    fillPath(h, line.host);
+    p.append(h);
+  }
+  if (line.head) { const h = el('span', 'coll-head'); fillPath(h, line.head); p.append(h); }
+  const t = el('span', 'coll-tail');
+  fillPath(t, line.tail);
+  p.append(t);
+  return p;
 }
 
 export function treeRow(r, first) {
@@ -66,15 +138,36 @@ export function treeRow(r, first) {
     f.innerHTML = icon('folder');
     row.append(f);
   } else {
+    row.classList.add('coll-req');
     const m = el('span', 'coll-method', (it.method || 'GET').slice(0, 7));
     m.dataset.m = (it.method || 'GET').toUpperCase();
     row.append(m);
   }
   const name = el('span', 'coll-name');
   highlightMatch(name, it.name || (r.folder ? 'Untitled folder' : 'Untitled request'));
-  row.append(name);
-  if (r.folder) row.append(el('span', 'coll-count', String(r.count)));
   const quarantined = !r.folder && itemHasUntrustedScript(it);
+  if (r.folder) {
+    row.append(name, el('span', 'coll-count', String(r.count)));
+  } else {
+    const raw = M.itemUrlRaw(it);
+    const names = raw.includes('{{') ? V.unresolvedIn(raw, S.scope) : NONE;
+    const line = M.rowLine(it, domHost);
+    // An unresolved base such as {{baseUrl}} is shown even when it is the shared host.
+    if (names.length && line.host.includes('{{') && V.unresolvedIn(line.host, S.scope).length) line.showHost = true;
+    const body = el('span', 'coll-body');
+    const top = el('span', 'coll-top');
+    top.append(name);
+    if (names.length) {
+      const u = el('span', 'coll-unset', 'unset');
+      u.title = 'Unresolved: ' + names.map((n) => '{{' + n + '}}').join(', ');
+      top.append(u);
+      row.dataset.unresolved = '1';
+    }
+    body.append(top, pathLine(line));
+    row.append(body);
+    row.setAttribute('aria-label', M.rowLabel(it, line, names, quarantined));
+    if (raw) row.title = raw;
+  }
   if (quarantined) {
     const fl = el('span', 'coll-flag');
     fl.innerHTML = icon('lock', 'Scripts are quarantined');

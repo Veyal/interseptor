@@ -231,3 +231,63 @@ test('firstFlowId and command entries', () => {
   assert.deepEqual(cmds.map((c) => c.t), ['Collections: Import collection', 'Collections: Send open request']);
   assert.ok(cmds.every((c) => c.group === 'Actions'));
 });
+
+import * as RowM from '../js/collections-model.js';
+
+test('splitUrl separates host from path and drops query and hash', () => {
+  assert.deepEqual(RowM.splitUrl('https://api.example.com/v1/users/1?a=1#x'), { host: 'api.example.com', path: '/v1/users/1' });
+  assert.deepEqual(RowM.splitUrl('https://api.example.com'), { host: 'api.example.com', path: '/' });
+  assert.deepEqual(RowM.splitUrl('{{baseUrl}}/users/{{id}}'), { host: '{{baseUrl}}', path: '/users/{{id}}' });
+  assert.deepEqual(RowM.splitUrl('{{baseUrl}}'), { host: '{{baseUrl}}', path: '/' });
+  assert.deepEqual(RowM.splitUrl('{{scheme}}://{{host}}/x'), { host: '{{host}}', path: '/x' });
+  assert.deepEqual(RowM.splitUrl('https://u:p@example.com:8443/a'), { host: 'example.com:8443', path: '/a' });
+  assert.deepEqual(RowM.splitUrl('/relative/path?q=1'), { host: '', path: '/relative/path' });
+  assert.deepEqual(RowM.splitUrl(''), { host: '', path: '' });
+  assert.deepEqual(RowM.splitUrl(null), { host: '', path: '' });
+});
+
+test('dominantHost needs two requests and a majority', () => {
+  const r = (u, kind = 'request') => ({ kind, url: u });
+  assert.equal(RowM.dominantHost([r('https://a.example.com/1'), r('https://a.example.com/2'), r('https://b.example.com/3')]), 'a.example.com');
+  assert.equal(RowM.dominantHost([r('https://a.example.com/1')]), '');
+  assert.equal(RowM.dominantHost([r('https://a.example.com/1'), r('https://b.example.com/1')]), '');
+  assert.equal(RowM.dominantHost([r('{{baseUrl}}/1'), r('{{baseUrl}}/2'), r('/rel'), { kind: 'folder', url: '' }]), '{{baseUrl}}');
+  assert.equal(RowM.dominantHost([r({ raw: 'HTTPS://A.example.com/1' }), r('https://a.example.com/2')]), 'a.example.com');
+  assert.equal(RowM.dominantHost(null), '');
+});
+
+test('pathParts keeps the end of a long path and never cuts a variable', () => {
+  assert.deepEqual(RowM.pathParts('/users/1', 24), { head: '', tail: '/users/1' });
+  const p = RowM.pathParts('/api/v2/organisations/{{orgId}}/projects/42/roles', 24);
+  assert.equal(p.head + p.tail, '/api/v2/organisations/{{orgId}}/projects/42/roles');
+  assert.ok(p.tail.endsWith('/roles') && p.tail.startsWith('/'));
+  const v = RowM.pathParts('/aaaaaaaaaaaaaaaaaaaa/{{averyveryverylongvariable}}', 10);
+  assert.equal(v.head + v.tail, '/aaaaaaaaaaaaaaaaaaaa/{{averyveryverylongvariable}}');
+  assert.ok(!/\{\{[^}]*$/.test(v.head) && !/^[^{]*\}\}/.test(v.tail));
+  assert.notEqual(RowM.pathParts('/x/users/1', 4).tail, RowM.pathParts('/x/users/1/roles', 8).tail);
+});
+
+test('rowLine hides the dominant host, shows others and unresolved ones', () => {
+  const it = { method: 'GET', name: 'n', url: 'https://a.example.com/v1/x' };
+  assert.equal(RowM.rowLine(it, 'a.example.com').showHost, false);
+  assert.equal(RowM.rowLine(it, 'A.EXAMPLE.COM').showHost, false);
+  assert.equal(RowM.rowLine(it, 'b.example.com').showHost, true);
+  assert.equal(RowM.rowLine(it, '').showHost, true);
+  assert.equal(RowM.rowLine(it, 'a.example.com', true).showHost, true);
+  assert.equal(RowM.rowLine({ url: '/rel' }, 'a.example.com').showHost, false);
+});
+
+test('rowLabel names method, name, target and state in words', () => {
+  const it = { method: 'post', name: 'Create user', url: '{{baseUrl}}/users' };
+  const line = RowM.rowLine(it, '{{baseUrl}}');
+  assert.equal(RowM.rowLabel(it, line), 'POST Create user, /users');
+  const bad = RowM.rowLine(it, '{{baseUrl}}', true);
+  assert.equal(RowM.rowLabel(it, bad, ['baseUrl'], true), 'POST Create user, {{baseUrl}}/users, unresolved variable: baseUrl, scripts quarantined');
+  assert.match(RowM.rowLabel({ url: '' }, RowM.rowLine({ url: '' })), /^GET Untitled request$/);
+});
+
+test('filterTree finds a request by the URL text the row now displays', () => {
+  const tree = RowM.buildTree([{ uid: 'a', parentUid: '', kind: 'request', rank: 'a', name: 'Get user', url: { raw: 'https://x.example.com/users/1/roles' } }]);
+  assert.equal(RowM.filterTree(tree, '/users/1/roles').length, 1);
+  assert.equal(RowM.filterTree(tree, 'nothing').length, 0);
+});
