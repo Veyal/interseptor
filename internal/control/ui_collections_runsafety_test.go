@@ -82,3 +82,43 @@ func TestUIMatrixIsTheOnlyCollmatrixRunCaller(t *testing.T) {
 		}
 	}
 }
+
+// A bulk run is the one action in this app that cannot be undone: it sends live
+// requests, DELETEs included, at someone else's system. The runner view carries
+// its own Run button, so the run sheet's pre-run review is not enough on its
+// own -- the refusal has to sit at the POST. It must also be fail-closed: a
+// caller that mounts the view without a confirmation step gets a refusal, not a
+// silent send.
+func TestUIRunnerRefusesToSendWithoutConfirmation(t *testing.T) {
+	src := executableJS(readUIAsset(t, "js/runner.js"))
+
+	start := strings.Index(src, "async function run(")
+	if start < 0 {
+		t.Fatal("runner.js no longer defines run(); re-check where the gate belongs")
+	}
+	post := strings.Index(src[start:], "'/api/runner/runs'")
+	if post < 0 {
+		t.Fatal("run() no longer POSTs to /api/runner/runs")
+	}
+	gate := src[start : start+post]
+
+	if !strings.Contains(gate, "opts.confirmRun") {
+		t.Error("run() must consult opts.confirmRun before POSTing a run; without it the " +
+			"runner view's own Run button is an ungated bulk send")
+	}
+	if !strings.Contains(gate, `typeof opts.confirmRun !== 'function'`) {
+		t.Error("the confirmation must be fail-closed: a runner mounted without confirmRun has to " +
+			"refuse, not send")
+	}
+
+	// The sheet that mounts the runner has to supply it, or every run is refused.
+	sheets := executableJS(readUIAsset(t, "js/collections-sheets.js"))
+	if !strings.Contains(sheets, "confirmRun") {
+		t.Error("collections-sheets.js mounts the runner without a confirmRun callback, so the " +
+			"runner can never send")
+	}
+	// And it must gate on the shared model rather than its own string compare.
+	if !strings.Contains(sheets, "planConfirmed") {
+		t.Error("the run sheet must gate on planConfirmed from collections-run-plan.js")
+	}
+}

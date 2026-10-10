@@ -281,7 +281,17 @@ export function mountRunner(host, opts = {}) {
     // not enough on its own: the gate has to be here, at the POST that actually
     // sends. opts.confirmRun belongs to whoever mounted the view, because only
     // that caller knows which items are in scope.
-    if (opts.confirmRun && !(await opts.confirmRun())) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
+    //
+    // Absent confirmRun this refuses rather than sending. A bulk run against a
+    // live target is the wrong place for a permissive default: a future caller
+    // that forgets to pass it gets a visible refusal instead of silently
+    // firing every request in the collection.
+    if (typeof opts.confirmRun !== 'function') {
+      live.textContent = 'This runner was mounted without a confirmation step, so nothing was sent.';
+      toastError('Run', new Error('the runner needs a confirmRun callback before it can send'));
+      return null;
+    }
+    if (!(await opts.confirmRun())) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
     st.busy = true;
     st.live = newLive();
     st.sel = -1;
