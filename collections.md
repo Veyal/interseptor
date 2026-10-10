@@ -35,11 +35,21 @@ behind a `pm.*` compatibility layer.
    choose **Preview**. Nothing is stored or run by a preview. `format=auto` detects Postman,
    OpenAPI/Swagger, curl, Insomnia, Bruno, HAR and Burp XML.
 3. Read the import report. Every construct is labelled `converted`, `degraded`, `preserved-inert`,
-   `unsupported`, `blocked` or `needs-review`, with the path of the item it came from. The report
-   never contains credential values.
+   `unsupported`, `blocked` or `needs-review`, with the path of the item it came from. Every literal
+   credential in the file (auth, headers, URL query, body) gets its own `embedded-credential` entry
+   naming the field, with a suggestion to lift it to a variable. The report never contains credential
+   values. `scriptsQuarantined` is true only when the file actually carried scripts.
 4. Choose **Commit**. Folders, requests, examples, auth, variables, events and unknown keys are
-   stored losslessly. Secret-typed variables arrive with a blank initial value; if the file carried
-   a value it is kept only as a local current value on this machine.
+   stored losslessly. **Credentials you import are kept**: a token, password or API key written
+   literally in the file stays in the stored request so it still authenticates when sent (export is
+   where credentials are scrubbed, see [Secrets and archives](#secrets-and-archives)). Secret-typed
+   variables arrive with a blank initial value; if the file carried a value it is kept only as a local
+   current value on this machine. Importing the same file again never duplicates requests: requests
+   already present (same place, name, method, URL and body) are skipped, and each skip is listed in
+   the report. Two same-named sibling folders, or two requests in one folder that differ only in body,
+   stay separate. A UTF-8 byte order mark is ignored. A Postman data dump (several collections in one
+   file) and Postman collection v1 are refused with a message telling you to export each collection as
+   v2.1.
 5. Import the environment files the same way. Each becomes an environment, and secret values stay
    local. Globals become the globals environment.
 6. Set the scope. Open **Scope** and include the hosts the collection targets. Runs, scripts and
@@ -327,9 +337,31 @@ and quarantine every script. Insomnia and Bruno scripts that use their own APIs 
 are marked `unsupported`: there is no shim for them in this release.
 
 Moving a collection between machines works through the project bundle and the full project archive,
-which carry collections in scrubbed form (see [Secrets and archives](#secrets-and-archives)). There
-is not yet a standalone collection export button; the exporter packages exist but are not reachable
-from the UI or REST in this release.
+which carry collections in scrubbed form (see [Secrets and archives](#secrets-and-archives)). A
+single collection also exports on its own, see [Export](#export).
+
+## Export
+
+The **Export** button next to Import opens a sheet with three downloads for the selected collection:
+
+- **Postman v2.1.** Lossless for collections that came from Postman: key order, unknown keys and
+  script text are kept, so importing the file again and exporting it returns the same bytes (apart
+  from blanked secrets).
+- **curl script.** One `curl` command per request, in tree order. A credential that was removed is
+  written as `REDACTED`; `{{variable}}` references are kept for you to substitute.
+- **Interseptor JSON** (`.ixcol.json`). The native format with environments and variable
+  declarations.
+
+REST: `GET /api/collections/{uid}/export?format=postman|curl|native` returns the file with a
+`Content-Disposition` filename. An unknown format is a 400 that lists the supported ones; an unknown
+collection is a 404.
+
+**Every export is scrubbed, for every caller.** Tokens, passwords, API keys, secret variable values
+and credential-named variables are blanked, script trust and capabilities are not exported, and local
+current values, cookies and OAuth tokens never leave. There is no option to include secrets: a
+request carrying `secrets`, `includeSecrets`, `reveal`, `scrub` or `raw` is refused with a 400
+instead of being ignored. Review the file before you share it; a secret pasted into a request name or
+a free-text body field cannot be recognised.
 
 ## Security model for imported scripts
 
@@ -368,6 +400,11 @@ function removes them from everything that leaves the machine, unless you explic
   The same scrub blanks literal credentials in a request's URL (userinfo password and secret-named
   query values) and body (secret-named JSON members, form pairs and XML elements); `{{references}}`
   and every other value stay. Importers flag these as embedded credentials.
+- **Import keeps your credentials; export scrubs them.** A file you deliberately import keeps its
+  literal credentials at rest (the same place real secret values already live), because blanking them
+  on the way in silently turned every authenticated request into a 401. Nothing leaves the project
+  unscrubbed: archives, vault, project bundle and every export still blank them. Bundles and peer
+  projects restored or merged from elsewhere are untrusted and are still scrubbed on the way in.
 - **Restore and vault pull** clear script trust, reset collection capabilities to default-deny and
   downgrade scope policy `off` to `block` before the project is installed, so a crafted archive can
   never arrive with scripts already trusted. Re-approve scripts in the UI after a restore.
@@ -404,5 +441,5 @@ findings evidence as sensitive, as described in [Projects and data]({{ "/project
 | `setNextRequest` | Unbounded | Honoured with a hard loop guard |
 
 Not in this release: gRPC and MQTT requests, a mock server, monitors, Postman Collection v3,
-`pm.visualizer` (a no-op stub), Postman cloud workspaces, and a standalone collection export.
+`pm.visualizer` (a no-op stub) and Postman cloud workspaces.
 

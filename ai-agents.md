@@ -1064,7 +1064,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (283)
+### REST routes (284)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1116,6 +1116,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | DELETE | `/api/collections/{uid}` | Delete a collection with its items, bound environments, trust and tokens (runs are kept) |
 | GET | `/api/collections/{uid}` | Collection with its flat item list: {collection, items}. |
 | PUT | `/api/collections/{uid}` | Update a collection (optimistic: pass rev). |
+| GET | `/api/collections/{uid}/export` | Download one collection. |
 | POST | `/api/collections/{uid}/items` | Create a folder or request item. |
 | GET | `/api/collections/{uid}/runs` | Recent runs of a collection (newest first, max 50) |
 | GET | `/api/collections/{uid}/scripts` | Script review sheet: every distinct script with hash, trust state, analysis (APIs, modules, hosts, flags)... |
