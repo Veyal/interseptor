@@ -65,6 +65,76 @@ export function itemUrlRaw(item) {
   return (u && u.raw) || '';
 }
 
+// splitUrl breaks a request URL into the host (or a leading {{variable}} base)
+// and the path, without query or hash. The path is what tells two requests on
+// the same host apart. A relative URL has no host.
+const URL_HEAD = /^(?:[a-z][a-z0-9+.-]*|\{\{[^{}]*\}\}):\/\/([^/?#]*)|^(\{\{[^{}]*\}\})(?=[/?#]|$)/i;
+export function splitUrl(raw) {
+  const src = String(raw || '').trim();
+  const m = URL_HEAD.exec(src);
+  let host = '';
+  let rest = src;
+  if (m) { host = (m[1] != null ? m[1] : m[2]).replace(/^[^@/]*@/, ''); rest = src.slice(m[0].length); }
+  const cut = rest.search(/[?#]/);
+  let path = cut < 0 ? rest : rest.slice(0, cut);
+  if (host && !path) path = '/';
+  return { host, path };
+}
+
+// hostKey compares hosts case-insensitively but leaves {{Variable}} names alone.
+const hostKey = (h) => (String(h || '').includes('{{') ? String(h) : String(h || '').toLowerCase());
+
+// dominantHost returns the host most requests in a collection share, or ''.
+// It must cover more than half of the requests that have a host and at least
+// two requests, so a lone request never loses its host.
+export function dominantHost(items) {
+  const counts = new Map();
+  let total = 0;
+  for (const it of items || []) {
+    if (!it || it.kind === 'folder') continue;
+    const h = hostKey(splitUrl(itemUrlRaw(it)).host);
+    if (!h) continue;
+    total++;
+    counts.set(h, (counts.get(h) || 0) + 1);
+  }
+  let best = '', n = 0;
+  for (const [h, c] of counts) if (c > n) { best = h; n = c; }
+  return n >= 2 && n * 2 > total ? best : '';
+}
+
+// pathParts splits a path so the end stays visible when the middle is cut:
+// head may ellipsize, tail never does. The tail starts at a path separator when
+// one falls in the window, and never cuts inside a {{variable}}.
+export function pathParts(path, tailLen = 24) {
+  const p = String(path || '');
+  if (p.length <= tailLen) return { head: '', tail: p };
+  let cut = p.length - tailLen;
+  const slash = p.indexOf('/', cut);
+  if (slash >= 0 && slash < p.length - 1) cut = slash;
+  const open = p.lastIndexOf('{{', cut - 1);
+  if (open >= 0 && p.indexOf('}}', open) >= cut) cut = open;
+  return { head: p.slice(0, cut), tail: p.slice(cut) };
+}
+
+// rowLine is everything a request row shows under its name. The host is shown
+// only when it differs from the collection's dominant host, or when the caller
+// says it holds an unresolved variable.
+export function rowLine(item, dominant = '', hostUnresolved = false) {
+  const { host, path } = splitUrl(itemUrlRaw(item));
+  const showHost = !!host && (hostUnresolved || hostKey(host) !== hostKey(dominant));
+  return { host, showHost, path, ...pathParts(path) };
+}
+
+// rowLabel is the accessible name of a request row: method, name and target.
+export function rowLabel(item, line, unresolved = [], quarantined = false) {
+  const head = (item.method || 'GET').toUpperCase() + ' ' + (item.name || 'Untitled request');
+  const where = (line.showHost ? line.host : '') + line.path;
+  let out = head + (where ? ', ' + where : '');
+  if (unresolved.length) out += ', unresolved variable' + (unresolved.length === 1 ? '' : 's') + ': ' + unresolved.join(', ');
+  if (quarantined) out += ', scripts quarantined';
+  return out;
+}
+
 // matchesQuery: case-insensitive match against name, method and URL.
 export function matchesQuery(item, q) {
   const s = String(q || '').trim().toLowerCase();

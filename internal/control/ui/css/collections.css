@@ -75,6 +75,22 @@
 .coll-row.is-dragging{opacity:.5}
 .coll-row .coll-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .coll-row .coll-count{color:var(--fg3);font-size:var(--fs-xs)}
+/* request rows: name over a muted path line, the same two-line density as the Findings list */
+.coll-row.coll-req{min-height:46px;padding-top:var(--sp-1);padding-bottom:var(--sp-1);gap:var(--sp-2)}
+.coll-req .coll-method{min-width:52px;align-self:flex-start;margin-top:2px}
+.coll-body{flex:1;min-width:0;display:flex;flex-direction:column}
+.coll-top{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+.coll-req .coll-name{flex:1 1 auto;line-height:1.35;color:var(--fg)}
+.coll-path{display:flex;align-items:baseline;min-width:0;min-height:1.4em;overflow:hidden;white-space:nowrap;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.4;color:var(--fg3)}
+.coll-path>span{flex:none}
+.coll-path .coll-head{flex:0 100 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.coll-path .coll-tail{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.coll-path .coll-host{flex:0 1 auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;opacity:.8;margin-right:.5ch}
+.coll-path .coll-host::after{content:"\00a0"}
+.coll-path .coll-vt{padding:0 2px}
+.coll-unset{flex:none;padding:0 var(--sp-1);border:1px dashed var(--red);border-radius:var(--r-sm);color:var(--red);font-size:var(--fs-xs);line-height:1.4}
+.coll-row[data-unresolved]{border-left-style:dashed}
+.coll-row[data-unresolved][aria-selected="false"]{border-left-color:var(--red)}
 .coll-caret{width:14px;flex:none;display:inline-flex;justify-content:center;color:var(--fg3)}
 .coll-caret .icon{transform:rotate(-90deg);transition:transform var(--motion-fast) var(--motion-standard)}
 .coll-row[aria-expanded="true"] .coll-caret .icon{transform:rotate(0deg)}
