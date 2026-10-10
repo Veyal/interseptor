@@ -455,8 +455,10 @@ main.landing > :first-child { margin-top: 0; }
    shared 13.5px and wrapped "@latest" across lines. A slightly smaller face in
    the hero only keeps it to one or two clean lines without shrinking the
    command blocks elsewhere. */
-.hero-install .command-text { font-size: 12px; }
-.hero-install .copy-button { align-self: flex-start; }
+/* Needs .landing to outrank `.landing .command-text`, which sets size via the
+   `font` shorthand and is declared later in this file. */
+.landing .hero-install .command-text { font-size: 12px; }
+.landing .hero-install .copy-button { align-self: flex-start; }
 .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 16px 0 0; color: var(--muted-fg); font-size: 13.5px; font-weight: 700; }
 .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
 .hero-meta span::before { content: ''; width: 8px; height: 8px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-mint); flex-shrink: 0; }
