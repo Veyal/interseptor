@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Product screenshots for the docs site.** `website/assets/img/` now carries real UI screenshots rendered over CDP from synthetic demo data on a throwaway data-dir: ten desktop views (History + inspector, Intercept, Repeater, Intruder, Collections, Scanner, Findings document, Report preflight, Map, Settings/Scope) in light and dark at 1440x900, three phone views (History, Findings, Scanner) at 390x844, and a 1200x630 `social-card.png` for `og:image`. Every image has a WebP sibling and an entry in `manifest.json` (file/view/theme/width/height/bytes/alt/caption). All data is generic: only `*.example.com` hosts, obviously fake `demo-token-...` credentials, and plainly generic demo findings — no real engagement data.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.0` release.
