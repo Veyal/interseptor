@@ -209,6 +209,21 @@ test('runSummary buckets rows without double counting', () => {
   assert.deepEqual(s.tests, { pass: 2, fail: 1, total: 3 });
 });
 
+// Matches rowState in runner-model.js: sending a request proves nothing, so a
+// row nobody asserted anything about is never a pass.
+test('runSummary never counts an unasserted request as passed', () => {
+  const s = runSummary([
+    { status: 'sent', resultJson: JSON.stringify({ outcome: 'sent', response: { status: 200 } }) },
+    { status: 'sent', resultJson: JSON.stringify({ outcome: 'sent', response: { status: 401 } }) },
+    { status: 'sent', resultJson: JSON.stringify({ outcome: 'sent', response: { status: 500 } }) },
+  ]);
+  assert.equal(s.requests, 3);
+  assert.equal(s.passed, 0, 'no assertions means no passes');
+  assert.equal(s.sent, 1, 'the 200 was merely sent');
+  assert.equal(s.unexpected, 2, 'the 401 and the 500 are unexpected, not passes');
+  assert.equal(s.failed, 0, 'nothing asserted, so nothing failed');
+});
+
 test('import report groups by level in severity order', () => {
   const g = groupReport({ entries: [{ level: 'converted', feature: 'a' }, { level: 'unsupported', feature: 'b' }, { level: 'weird', feature: 'c' }] });
   assert.deepEqual(g.map((x) => x.level), ['unsupported', 'needs-review', 'converted']);

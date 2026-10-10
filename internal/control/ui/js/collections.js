@@ -14,7 +14,7 @@ import { openItem, renderEditor, renderEmptyEditor, scheduleResolve } from './co
 import { expandTo, refreshScope, renderEnvSelect, renderScriptsChip, selectedFolder, setPhone, updateBadge } from './collections-env.js';
 import { sendCurrent, setConsole } from './collections-response.js';
 import { openEnvSheet, openExportSheet, openImportSheet, openScriptsSheet, runCollection } from './collections-sheets.js';
-import { addItem, nudge, renderTree } from './collections-tree.js';
+import { addItem, nudge, renderTree, repaintForScope } from './collections-tree.js';
 
 /* ------------------------------------------------------------------ loading */
 
@@ -180,6 +180,7 @@ function boot() {
   if (!$('#panel-collections')) return;
   X.loadAll = loadAll;
   X.loadCollection = loadCollection;
+  X.repaintTree = repaintForScope;
   wire();
   if (panelActive()) onShow();
 }

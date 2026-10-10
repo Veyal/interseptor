@@ -277,6 +277,11 @@ export function mountRunner(host, opts = {}) {
         persist: persist.value, bail: bail.value, delayMs: delay.value, noScripts: noScripts.checked, ...extra,
       });
     } catch (e) { toastError('Run', e); return null; }
+    // The runner view has its own Run button, so the caller's pre-run review is
+    // not enough on its own: the gate has to be here, at the POST that actually
+    // sends. opts.confirmRun belongs to whoever mounted the view, because only
+    // that caller knows which items are in scope.
+    if (opts.confirmRun && !(await opts.confirmRun())) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
     st.busy = true;
     st.live = newLive();
     st.sel = -1;

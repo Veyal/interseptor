@@ -4,7 +4,7 @@ import { openSheet } from './sheet.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
 import * as EM from './collections-env-model.js';
-import { S, btn, el, itemByUid, jget, jsend, lsGet, lsSet } from './collections-core.js';
+import { S, X, btn, el, itemByUid, jget, jsend, lsGet, lsSet } from './collections-core.js';
 
 export function expandTo(uid) {
   let it = itemByUid(uid);
@@ -154,6 +154,8 @@ export async function refreshScope() {
   }
   S.scope = V.buildScope(layers);
   paintEnvDot();
+  // Tree rows flag unresolved {{variables}} against S.scope, so they follow it.
+  X.repaintTree?.();
 }
 
 export function paintEnvDot(unresolved = null) {

@@ -4,7 +4,7 @@ import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
 import { S, X, announce, btn, el, itemByUid, jsend, setStatus } from './collections-core.js';
-import { focusEditorUrl, openItem } from './collections-editor.js';
+import { deleteItemUndoable, focusEditorUrl, openItem } from './collections-editor.js';
 import { expandTo } from './collections-env.js';
 import { sendCurrent } from './collections-response.js';
 import { openImportSheet, runCollection } from './collections-sheets.js';
@@ -21,18 +21,10 @@ function dominantHostOf(items) {
 
 // refreshScope() in collections-env.js replaces S.scope after the tree first
 // painted (environment switch, collection load). Rows that flag unresolved
-// variables must follow, so repaint once whenever the scope is replaced.
-let scopeVal = S.scope, repaintQueued = false;
-Object.defineProperty(S, 'scope', {
-  configurable: true, enumerable: true,
-  get() { return scopeVal; },
-  set(v) {
-    scopeVal = v;
-    if (repaintQueued) return;
-    repaintQueued = true;
-    queueMicrotask(() => { repaintQueued = false; if (S.collection) repaintKeepingFocus(); });
-  },
-});
+// variables must follow, so refreshScope calls this once it has the new scope.
+export function repaintForScope() {
+  if (S.collection) repaintKeepingFocus();
+}
 function repaintKeepingFocus() {
   const host = $('#collTree');
   if (!host) return;
@@ -307,10 +299,11 @@ export async function duplicateItem(it) {
 export async function deleteItem(it) {
   const kids = it.kind === 'folder' ? M.descendantUids(S.items, it.uid).size : 0;
   const ok = await uiConfirm('Delete ' + (it.kind === 'folder' ? 'folder' : 'request'),
-    '<b>' + esc(it.name || 'Untitled') + '</b>' + (kids ? ' and its ' + kids + ' item' + (kids === 1 ? '' : 's') : '') + ' will be removed. Captured flows stay in History.', 'Delete', 'btn danger');
+    '<b>' + esc(it.name || 'Untitled') + '</b>' + (kids ? ' and its ' + kids + ' item' + (kids === 1 ? '' : 's') : '')
+      + ' will be removed. Captured flows stay in History. You can Undo for 15 seconds; after that it cannot be recovered.', 'Delete', 'btn danger');
   if (!ok) return;
   await mutate('Could not delete', async () => {
-    await jsend('DELETE', '/api/items/' + encodeURIComponent(it.uid));
+    await deleteItemUndoable(it);
     if (S.selUid === it.uid || (S.ed && kids && M.descendantUids(S.items, it.uid).has(S.ed.uid))) { S.selUid = ''; S.ed = null; }
     await X.loadCollection(S.colUid, { keepSelection: false });
   });

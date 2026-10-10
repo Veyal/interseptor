@@ -391,8 +391,28 @@ export async function runCollection(folderUid = '') {
   const title = plan.scopeLabel;
   const mount = getHook('collectionRunner');
   if (mount) {
-    // The runner view has its own options and an explicit Run button; the sheet title still states what it covers.
-    openSheet({ id: 'collRunSheet', title, detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); w.append(el('p', 'coll-note', planSummary(plan))); mount(w, { collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '' }); return body; } });
+    // The runner view carries its own options and its own Run button, so the
+    // sheet reviews the plan first and the view mounts only once it is
+    // confirmed. The view's Run button re-confirms through confirmRun, because
+    // a mounted runner can be fired again and again.
+    openSheet({ id: 'collRunSheet', title, detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => {
+      body.textContent = '';
+      const w = el('div', 'coll-sheet');
+      body.append(w);
+      paintRunPlan(w, plan, () => {
+        w.textContent = '';
+        let reviewed = true; // the review above covers the first run
+        mount(w, {
+          collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '',
+          confirmRun: async () => {
+            if (reviewed) { reviewed = false; return true; }
+            return uiConfirm('Run again', esc(planSummary(plan)),
+              'Send ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'), 'btn accent');
+          },
+        });
+      });
+      return body;
+    } });
     return;
   }
   openSheet({ id: 'collRunSheet', title, detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => {

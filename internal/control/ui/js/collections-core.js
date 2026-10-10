@@ -52,5 +52,7 @@ export function announce(text) {
 
 /* ------------------------------------------------------------------ editor */
 
-// X holds the loaders owned by collections.js (set at boot).
-export const X = { loadAll: null, loadCollection: null };
+// X holds the loaders owned by collections.js (set at boot). repaintTree lets a
+// module repaint the tree without importing it, which would close a cycle
+// (collections-tree.js already imports from collections-env.js).
+export const X = { loadAll: null, loadCollection: null, repaintTree: null };

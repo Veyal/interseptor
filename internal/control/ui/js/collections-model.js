@@ -526,17 +526,23 @@ export function firstFlowId(res) {
 export function parseResultJSON(row) {
   try { return JSON.parse(row.resultJson || '{}'); } catch (e) { return {}; }
 }
+// runSummary buckets stored run rows. Sending a request proves nothing, so a
+// row nobody asserted anything about is never a pass: it is `sent` when the
+// response was below 400 and `unexpected` otherwise. This matches rowState in
+// runner-model.js, which the live runner view uses.
 export function runSummary(rows) {
-  const s = { requests: 0, passed: 0, failed: 0, blocked: 0, errors: 0, skipped: 0, tests: { pass: 0, fail: 0, total: 0 } };
+  const s = { requests: 0, passed: 0, failed: 0, blocked: 0, errors: 0, skipped: 0, sent: 0, unexpected: 0, tests: { pass: 0, fail: 0, total: 0 } };
   for (const row of rows || []) {
     s.requests++;
     const r = parseResultJSON(row);
+    const tc = testCounts(r.tests);
     if (r.outcome === 'blocked' || row.status === 'blocked') s.blocked++;
     else if (r.outcome === 'error' || row.status === 'error') s.errors++;
     else if (r.outcome === 'skipped' || row.status === 'skipped') s.skipped++;
-    else if (testCounts(r.tests).fail + testCounts(r.tests).error > 0 || row.status === 'failed') s.failed++;
-    else s.passed++;
-    const tc = testCounts(r.tests);
+    else if (tc.fail + tc.error > 0 || row.status === 'failed') s.failed++;
+    else if (tc.total > 0) s.passed++;
+    else if (Number((r.response || {}).status) >= 400) s.unexpected++;
+    else s.sent++;
     s.tests.pass += tc.pass; s.tests.fail += tc.fail + tc.error; s.tests.total += tc.total;
   }
   return s;
