@@ -256,7 +256,10 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 		for _, c := range cols {
 			if n := scrubCollectionSecrets(&c); n > 0 {
 				rep.SecretsBlanked += n
-				if _, err := db.Exec(`UPDATE ix_collections SET auth_json=? WHERE uid=?`, string(c.Auth), c.UID); err != nil {
+				// sidecar_json travels too: it holds the imported document verbatim,
+				// so it carries a second copy of every credential auth_json holds.
+				if _, err := db.Exec(`UPDATE ix_collections SET auth_json=?,sidecar_json=? WHERE uid=?`,
+					string(c.Auth), string(c.Sidecar), c.UID); err != nil {
 					return rep, err
 				}
 			}
@@ -280,8 +283,13 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 		for _, it := range items {
 			if n := scrubItemSecrets(&it); n > 0 {
 				rep.SecretsBlanked += n
-				if _, err := db.Exec(`UPDATE ix_items SET auth_json=?,headers_json=?,params_json=?,url_json=?,body_json=? WHERE uid=?`,
-					string(it.Auth), string(it.Headers), string(it.Params), string(it.URL), string(it.Body), it.UID); err != nil {
+				// Every column scrubItemSecrets walks must be written back, or the
+				// scrub is counted in the report and then thrown away. sidecar_json
+				// holds the imported document verbatim and examples_json holds
+				// captured request/response pairs, so both carry credentials.
+				if _, err := db.Exec(`UPDATE ix_items SET auth_json=?,headers_json=?,params_json=?,url_json=?,body_json=?,sidecar_json=?,examples_json=? WHERE uid=?`,
+					string(it.Auth), string(it.Headers), string(it.Params), string(it.URL), string(it.Body),
+					string(it.Sidecar), string(it.Examples), it.UID); err != nil {
 					return rep, err
 				}
 			}
