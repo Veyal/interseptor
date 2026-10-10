@@ -267,3 +267,7 @@
 
 /* History COLL tag: same shape as the AI tag, neutral colour so it reads as a source label */
 .coll-tag{background:var(--bg3);color:var(--fg);border:1px solid var(--line2)}
+
+/* lane: honest run results */
+.chip.run-sent{color:var(--fg2);border-color:var(--line2)}
+.chip.run-unexpected{color:var(--warnFg);border-color:var(--warnLine)}

@@ -7,10 +7,22 @@ export const PERSIST_MODES = ['ask', 'discard', 'keep'];
 export const MAX_DELAY_MS = 60000;
 
 const LABELS = {
-  pass: 'Passed', fail: 'Failed', error: 'Error', blocked: 'Blocked', skipped: 'Skipped', unsupported: 'Unsupported',
+  pass: 'Passed', sent: 'Sent', unexpected: 'HTTP error', fail: 'Failed', error: 'Error', blocked: 'Blocked', skipped: 'Skipped', unsupported: 'Unsupported',
 };
-const ICONS = { pass: 'check', fail: 'alert', error: 'alert-circle', blocked: 'stop', skipped: 'info', unsupported: 'alert' };
-export const stateLabel = (s) => LABELS[s] || 'Error';
+const ICONS = { pass: 'check', sent: 'info', unexpected: 'alert', fail: 'alert', error: 'alert-circle', blocked: 'stop', skipped: 'info', unsupported: 'alert' };
+const REASONS = {
+  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 405: 'Method Not Allowed', 408: 'Request Timeout',
+  409: 'Conflict', 415: 'Unsupported Media Type', 422: 'Unprocessable Entity', 429: 'Too Many Requests',
+  500: 'Internal Server Error', 501: 'Not Implemented', 502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
+};
+// stateLabel names a state in words. sent/unexpected carry the response status
+// so the row says what came back ("Sent 200", "401 Unauthorized").
+export function stateLabel(s, status) {
+  const code = Number(status) || 0;
+  if (s === 'sent') return code ? `Sent ${code}` : 'Sent';
+  if (s === 'unexpected') return code ? (REASONS[code] ? `${code} ${REASONS[code]}` : `HTTP ${code}`) : LABELS.unexpected;
+  return LABELS[s] || 'Error';
+}
 export const stateIcon = (s) => ICONS[s] || 'alert';
 
 export function clampDelay(v) {
@@ -32,7 +44,11 @@ function testCounts(t) {
 const count = (t, k) => Number(testCounts(t)[k]) || 0;
 
 // rowState folds a run row into one state. A failing test beats everything
-// sent; an unsupported API is reported as such and is never a pass.
+// sent; an unsupported API is reported as such and is never a pass. Only an
+// assertion can produce 'pass': a request nobody asserted anything about is
+// 'sent' (2xx/3xx or unknown status) or 'unexpected' (4xx/5xx). When
+// assertions ran and all passed they are authoritative, so a deliberately
+// asserted 401 is a pass.
 export function rowState(row) {
   if (!row) return 'error';
   switch (row.outcome) {
@@ -45,7 +61,8 @@ export function rowState(row) {
   if (count(t, 'fail') > 0) return 'fail';
   if (count(t, 'error') > 0) return 'error';
   if (count(t, 'unsupported') > 0) return 'unsupported';
-  return 'pass';
+  if (testsTotal(t) > 0) return 'pass';
+  return Number(row.status) >= 400 ? 'unexpected' : 'sent';
 }
 
 export function testsTotal(t) {
@@ -71,7 +88,7 @@ export function normalizeRows(results) {
       quarantined: (r && r.quarantinedScripts) || quarantinedCount(r),
       tests: testCounts(r && r.tests),
       state,
-      label: stateLabel(state),
+      label: stateLabel(state, r && r.status),
       testsText: total ? `${count(r.tests, 'pass')}/${total}` : '-',
       // Live results carry their own detail; no second request is needed.
       detail: {
@@ -84,27 +101,36 @@ export function normalizeRows(results) {
 }
 
 export function summarize(rows) {
-  const s = { total: 0, pass: 0, fail: 0, error: 0, blocked: 0, skipped: 0, unsupported: 0, testsPass: 0, testsFail: 0 };
+  const s = { total: 0, pass: 0, sent: 0, unexpected: 0, assertions: 0, fail: 0, error: 0, blocked: 0, skipped: 0, unsupported: 0, testsPass: 0, testsFail: 0 };
   for (const r of rows || []) {
     s.total++;
     s[r.state] = (s[r.state] || 0) + 1;
     s.testsPass += count(r.tests, 'pass');
     s.testsFail += count(r.tests, 'fail');
+    s.assertions += testsTotal(r.tests);
   }
   return s;
 }
 
+// summaryText never lets "passed" include requests nobody asserted anything
+// about: those are reported as sent, or as 4xx/5xx when the server pushed back.
 export function summaryText(s) {
   if (!s || !s.total) return 'No results yet';
-  const parts = [`${s.total} request${s.total === 1 ? '' : 's'}`, `${s.pass} passed`, `${s.fail + s.error} failed`];
+  const parts = [`${s.total} request${s.total === 1 ? '' : 's'}`];
+  const failed = s.fail + s.error;
+  if (!s.assertions) parts.push('0 assertions');
+  else parts.push(`${s.pass} passed`);
+  if (s.assertions || failed) parts.push(`${failed} failed`);
+  if (s.unexpected) parts.push(`${s.unexpected} returned 4xx/5xx`);
+  if (s.assertions && s.sent) parts.push(`${s.sent} sent without assertions`);
   if (s.blocked) parts.push(`${s.blocked} blocked`);
   if (s.unsupported) parts.push(`${s.unsupported} unsupported`);
   if (s.skipped) parts.push(`${s.skipped} skipped`);
-  parts.push(`tests ${s.testsPass} passed, ${s.testsFail} failed`);
+  if (s.assertions) parts.push(`tests ${s.testsPass} passed, ${s.testsFail} failed`);
   return parts.join(', ');
 }
 
-const NOT_OK = new Set(['fail', 'error', 'blocked', 'unsupported']);
+const NOT_OK = new Set(['fail', 'error', 'blocked', 'unsupported', 'unexpected']);
 
 // failedItemUids: unique request uids that did not pass, in run order, for
 // "rerun failed".
