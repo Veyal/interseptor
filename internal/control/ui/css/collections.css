@@ -267,3 +267,8 @@
 
 /* History COLL tag: same shape as the AI tag, neutral colour so it reads as a source label */
 .coll-tag{background:var(--bg3);color:var(--fg);border:1px solid var(--line2)}
+
+/* lane: editor safety */
+.coll-sentover{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--warnLine);color:var(--warnFg);font-size:var(--fs-sm)}
+.coll-sentover[hidden]{display:none}
+.coll-undo{display:flex;gap:var(--sp-2);align-items:center}

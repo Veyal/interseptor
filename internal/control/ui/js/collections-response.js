@@ -4,7 +4,7 @@ import { getShellApi } from './shell-hooks.js';
 import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
 import { S, btn, el, jget, jsend, setStatus } from './collections-core.js';
-import { saveCurrent } from './collections-editor.js';
+import { saveForSend } from './collections-editor.js';
 import { paintEnvDot, reloadEnvs, setPhone } from './collections-env.js';
 import { openEnvSheet, openScriptsSheet } from './collections-sheets.js';
 
@@ -12,7 +12,7 @@ export async function sendCurrent() {
   if (!S.ed) return;
   const verdict = M.decideSend({ url: S.ed.url, busy: S.busy, kind: S.ed.kind });
   if (!verdict.ok) { toast(verdict.reason); return; }
-  if (S.dirty && !(await saveCurrent())) return;
+  if (S.dirty && !(await saveForSend())) return;
   const gen = ++S.sendGen;
   S.busy = true;
   setSendBusy(true);
