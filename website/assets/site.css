@@ -371,3 +371,261 @@ main blockquote.responsible-use::before { content: 'Responsible use'; }
   main .table-wrap { overflow: visible; }
   * { box-shadow: none !important; }
 }
+
+/* ---- landing page ----
+   Product-page components for _layouts/home.html. Same sticker language as the docs:
+   2px ink outlines, hard offset shadows, candy fills, ink on candy. Nothing here styles
+   a docs page; every selector is scoped to body.landing-page, main.landing, or a class
+   that only the landing markup carries.
+
+   Colour: the three tokens below are the only new colours, and each one is a mix of
+   existing semantic tokens rather than a fresh hex, so they follow --card/--edge/--bg
+   through every path that resolves a theme (explicit data-theme, the JS default, or no
+   JS at all). Only the mix ratio changes between light and dark, which is why the
+   prefers-color-scheme block is safe here: site.css itself defines dark only under
+   :root[data-theme='dark'] (site.js always sets it), so if the two mechanisms ever
+   disagree the worst case is a slightly different tint of the correct surface, never a
+   dark panel on a light page. */
+:root {
+  --landing-band: color-mix(in srgb, var(--candy-yellow) 26%, var(--card));  /* tinted full-width band */
+  --landing-chrome: color-mix(in srgb, var(--edge) 7%, var(--card));         /* window / terminal chrome bar */
+  --landing-self: color-mix(in srgb, var(--candy-mint) 20%, var(--card));    /* our column in the matrix */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --landing-band: color-mix(in srgb, var(--candy-yellow) 12%, var(--card));
+    --landing-chrome: color-mix(in srgb, var(--edge) 10%, var(--card));
+    --landing-self: color-mix(in srgb, var(--candy-mint) 14%, var(--card));
+  }
+}
+:root[data-theme='dark'] {
+  --landing-band: color-mix(in srgb, var(--candy-yellow) 12%, var(--card));
+  --landing-chrome: color-mix(in srgb, var(--edge) 10%, var(--card));
+  --landing-self: color-mix(in srgb, var(--candy-mint) 14%, var(--card));
+}
+
+/* Shell: full width, no rail. The landing header is one row at every size, so it does
+   not need the two-row docs header reserve that --header carries below 960px. */
+:root:has(body.landing-page) { --header: 72px; }
+body.landing-page { --header: 72px; }
+main.landing { display: block; max-width: none; padding: 0; font-size: 16px; }
+main.landing > :first-child { margin-top: 0; }
+.landing-wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding-inline: clamp(16px,4vw,48px); }
+.landing-section { padding-block: clamp(48px,7vw,96px); }
+.landing-band { border-block: 2px solid var(--edge); background: var(--landing-band); }
+.section-head { max-width: 62ch; margin-bottom: clamp(28px,3.5vw,44px); }
+.section-head-center { margin-inline: auto; text-align: center; }
+.section-head .mono-label { margin-bottom: 16px; }
+.section-heading { margin: 0; font: 800 clamp(28px,3.6vw,40px)/1.12 var(--display); color: var(--fg); }
+.section-lede { max-width: 60ch; margin: 12px 0 0; color: var(--muted-fg); font-size: 17px; line-height: 1.65; font-weight: 600; }
+.section-head-center .section-lede { margin-inline: auto; }
+
+/* Landing header and footer */
+.topbar-landing { display: flex; justify-content: space-between; gap: 16px 24px; padding: 12px clamp(16px,4vw,48px); }
+.topbar-landing .brand { flex-shrink: 0; }
+.landing-nav { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.landing-nav a { padding: 6px 12px; border: 2px solid transparent; border-radius: 999px; color: var(--fg); font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.landing-nav a:hover { background: var(--candy-yellow); color: var(--on-candy); }
+.landing-doclink { padding: 6px 10px; color: var(--fg); font-size: 14px; font-weight: 800; text-decoration-color: var(--candy-pink); }
+.landing-footer { margin-top: 0; }
+.footer-grid { display: grid; grid-template-columns: minmax(220px,1.4fr) repeat(auto-fit,minmax(160px,1fr)); gap: 32px clamp(24px,4vw,56px); max-width: 1200px; margin: 0 auto; padding: clamp(36px,5vw,56px) clamp(16px,4vw,48px) 8px; }
+.footer-brand { max-width: 34ch; }
+.footer-mark { display: grid; place-items: center; width: 38px; height: 38px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-pink); color: var(--on-candy); box-shadow: 2px 2px 0 var(--edge); }
+.footer-mark svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.footer-name { margin: 12px 0 4px; font: 800 20px/1.2 var(--display); }
+.footer-blurb { margin: 0 0 14px; color: var(--muted-fg); font-size: 14px; line-height: 1.6; font-weight: 600; }
+.footer-col { display: grid; align-content: start; gap: 2px; }
+.footer-col a { min-height: 32px; display: flex; align-items: center; color: var(--fg); font-size: 14px; font-weight: 700; text-decoration: none; }
+.footer-col a:hover { background: var(--candy-yellow); color: var(--on-candy); }
+.footer-bottom { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; max-width: 1200px; margin: 0 auto; padding: 16px clamp(16px,4vw,48px) 28px; }
+.footer-bottom .footer-note { margin: 0; color: var(--muted-fg); font-size: 13.5px; }
+
+/* Hero. Sized by its content: no 100vh, so the next section is visible in the first frame. */
+.hero { padding-block: clamp(32px,5vw,64px) clamp(40px,6vw,72px); }
+.hero-inner { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.08fr); gap: clamp(28px,4vw,56px); align-items: center; }
+.hero-copy { min-width: 0; max-width: 34em; }
+.hero-copy .mono-label { margin-bottom: 20px; }
+.hero-title { margin: 0; font: 800 clamp(36px,5.6vw,60px)/1.04 var(--display); letter-spacing: -.01em; color: var(--fg); }
+.hero-sub { max-width: 46ch; margin: 20px 0 0; color: var(--muted-fg); font-size: clamp(17px,1.5vw,19px); line-height: 1.6; font-weight: 600; }
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 28px; }
+.btn-large { min-height: 52px; padding: 12px 24px; font-size: 15px; border-radius: 14px; box-shadow: 5px 5px 0 var(--edge); }
+.btn-large:hover { box-shadow: 7px 7px 0 var(--edge); }
+.hero-install { margin-top: 24px; max-width: 480px; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 16px 0 0; color: var(--muted-fg); font-size: 13.5px; font-weight: 700; }
+.hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
+.hero-meta span::before { content: ''; width: 8px; height: 8px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-mint); flex-shrink: 0; }
+.hero-visual { min-width: 0; }
+
+/* Command line and terminal block. Both carry a .copy-button; site.js reads the copy
+   target from data-copy (a selector) or data-copy-text (a literal) and drops any
+   [data-copy-skip] descendant, which is how prompts and sample output stay out of the
+   clipboard while still being read out. */
+.command { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: 4px 4px 0 var(--edge); }
+.command-prompt { color: var(--candy-pink); font: 800 14px/1 var(--mono); flex-shrink: 0; }
+.landing .command-text { display: block; flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--fg); font: 700 13.5px/1.6 var(--mono); overflow-x: auto; overflow-y: hidden; white-space: pre; scrollbar-width: thin; }
+.copy-button { flex-shrink: 0; min-height: 30px; padding: 2px 11px; font-size: 12px; }
+.copy-button[data-state='copied'] { background: var(--candy-mint); color: var(--on-candy); }
+.copy-button[data-state='failed'] { background: var(--candy-yellow); color: var(--on-candy); }
+.terminal { max-width: 100%; border: 2px solid var(--edge); border-radius: var(--radius); background: var(--card); box-shadow: 5px 5px 0 var(--edge); overflow: hidden; }
+.terminal-bar { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 5px 8px 5px 14px; border-bottom: 2px solid var(--edge); background: var(--landing-chrome); }
+.terminal-dots, .shot-dots { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.terminal-dots i, .shot-dots i { width: 11px; height: 11px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-pink); }
+.terminal-dots i:nth-child(2), .shot-dots i:nth-child(2) { background: var(--candy-yellow); }
+.terminal-dots i:nth-child(3), .shot-dots i:nth-child(3) { background: var(--candy-mint); }
+.terminal-title, .shot-chrome-label { flex: 1; min-width: 0; overflow: hidden; color: var(--muted-fg); font: 800 11.5px/1.4 var(--ui); letter-spacing: .08em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
+.landing .terminal-body { margin: 0; padding: 16px 18px; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow-x: auto; font: 600 13px/1.8 var(--mono); }
+.terminal-line { display: block; }
+.terminal-prompt { color: var(--candy-pink); font-weight: 800; }
+.terminal-out { color: var(--muted-fg); }
+
+/* Screenshot frame.
+   Light and dark artwork swap on [data-theme] rather than a <picture media> source,
+   because the theme toggle rewrites data-theme at runtime and a prefers-color-scheme
+   <source> would keep the first match. Emit both <img> tags; give the light one the
+   real alt text and the dark one alt="" aria-hidden="true" so it is described once.
+   The aspect ratio is reserved twice over (width/height attributes on the image and
+   --shot-ratio on the box), so a 1440x900 capture loads without reflowing the page. */
+.shot { margin: 0; max-width: 100%; min-width: 0; }
+.shot-frame { overflow: hidden; border: 2px solid var(--edge); border-radius: var(--radius); background: var(--card); box-shadow: 6px 6px 0 var(--edge); }
+.shot-chrome { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 5px 14px; border-bottom: 2px solid var(--edge); background: var(--landing-chrome); }
+.shot-media { position: relative; display: block; width: 100%; aspect-ratio: var(--shot-ratio, 1440 / 900); background: var(--muted); }
+.landing .shot-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-width: 100%; object-fit: cover; object-position: top center; }
+.landing .shot-img-dark { display: none; }
+:root[data-theme='dark'] .landing .shot-img-light { display: none; }
+:root[data-theme='dark'] .landing .shot-img-dark { display: block; }
+.shot-caption { margin: 12px 2px 0; color: var(--muted-fg); font-size: 13.5px; line-height: 1.6; font-weight: 700; }
+.shot-tight .shot-frame { box-shadow: 4px 4px 0 var(--edge); }
+
+/* Alternating feature rows: text and screenshot swap sides, one column when narrow. */
+.feature-rows { display: grid; gap: clamp(40px,6vw,88px); }
+.feature-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.06fr); gap: clamp(24px,4vw,56px); align-items: center; }
+.feature-rows > .feature-row:nth-child(even) > .feature-copy { order: 2; }
+.feature-copy { min-width: 0; max-width: 46ch; }
+.feature-copy .mono-label { margin-bottom: 14px; }
+.feature-heading { margin: 0; font: 700 clamp(22px,2.6vw,28px)/1.2 var(--display); color: var(--fg); }
+.feature-body { max-width: 46ch; margin: 12px 0 0; color: var(--muted-fg); font-size: 16px; line-height: 1.65; }
+.feature-points { max-width: 46ch; margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.feature-points li { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 10px; align-items: start; margin: 0; font-size: 15px; font-weight: 700; }
+.feature-points li::before { content: '✓'; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-mint); color: var(--on-candy); font-size: 12px; font-weight: 800; }
+.feature-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; font-size: 14px; font-weight: 800; }
+
+/* Compact capability cards */
+.capability-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 20px; margin-right: 6px; }
+.capability-card { min-width: 0; padding: 20px 20px 22px; }
+.capability-card .icon-badge { width: 42px; height: 42px; margin-bottom: 14px; }
+.capability-card .icon-badge svg { width: 21px; height: 21px; }
+.capability-title { margin: 0 0 6px; font: 700 17px/1.3 var(--display); color: var(--fg); }
+.capability-body { margin: 0; color: var(--muted-fg); font-size: 14.5px; line-height: 1.55; }
+
+/* Capability matrix. The wrapper keeps .table-wrap so site.js leaves it alone and the
+   docs scroll-region styling applies; the row header stays put while the columns move.
+   Cell state is text plus shape (filled circle, outlined circle, square), never colour
+   on its own.
+   Two wrapper spellings are supported: .table-wrap.matrix reuses the docs scroll region,
+   and .table-scroll carries its own frame (it is also skipped by the site.js table
+   wrapper). .comparison-table is the table-level alias of .matrix > table. */
+.landing :is(.matrix, .table-scroll) { margin: 0; overscroll-behavior-x: contain; }
+.landing .table-scroll { max-width: 100%; overflow-x: auto; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: 4px 4px 0 var(--edge); }
+.landing .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 12px; }
+.landing :is(.matrix > table, .table-scroll > table, .comparison-table) { display: table; width: 100%; min-width: 660px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.landing :is(.matrix, .table-scroll, .comparison-table) :where(th,td) { min-width: 0; padding: 11px 16px; vertical-align: middle; }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th { background: var(--candy-yellow); color: var(--on-candy); border-bottom: 2px solid var(--edge); font: 800 13px/1.35 var(--ui); white-space: nowrap; }
+/* Row headers must restate the body colour: the docs rule paints every th as a yellow
+   header with ink text, which is invisible once the row header takes the card fill. */
+.landing :is(.matrix, .table-scroll, .comparison-table) th[scope='row'] { position: sticky; left: 0; z-index: 1; min-width: 190px; background: var(--card); color: var(--fg); border-right: 2px solid var(--edge); font-weight: 800; }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th:first-child { position: sticky; left: 0; z-index: 2; border-right: 2px solid var(--edge); }
+.landing :is(.matrix, .table-scroll, .comparison-table) tbody tr:nth-child(even) :where(td,th) { background: var(--muted); }
+.landing :is(.matrix, .table-scroll, .comparison-table) tbody tr :where(td,th).matrix-self { background: var(--landing-self); }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th.matrix-self { background: var(--candy-mint); }
+.matrix-hint { margin: 12px 0 0; color: var(--muted-fg); font-size: 13px; font-weight: 700; }
+.mark, .cell-yes, .cell-no, .cell-partial, .cell-unknown { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+/* .mark-* expects a nested .mark-glyph; .cell-* draws its own glyph, so a bare
+   <span class="cell-yes">Yes</span> still reads as text plus shape without colour. */
+.mark-glyph, :is(.cell-yes,.cell-no,.cell-partial,.cell-unknown)::before { display: grid; place-items: center; width: 21px; height: 21px; border: 2px solid var(--edge); border-radius: 50%; background: var(--card); color: var(--fg); font: 800 12px/1 var(--ui); flex-shrink: 0; }
+.mark-yes .mark-glyph, .cell-yes::before { background: var(--candy-mint); color: var(--on-candy); }
+.mark-partial .mark-glyph, .cell-partial::before { border-radius: 5px; background: var(--candy-yellow); color: var(--on-candy); }
+.cell-yes::before { content: '✓'; }
+.cell-no::before { content: '✕'; }
+.cell-partial::before { content: '~'; }
+.cell-unknown::before { content: '?'; background: var(--muted); border-radius: 5px; }
+
+/* Trust row */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 16px; margin-right: 6px; }
+.stat { min-width: 0; padding: 18px 20px; }
+.stat-value { margin: 0; font: 800 clamp(24px,2.6vw,30px)/1.1 var(--display); color: var(--fg); }
+.stat-label { margin: 6px 0 0; color: var(--muted-fg); font-size: 13.5px; line-height: 1.5; font-weight: 700; }
+
+/* Objections: native disclosure, so keyboard and no-JS both work. summary is not in the
+   global focus-visible rule, so it gets its own.
+   .faq-list is the alias wrapper: its bare <details> children get the card frame, the
+   summary styling and the answer padding without needing any extra classes. */
+.faq, .faq-list { display: grid; gap: 12px; max-width: 860px; }
+.faq-list > details { border: 2px solid var(--edge); border-radius: var(--radius); background: var(--card); box-shadow: 5px 5px 0 var(--edge); }
+.faq-item, .faq-list > details { min-width: 0; padding: 0; overflow: hidden; }
+.faq-list > details > :not(summary) { margin: 0; padding: 14px 18px 16px; color: var(--muted-fg); font-size: 15px; line-height: 1.65; }
+.faq-question, .faq-list > details > summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 18px; cursor: pointer; font: 700 16.5px/1.4 var(--display); color: var(--fg); list-style: none; }
+.faq-question::-webkit-details-marker, .faq-list > details > summary::-webkit-details-marker { display: none; }
+.faq-question::after, .faq-list > details > summary::after { content: '+'; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-yellow); color: var(--on-candy); font: 800 15px/1 var(--ui); flex-shrink: 0; }
+.faq-item[open] .faq-question::after, .faq-list > details[open] > summary::after { content: '−'; }
+.faq-item[open] .faq-question, .faq-list > details[open] > summary { border-bottom: 2px solid var(--edge); }
+.faq-question:hover, .faq-list > details > summary:hover { background: var(--candy-yellow); color: var(--on-candy); }
+.faq-question:focus-visible, .faq-list > details > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -4px; border-radius: 10px; }
+.faq-answer { padding: 14px 18px 16px; color: var(--muted-fg); font-size: 15px; line-height: 1.65; }
+.landing .faq-answer :where(p,ul,ol) { max-width: 68ch; }
+.faq-answer > :last-child { margin-bottom: 0; }
+
+/* Closing band */
+.cta-band { border-top: 2px solid var(--edge); background: var(--landing-band); padding-block: clamp(44px,6vw,80px); }
+/* Items stretch and centre themselves with auto margins rather than justify-items:
+   center. A centred grid item is sized fit-content, which turns every max-width into a
+   target width and pushes the band past a 375px viewport; stretch + margin-inline: auto
+   keeps each box inside the track and still centres it on a wide screen. */
+.cta-inner { display: grid; grid-template-columns: minmax(0,1fr); justify-items: stretch; gap: 14px; text-align: center; }
+.cta-inner > .mono-label { justify-self: center; }
+.cta-heading { margin: 0 auto; max-width: 24ch; font: 800 clamp(28px,4.2vw,42px)/1.1 var(--display); color: var(--fg); }
+.cta-body { max-width: 54ch; margin: 0 auto; color: var(--muted-fg); font-size: 17px; line-height: 1.6; font-weight: 600; }
+.cta-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 16px; margin-top: 10px; }
+/* width + a percentage-clamped max-width: an auto-margin grid item whose max-content is
+   a long unbreakable command line otherwise keeps its 460px cap at 375px. */
+.cta-inner .command { width: 100%; max-width: min(100%,460px); margin: 6px auto 0; text-align: left; }
+
+@media (max-width: 1060px) {
+  .hero-inner, .feature-row { grid-template-columns: minmax(0,1fr); }
+  .hero-copy, .feature-copy { max-width: 42em; }
+  .feature-rows > .feature-row:nth-child(even) > .feature-copy { order: 0; }
+  .hero-visual { max-width: 760px; }
+}
+@media (max-width: 900px) {
+  .landing-nav { display: none; }
+}
+@media (max-width: 600px) {
+  .topbar-landing { gap: 8px; padding-inline: 16px; }
+  .topbar-landing .release-link { display: none; }
+  .topbar-landing .landing-doclink { padding-inline: 4px; }
+  .landing-section { padding-block: 44px; }
+  .hero { padding-block: 28px 36px; }
+  .hero-title { font-size: 34px; }
+  .hero-actions .btn-large { flex: 1 1 100%; }
+  .section-heading { font-size: 26px; }
+  .footer-grid { grid-template-columns: minmax(0,1fr); gap: 24px; }
+  .footer-bottom { padding-bottom: 24px; }
+  .stat-row, .capability-grid { grid-template-columns: minmax(0,1fr); }
+  .faq-question { font-size: 15.5px; padding: 12px 14px; }
+  .faq-answer { padding: 12px 14px 14px; }
+  .command { padding-left: 11px; }
+  .landing .terminal-body { padding: 14px; font-size: 12.5px; }
+}
+@media (max-width: 420px) {
+  .topbar-landing .github-link { display: none; }
+}
+@media (min-width: 761px) {
+  .matrix-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy-button:hover, .copy-button:active, .btn-large:hover, .btn-large:active, .landing-nav a:hover, .footer-col a:hover, .faq-question:hover, .capability-card:hover, .capability-card:focus-visible { transform: none; }
+}
+@media (forced-colors: active) {
+  .command, .terminal, .shot-frame, .capability-card, .stat, .faq-item, .mark-glyph, .footer-mark, .btn-large, .copy-button, .faq-question::after, .feature-points li::before { border: 2px solid CanvasText; box-shadow: none; forced-color-adjust: auto; }
+  .landing .matrix th[scope='row'], .landing .matrix thead th:first-child { border-right: 2px solid CanvasText; }
+  .faq-question:focus-visible { outline: 3px solid Highlight; }
+}

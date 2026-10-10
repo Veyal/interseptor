@@ -1,0 +1,39 @@
+{%- comment -%}
+Shared <head> for every layout (_layouts/default.html and _layouts/home.html).
+Front matter overrides, all optional: title, description, image, image_alt, og_type.
+Social images must be absolute (Open Graph ignores relative paths), so og:image and
+twitter:image use absolute_url; every other internal URL uses relative_url for baseurl.
+{%- endcomment -%}
+{%- assign page_description = page.description | default: 'Guides and reference for Interseptor: capture traffic, inspect responses, organize projects, and review evidence.' -%}
+{%- assign page_title = page.title | default: site.title -%}
+{%- assign social_image = page.image | default: '/website/assets/img/social-card.png' -%}
+{%- assign social_image_alt = page.image_alt | default: 'Interseptor: an HTTP and HTTPS intercepting proxy and security toolkit in one static binary.' -%}
+{%- if page.og_type -%}{%- assign og_type = page.og_type -%}{%- elsif page.url == '/' or page.layout == 'home' -%}{%- assign og_type = 'website' -%}{%- else -%}{%- assign og_type = 'article' -%}{%- endif -%}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ page_description | escape }}">
+  <meta name="theme-color" content="#fff6e8">
+  {%- if page.noindex %}
+  <meta name="robots" content="noindex, follow">
+  {%- endif %}
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  <meta property="og:site_name" content="Interseptor">
+  <meta property="og:type" content="{{ og_type }}">
+  <meta property="og:title" content="{{ page_title | escape }}">
+  <meta property="og:description" content="{{ page_description | escape }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ social_image | absolute_url }}">
+  <meta property="og:image:width" content="{{ page.image_width | default: 1200 }}">
+  <meta property="og:image:height" content="{{ page.image_height | default: 630 }}">
+  <meta property="og:image:alt" content="{{ social_image_alt | escape }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title | escape }}">
+  <meta name="twitter:description" content="{{ page_description | escape }}">
+  <meta name="twitter:image" content="{{ social_image | absolute_url }}">
+  <meta name="twitter:image:alt" content="{{ social_image_alt | escape }}">
+  <title>{{ page_title | escape }}{% unless page.url == '/' or page.layout == 'home' %} · Interseptor docs{% endunless %}</title>
+  <script>try{const t=localStorage.getItem('interseptor-docs-theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(_){}</script>
+  <link rel="preload" href="{{ '/website/assets/fonts/nunito-latin.woff2' | relative_url }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ '/website/assets/fonts/baloo-2-latin.woff2' | relative_url }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ '/website/assets/site.css' | relative_url }}">
+  <link rel="icon" href="{{ '/website/assets/mark.svg' | relative_url }}" type="image/svg+xml">

@@ -1,0 +1,73 @@
+<!doctype html>
+{%- comment -%}
+Full-width product layout: no docs sidebar, no docs search, marketing header and footer.
+Docs pages keep _layouts/default.html; both share _includes/head.html.
+
+Optional front matter:
+  sections:   [{title, id}] anchors shown in the header and repeated in the footer.
+              Every id must exist on the page; `docscheck check-site` fails on a
+              fragment that resolves to no id.
+  docs_url:   where the header "Docs" link points (default /getting-started/).
+{%- endcomment -%}
+<html lang="en">
+<head>
+{%- include head.html -%}
+</head>
+{%- assign docs_url = page.docs_url | default: '/getting-started/' -%}
+<body data-baseurl="{{ site.baseurl }}/" class="landing-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar topbar-landing">
+  <a class="brand" href="{{ '/' | relative_url }}" aria-label="Interseptor home"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h16l-4-4M21 16H5l4 4"/></svg></span><span>Interseptor</span></a>
+  {%- if page.sections %}
+  <nav class="landing-nav" aria-label="Page sections">
+    {% for item in page.sections %}<a href="#{{ item.id }}">{{ item.title }}</a>{% endfor %}
+  </nav>
+  {%- endif %}
+  <nav class="header-actions" aria-label="Site controls">
+    <a class="landing-doclink" href="{{ docs_url | relative_url }}">Docs</a>
+    <a class="chip chip-yellow release-link" href="https://github.com/Veyal/interseptor/releases/tag/v{{ site.data.release.version }}" aria-label="Release {{ site.data.release.version }}">v{{ site.data.release.version }}</a>
+    <a class="btn-ghost btn-small github-link" href="https://github.com/Veyal/interseptor">GitHub <span aria-hidden="true">↗</span></a>
+    <button class="icon-button theme-toggle" type="button" aria-label="Switch to dark theme" hidden><svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.3M12 19.2v2.3M2.5 12h2.3M19.2 12h2.3M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button>
+  </nav>
+</header>
+<main id="main" class="landing" tabindex="-1">{{ content }}</main>
+<footer class="site-footer landing-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <span class="footer-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8h16l-4-4M21 16H5l4 4"/></svg></span>
+      <p class="footer-name">Interseptor</p>
+      <p class="footer-blurb">An HTTP and HTTPS intercepting proxy with a security toolkit, in one static binary.</p>
+      <a class="chip chip-yellow" href="https://github.com/Veyal/interseptor/releases/tag/v{{ site.data.release.version }}">v{{ site.data.release.version }}</a>
+    </div>
+    {%- if page.sections %}
+    <nav class="footer-col" aria-label="On this page">
+      <p class="nav-heading">This page</p>
+      {% for item in page.sections %}<a href="#{{ item.id }}">{{ item.title }}</a>{% endfor %}
+    </nav>
+    {%- endif %}
+    <nav class="footer-col" aria-label="Documentation">
+      <p class="nav-heading">Documentation</p>
+      <a href="{{ '/getting-started/' | relative_url }}">Getting started</a>
+      <a href="{{ '/proxy-and-tls/' | relative_url }}">Proxy and TLS</a>
+      <a href="{{ '/findings-and-reporting/' | relative_url }}">Findings and reporting</a>
+      <a href="{{ '/api-and-mcp/' | relative_url }}">API and MCP</a>
+      <a href="{{ '/ai-agents/' | relative_url }}">For AI agents</a>
+      <a href="{{ '/features/' | relative_url }}">All features</a>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <p class="nav-heading">Project</p>
+      <a href="https://github.com/Veyal/interseptor">Source on GitHub <span aria-hidden="true">↗</span></a>
+      <a href="https://github.com/Veyal/interseptor/releases">Releases <span aria-hidden="true">↗</span></a>
+      <a href="https://github.com/Veyal/interseptor/issues">Report an issue <span aria-hidden="true">↗</span></a>
+      <a href="https://github.com/Veyal/interseptor/blob/main/LICENSE">MIT licence <span aria-hidden="true">↗</span></a>
+      <a href="{{ '/troubleshooting/' | relative_url }}">Troubleshooting</a>
+    </nav>
+  </div>
+  <div class="footer-bottom">
+    <p class="footer-note">Interseptor is for testing systems you are authorised to test.</p>
+    <a class="chip back-link" href="https://veyal.github.io"><span class="chip-arrow" aria-hidden="true">←</span><span class="chip-text">Back to veyal.github.io</span></a>
+  </div>
+</footer>
+<script src="{{ '/website/assets/site.js' | relative_url }}" defer></script>
+</body>
+</html>

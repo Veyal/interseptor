@@ -84,6 +84,62 @@
     block.replaceWith(card);
     card.append(bar, block);
   });
+  // Last resort when no clipboard path works: select the source text so Ctrl+C still copies it.
+  function selectText(node) {
+    if (!node) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  // Landing page copy buttons (install command, terminal example). The button names its
+  // source with data-copy (a selector) or data-copy-text (a literal), otherwise the
+  // nearest .command or .terminal is used. [data-copy-skip] descendants are dropped, so
+  // prompts and sample output stay out of the clipboard while still being announced.
+  // Each button is a real <button>, so keyboard use needs nothing extra; confirmation is
+  // both visible (label and fill) and announced through an adjacent live region.
+  document.querySelectorAll('.copy-button').forEach(button => {
+    const status = document.createElement('span');
+    status.className = 'sr-only';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-atomic', 'true');
+    button.after(status);
+    const label = button.textContent.trim() || 'Copy';
+    const source = () => {
+      if (button.dataset.copy) {
+        try { return document.querySelector(button.dataset.copy); } catch (_) { return null; }
+      }
+      return button.closest('.command, .terminal')?.querySelector('.command-text, .terminal-body');
+    };
+    const payload = () => {
+      if (button.dataset.copyText) return button.dataset.copyText;
+      const node = source();
+      if (!node) return '';
+      const clone = node.cloneNode(true);
+      clone.querySelectorAll('[data-copy-skip]').forEach(skip => skip.remove());
+      return clone.textContent.replace(/[ \t]+$/gm, '').trim();
+    };
+    let reset;
+    button.addEventListener('click', async () => {
+      const text = payload();
+      const ok = text ? await copyText(text, button) : false;
+      if (!ok) selectText(source());
+      button.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+      button.dataset.state = ok ? 'copied' : 'failed';
+      status.textContent = ok ? `Copied: ${text}` : 'Copy failed. The text is selected; press Ctrl+C or Command+C.';
+      clearTimeout(reset);
+      reset = setTimeout(() => {
+        button.textContent = label;
+        delete button.dataset.state;
+        status.textContent = '';
+      }, 2000);
+    });
+  });
+
   // Agent guide: one-click copy of the ready-to-paste prompt or the full llms-full.txt text.
   // The fetch is same-origin; if it fails the prompt is copied instead.
   if (/\/ai-agents\/?$/.test(location.pathname)) {
@@ -132,7 +188,7 @@
   }
   // Tables scroll inside their own focusable region instead of widening the page.
   document.querySelectorAll('main table').forEach(table => {
-    if (table.parentElement.classList.contains('table-wrap')) return;
+    if (table.parentElement.classList.contains('table-wrap') || table.parentElement.classList.contains('table-scroll')) return;
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap';
     wrap.tabIndex = 0;
