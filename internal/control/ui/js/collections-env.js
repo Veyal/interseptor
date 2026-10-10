@@ -1,8 +1,10 @@
 // collections-env.js — environment selector, variable scope for highlighting, the env dot and the scripts chip.
-import { $, api, initUiSelects } from './core.js';
+import { $, api, esc, initUiSelects, toast, toastError, uiConfirm, uiPrompt } from './core.js';
+import { openSheet } from './sheet.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
-import { S, itemByUid, jget, lsGet } from './collections-core.js';
+import * as EM from './collections-env-model.js';
+import { S, btn, el, itemByUid, jget, jsend, lsGet, lsSet } from './collections-core.js';
 
 export function expandTo(uid) {
   let it = itemByUid(uid);
@@ -33,7 +35,111 @@ export function renderEnvSelect() {
   S.envUid = list.some((e) => e.uid === saved) ? saved : '';
   sel.value = S.envUid;
   $('#collEnvEdit').disabled = !S.collection;
+  // A collection with no environment must not dead-end: offer to create one right here.
+  const create = $('#collEnvNew');
+  const manage = $('#collEnvManage');
+  if (create) { create.hidden = !(S.collection && !list.length); create.onclick = () => createEnv(); }
+  if (manage) { manage.disabled = !S.collection; manage.onclick = () => openEnvManager(); }
   initUiSelects($('#collEnvWrap'));
+}
+
+/* ------------------------------------------------------------------ environment CRUD */
+
+// select makes uid the active environment through the picker's own change handler, so the
+// variable scope, the dot and the resolve preview all refresh the way a manual pick does.
+function selectEnv(uid) {
+  S.envUid = uid || '';
+  lsSet('env', S.envUid);
+  renderEnvSelect();
+  $('#collEnv').dispatchEvent(new Event('change'));
+}
+
+async function afterEnvChange(uid) {
+  await reloadEnvs();
+  selectEnv(uid === undefined ? S.envUid : uid);
+  paintEnvManager();
+}
+
+export async function createEnv() {
+  if (!S.collection) { toast('Create or import a collection first'); return; }
+  const name = await uiPrompt({ title: 'New environment', placeholder: 'e.g. Staging' });
+  if (name == null) return;
+  const bad = EM.envNameError(name, envsForCollection());
+  if (bad) { toast(bad, 'error'); return; }
+  try {
+    const e = await jsend('POST', '/api/environments', EM.createBody(name, S.colUid));
+    await afterEnvChange(e.uid);
+    toast('Created environment "' + e.name + '"');
+  } catch (err) { toastError('Could not create the environment', err); }
+}
+
+async function renameEnv(env) {
+  const name = await uiPrompt({ title: 'Rename environment', value: env.name });
+  if (name == null || name === env.name) return;
+  const bad = EM.envNameError(name, envsForCollection().filter((e) => e.uid !== env.uid));
+  if (bad) { toast(bad, 'error'); return; }
+  try {
+    await jsend('PUT', '/api/environments/' + encodeURIComponent(env.uid), EM.renameBody(env, name));
+    await afterEnvChange();
+    toast('Renamed');
+  } catch (err) { toastError('Could not rename the environment', err); }
+}
+
+async function duplicateEnv(env) {
+  const name = await uiPrompt({ title: 'Duplicate environment', value: EM.copyName(env.name, envsForCollection()) });
+  if (name == null) return;
+  const bad = EM.envNameError(name, envsForCollection());
+  if (bad) { toast(bad, 'error'); return; }
+  try {
+    const e = await jsend('POST', '/api/environments', EM.duplicateBody(env, name, S.colUid));
+    await afterEnvChange(e.uid);
+    toast('Duplicated. Secret and current values are not copied.');
+  } catch (err) { toastError('Could not duplicate the environment', err); }
+}
+
+async function deleteEnv(env) {
+  const w = EM.deleteWarning(env);
+  const ok = await uiConfirm('Delete environment', 'Environment <b>' + esc(w.name) + '</b>' + esc(w.tail), 'Delete', 'btn danger');
+  if (!ok) return;
+  try {
+    await jsend('DELETE', '/api/environments/' + encodeURIComponent(env.uid));
+    await afterEnvChange(S.envUid === env.uid ? '' : undefined);
+    toast('Deleted "' + w.name + '"');
+  } catch (err) { toastError('Could not delete the environment', err); }
+}
+
+let managerBody = null;
+
+export function openEnvManager() {
+  if (!S.collection) { toast('Create or import a collection first'); return; }
+  openSheet({ id: 'collEnvSheet', title: 'Environments', detents: ['half', 'full'], detent: 'half', opener: $('#collEnvManage'), onClose: () => { managerBody = null; }, content: (body) => { managerBody = body; paintEnvManager(); return body; } });
+}
+
+function paintEnvManager() {
+  const body = managerBody;
+  if (!body || !body.isConnected) return;
+  body.textContent = '';
+  const wrap = el('div', 'coll-sheet coll-envmgr');
+  body.append(wrap);
+  wrap.append(el('h3', '', 'Environments for "' + (S.collection.name || 'this collection') + '"'));
+  wrap.append(el('p', 'coll-note', 'An environment holds the values that {{variables}} in requests resolve to, such as {{baseUrl}}. Duplicating copies variable names and shared initial values, never secrets or current values.'));
+  const list = envsForCollection();
+  if (!list.length) wrap.append(el('p', 'coll-note', 'No environments yet. Create one, then add its variables with the Variables button.'));
+  const ul = el('div', 'coll-envmgr-list');
+  ul.setAttribute('role', 'list');
+  list.forEach((e) => {
+    const row = el('div', 'coll-envmgr-row');
+    row.setAttribute('role', 'listitem');
+    const active = e.uid === S.envUid;
+    row.append(el('span', 'coll-name', e.name), el('span', 'coll-meta', (active ? 'Active · ' : '') + (e.variables || []).length + ' variable' + ((e.variables || []).length === 1 ? '' : 's')));
+    const acts = el('span', 'coll-envmgr-acts');
+    if (!active) acts.append(btn('Use', () => { selectEnv(e.uid); paintEnvManager(); }, 'btn xs'));
+    acts.append(btn('Rename', () => renameEnv(e), 'btn xs', 'edit'), btn('Duplicate', () => duplicateEnv(e), 'btn xs', 'copy'), btn('Delete', () => deleteEnv(e), 'btn xs', 'trash'));
+    row.append(acts);
+    ul.append(row);
+  });
+  wrap.append(ul);
+  wrap.append(btn('New environment', () => createEnv(), 'btn accent', 'plus'));
 }
 
 export async function refreshScope() {

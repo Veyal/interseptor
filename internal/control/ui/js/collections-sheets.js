@@ -9,6 +9,7 @@ import { paintPane, scheduleResolve } from './collections-editor.js';
 import { globalsEnv, reloadEnvs, renderEnvSelect, renderScriptsChip, updateBadge } from './collections-env.js';
 import { fmtSize } from './collections-response.js';
 import { renderTree } from './collections-tree.js';
+import { CONFIRM_PHRASE, buildRunPlan, methodBreakdown, planConfirmed, planSummary } from './collections-run-plan.js';
 
 export function openEnvSheet() {
   if (!S.collection) { toast('Create or import a collection first'); return; }
@@ -265,10 +266,10 @@ export function paintImport(body, initialText) {
   const wrap = el('div', 'coll-sheet');
   body.append(wrap);
   wrap.append(el('h3', '', 'Import a collection'));
-  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML), Insomnia (v4 or v5), Bruno (.bru files; choose several for a folder), HAR, Burp XML or a curl command. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
+  wrap.append(el('p', 'coll-note', 'Postman v2.0/2.1 (collection, environment or globals), OpenAPI 3 / Swagger 2 (JSON or YAML), Insomnia (v4 or v5), Bruno (.bru files; choose several for a folder), HAR, Burp XML, a curl command, GraphQL (introspection result or SDL), .http/.rest files (VS Code REST Client or JetBrains dialect), and WSDL 1.1/2.0 or SoapUI projects. Parsing never runs code and never sends a request. Scripts arrive quarantined.'));
   const row = el('div', 'coll-sheet-row');
   const file = document.createElement('input');
-  file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,application/json';
+  file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,.graphql,.gql,.sdl,.http,.rest,.wsdl,application/json';
   file.setAttribute('aria-label', 'Choose a collection file, or several .bru files for a Bruno folder');
   file.hidden = true;
   // The native file control is replaced by the app button (custom-ui-controls); the hidden input stays the value adapter.
@@ -386,15 +387,52 @@ export function paintReport(out, report, pv) {
 
 export async function runCollection(folderUid = '') {
   if (!S.colUid) { toast('Create or import a collection first'); return; }
+  const plan = buildRunPlan(S.items, { scope: folderUid ? 'folder' : 'collection', folderUid, collectionName: (S.collection && S.collection.name) || '', identities: [] });
+  const title = plan.scopeLabel;
   const mount = getHook('collectionRunner');
   if (mount) {
-    // The runner view has its own options and an explicit Run button, so no confirm step.
-    openSheet({ id: 'collRunSheet', title: 'Run', detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); mount(w, { collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '' }); return body; } });
+    // The runner view has its own options and an explicit Run button; the sheet title still states what it covers.
+    openSheet({ id: 'collRunSheet', title, detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); w.append(el('p', 'coll-note', planSummary(plan))); mount(w, { collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '' }); return body; } });
     return;
   }
-  const ok = await uiConfirm('Run requests', 'Run every request ' + (folderUid ? 'in this folder' : 'in <b>' + esc(S.collection.name || 'the collection') + '</b>') + ' in order? Scope policy is <b>block</b>; quarantined scripts are skipped. Variable changes made by scripts are discarded.', 'Run', 'btn accent');
-  if (!ok) return;
-  openSheet({ id: 'collRunSheet', title: 'Run', detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid); return body; } });
+  openSheet({ id: 'collRunSheet', title, detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => {
+    body.textContent = '';
+    const w = el('div', 'coll-sheet');
+    body.append(w);
+    paintRunPlan(w, plan, () => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid); });
+    return body;
+  } });
+}
+
+// paintRunPlan shows what is about to be sent and only calls onRun once the plan is confirmed.
+function paintRunPlan(holder, plan, onRun) {
+  holder.textContent = '';
+  holder.append(el('h3', '', plan.scopeLabel));
+  holder.append(el('p', 'coll-runplan-sum', planSummary(plan)));
+  if (plan.empty) return;
+  const mb = el('ul', 'coll-runplan-methods');
+  methodBreakdown(plan).forEach((m) => {
+    const li = el('li', m.stateChanging ? 'coll-runplan-chg' : '', m.method + ' x ' + m.count + (m.stateChanging ? ' (changes state)' : ''));
+    mb.append(li);
+  });
+  holder.append(mb);
+  if (plan.hosts.length) holder.append(el('p', 'coll-note', 'Target hosts: ' + plan.hosts.join(', ')));
+  holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. Variable changes made by scripts are discarded.'));
+  const go = btn('Run ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'), () => { if (planConfirmed(plan, typed ? typed.value : '')) onRun(); }, 'btn accent', 'rocket');
+  let typed = null;
+  if (plan.needsPhrase) {
+    const lab = el('label', 'coll-note', 'This run changes state on the target. Type ' + CONFIRM_PHRASE + ' to continue.');
+    typed = document.createElement('input');
+    typed.type = 'text'; typed.id = 'collRunPhrase'; typed.autocomplete = 'off'; typed.spellcheck = false;
+    typed.className = 'input';
+    lab.htmlFor = 'collRunPhrase';
+    const sync = () => { go.disabled = !planConfirmed(plan, typed.value); };
+    typed.addEventListener('input', sync);
+    typed.addEventListener('keydown', (e) => { if (e.key === 'Enter' && planConfirmed(plan, typed.value)) { e.preventDefault(); onRun(); } });
+    holder.append(lab, typed);
+    go.disabled = true;
+  }
+  holder.append(go);
 }
 
 export async function execRun(holder, folderUid) {

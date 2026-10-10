@@ -271,3 +271,12 @@
 /* lane: honest run results */
 .chip.run-sent{color:var(--fg2);border-color:var(--line2)}
 .chip.run-unexpected{color:var(--warnFg);border-color:var(--warnLine)}
+
+/* lane: environments */
+.coll-envmgr-list{display:flex;flex-direction:column;gap:var(--sp-1);margin:var(--sp-2) 0}
+.coll-envmgr-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2);border:1px solid var(--line2);border-radius:6px}
+.coll-envmgr-row .coll-name{flex:1 1 8rem;min-width:0;overflow-wrap:anywhere}
+.coll-envmgr-acts{display:inline-flex;flex-wrap:wrap;gap:var(--sp-1)}
+.coll-runplan-sum{font-weight:600;margin:var(--sp-2) 0}
+.coll-runplan-methods{margin:var(--sp-2) 0;padding-left:var(--sp-4)}
+.coll-runplan-chg{color:var(--warnFg);font-weight:600}
