@@ -13,7 +13,7 @@ import { S, X, btn, itemByUid, jget, jsend, lsGet, lsSet, panelActive } from './
 import { openItem, renderEditor, renderEmptyEditor, scheduleResolve } from './collections-editor.js';
 import { expandTo, refreshScope, renderEnvSelect, renderScriptsChip, selectedFolder, setPhone, updateBadge } from './collections-env.js';
 import { sendCurrent, setConsole } from './collections-response.js';
-import { openEnvSheet, openImportSheet, openScriptsSheet, runCollection } from './collections-sheets.js';
+import { openEnvSheet, openExportSheet, openImportSheet, openScriptsSheet, runCollection } from './collections-sheets.js';
 import { addItem, nudge, renderTree } from './collections-tree.js';
 
 /* ------------------------------------------------------------------ loading */
@@ -120,6 +120,7 @@ function wire() {
   $('#collScripts').addEventListener('click', () => openScriptsSheet());
   $('#collNew').addEventListener('click', () => newCollection());
   $('#collImport').addEventListener('click', () => openImportSheet());
+  $('#collExport').addEventListener('click', () => openExportSheet());
   $('#collRun').addEventListener('click', () => runCollection(selectedFolder()));
   $('#collConsoleBtn').addEventListener('click', () => setConsole(!S.consoleOpen));
   $('#collAddRequest').addEventListener('click', () => addItem('request', selectedFolder()));

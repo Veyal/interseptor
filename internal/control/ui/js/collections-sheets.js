@@ -1,5 +1,5 @@
 // collections-sheets.js — environment variables sheet, script review (quarantine approve), import sheet with report, and the collection runner.
-import { $, esc, api, toast, toastError, icon, uiConfirm, openFlow, getHook } from './core.js';
+import { $, esc, api, toast, toastError, icon, uiConfirm, openFlow, getHook, saveFile } from './core.js';
 import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
@@ -200,6 +200,59 @@ export async function paintScriptsSheet(body) {
     foot.append(status, btn('Revoke all', revoke, 'btn danger'), btn('Approve selected', () => approve(false), 'btn'), btn('Approve all', () => approve(true), 'btn accent'));
     holder.append(foot);
   }
+}
+
+/* ------------------------------------------------------------------ export sheet */
+
+export const EXPORT_FORMATS = [
+  { id: 'postman', label: 'Postman v2.1', hint: 'Collection JSON that Postman, Insomnia and Bruno can import. Round-trips back into Interseptor without loss.' },
+  { id: 'curl', label: 'curl script', hint: 'One curl command per request, in tree order, as a shell script.' },
+  { id: 'native', label: 'Interseptor JSON', hint: 'Interseptor\'s own format (.ixcol.json), including environments and variable declarations.' },
+];
+
+export function openExportSheet() {
+  if (!S.colUid) { toast('Create or import a collection first'); return; }
+  openSheet({ id: 'collExportSheet', title: 'Export', detents: ['half', 'full'], detent: 'half', opener: $('#collExport'), content: (body) => { body.textContent = ''; paintExport(body); return body; } });
+}
+
+async function downloadExport(format, uid) {
+  const r = await fetch('/api/collections/' + encodeURIComponent(uid) + '/export?format=' + encodeURIComponent(format));
+  if (!r.ok) {
+    let msg = 'HTTP ' + r.status;
+    try { msg = (await r.json()).error || msg; } catch (e) { /* keep status text */ }
+    throw new Error(msg);
+  }
+  const m = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
+  return saveFile(await r.blob(), m ? m[1] : 'collection-export', r.headers.get('content-type') || undefined);
+}
+
+export function paintExport(body) {
+  const wrap = el('div', 'coll-sheet');
+  body.append(wrap);
+  wrap.append(el('h3', '', 'Export this collection'));
+  const note = el('p', 'coll-note', 'Secrets are removed from every export: tokens, passwords, API keys and secret variable values are blanked, and {{variable}} references are kept. Scripts are not trusted in the file and local current values never leave this machine.');
+  note.id = 'collExportNote';
+  wrap.append(note);
+  const status = el('div', 'coll-report');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  for (const f of EXPORT_FORMATS) {
+    const row = el('div', 'coll-sheet-row');
+    const b = btn('Download ' + f.label, async () => {
+      b.disabled = true;
+      try {
+        const name = await downloadExport(f.id, S.colUid);
+        status.textContent = 'Saved ' + name + ' (secrets removed).';
+      } catch (e) { status.textContent = ''; toastError('Export failed', e); }
+      b.disabled = false;
+    }, 'btn accent', 'download');
+    b.setAttribute('aria-describedby', 'collExportNote collExportHint-' + f.id);
+    const hint = el('span', 'coll-note', f.hint);
+    hint.id = 'collExportHint-' + f.id;
+    row.append(b, hint);
+    wrap.append(row);
+  }
+  wrap.append(status);
 }
 
 /* ------------------------------------------------------------------ import sheet */

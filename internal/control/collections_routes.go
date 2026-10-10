@@ -42,6 +42,7 @@ var collRoutes = []collRoute{
 
 	{"POST", "/api/collections/send", "Send one collection item through the shared pipeline (variables, scripts, auth, scope guard, capture as a History flow). Body: {itemUid, envUid?, local?, noScripts?, persist: keep|discard, scopePolicy?}. Interactive default scope policy is warn; MCP is always the collection's policy (default block). Response: step result with tests, console, flow ids, unresolved vars", func(c *collectionsAPI) http.HandlerFunc { return c.send }},
 	{"POST", "/api/collections/run", "Run a collection, folder or item list sequentially (max 1000 requests, 10 minutes). Body: {collectionUid, folderUid?, itemUids?, envUid?, persist?, bail?, delayMs?, noScripts?}. Scope policy defaults to block; untrusted scripts are skipped and counted", func(c *collectionsAPI) http.HandlerFunc { return c.run }},
+	{"GET", "/api/collections/{uid}/export", "Download one collection. Query: format=postman|curl|native (Postman v2.1 lossless, a curl shell script, or Interseptor .ixcol.json). Always secret-scrubbed for every caller; there is no option to include secrets. Scripts, trust and capabilities are not exported as trusted", func(c *collectionsAPI) http.HandlerFunc { return c.export }},
 	{"GET", "/api/collections/{uid}/runs", "Recent runs of a collection (newest first, max 50)", func(c *collectionsAPI) http.HandlerFunc { return c.listRuns }},
 	{"GET", "/api/runs/{uid}", "Per-request results of one run", func(c *collectionsAPI) http.HandlerFunc { return c.getRun }},
 
