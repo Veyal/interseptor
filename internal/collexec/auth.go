@@ -177,6 +177,16 @@ func (x *stepRun) applyAuth(ctx context.Context, b *built, m *RequestModel, poli
 	key := AuthCacheKey(x.in.Chain.Collection.UID, x.in.EnvUID, x.in.Identity, m.Auth)
 	actx := context.WithValue(ctx, authCtxKey{}, &authEnv{x: x, policy: policy})
 	res, err := x.p.Auth.Apply(actx, key, collauth.Config{Type: b.AuthType, Fields: b.AuthFields}, req)
+	if errors.Is(err, collauth.ErrUnsupported) {
+		// ntlm, hawk, oauth1, edgegrid, asap: the import report marks these
+		// preserved-inert (kept, not applied) and advises adding the header by
+		// hand, which only works if the request still goes out. Send without
+		// the auth and say so, as the built-in path always did.
+		x.res.Warnings = append(x.res.Warnings, "auth type "+b.AuthType+" is not supported yet; request sent without it")
+		x.res.Applied = append(x.res.Applied, b.Applied...)
+		b.Applied = nil
+		return true
+	}
 	if err != nil {
 		x.res.Outcome = OutcomeError
 		x.res.Error = x.p.Registry.Mask("auth: " + err.Error())

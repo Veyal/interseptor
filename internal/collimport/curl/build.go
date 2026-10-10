@@ -243,7 +243,7 @@ func (b *builder) auth() {
 			b.note(Degraded, "auth-prompt", "-u had no password (curl would prompt); an empty password was used", "")
 		}
 		if kind == "ntlm" {
-			b.note(PreservedInert, "auth:ntlm", "ntlm auth is kept but not applied when sending", "")
+			b.note(PreservedInert, "auth:ntlm", "ntlm auth is kept but has no authenticator: the request is sent without it", "")
 		}
 	}
 }

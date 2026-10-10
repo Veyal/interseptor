@@ -188,20 +188,20 @@ func toKV(in []kvJSON) []varstore.KV {
 }
 
 // parseURL accepts a JSON string or a Postman-style {raw, variable[]} object.
+// The URL itself comes from store.EffectiveURL: a non-empty url.query array is
+// authoritative over raw (a disabled row is not sent) and an object without
+// raw is rebuilt from protocol, host, port, path and query. A non-empty
+// params_json still overrides the whole query later (QueryFromParams).
 func parseURL(raw json.RawMessage) (string, map[string]string) {
 	if len(raw) == 0 {
 		return "", nil
 	}
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s, nil
-	}
+	u := store.EffectiveURL(raw)
 	var o struct {
-		Raw      string   `json:"raw"`
 		Variable []kvJSON `json:"variable"`
 	}
 	if json.Unmarshal(raw, &o) != nil {
-		return "", nil
+		return u, nil
 	}
 	var pv map[string]string
 	for _, v := range o.Variable {
@@ -213,7 +213,7 @@ func parseURL(raw json.RawMessage) (string, map[string]string) {
 		}
 		pv[v.Key] = v.value()
 	}
-	return o.Raw, pv
+	return u, pv
 }
 
 func parseBody(raw json.RawMessage) BodyModel {
@@ -227,6 +227,7 @@ func parseBody(raw json.RawMessage) BodyModel {
 		URLEncoded []kvJSON        `json:"urlencoded"`
 		FormData   []kvJSON        `json:"formdata"`
 		GraphQL    json.RawMessage `json:"graphql"`
+		Disabled   bool            `json:"disabled"`
 		Options    struct {
 			Raw struct {
 				Language string `json:"language"`
@@ -237,6 +238,10 @@ func parseBody(raw json.RawMessage) BodyModel {
 		return b
 	}
 	b.Mode = strings.ToLower(o.Mode)
+	if o.Disabled { // Postman: a disabled body is not sent
+		b.Mode = BodyNone
+		return b
+	}
 	if b.Mode == "" {
 		b.Mode = BodyNone
 	}

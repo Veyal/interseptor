@@ -195,7 +195,7 @@ func TestImportReportContent(t *testing.T) {
 		{NeedsReview, "needs-asset"},
 		{NeedsReview, "embedded-credential"},
 		{NeedsReview, "dynamic-variable:$randomCity"},
-		{PreservedInert, "auth:awsv4"},
+		{Converted, "auth:awsv4"},
 		{PreservedInert, "key:x-vendor"},
 		{PreservedInert, "key:_postman_vendor"},
 		{PreservedInert, "request.certificate"},

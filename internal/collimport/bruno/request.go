@@ -105,8 +105,8 @@ func (x *blkCtx) auth(b *bru) json.RawMessage {
 		return impkit.AuthObj("bearer", [][2]string{{"token", get("token")}})
 	case "basic", "digest", "ntlm":
 		cred("password", get("password"))
-		if mode != "basic" {
-			x.add(impkit.PreservedInert, "auth:"+mode, "auth type "+mode+" is kept but not applied when sending", "Add the header manually")
+		if mode == "ntlm" { // digest is applied by the send pipeline; ntlm has no authenticator
+			x.add(impkit.PreservedInert, "auth:"+mode, "auth type "+mode+" is kept but has no authenticator: the request is sent without it", "Add the header manually")
 		}
 		return impkit.AuthObj(mode, [][2]string{{"username", get("username")}, {"password", get("password")}})
 	case "apikey":

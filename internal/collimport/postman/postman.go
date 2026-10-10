@@ -8,9 +8,11 @@
 package postman
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/store"
@@ -137,6 +139,7 @@ func Parse(data []byte, opt Options) (*Result, error) {
 	if len(data) > MaxInputBytes {
 		return nil, ErrTooLarge
 	}
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // UTF-8 BOM
 	if opt.NewID == nil {
 		opt.NewID = store.NewUID
 	}
@@ -157,9 +160,12 @@ func Parse(data []byte, opt Options) (*Result, error) {
 		err = p.parseWrapped(root)
 	case root.Has("info") && root.Has("item"):
 		err = p.parseCollection(root, false)
-	case root.Has("info") && root.Has("requests"):
+	case root.Has("requests") && (root.Has("info") || root.Has("order")):
 		p.unsupportedV1()
 		err = fmt.Errorf("%w: Postman collection v1", ErrUnsupported)
+	case root.Has("collections") && !root.Has("info") && !root.Has("item"):
+		p.res.Report.add(Entry{Level: Unsupported, Feature: "postman-data-dump", Message: "this is a Postman data dump (several collections and environments in one file); it cannot be imported as a whole", Suggestion: "Export each collection individually from Postman as Collection v2.1, and each environment separately"})
+		err = fmt.Errorf("%w: this is a Postman data dump; export collections and environments individually from Postman (Collection v2.1)", ErrUnsupported)
 	case root.Has("values"):
 		err = p.parseEnvFile(root)
 	default:
@@ -291,14 +297,13 @@ func (p *parser) walkItems(raw json.RawMessage, parent, path string, depth int) 
 	if err := json.Unmarshal(raw, &elems); err != nil {
 		return fmt.Errorf("%w: item is not an array", ErrNotPostman)
 	}
-	prev := ""
-	for _, e := range elems {
+	ranks := store.EvenRanks(len(elems))
+	for i, e := range elems {
 		p.count++
 		if p.count > MaxItems {
 			return fmt.Errorf("%w: more than %d items", ErrUnsupported, MaxItems)
 		}
-		rank := store.RankBetween(prev, "")
-		prev = rank
+		rank := ranks[i]
 		if err := p.parseItem(e, parent, path, rank, depth); err != nil {
 			return err
 		}
@@ -413,9 +418,11 @@ func (p *parser) parseRequest(m *OMap, it *store.Item, side *ItemSidecar, path s
 		it.Body = b
 		p.checkBody(b, path, it.UID)
 	}
-	if n := store.CountURLBodyCredentials(it.URL, it.Body); n > 0 {
-		p.res.Report.Stats.EmbeddedCredentials += n
-		p.res.Report.add(Entry{Level: NeedsReview, Path: path, Item: it.UID, Feature: "embedded-credential", Message: fmt.Sprintf("URL query or body holds %d literal credential(s) (values not shown)", n), Suggestion: "Lift each to a secret variable and reference it as {{name}}"})
+	for _, f := range store.URLCredentialFields(it.URL) {
+		p.credential(path, it.UID, "URL "+urlFieldLabel(f))
+	}
+	for _, f := range store.BodyCredentialFields(it.Body) {
+		p.credential(path, it.UID, "body field "+f)
 	}
 	if a := rm.Get("auth"); !isNull(a) {
 		it.Auth = a
@@ -540,7 +547,27 @@ func (p *parser) checkBody(b json.RawMessage, path, uid string) {
 	}
 }
 
-var inertAuth = map[string]bool{"awsv4": true, "digest": true, "hawk": true, "ntlm": true, "oauth1": true, "jwt": true, "edgegrid": true, "akamai": true, "asap": true}
+// inertAuth lists auth types that are kept and re-exported but have no
+// authenticator: the request is sent without them (the pipeline warns).
+var inertAuth = map[string]bool{"hawk": true, "ntlm": true, "oauth1": true, "edgegrid": true, "akamai": true, "asap": true}
+
+// appliedAuth lists the extra auth types the send pipeline implements.
+var appliedAuth = map[string]bool{"digest": true, "awsv4": true, "jwt": true}
+
+func urlFieldLabel(f string) string {
+	if f == "userinfo password" {
+		return f
+	}
+	return "query parameter " + f
+}
+
+// credential records one literal credential by field name; the value is never
+// in the report.
+func (p *parser) credential(path, uid, what string) {
+	p.res.Report.Stats.EmbeddedCredentials++
+	p.res.Report.add(Entry{Level: NeedsReview, Path: path, Item: uid, Feature: "embedded-credential", Message: what + " holds a literal credential (value not shown)", Suggestion: "Lift it to a secret variable and reference it as {{name}}"})
+}
+
 var knownAuth = map[string]bool{"noauth": true, "bearer": true, "basic": true, "apikey": true, "oauth2": true}
 
 // credential keys per auth type that hold literal secrets.
@@ -560,20 +587,33 @@ func (p *parser) checkAuth(a json.RawMessage, path, uid string) {
 			msg = "oauth2: a manual access token is applied; token fetch flows are not run at import"
 		}
 		p.res.Report.add(Entry{Level: lvl, Path: path, Item: uid, Feature: "auth:" + typ, Message: msg})
+	case appliedAuth[typ]:
+		p.res.Report.add(Entry{Level: Converted, Path: path, Item: uid, Feature: "auth:" + typ, Message: "auth type " + typ + " is applied when sending"})
 	case inertAuth[typ]:
-		p.res.Report.add(Entry{Level: PreservedInert, Path: path, Item: uid, Feature: "auth:" + typ, Message: "auth type " + typ + " is kept and re-exported but not applied when sending", Suggestion: "Add the header manually or use a pre-request script once trusted"})
+		p.res.Report.add(Entry{Level: PreservedInert, Path: path, Item: uid, Feature: "auth:" + typ, Message: "auth type " + typ + " is kept and re-exported but has no authenticator: the request is sent without it", Suggestion: "Add the header manually or use a pre-request script once trusted"})
 	case typ == "":
 	default:
 		p.res.Report.add(Entry{Level: Unsupported, Path: path, Item: uid, Feature: "auth:" + typ, Message: "unknown auth type " + typ + " kept verbatim"})
 	}
 	var entries []map[string]json.RawMessage
-	_ = json.Unmarshal(m.Get(typ), &entries)
+	if json.Unmarshal(m.Get(typ), &entries) != nil {
+		var obj map[string]json.RawMessage // object form: {"bearer":{"token":"x"}}
+		if json.Unmarshal(m.Get(typ), &obj) == nil {
+			keys := make([]string, 0, len(obj))
+			for k := range obj {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				entries = append(entries, map[string]json.RawMessage{"key": mustJSON(k), "value": obj[k]})
+			}
+		}
+	}
 	for _, e := range entries {
 		k := jsonString(e["key"])
 		v := jsonString(e["value"])
-		if credKeys[k] && v != "" && !strings.Contains(v, "{{") {
-			p.res.Report.Stats.EmbeddedCredentials++
-			p.res.Report.add(Entry{Level: NeedsReview, Path: path, Item: uid, Feature: "embedded-credential", Message: "auth " + typ + "." + k + " holds a literal credential (value not shown)", Suggestion: "Lift it to a secret variable and reference it as {{name}}"})
+		if (credKeys[k] || store.IsSecretName(k)) && v != "" && !strings.Contains(v, "{{") {
+			p.credential(path, uid, "auth "+typ+"."+k)
 		}
 	}
 }
@@ -586,9 +626,8 @@ func (p *parser) checkHeaderCreds(h json.RawMessage, path, uid string) {
 	for _, r := range rows {
 		k := strings.ToLower(jsonString(r["key"]))
 		v := jsonString(r["value"])
-		if (k == "authorization" || k == "x-api-key" || k == "proxy-authorization" || k == "cookie") && v != "" && !strings.Contains(v, "{{") {
-			p.res.Report.Stats.EmbeddedCredentials++
-			p.res.Report.add(Entry{Level: NeedsReview, Path: path, Item: uid, Feature: "embedded-credential", Message: "header " + jsonString(r["key"]) + " holds a literal credential (value not shown)", Suggestion: "Lift it to a secret variable and reference it as {{name}}"})
+		if (k == "authorization" || k == "x-api-key" || k == "proxy-authorization" || k == "cookie" || store.IsSecretName(k)) && v != "" && !strings.Contains(v, "{{") {
+			p.credential(path, uid, "header "+jsonString(r["key"]))
 		}
 	}
 }

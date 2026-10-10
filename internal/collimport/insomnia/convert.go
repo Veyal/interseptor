@@ -300,8 +300,8 @@ func (b *builder) auth(a map[string]any, ctx *tctx) json.RawMessage {
 	case "basic", "digest", "ntlm":
 		u, p := ctx.conv(str(a, "username")), ctx.conv(str(a, "password"))
 		cred("password", p)
-		if typ != "basic" {
-			b.add(impkit.PreservedInert, ctx.path, ctx.uid, "auth:"+typ, "auth type "+typ+" is kept but not applied when sending", "Add the header manually")
+		if typ == "ntlm" { // digest is applied by the send pipeline; ntlm has no authenticator
+			b.add(impkit.PreservedInert, ctx.path, ctx.uid, "auth:"+typ, "auth type "+typ+" is kept but has no authenticator: the request is sent without it", "Add the header manually")
 		}
 		return impkit.AuthObj(typ, [][2]string{{"username", u}, {"password", p}})
 	case "bearer":

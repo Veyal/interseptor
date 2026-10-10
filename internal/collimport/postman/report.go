@@ -118,3 +118,33 @@ func (r *Report) Has(l Level, feature string) bool {
 	}
 	return false
 }
+
+// SkippedItem is one request the store did not import because an identical
+// one already exists.
+type SkippedItem struct {
+	Item   string
+	Path   string
+	Method string
+	Reason string
+}
+
+// AddSkippedDuplicates records skipped requests in the report so a skip is
+// never silent: one entry per request (bounded by the store) plus a summary.
+func (r *Report) AddSkippedDuplicates(items []SkippedItem) {
+	if len(items) == 0 {
+		return
+	}
+	for _, k := range items {
+		r.add(Entry{Level: NeedsReview, Path: k.Path, Item: k.Item, Feature: "item-skipped-duplicate",
+			Message:    "not imported: " + k.Reason,
+			Suggestion: "Rename or delete the existing request first if you want both"})
+	}
+	r.add(Entry{Level: NeedsReview, Feature: "items-skipped",
+		Message:    fmt.Sprintf("%d request(s) were not imported because identical ones already exist in this collection", len(items)),
+		Suggestion: "Re-importing a file never duplicates requests; edit or delete the existing ones to replace them"})
+	headline := r.Headline
+	r.finish()
+	if headline != "" {
+		r.Headline = headline + fmt.Sprintf("; %d skipped as duplicates", len(items))
+	}
+}
