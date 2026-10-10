@@ -427,8 +427,9 @@ export async function runCollection(folderUid = '') {
 // paintRunPlan shows what is about to be sent and only calls onRun once the plan is confirmed.
 function paintRunPlan(holder, plan, onRun) {
   holder.textContent = '';
-  holder.append(el('h3', '', plan.scopeLabel));
-  holder.append(el('p', 'coll-runplan-sum', planSummary(plan)));
+  // The sheet title is already the scope label, so neither the heading nor the
+  // sentence repeats it.
+  holder.append(el('p', 'coll-runplan-sum', planSummary(plan, { withScope: false })));
   if (plan.empty) return;
   const mb = el('ul', 'coll-runplan-methods');
   methodBreakdown(plan).forEach((m) => {

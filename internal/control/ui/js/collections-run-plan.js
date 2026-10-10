@@ -121,14 +121,18 @@ export function planConfirmed(plan, typed) {
 // planSummary is the one sentence shown above the breakdown. It states the
 // live request count first, because that is the number the user is consenting
 // to, then who it is sent as, then what it can change, then where it goes.
-export function planSummary(plan) {
+//
+// Pass {withScope: false} where the scope is already on screen -- a sheet whose
+// title is the scope label would otherwise print it twice in a row.
+export function planSummary(plan, { withScope = true } = {}) {
   if (!plan || plan.empty) return 'Nothing to send: there are no requests in scope.';
   const parts = [];
   parts.push(plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's'));
   if (plan.identities > 1) {
     parts.push('as ' + plan.identities + ' identities (' + plan.requests + ' request' + (plan.requests === 1 ? '' : 's') + ' each)');
   }
-  let s = plan.scopeLabel + ': ' + parts.join(', ') + '.';
+  const lead = withScope ? plan.scopeLabel + ': ' : '';
+  let s = lead + (withScope ? parts.join(', ') : parts.join(', ').replace(/^./, (c) => c.toUpperCase())) + '.';
   if (plan.destructive > 0) {
     s += ' ' + plan.destructive + ' of them change state (' + plan.destructiveMethods.join(', ') + ').';
   }

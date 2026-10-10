@@ -119,3 +119,17 @@ test('plan text carries no HTML, so it is safe to escape and show', () => {
   assert.doesNotMatch(planSummary(p), /[<>]/, 'the summary never carries raw markup');
   assert.doesNotMatch(p.scopeLabel, /[<>]/);
 });
+
+// The run sheet's title is already the scope label, so the sentence under it
+// must not repeat it.
+test('the summary can omit the scope when it is already on screen', () => {
+  const p = buildRunPlan([{ uid: 'a', kind: 'request', method: 'DELETE', url: 'https://x.example.com/1', parentUid: '' }], { collectionName: 'Demo' });
+  const withScope = planSummary(p);
+  const without = planSummary(p, { withScope: false });
+  assert.match(withScope, /^Whole collection "Demo": /);
+  assert.doesNotMatch(without, /Demo/);
+  assert.match(without, /^1 live request\./);
+  // Everything after the scope survives either way.
+  assert.match(without, /change state/);
+  assert.match(without, /x\.example\.com/);
+});
