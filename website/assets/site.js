@@ -188,7 +188,7 @@
   }
   // Tables scroll inside their own focusable region instead of widening the page.
   document.querySelectorAll('main table').forEach(table => {
-    if (table.parentElement.classList.contains('table-wrap')) return;
+    if (table.parentElement.classList.contains('table-wrap') || table.parentElement.classList.contains('table-scroll')) return;
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap';
     wrap.tabIndex = 0;

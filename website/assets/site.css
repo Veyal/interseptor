@@ -520,23 +520,34 @@ main.landing > :first-child { margin-top: 0; }
 /* Capability matrix. The wrapper keeps .table-wrap so site.js leaves it alone and the
    docs scroll-region styling applies; the row header stays put while the columns move.
    Cell state is text plus shape (filled circle, outlined circle, square), never colour
-   on its own. */
-.landing .matrix { margin: 0; overscroll-behavior-x: contain; }
-.landing .matrix > table { min-width: 660px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
-.landing .matrix :where(th,td) { min-width: 0; padding: 11px 16px; vertical-align: middle; }
-.landing .matrix thead th { background: var(--candy-yellow); color: var(--on-candy); border-bottom: 2px solid var(--edge); font: 800 13px/1.35 var(--ui); white-space: nowrap; }
+   on its own.
+   Two wrapper spellings are supported: .table-wrap.matrix reuses the docs scroll region,
+   and .table-scroll carries its own frame (it is also skipped by the site.js table
+   wrapper). .comparison-table is the table-level alias of .matrix > table. */
+.landing :is(.matrix, .table-scroll) { margin: 0; overscroll-behavior-x: contain; }
+.landing .table-scroll { max-width: 100%; overflow-x: auto; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: 4px 4px 0 var(--edge); }
+.landing .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 12px; }
+.landing :is(.matrix > table, .table-scroll > table, .comparison-table) { display: table; width: 100%; min-width: 660px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.landing :is(.matrix, .table-scroll, .comparison-table) :where(th,td) { min-width: 0; padding: 11px 16px; vertical-align: middle; }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th { background: var(--candy-yellow); color: var(--on-candy); border-bottom: 2px solid var(--edge); font: 800 13px/1.35 var(--ui); white-space: nowrap; }
 /* Row headers must restate the body colour: the docs rule paints every th as a yellow
    header with ink text, which is invisible once the row header takes the card fill. */
-.landing .matrix th[scope='row'] { position: sticky; left: 0; z-index: 1; min-width: 190px; background: var(--card); color: var(--fg); border-right: 2px solid var(--edge); font-weight: 800; }
-.landing .matrix thead th:first-child { position: sticky; left: 0; z-index: 2; border-right: 2px solid var(--edge); }
-.landing .matrix tbody tr:nth-child(even) :where(td,th) { background: var(--muted); }
-.landing .matrix tbody tr :where(td,th).matrix-self { background: var(--landing-self); }
-.landing .matrix thead th.matrix-self { background: var(--candy-mint); }
+.landing :is(.matrix, .table-scroll, .comparison-table) th[scope='row'] { position: sticky; left: 0; z-index: 1; min-width: 190px; background: var(--card); color: var(--fg); border-right: 2px solid var(--edge); font-weight: 800; }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th:first-child { position: sticky; left: 0; z-index: 2; border-right: 2px solid var(--edge); }
+.landing :is(.matrix, .table-scroll, .comparison-table) tbody tr:nth-child(even) :where(td,th) { background: var(--muted); }
+.landing :is(.matrix, .table-scroll, .comparison-table) tbody tr :where(td,th).matrix-self { background: var(--landing-self); }
+.landing :is(.matrix, .table-scroll, .comparison-table) thead th.matrix-self { background: var(--candy-mint); }
 .matrix-hint { margin: 12px 0 0; color: var(--muted-fg); font-size: 13px; font-weight: 700; }
-.mark { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; white-space: nowrap; }
-.mark-glyph { display: grid; place-items: center; width: 21px; height: 21px; border: 2px solid var(--edge); border-radius: 50%; background: var(--card); color: var(--fg); font: 800 12px/1 var(--ui); flex-shrink: 0; }
-.mark-yes .mark-glyph { background: var(--candy-mint); color: var(--on-candy); }
-.mark-partial .mark-glyph { border-radius: 5px; background: var(--candy-yellow); color: var(--on-candy); }
+.mark, .cell-yes, .cell-no, .cell-partial, .cell-unknown { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+/* .mark-* expects a nested .mark-glyph; .cell-* draws its own glyph, so a bare
+   <span class="cell-yes">Yes</span> still reads as text plus shape without colour. */
+.mark-glyph, :is(.cell-yes,.cell-no,.cell-partial,.cell-unknown)::before { display: grid; place-items: center; width: 21px; height: 21px; border: 2px solid var(--edge); border-radius: 50%; background: var(--card); color: var(--fg); font: 800 12px/1 var(--ui); flex-shrink: 0; }
+.mark-yes .mark-glyph, .cell-yes::before { background: var(--candy-mint); color: var(--on-candy); }
+.mark-partial .mark-glyph, .cell-partial::before { border-radius: 5px; background: var(--candy-yellow); color: var(--on-candy); }
+.cell-yes::before { content: '✓'; }
+.cell-no::before { content: '✕'; }
+.cell-partial::before { content: '~'; }
+.cell-unknown::before { content: '?'; background: var(--muted); border-radius: 5px; }
 
 /* Trust row */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 16px; margin-right: 6px; }
@@ -545,29 +556,38 @@ main.landing > :first-child { margin-top: 0; }
 .stat-label { margin: 6px 0 0; color: var(--muted-fg); font-size: 13.5px; line-height: 1.5; font-weight: 700; }
 
 /* Objections: native disclosure, so keyboard and no-JS both work. summary is not in the
-   global focus-visible rule, so it gets its own. */
-.faq { display: grid; gap: 12px; max-width: 860px; }
-.faq-item { min-width: 0; padding: 0; overflow: hidden; }
-.faq-question { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 18px; cursor: pointer; font: 700 16.5px/1.4 var(--display); color: var(--fg); list-style: none; }
-.faq-question::-webkit-details-marker { display: none; }
-.faq-question::after { content: '+'; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-yellow); color: var(--on-candy); font: 800 15px/1 var(--ui); flex-shrink: 0; }
-.faq-item[open] .faq-question::after { content: '−'; }
-.faq-item[open] .faq-question { border-bottom: 2px solid var(--edge); }
-.faq-question:hover { background: var(--candy-yellow); color: var(--on-candy); }
-.faq-question:focus-visible { outline: 3px solid var(--focus); outline-offset: -4px; border-radius: 10px; }
+   global focus-visible rule, so it gets its own.
+   .faq-list is the alias wrapper: its bare <details> children get the card frame, the
+   summary styling and the answer padding without needing any extra classes. */
+.faq, .faq-list { display: grid; gap: 12px; max-width: 860px; }
+.faq-list > details { border: 2px solid var(--edge); border-radius: var(--radius); background: var(--card); box-shadow: 5px 5px 0 var(--edge); }
+.faq-item, .faq-list > details { min-width: 0; padding: 0; overflow: hidden; }
+.faq-list > details > :not(summary) { margin: 0; padding: 14px 18px 16px; color: var(--muted-fg); font-size: 15px; line-height: 1.65; }
+.faq-question, .faq-list > details > summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 18px; cursor: pointer; font: 700 16.5px/1.4 var(--display); color: var(--fg); list-style: none; }
+.faq-question::-webkit-details-marker, .faq-list > details > summary::-webkit-details-marker { display: none; }
+.faq-question::after, .faq-list > details > summary::after { content: '+'; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--edge); border-radius: 50%; background: var(--candy-yellow); color: var(--on-candy); font: 800 15px/1 var(--ui); flex-shrink: 0; }
+.faq-item[open] .faq-question::after, .faq-list > details[open] > summary::after { content: '−'; }
+.faq-item[open] .faq-question, .faq-list > details[open] > summary { border-bottom: 2px solid var(--edge); }
+.faq-question:hover, .faq-list > details > summary:hover { background: var(--candy-yellow); color: var(--on-candy); }
+.faq-question:focus-visible, .faq-list > details > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -4px; border-radius: 10px; }
 .faq-answer { padding: 14px 18px 16px; color: var(--muted-fg); font-size: 15px; line-height: 1.65; }
 .landing .faq-answer :where(p,ul,ol) { max-width: 68ch; }
 .faq-answer > :last-child { margin-bottom: 0; }
 
 /* Closing band */
 .cta-band { border-top: 2px solid var(--edge); background: var(--landing-band); padding-block: clamp(44px,6vw,80px); }
-.cta-inner { display: grid; justify-items: center; gap: 14px; text-align: center; }
-.cta-heading { margin: 0; max-width: 24ch; font: 800 clamp(28px,4.2vw,42px)/1.1 var(--display); color: var(--fg); }
-.cta-body { max-width: 54ch; margin: 0; color: var(--muted-fg); font-size: 17px; line-height: 1.6; font-weight: 600; }
+/* Items stretch and centre themselves with auto margins rather than justify-items:
+   center. A centred grid item is sized fit-content, which turns every max-width into a
+   target width and pushes the band past a 375px viewport; stretch + margin-inline: auto
+   keeps each box inside the track and still centres it on a wide screen. */
+.cta-inner { display: grid; grid-template-columns: minmax(0,1fr); justify-items: stretch; gap: 14px; text-align: center; }
+.cta-inner > .mono-label { justify-self: center; }
+.cta-heading { margin: 0 auto; max-width: 24ch; font: 800 clamp(28px,4.2vw,42px)/1.1 var(--display); color: var(--fg); }
+.cta-body { max-width: 54ch; margin: 0 auto; color: var(--muted-fg); font-size: 17px; line-height: 1.6; font-weight: 600; }
 .cta-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 16px; margin-top: 10px; }
-/* max-width, not width: a definite width on a centred grid item sizes the implicit auto
-   track from that width, which pushed the band 85px past a 375px viewport. */
-.cta-inner .command { justify-self: stretch; max-width: 460px; margin: 6px auto 0; text-align: left; }
+/* width + a percentage-clamped max-width: an auto-margin grid item whose max-content is
+   a long unbreakable command line otherwise keeps its 460px cap at 375px. */
+.cta-inner .command { width: 100%; max-width: min(100%,460px); margin: 6px auto 0; text-align: left; }
 
 @media (max-width: 1060px) {
   .hero-inner, .feature-row { grid-template-columns: minmax(0,1fr); }

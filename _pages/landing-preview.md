@@ -249,6 +249,16 @@ sections:
       </table>
     </div>
     <p class="matrix-hint">Scroll the table sideways to compare <span aria-hidden="true">→</span></p>
+    <p class="section-lede">Alias spelling used by <code>compare.md</code>: <code>.table-scroll</code> wrapper, <code>.comparison-table</code>, and self-drawing <code>.cell-*</code> spans.</p>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Alias comparison table (scrollable)">
+      <table class="comparison-table">
+        <thead><tr><th scope="col">Capability</th><th scope="col" class="matrix-self">Interseptor</th><th scope="col">Tool B</th><th scope="col">Tool C</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Evidence-linked findings</th><td class="matrix-self"><span class="cell-yes">Yes</span></td><td><span class="cell-partial">Partial</span></td><td><span class="cell-no">No</span></td></tr>
+          <tr><th scope="row">Published benchmark numbers</th><td class="matrix-self"><span class="cell-yes">Yes</span></td><td><span class="cell-unknown">Unknown</span></td><td><span class="cell-unknown">Unknown</span></td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
@@ -274,6 +284,17 @@ sections:
       <details class="faq-item card-surface">
         <summary class="faq-question">What happens to my capture data?</summary>
         <div class="faq-answer"><p>Placeholder answer. It stays on the machine; see <a href="{{ '/troubleshooting/' | relative_url }}">troubleshooting</a> if a capture goes missing.</p></div>
+      </details>
+    </div>
+    <p class="section-lede">Alias spelling used by <code>compare.md</code>: a <code>.faq-list</code> wrapper around bare <code>&lt;details&gt;</code> elements, no per-item classes.</p>
+    <div class="faq-list">
+      <details>
+        <summary>Does the alias wrapper need extra classes?</summary>
+        <p>No. A bare <code>&lt;details&gt;</code> inside <code>.faq-list</code> picks up the card frame, the marker and the answer padding.</p>
+      </details>
+      <details>
+        <summary>Is the keyboard behaviour the same?</summary>
+        <p>Yes, both spellings are native disclosures with the same focus ring.</p>
       </details>
     </div>
   </div>
