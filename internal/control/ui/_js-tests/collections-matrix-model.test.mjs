@@ -4,7 +4,7 @@ import {
   cellVerdict, classLabel, matrixCaption, flaggedRowCount, identityChoices,
   coverageLabel, coverageSummaryText, groupFraction, filterOperations,
   fmtMs, phaseBars, timingSummaryText, sortedOutliers,
-  diffHasChanges, diffSummaryText, handoffSummaryText,
+  diffHasChanges, diffSummaryText, handoffSummaryText, matrixRunIdentities, MATRIX_MAX_IDENTITIES,
 } from '../js/collections-matrix-model.js';
 
 test('cellVerdict priority: blocked/error over flag over sameness', () => {
@@ -111,4 +111,23 @@ test('diffHasChanges and diffSummaryText', () => {
 test('handoffSummaryText lists the attack type and positions', () => {
   assert.equal(handoffSummaryText({ attackType: 'pitchfork', positions: ['id', 'uid'] }), 'pitchfork · 2 positions (id, uid)');
   assert.equal(handoffSummaryText(null), '');
+});
+
+test('matrixRunIdentities mirrors the server: skips broken and header-less, appends anonymous', () => {
+  const got = matrixRunIdentities([
+    { name: 'admin', headers: 'Cookie: a=1' },
+    { name: 'locked', headers: 'Cookie: b=1', broken: true },
+    { name: 'empty', headers: '  ' },
+    { name: 'user', headers: 'Authorization: x' },
+    { name: 'Admin', headers: 'Cookie: dup' },
+    { name: '', headers: 'Cookie: noname' },
+  ]);
+  assert.deepEqual(got, ['admin', 'user', 'anonymous']);
+});
+
+test('matrixRunIdentities with nothing saved still runs anonymous, and caps at the server limit', () => {
+  assert.deepEqual(matrixRunIdentities(null), ['anonymous']);
+  const many = Array.from({ length: 20 }, (_, i) => ({ name: 'u' + i, headers: 'X: ' + i }));
+  assert.equal(matrixRunIdentities(many).length, MATRIX_MAX_IDENTITIES);
+  assert.equal(MATRIX_MAX_IDENTITIES, 12);
 });
