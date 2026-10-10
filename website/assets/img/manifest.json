@@ -20,46 +20,6 @@
     "caption": "Proxy History with the request and response inspector open on a captured flow."
   },
   {
-    "file": "intercept-light.png",
-    "view": "intercept",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 219650,
-    "alt": "Interseptor Intercept in light theme: request interception is on with one held GET api.example.com/api/v1/orders/1042 in the hold queue, its raw HTTP shown in the editor, and Forward and Drop actions.",
-    "caption": "Hold a request in flight, edit its raw HTTP, then forward or drop it."
-  },
-  {
-    "file": "intercept-dark.png",
-    "view": "intercept",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 225543,
-    "alt": "Interseptor Intercept in dark theme: request interception is on with one held GET api.example.com/api/v1/orders/1042 in the hold queue, its raw HTTP shown in the editor, and Forward and Drop actions.",
-    "caption": "Hold a request in flight, edit its raw HTTP, then forward or drop it."
-  },
-  {
-    "file": "repeater-light.png",
-    "view": "repeater",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 257831,
-    "alt": "Interseptor Repeater in light theme: three request tabs, a send-history list, an editable GET request with headers, and a pretty-printed 200 JSON response.",
-    "caption": "Replay and iterate on a single request, with per-tab send history."
-  },
-  {
-    "file": "repeater-dark.png",
-    "view": "repeater",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 259368,
-    "alt": "Interseptor Repeater in dark theme: three request tabs, a send-history list, an editable GET request with headers, and a pretty-printed 200 JSON response.",
-    "caption": "Replay and iterate on a single request, with per-tab send history."
-  },
-  {
     "file": "intruder-light.png",
     "view": "intruder",
     "theme": "light",
@@ -100,26 +60,6 @@
     "caption": "Organize, parameterize and send saved API requests with environments."
   },
   {
-    "file": "scanner-light.png",
-    "view": "scanner",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 308224,
-    "alt": "Interseptor Scanner in light theme: passive findings grouped by severity (1 High, 4 Medium, 2 Low) with the selected 'Session token leaked in response body' finding listing three affected targets and a remediation.",
-    "caption": "Passive security checks over captured traffic, grouped by severity."
-  },
-  {
-    "file": "scanner-dark.png",
-    "view": "scanner",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 312002,
-    "alt": "Interseptor Scanner in dark theme: passive findings grouped by severity (1 High, 4 Medium, 2 Low) with the selected 'Session token leaked in response body' finding listing three affected targets and a remediation.",
-    "caption": "Passive security checks over captured traffic, grouped by severity."
-  },
-  {
     "file": "findings-document-light.png",
     "view": "findings-document",
     "theme": "light",
@@ -138,66 +78,6 @@
     "bytes": 356063,
     "alt": "Interseptor Findings workspace in dark theme: a list of three findings and the open document for a High-severity access-control finding with CVSS 7.1, impact, root cause, affected targets and a step-by-step reproduction linked to captured flows.",
     "caption": "Evidence-first findings with CVSS, affected targets and linked proof."
-  },
-  {
-    "file": "report-preflight-light.png",
-    "view": "report-preflight",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 168126,
-    "alt": "Interseptor report preflight in light theme: export options for Markdown with attached evidence, a readiness summary showing two findings ready and no blockers, and the report-contents list.",
-    "caption": "Pre-flight report readiness and export the finished findings."
-  },
-  {
-    "file": "report-preflight-dark.png",
-    "view": "report-preflight",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 173677,
-    "alt": "Interseptor report preflight in dark theme: export options for Markdown with attached evidence, a readiness summary showing two findings ready and no blockers, and the report-contents list.",
-    "caption": "Pre-flight report readiness and export the finished findings."
-  },
-  {
-    "file": "map-light.png",
-    "view": "map",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 168504,
-    "alt": "Interseptor Map in light theme: an endpoint tree of 46 endpoints across five example.com hosts with per-path counts and finding links.",
-    "caption": "An attack-surface map of every endpoint seen, by host and path."
-  },
-  {
-    "file": "map-dark.png",
-    "view": "map",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 174281,
-    "alt": "Interseptor Map in dark theme: an endpoint tree of 46 endpoints across five example.com hosts with per-path counts and finding links.",
-    "caption": "An attack-surface map of every endpoint seen, by host and path."
-  },
-  {
-    "file": "settings-scope-light.png",
-    "view": "settings-scope",
-    "theme": "light",
-    "width": 1440,
-    "height": 900,
-    "bytes": 258872,
-    "alt": "Interseptor Settings Scope section in light theme: include and exclude scope rules for three in-scope example.com hosts and two exclusions, plus the engagement brief.",
-    "caption": "Define engagement scope with include/exclude rules and an authorization brief."
-  },
-  {
-    "file": "settings-scope-dark.png",
-    "view": "settings-scope",
-    "theme": "dark",
-    "width": 1440,
-    "height": 900,
-    "bytes": 271600,
-    "alt": "Interseptor Settings Scope section in dark theme: include and exclude scope rules for three in-scope example.com hosts and two exclusions, plus the engagement brief.",
-    "caption": "Define engagement scope with include/exclude rules and an authorization brief."
   },
   {
     "file": "mobile-history-light.png",
@@ -237,6 +117,6 @@
     "height": 630,
     "bytes": 259876,
     "alt": "Interseptor social share card: the wordmark and the tagline 'The interception workspace for web & API pentests', three feature chips (MITM proxy, Repeater & Intruder, Evidence-first findings), and a dark screenshot of the request and response inspector showing an order endpoint returning another customer's record.",
-    "caption": "Interseptor \u2014 the interception workspace for web and API pentests."
+    "caption": "Interseptor — the interception workspace for web and API pentests."
   }
 ]

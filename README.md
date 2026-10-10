@@ -60,7 +60,9 @@ go install github.com/Veyal/interseptor/cmd/interseptor@latest
 interseptor
 ```
 
-Package managers (after the tap/bucket is seeded for a release — see [packaging/](packaging/README.md)):
+Package managers are **not currently current**: the Homebrew tap is pinned to v2.9.0 and the
+automated publish is disabled, so these install an old build. Use `go install` or a release binary
+until the tap and bucket are re-seeded (see [packaging/](packaging/README.md)):
 
 ```bash
 brew install Veyal/tap/interseptor

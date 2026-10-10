@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The published install instructions pointed at a Homebrew tap three releases stale.** `docs/agents.md` (and so `ai-agents.md`, `llms-full.txt` and the site search index) offered `brew install Veyal/tap/interseptor` hedged with "once the tap carries the release". The tap does carry a release -- v2.9.0 -- so the hedge no longer protected anyone: the command succeeds and silently installs an old build while the page beside it advertises the current version. Since the home page tells any AI agent to read `llms-full.txt` and follow it, an agent would have installed 2.9.0 and then talked to 2.12.0 documentation. Both package-manager rows now say plainly not to use them for a current build, and the README carries the same warning.
+
 ### Added
 
 - **The documentation site's home page is a product page.** `index.md` now uses a new `home` layout with no docs sidebar: a hero with the real install command, a verified facts row, a capability grid, three alternating feature rows with product screenshots, an agent section showing an actual MCP session, a "what it does not do" grid, and an FAQ. The landing components (hero, screenshot frame with theme-swapped artwork, feature rows, capability and comparison tables, terminal block, copy-to-clipboard, disclosures, CTA band) live in `website/assets/site.css` and work in both themes down to 375px. The shared `<head>` moved to `_includes/head.html` and gained Open Graph and Twitter card tags with a social image, so pasting the site link now produces a preview instead of a bare URL.

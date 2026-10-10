@@ -2,7 +2,8 @@
 layout: home
 title: Interseptor — an intercepting proxy that makes you prove it
 description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 133-tool MCP server for agent-assisted testing.
-image_alt: The Interseptor history inspector, with a captured request and its response open side by side.
+image: /website/assets/img/social-card.png
+image_alt: "Interseptor: the interception workspace for web and API pentests, beside a screenshot of captured requests and a decoded response."
 sections:
   - title: What it does
     id: capabilities
@@ -133,7 +134,7 @@ sections:
             <div class="shot-media" style="--shot-ratio: 1440 / 900">
               <picture>
                 <source type="image/webp" srcset="{{ '/website/assets/img/findings-document-light.webp' | relative_url }}">
-                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/findings-document-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A finding open as a single document, with its attached evidence listed beneath the reproduction steps.">
+                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/findings-document-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A finding open as a single document, showing its impact, root cause, affected endpoints and numbered reproduction steps.">
               </picture>
               <picture>
                 <source type="image/webp" srcset="{{ '/website/assets/img/findings-document-dark.webp' | relative_url }}">
@@ -187,7 +188,7 @@ sections:
             <div class="shot-media" style="--shot-ratio: 1440 / 900">
               <picture>
                 <source type="image/webp" srcset="{{ '/website/assets/img/intruder-light.webp' | relative_url }}">
-                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/intruder-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="An Intruder run in progress, listing per-request results with anomalies flagged.">
+                <img class="shot-img shot-img-light" src="{{ '/website/assets/img/intruder-light.png' | relative_url }}" width="1440" height="900" loading="lazy" decoding="async" alt="A completed Intruder run listing per-request results, with eight anomalies flagged.">
               </picture>
               <picture>
                 <source type="image/webp" srcset="{{ '/website/assets/img/intruder-dark.webp' | relative_url }}">
@@ -197,6 +198,48 @@ sections:
           </div>
         </figure>
       </article>
+    </div>
+  </div>
+</section>
+
+<section class="landing-section">
+  <div class="landing-wrap">
+    <div class="section-head">
+      <p class="mono-label">On a phone</p>
+      <h2 class="section-heading">The same workspace, on the device in your hand.</h2>
+      <p class="section-lede">The UI is served over HTTP, so forward a port and drive an engagement from wherever you are. These are the real interface at 390px, not a mockup.</p>
+    </div>
+    <div class="capability-grid">
+      <figure class="shot shot-tight">
+        <div class="shot-frame">
+          <div class="shot-media" style="--shot-ratio: 390 / 844">
+            <picture>
+              <source type="image/webp" srcset="{{ '/website/assets/img/mobile-history-light.webp' | relative_url }}">
+              <img class="shot-img" src="{{ '/website/assets/img/mobile-history-light.png' | relative_url }}" width="390" height="844" loading="lazy" decoding="async" alt="The capture list on a phone, showing method, host and path for each request.">
+            </picture>
+          </div>
+        </div>
+      </figure>
+      <figure class="shot shot-tight">
+        <div class="shot-frame">
+          <div class="shot-media" style="--shot-ratio: 390 / 844">
+            <picture>
+              <source type="image/webp" srcset="{{ '/website/assets/img/mobile-findings-light.webp' | relative_url }}">
+              <img class="shot-img" src="{{ '/website/assets/img/mobile-findings-light.png' | relative_url }}" width="390" height="844" loading="lazy" decoding="async" alt="A finding open on a phone, with its severity and status visible above the summary.">
+            </picture>
+          </div>
+        </div>
+      </figure>
+      <figure class="shot shot-tight">
+        <div class="shot-frame">
+          <div class="shot-media" style="--shot-ratio: 390 / 844">
+            <picture>
+              <source type="image/webp" srcset="{{ '/website/assets/img/mobile-scanner-light.webp' | relative_url }}">
+              <img class="shot-img" src="{{ '/website/assets/img/mobile-scanner-light.png' | relative_url }}" width="390" height="844" loading="lazy" decoding="async" alt="Passive scanner results on a phone, grouped by issue title.">
+            </picture>
+          </div>
+        </div>
+      </figure>
     </div>
   </div>
 </section>
