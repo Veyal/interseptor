@@ -280,3 +280,8 @@
 .coll-runplan-sum{font-weight:600;margin:var(--sp-2) 0}
 .coll-runplan-methods{margin:var(--sp-2) 0;padding-left:var(--sp-4)}
 .coll-runplan-chg{color:var(--warnFg);font-weight:600}
+
+/* lane: editor safety */
+.coll-sentover{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--warnLine);color:var(--warnFg);font-size:var(--fs-sm)}
+.coll-sentover[hidden]{display:none}
+.coll-undo{display:flex;gap:var(--sp-2);align-items:center}

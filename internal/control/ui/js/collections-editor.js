@@ -4,7 +4,8 @@ import { renderState } from './statepanel.js';
 import { createScriptEditor, SNIPPETS } from './scriptedit.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
-import { S, btn, el, itemByUid, jget, jsend, setStatus } from './collections-core.js';
+import { S, X, btn, el, itemByUid, jget, jsend, setStatus } from './collections-core.js';
+import * as SF from './collections-safety.js';
 import { paintEnvDot, renderScriptsChip, updateBadge } from './collections-env.js';
 import { copyCurl, openInRepeater, renderResponse, sendCurrent } from './collections-response.js';
 import { openImportSheet, openScriptsSheet, runCollection } from './collections-sheets.js';
@@ -74,9 +75,11 @@ export function markDirty() {
   if (!S.ed) return;
   S.dirty = M.editorSignature(S.ed) !== S.edSig;
   const d = $('#collDirty');
-  if (d) d.textContent = S.dirty ? 'Unsaved changes' : '';
+  if (d) d.textContent = S.dirty ? 'Unsaved changes: differs from the stored request' : 'Matches the stored request';
   const save = $('#collSave');
   if (save) save.disabled = !S.dirty || S.saving;
+  const rev = $('#collRevert');
+  if (rev) rev.hidden = !S.dirty;
 }
 
 export function focusEditorUrl() { requestAnimationFrame(() => $('#collUrl')?.focus()); }
@@ -174,14 +177,24 @@ export function renderEditor() {
   const save = btn('Save', () => saveCurrent(), 'btn', 'save');
   save.id = 'collSave';
   save.disabled = true;
+  const revert = btn('Revert', () => revertEdits(), 'btn', 'refresh');
+  revert.id = 'collRevert';
+  revert.hidden = true;
+  revert.title = 'Discard unsaved edits and go back to the stored request';
   const dirty = el('span', 'coll-dirty');
   dirty.id = 'collDirty';
   dirty.setAttribute('role', 'status');
-  actions.append(save, dirty,
+  const sentOver = el('div', 'coll-sentover');
+  sentOver.id = 'collSentOver';
+  sentOver.setAttribute('role', 'status');
+  sentOver.hidden = true;
+  host.append(sentOver);
+  actions.append(save, revert, dirty,
     btn('Open in Repeater', () => openInRepeater(), 'btn', 'repeater'),
     btn('Copy as cURL', () => copyCurl(), 'btn', 'copy'));
   host.append(actions);
   markDirty();
+  paintSentOver();
   paintEnvDot();
 }
 
@@ -520,6 +533,120 @@ export async function runResolve() {
 }
 
 /* ------------------------------------------------------------------ save */
+
+/* ------------------------------------------------------- unsaved / sent-over safety */
+
+// The send pipeline runs the STORED item, so a Send of an edited request saves the edit first. The stored
+// version it replaces is kept here (in memory, per request) so the user can always get back to it.
+const SENT_OVER = new Map();
+
+export async function saveForSend() {
+  if (!S.ed) return false;
+  if (!S.dirty) return true;
+  const uid = S.ed.uid;
+  const stored = S.edBase;
+  if (!(await saveCurrent())) return false;
+  if (stored && stored.uid === uid) SF.rememberSentOver(SENT_OVER, uid, stored);
+  paintSentOver();
+  return true;
+}
+
+export function paintSentOver() {
+  const host = $('#collSentOver');
+  if (!host) return;
+  host.textContent = '';
+  const prev = S.ed ? SF.sentOverFor(SENT_OVER, S.ed.uid) : null;
+  host.hidden = !prev;
+  if (!prev) return;
+  host.append(el('span', '', 'Sent with edits that replaced the stored request. The previous version is kept until you reload.'),
+    btn('Restore previous version', () => restoreSentOver(), 'btn xs', 'refresh'),
+    btn('Keep these edits', () => { SF.forgetSentOver(SENT_OVER, S.ed.uid); paintSentOver(); }, 'btn xs'));
+}
+
+export async function restoreSentOver() {
+  if (!S.ed) return;
+  const uid = S.ed.uid;
+  const prev = SF.sentOverFor(SENT_OVER, uid);
+  if (!prev) return;
+  if (S.dirty) {
+    const ok = await uiConfirm('Restore previous version', 'This replaces the stored request and discards your unsaved edits.', 'Restore', 'btn danger');
+    if (!ok) return;
+  }
+  try {
+    const saved = await jsend('PUT', '/api/items/' + encodeURIComponent(uid), { ...prev, rev: S.edBase ? S.edBase.rev : prev.rev });
+    const idx = S.items.findIndex((i) => i.uid === uid);
+    if (idx >= 0) S.items[idx] = saved;
+    SF.forgetSentOver(SENT_OVER, uid);
+    S.dirty = false;
+    S.tree = M.buildTree(S.items);
+    renderTree();
+    await openItem(uid, { focusTree: false });
+    toast('Previous version restored');
+  } catch (e) { toastError('Could not restore the previous version', e); }
+}
+
+export async function revertEdits() {
+  if (!S.ed || !S.dirty || !S.edBase) return;
+  const ok = await uiConfirm('Revert changes', 'Discard your unsaved edits and go back to the stored request?', 'Revert', 'btn danger');
+  if (!ok) return;
+  S.dirty = false;
+  await openItem(S.ed.uid, { focusTree: false });
+  toast('Reverted to the stored request');
+}
+
+/* ---------------------------------------------------------------- delete with Undo */
+
+let undoBar = null;
+let undoTimer = 0;
+function clearUndoBar() { clearTimeout(undoTimer); if (undoBar) undoBar.remove(); undoBar = null; }
+
+// deleteItemUndoable replaces the tree's bare DELETE call. It captures the full payload first, deletes, then
+// offers Undo for UNDO_WINDOW_MS. The buffer lives in memory only: a reload or the window closing ends it.
+export async function deleteItemUndoable(it) {
+  const colUid = S.colUid;
+  const ids = new Set([it.uid, ...M.descendantUids(S.items, it.uid)]);
+  const listed = S.items.filter((i) => ids.has(i.uid));
+  const canUndo = SF.undoable(listed);
+  let full = null;
+  if (canUndo) {
+    try { full = await Promise.all(listed.map((i) => (i.kind === 'request' ? jget('/api/items/' + encodeURIComponent(i.uid)) : Promise.resolve(i)))); }
+    catch (e) { toastError('Could not delete (the request could not be read for Undo)', e); return; }
+  }
+  const scripts = S.scripts;
+  await jsend('DELETE', '/api/items/' + encodeURIComponent(it.uid));
+  clearUndoBar();
+  const note = SF.undoMessage(it.name, listed.length - 1);
+  if (!full) { toast(note + ' Too many items to offer Undo.', 'warn'); return; }
+  const stripped = full.filter((i) => SF.needsScriptStrip(i, scripts)).length;
+  const root = full.find((i) => i.uid === it.uid);
+  const bar = el('div', 'toast-item info show coll-undo');
+  bar.setAttribute('role', 'status');
+  bar.append(el('span', '', note + ' Undo works for ' + Math.round(SF.UNDO_WINDOW_MS / 1000) + ' seconds and is lost if you reload.'));
+  const b = btn('Undo', async () => {
+    clearUndoBar();
+    try { await restoreDeleted(colUid, full, root, scripts, stripped); } catch (e) { toastError('Could not restore', e); await X.loadCollection(S.colUid); }
+  }, 'btn xs');
+  bar.append(b);
+  const host = $('#toast');
+  if (host) { host.append(bar); undoBar = bar; undoTimer = setTimeout(clearUndoBar, SF.UNDO_WINDOW_MS); }
+}
+
+async function restoreDeleted(colUid, full, root, scripts, stripped) {
+  const map = new Map();
+  const parentStillThere = root.parentUid && S.items.some((i) => i.uid === root.parentUid);
+  let created = null;
+  for (const item of SF.orderForRestore(full, root.uid)) {
+    const parent = item.uid === root.uid ? (parentStillThere ? root.parentUid : '') : map.get(item.parentUid);
+    const out = await jsend('POST', '/api/collections/' + encodeURIComponent(colUid) + '/items', SF.restoreBody(item, parent, SF.needsScriptStrip(item, scripts)));
+    map.set(item.uid, out.uid);
+    if (item.uid === root.uid) created = out;
+  }
+  if (S.colUid === colUid) {
+    await X.loadCollection(colUid);
+    if (created && created.kind === 'request') await openItem(created.uid, { focusTree: false });
+  }
+  toast(stripped ? 'Restored. Scripts that were not trusted were left out.' : 'Restored "' + (root.name || 'Untitled') + '"', stripped ? 'warn' : undefined);
+}
 
 export async function saveCurrent() {
   if (!S.ed || S.saving || !S.dirty) return true;
