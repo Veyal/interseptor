@@ -133,3 +133,22 @@ test('the summary can omit the scope when it is already on screen', () => {
   assert.match(without, /change state/);
   assert.match(without, /x\.example\.com/);
 });
+
+// A rerun of just the failed requests is neither the whole collection nor one
+// folder, and describing it as either overstates what is about to be sent.
+test('an explicit scope label names a subset run', () => {
+  const subset = [
+    { uid: 'r2', kind: 'request', method: 'DELETE', url: 'https://api.example.com/users/1', parentUid: 'f1' },
+  ];
+  const p = buildRunPlan(subset, { collectionName: 'Demo API', scopeLabel: '1 failed request' });
+  assert.equal(p.scopeLabel, '1 failed request');
+  assert.doesNotMatch(planSummary(p), /Demo API/, 'the collection name must not reappear');
+  assert.equal(p.liveRequests, 1, 'the count follows the subset, not the collection');
+  assert.equal(p.needsPhrase, true, 'a subset that still deletes still needs the phrase');
+});
+
+test('a scope label carrying markup is stripped like every other plan string', () => {
+  const p = buildRunPlan([{ uid: 'a', kind: 'request', method: 'GET', url: 'https://h.example.com/', parentUid: '' }],
+    { scopeLabel: '<img src=x onerror=alert(1)>' });
+  assert.doesNotMatch(p.scopeLabel, /[<>]/);
+});

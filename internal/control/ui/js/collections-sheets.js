@@ -1,5 +1,5 @@
 // collections-sheets.js — environment variables sheet, script review (quarantine approve), import sheet with report, and the collection runner.
-import { $, esc, api, toast, toastError, icon, uiConfirm, openFlow, getHook, saveFile } from './core.js';
+import { $, esc, api, toast, toastError, icon, uiConfirm, uiPrompt, openFlow, getHook, saveFile } from './core.js';
 import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
@@ -404,11 +404,7 @@ export async function runCollection(folderUid = '') {
         let reviewed = true; // the review above covers the first run
         mount(w, {
           collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '',
-          confirmRun: async () => {
-            if (reviewed) { reviewed = false; return true; }
-            return uiConfirm('Run again', esc(planSummary(plan)),
-              'Send ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'), 'btn accent');
-          },
+          confirmRun: (payload) => { const done = reviewed; reviewed = false; return done ? Promise.resolve(true) : confirmRerun(payload, folderUid); },
         });
       });
       return body;
@@ -419,9 +415,38 @@ export async function runCollection(folderUid = '') {
     body.textContent = '';
     const w = el('div', 'coll-sheet');
     body.append(w);
-    paintRunPlan(w, plan, () => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid); });
+    paintRunPlan(w, plan, (typed) => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid, plan, typed); });
     return body;
   } });
+}
+
+// confirmRerun gates the second and later presses of a mounted runner's own Run
+// button. The first press is covered by the review that mounted the view; every
+// later one re-asks, because each press sends live requests again. It must not
+// soften: a plan that needed RUN typed the first time needs it again, or 27
+// DELETEs go out on a single click of an accent-styled confirm.
+async function confirmRerun(payload, folderUid) {
+  const uids = (payload && payload.itemUids) || [];
+  // Describe what is actually being sent. A "Rerun failed" carries itemUids.
+  const plan = uids.length
+    ? buildRunPlan(S.items.filter((i) => uids.includes(i.uid)), {
+      collectionName: (S.collection && S.collection.name) || '',
+      scopeLabel: uids.length + ' selected request' + (uids.length === 1 ? '' : 's'),
+    })
+    : buildRunPlan(S.items, {
+      scope: folderUid ? 'folder' : 'collection', folderUid,
+      collectionName: (S.collection && S.collection.name) || '',
+    });
+  if (plan.empty) { toast('Nothing to send'); return false; }
+  if (!plan.needsPhrase) {
+    return uiConfirm('Run again', esc(planSummary(plan)),
+      'Send ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'), 'btn danger');
+  }
+  const typed = await uiPrompt({
+    title: 'Run again: ' + plan.destructive + ' of ' + plan.liveRequests + ' change state. Type ' + CONFIRM_PHRASE + ' to send.',
+    placeholder: CONFIRM_PHRASE,
+  });
+  return planConfirmed(plan, typed);
 }
 
 // paintRunPlan shows what is about to be sent and only calls onRun once the plan is confirmed.
@@ -439,7 +464,8 @@ function paintRunPlan(holder, plan, onRun) {
   holder.append(mb);
   if (plan.hosts.length) holder.append(el('p', 'coll-note', 'Target hosts: ' + plan.hosts.join(', ')));
   holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. Variable changes made by scripts are discarded.'));
-  const go = btn('Run ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'), () => { if (planConfirmed(plan, typed ? typed.value : '')) onRun(); }, 'btn accent', 'rocket');
+  const go = btn('Run ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'),
+    () => { const v = typed ? typed.value : ''; if (planConfirmed(plan, v)) onRun(v); }, 'btn accent', 'rocket');
   let typed = null;
   if (plan.needsPhrase) {
     const lab = el('label', 'coll-note', 'This run changes state on the target. Type ' + CONFIRM_PHRASE + ' to continue.');
@@ -449,18 +475,27 @@ function paintRunPlan(holder, plan, onRun) {
     lab.htmlFor = 'collRunPhrase';
     const sync = () => { go.disabled = !planConfirmed(plan, typed.value); };
     typed.addEventListener('input', sync);
-    typed.addEventListener('keydown', (e) => { if (e.key === 'Enter' && planConfirmed(plan, typed.value)) { e.preventDefault(); onRun(); } });
+    typed.addEventListener('keydown', (e) => { if (e.key === 'Enter' && planConfirmed(plan, typed.value)) { e.preventDefault(); onRun(typed.value); } });
     holder.append(lab, typed);
     go.disabled = true;
   }
   holder.append(go);
 }
 
-export async function execRun(holder, folderUid) {
+// execRun carries the plan and the typed phrase so its own Retry is gated the
+// same way the first attempt was. Retry is only reachable after a confirmed
+// run, so this is not a consent bypass today -- but it is a second POST, and
+// the rule is that the check sits at the request rather than at the dialog that
+// happened to precede it.
+export async function execRun(holder, folderUid, plan, typed) {
+  if (plan && !planConfirmed(plan, typed)) { renderState(holder, 'error', { title: 'Run not confirmed; nothing was sent' }); return; }
   try {
     const res = await jsend('POST', '/api/collections/run', { collectionUid: S.colUid, folderUid: folderUid || undefined, envUid: S.envUid || undefined, persist: 'discard', bail: 'none' });
     paintRun(holder, res);
-  } catch (e) { renderState(holder, 'error', { title: 'Run failed', message: e.message, status: e.status, onRetry: () => { renderState(holder, 'loading', { title: 'Running', rows: 5 }); execRun(holder, folderUid); } }); }
+  } catch (e) {
+    renderState(holder, 'error', { title: 'Run failed', message: e.message, status: e.status,
+      onRetry: () => { renderState(holder, 'loading', { title: 'Running', rows: 5 }); execRun(holder, folderUid, plan, typed); } });
+  }
 }
 
 export function paintRun(holder, res) {

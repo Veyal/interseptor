@@ -52,7 +52,10 @@ function evictToasts(c) {
     for (let i = 0; i < items.length - max; i++) items[i].remove();
   };
   // Older notices are less useful than the latest result, so cap each class.
-  keep('.toast-item:not(.error)', 3);
+  // .toast-keep is exempt: it carries an action with a promised lifetime (an
+  // Undo), and sweeping it as a stale notice would quietly withdraw the offer
+  // before the window the user was told about had passed.
+  keep('.toast-item:not(.error):not(.toast-keep)', 3);
   keep('.toast-item.error', 5);
 }
 function dismissToast(t) {

@@ -6,7 +6,7 @@ export function showDropToast(message, { onUndo, onPause, onResume }) {
   const host = document.getElementById('toast');
   if (!host) return { dismiss() {} };
   const t = document.createElement('div');
-  t.className = 'toast-item info show';
+  t.className = 'toast-item info show toast-keep'; // holds an Undo; must outlive newer notices
   t.setAttribute('role', 'status');
   t.append(document.createTextNode(message + ' '));
   const btn = document.createElement('button');

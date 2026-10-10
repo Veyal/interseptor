@@ -52,7 +52,8 @@ function requestsInScope(items, scope, folderUid) {
   return out;
 }
 
-function scopeLabelFor(scope, items, folderUid, collectionName) {
+function scopeLabelFor(scope, items, folderUid, collectionName, override) {
+  if (override) return plain(override);
   if (scope === 'folder') {
     const f = (Array.isArray(items) ? items : []).find((it) => it && it.uid === folderUid);
     const name = plain(f && f.name) || 'this folder';
@@ -65,7 +66,10 @@ function scopeLabelFor(scope, items, folderUid, collectionName) {
 /**
  * buildRunPlan describes a bulk run without performing it.
  * @param {Array} items stored collection items ({uid, kind, method, url, parentUid, name})
- * @param {Object} opts {scope:'collection'|'folder', folderUid, collectionName, identities}
+ * @param {Object} opts {scope:'collection'|'folder', folderUid, collectionName, identities,
+ *   scopeLabel} -- scopeLabel names the scope outright, for a run over a subset
+ *   of items (a rerun of just the failures) that is neither the whole
+ *   collection nor one folder.
  */
 export function buildRunPlan(items, opts = {}) {
   const scope = opts.scope === 'folder' ? 'folder' : 'collection';
@@ -89,7 +93,7 @@ export function buildRunPlan(items, opts = {}) {
   const destructive = stateChangingReqs * identities;
   return {
     scope,
-    scopeLabel: scopeLabelFor(scope, items, opts.folderUid, opts.collectionName),
+    scopeLabel: scopeLabelFor(scope, items, opts.folderUid, opts.collectionName, opts.scopeLabel),
     requests,
     identities,
     identityNames,

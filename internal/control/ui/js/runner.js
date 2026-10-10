@@ -291,7 +291,10 @@ export function mountRunner(host, opts = {}) {
       toastError('Run', new Error('the runner needs a confirmRun callback before it can send'));
       return null;
     }
-    if (!(await opts.confirmRun())) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
+    // The payload goes with it so the caller can describe the real scope: a
+    // "Rerun failed" sends only the failures, and a dialog that quotes the
+    // whole collection's numbers teaches the operator to ignore them.
+    if (!(await opts.confirmRun(payload))) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
     st.busy = true;
     st.live = newLive();
     st.sel = -1;

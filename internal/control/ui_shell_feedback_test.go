@@ -37,9 +37,13 @@ class FakeEl{
   matches(sel){return sel===':hover'?!!this.hover:false;}
   contains(x){return x===this;}
   querySelectorAll(sel){
-    const not=sel.match(/^\.toast-item:not\(\.(\w+)\)$/);
-    if(not)return this.children.filter(c=>!c.classes.has(not[1]));
-    if(sel==='.toast-item')return this.children.slice();
+    // .toast-item with any number of :not(.class) clauses, which is the whole
+    // grammar evictToasts uses (it exempts .error and .toast-keep).
+    const chain=sel.match(/^\.toast-item((?::not\(\.[\w-]+\))*)$/);
+    if(chain){
+      const excluded=[...chain[1].matchAll(/:not\(\.([\w-]+)\)/g)].map(m=>m[1]);
+      return this.children.filter(c=>!excluded.some(x=>c.classes.has(x)));
+    }
     if(sel==='.toast-item.error')return this.children.filter(c=>c.classes.has('error'));
     throw Error('unsupported selector '+sel);
   }
@@ -146,4 +150,25 @@ func TestUIToastStylesAllowHoverPause(t *testing.T) {
 	if !strings.Contains(css, "#toast .toast-item{pointer-events:auto}") {
 		t.Error("toast items must re-enable pointer events so hover can pause them")
 	}
+}
+
+// An Undo offer is a promise with a stated lifetime. evictToasts caps ordinary
+// notices at three and drops the oldest, so an undo bar built as a plain toast
+// was silently swept by three later toasts -- withdrawing the offer long before
+// the 15 seconds the user was told about, with no signal that it had gone.
+// Collections' delete-undo and the held-request undo both rely on this.
+func TestUIToastKeepSurvivesNewerNotices(t *testing.T) {
+	shellFeedbackHarness(t, `
+const bar=document.createElement('div');
+bar.className='toast-item info show toast-keep';
+container.appendChild(bar);
+toast('one');toast('two');toast('three');toast('four');
+eq(container.children.includes(bar),true,'a toast-keep bar outlives four newer notices');
+const plain=document.createElement('div');
+plain.className='toast-item info show';
+container.appendChild(plain);
+toast('five');toast('six');toast('seven');
+eq(container.children.includes(plain),false,'an ordinary notice is still evicted');
+eq(container.children.includes(bar),true,'and the kept bar is still there');
+`)
 }

@@ -600,12 +600,25 @@ let undoBar = null;
 let undoTimer = 0;
 function clearUndoBar() { clearTimeout(undoTimer); if (undoBar) undoBar.remove(); undoBar = null; }
 
+// itemsUnder is the delete's blast radius: the item plus everything beneath it.
+function itemsUnder(it) {
+  const ids = new Set([it.uid, ...M.descendantUids(S.items, it.uid)]);
+  return S.items.filter((i) => ids.has(i.uid));
+}
+
+// deleteIsUndoable lets the confirmation dialog tell the truth before it asks.
+// Undo is capped by request count, and that cap used to be evaluated after the
+// user had already consented to a dialog promising a 15-second Undo, so
+// deleting a folder of 201 requests took consent on a promise it then broke.
+export function deleteIsUndoable(it) {
+  return SF.undoable(itemsUnder(it));
+}
+
 // deleteItemUndoable replaces the tree's bare DELETE call. It captures the full payload first, deletes, then
 // offers Undo for UNDO_WINDOW_MS. The buffer lives in memory only: a reload or the window closing ends it.
 export async function deleteItemUndoable(it) {
   const colUid = S.colUid;
-  const ids = new Set([it.uid, ...M.descendantUids(S.items, it.uid)]);
-  const listed = S.items.filter((i) => ids.has(i.uid));
+  const listed = itemsUnder(it);
   const canUndo = SF.undoable(listed);
   let full = null;
   if (canUndo) {
@@ -619,7 +632,10 @@ export async function deleteItemUndoable(it) {
   if (!full) { toast(note + ' Too many items to offer Undo.', 'warn'); return; }
   const stripped = full.filter((i) => SF.needsScriptStrip(i, scripts)).length;
   const root = full.find((i) => i.uid === it.uid);
-  const bar = el('div', 'toast-item info show coll-undo');
+  // toast-keep: evictToasts caps ordinary notices at 3 and drops the oldest, so
+  // without it three toasts inside the window silently removed the Undo button
+  // well before the 15 seconds this bar promises.
+  const bar = el('div', 'toast-item info show coll-undo toast-keep');
   bar.setAttribute('role', 'status');
   bar.append(el('span', '', note + ' Undo works for ' + Math.round(SF.UNDO_WINDOW_MS / 1000) + ' seconds and is lost if you reload.'));
   const b = btn('Undo', async () => {

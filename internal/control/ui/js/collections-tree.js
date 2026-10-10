@@ -4,7 +4,7 @@ import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
 import { S, X, announce, btn, el, itemByUid, jsend, setStatus } from './collections-core.js';
-import { deleteItemUndoable, focusEditorUrl, openItem } from './collections-editor.js';
+import { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem } from './collections-editor.js';
 import { expandTo } from './collections-env.js';
 import { sendCurrent } from './collections-response.js';
 import { openImportSheet, runCollection } from './collections-sheets.js';
@@ -300,7 +300,12 @@ export async function deleteItem(it) {
   const kids = it.kind === 'folder' ? M.descendantUids(S.items, it.uid).size : 0;
   const ok = await uiConfirm('Delete ' + (it.kind === 'folder' ? 'folder' : 'request'),
     '<b>' + esc(it.name || 'Untitled') + '</b>' + (kids ? ' and its ' + kids + ' item' + (kids === 1 ? '' : 's') : '')
-      + ' will be removed. Captured flows stay in History. You can Undo for 15 seconds; after that it cannot be recovered.', 'Delete', 'btn danger');
+      + ' will be removed. Captured flows stay in History.'
+      // Ask on the truth: Undo is capped by request count, so a large folder
+      // cannot be recovered and the dialog has to say so before it is agreed to.
+      + (deleteIsUndoable(it)
+        ? ' You can Undo for 15 seconds; after that it cannot be recovered.'
+        : ' This is too large to offer Undo: it cannot be recovered.'), 'Delete', 'btn danger');
   if (!ok) return;
   await mutate('Could not delete', async () => {
     await deleteItemUndoable(it);
