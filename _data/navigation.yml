@@ -10,6 +10,8 @@
       url: /workspace/
     - title: All features
       url: /features/
+    - title: Compared to Burp, ZAP & Caido
+      url: /compare/
 - title: Use Interseptor
   links:
     - title: Proxy, TLS & networking

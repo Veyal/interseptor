@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The documentation site's home page is a product page.** `index.md` now uses a new `home` layout with no docs sidebar: a hero with the real install command, a verified facts row, a capability grid, three alternating feature rows with product screenshots, an agent section showing an actual MCP session, a "what it does not do" grid, and an FAQ. The landing components (hero, screenshot frame with theme-swapped artwork, feature rows, capability and comparison tables, terminal block, copy-to-clipboard, disclosures, CTA band) live in `website/assets/site.css` and work in both themes down to 375px. The shared `<head>` moved to `_includes/head.html` and gained Open Graph and Twitter card tags with a social image, so pasting the site link now produces a preview instead of a bare URL.
+- **A comparison page, and a route to it from the docs navigation.** `/compare/` sets Interseptor against Burp Suite (Community and Professional), OWASP ZAP, Caido and mitmproxy on a 16-row capability matrix, with prices and licences dated to the day they were checked. It opens by conceding what Interseptor does not do -- no active scanner (31 passive checks only), four months old, no extension marketplace, no hosted out-of-band infrastructure, no HTTP/3, no training estate -- and it loses or ties six of the sixteen rows. It also says when to use something else: ZAP for an automated active scan, Burp Professional for Collaborator-grade OAST.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.0` release.
