@@ -232,3 +232,47 @@ func TestUIFindingsCopyImageContract(t *testing.T) {
 		t.Error("Copy image control must pair the existing copy icon symbol with a visible label")
 	}
 }
+
+// The properties rail used to fold into a top disclosure at a container width of
+// 1180px. On a wide screen the findings workspace is commonly around 1176px --
+// four pixels under -- so the rail collapsed while 1132px of column was still
+// available, and the document cannot use that width because .find-doc-in caps at
+// 112ch and the body measure at 70ch. The result was a thin "Properties" strip
+// that read as a cropped panel above a text ribbon with ~560px of void beside it,
+// which is what a long finding looked like in practice.
+//
+// Measured after the fix at a 1176px container: two columns (860px + 248px rail),
+// void beside the claim down from 559px to 287px, no overflow.
+func TestUIFindingsRailFoldsOnlyWhenTheDocumentNeedsTheWidth(t *testing.T) {
+	css := readUIAsset(t, "findings.css")
+
+	if strings.Contains(css, "@container findws (max-width:1180px)") {
+		t.Error("the rail still folds at 1180px, which fires while the document column is " +
+			"wider than it can use and strands the body text beside an empty half")
+	}
+	fold := "@container findws (max-width:1000px)"
+	if !strings.Contains(css, fold) {
+		t.Fatalf("expected the rail fold at %s", fold)
+	}
+
+	block := css[strings.Index(css, fold):]
+	if end := strings.Index(block, "\n}"); end > 0 {
+		block = block[:end]
+	}
+	// Collapsed, the rail must not keep its card chrome: a bordered 32px box whose
+	// body is hidden, with the claim starting outside it, is the "cropped" look.
+	requireUIContains(t, block,
+		".find-rail:not(.is-open){background:none;border-color:transparent",
+		".find-rail:not(.is-open) .find-rail-body{display:none}")
+
+	// Request/response pair side by side only when the document column itself has
+	// the room. With the rail showing, the column is 272px narrower than the
+	// container, so a bare (min-width:900px) would put two panes in a 728px column.
+	if strings.Contains(css, "@container findws (min-width:900px){") {
+		t.Error("the exchange pair still keys off a bare 900px container, which ignores " +
+			"the 272px the rail takes out of the document column")
+	}
+	requireUIContains(t, css,
+		"@container findws (min-width:900px) and (max-width:1000px)",
+		"@container findws (min-width:1172px)")
+}

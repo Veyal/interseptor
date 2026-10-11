@@ -194,16 +194,35 @@
 .find-rail .find-properties{grid-template-columns:minmax(0,1fr);gap:6px;margin-top:0;max-width:none}
 .find-rail .find-properties #findCvssEditor{grid-column:1}
 .find-rail .cvss-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-@container findws (min-width:900px){
+/* Request and response sit side by side only when the document column itself is
+   about 900px, which is not the same as the container being 900px: with the rail
+   showing, the column is 272px narrower (248px rail + 24px gap). So pair them
+   below the fold threshold once the container clears 900, and above it only once
+   the container clears 1172 -- otherwise the 1000-1172 band would put two panes
+   into a 728px column. */
+@container findws (min-width:900px) and (max-width:1000px){
   .find-xchbd{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .find-xchbd>.find-xch-err,.find-xchbd>.find-flow-shot,.find-xchbd>.find-preview-note,.find-xchbd>.find-evidence-actions{grid-column:1/-1}
 }
-@container findws (max-width:1180px){
+@container findws (min-width:1172px){
+  .find-xchbd{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .find-xchbd>.find-xch-err,.find-xchbd>.find-flow-shot,.find-xchbd>.find-preview-note,.find-xchbd>.find-evidence-actions{grid-column:1/-1}
+}
+/* Fold the rail only when the document genuinely needs the width. The rail is
+   248px and the body text measure is 70ch (~573px), so the two stop fitting at
+   roughly 900px of container. Folding at 1180px fired while 1132px of column
+   was still available, which the document cannot use -- .find-doc-in caps at
+   112ch -- so the rail vanished and left half the column empty beside it. */
+@container findws (max-width:1000px){
   .find-workspace-content{grid-template-columns:minmax(0,1fr);row-gap:16px}
   .find-rail,.find-doc-col{grid-column:1}
   .find-doc-col{grid-row:2}
   .find-rail-toggle{display:flex;align-items:center}
   .find-rail:not(.is-open) .find-rail-body{display:none}
+  /* Collapsed it is a control, not a panel: a bordered 32px card with its body
+     hidden and the claim starting outside it reads as a box that got cropped. */
+  .find-rail:not(.is-open){background:none;border-color:transparent;border-bottom:1px solid var(--line);border-radius:0}
+  .find-rail:not(.is-open) .find-rail-toggle{padding-left:0;padding-right:0}
 }
 @container findws (max-width:640px){
   .find-aff-row{grid-template-columns:auto auto minmax(0,1fr)}

@@ -212,7 +212,9 @@ func TestFindingDocumentReadsEvidenceInlineFromTheFlow(t *testing.T) {
 		t.Error("image evidence branch must precede the flow branch")
 	}
 	css := readUIAsset(t, "findings.css")
-	requireUIContains(t, css, "@container findws (min-width:900px)", "@container findws (max-width:1180px)", ".find-xchbd", ".find-tl", ".find-rail", "container-type:inline-size")
+	// The rail fold moved from 1180px to 1000px; see
+	// TestUIFindingsRailFoldsOnlyWhenTheDocumentNeedsTheWidth for why.
+	requireUIContains(t, css, "@container findws (min-width:900px)", "@container findws (max-width:1000px)", ".find-xchbd", ".find-tl", ".find-rail", "container-type:inline-size")
 }
 
 func TestFindingDocumentCSSDoesNotAnimateOrBreakTokens(t *testing.T) {
