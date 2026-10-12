@@ -50,6 +50,19 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
 Use structured blocks arrays when available; legacy body JSON remains accepted. Stub create (title only) is allowed.
 Do NOT file walls of freeform markdown. Put summary/impact/why/fix/retest in their fields, reproduction in text blocks, and raw proof in flow/image blocks.
 
+SEVERITY is the outcome you demonstrated, not the worst case the flaw could enable.
+- If the impact sentence needs a precondition you did not demonstrate ("given any injection", "if an attacker already has X", "once chained with Y"), either demonstrate that precondition or rate the finding at what you actually proved and describe the chain as the escalation it would allow. A High that rests on an undemonstrated step is a Low with a story.
+- A configuration observation with no demonstrated exploitation -- a missing header, a weak cipher, a verbose banner, an absent hardening flag -- is Low or Info. It rises only when you attach the step that uses it.
+- A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+
+NOT EVERY FINDING IS AN HTTP EXCHANGE. When the claim lives outside the proxy -- on-device storage, logs, a manifest or build artefact, client-side enforcement, a debugging socket -- a captured flow cannot prove it, and attaching a loosely related flow is worse than attaching nothing. Attach what does prove it, and keep ACTION / RESULT / CONTROL:
+- device or app state: a real device screenshot (add_finding_image), plus the exact path and how you read it in the action block
+- file or log contents: the smallest excerpt that shows the issue as a text block, naming the file and the command that produced it; redact the value and keep a length or digest
+- static or build facts: the file, the line, and the build or package the artefact came from
+- the control is what makes it a finding: the same read on a hardened build, a different account, or the documented expectation
+
+ONE FINDING PER ROOT CAUSE. The same failed control on five endpoints is one finding with five affected targets, not five findings. Split only when the fix differs. Before filing, list existing findings and check: if the cause is one you have already filed, add the endpoint and its flows to that finding as another target instead of opening a new one.
+
 HOUSE STYLE: the reader is a working pentester triaging a list. They know the vulnerability class. Say where it is and what you proved, nothing else.
 - title <=70 chars: "<flaw> on <endpoint or parameter>"; no "Vulnerability:" prefix, no severity word
 - summary: ONE sentence <=140 chars: "<METHOD path template> <what happens> to <role>."; never restate the title
@@ -119,9 +132,14 @@ type findingFormatInput struct {
 }
 
 var (
-	reHeading         = regexp.MustCompile(`(?m)^#{1,6}\s+\S`)
-	reCredMention     = regexp.MustCompile(`(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|credential|token)\b`)
-	reCredBoldOrTable = regexp.MustCompile(`(?i)(\*\*[^*]*(password|passwd|secret|api[_-]?key|credential|token)[^*]*\*\*|\|[^|\n]*(password|passwd|secret|api[_-]?key|credential|token)[^|\n]*\|)`)
+	// A conditional impact names a precondition the evidence does not carry:
+	// "Given any injection ...", "If an attacker already holds ...", "Once
+	// chained with ...". At Critical/High that is a severity set from the story
+	// rather than the demonstration.
+	reConditionalImpact = regexp.MustCompile(`(?i)\b(given (?:any|an?|that)\b|if an attacker|if a[n]? (?:user|attacker|client)\b|once chained|when chained|assuming\b|provided that\b|could potentially|may(?: be)? (?:allow|permit|enable)|would allow an attacker)`)
+	reHeading           = regexp.MustCompile(`(?m)^#{1,6}\s+\S`)
+	reCredMention       = regexp.MustCompile(`(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|credential|token)\b`)
+	reCredBoldOrTable   = regexp.MustCompile(`(?i)(\*\*[^*]*(password|passwd|secret|api[_-]?key|credential|token)[^*]*\*\*|\|[^|\n]*(password|passwd|secret|api[_-]?key|credential|token)[^|\n]*\|)`)
 )
 
 type findingArtifacts struct {
@@ -212,6 +230,18 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 	}
 	if (sev == "critical" || sev == "high") && substantial && a.flowCount == 0 {
 		warns = append(warns, "Critical/High finding has no captured flow — attach one when the behavior occurred in Interseptor so raw proof stays inspectable")
+	}
+	// Severity has to follow what was demonstrated. A High whose impact opens
+	// with a precondition nobody executed is a lower finding with an escalation
+	// story attached.
+	if (sev == "critical" || sev == "high") && reConditionalImpact.MatchString(in.Impact) {
+		warns = append(warns, "impact states a precondition you may not have demonstrated — rate the outcome you actually produced and describe the chain as the escalation it would allow, or demonstrate the precondition and say so in proofReview")
+	}
+	// Not every finding is an HTTP exchange. Device, log, manifest and build
+	// findings cannot have a flow, and the Critical/High flow warning above
+	// leaves everything below High silent, so these arrive with nothing at all.
+	if substantial && a.flowCount == 0 && a.imageCount == 0 {
+		warns = append(warns, "no evidence attached — a captured flow if it happened over HTTP, otherwise a real device screenshot (add_finding_image) or the smallest file/log excerpt as a text block naming the path and the command that produced it")
 	}
 	if hasPoC && a.proofless > 0 {
 		warns = append(warns, "evidence is missing a proof annotation — explain exactly what each flow or image establishes")

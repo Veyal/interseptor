@@ -1674,6 +1674,48 @@ or image references remain visible rather than being silently removed.
 6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
 
+### Rating what you proved
+
+Severity is the outcome you demonstrated, not the worst case the flaw could enable.
+
+If the impact sentence needs a precondition you did not demonstrate — "given any injection in that
+origin", "if an attacker already holds a token", "once chained with a stored XSS" — either demonstrate
+that precondition or rate the finding at what you actually proved and describe the chain as the
+escalation it would allow. A High that rests on an undemonstrated step is a Low with a story attached,
+and a reviewer will find the gap before the client does. Writing a finding at Critical or High with a
+conditional impact raises a format warning.
+
+A configuration observation with no demonstrated exploitation — a missing header, a weak cipher, a
+verbose banner, an absent hardening flag — is Low or Info. It rises only when you attach the step that
+uses it. A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+
+### When the finding is not an HTTP exchange
+
+Interseptor captures traffic, so the natural evidence is a flow. Plenty of real findings live outside
+that: on-device storage, application logs, a manifest or build artefact, client-side enforcement, a
+debugging socket. A captured flow cannot prove any of them, and attaching a loosely related flow is
+worse than attaching nothing — it looks like proof and is not.
+
+Attach what does prove the claim, and keep the same action / result / control structure:
+
+| The claim is about | Attach |
+| --- | --- |
+| Device or app state | A real device screenshot (`add_finding_image`), plus the exact path and how you read it in the action block |
+| File or log contents | The smallest excerpt that shows it, as a text block naming the file and the command that produced it; redact the value and keep a length or digest |
+| A static or build fact | The file, the line, and the build or package the artefact came from |
+| Rendered browser behaviour | A real browser screenshot of the observed result; a generated preview never qualifies |
+
+The control is what makes it a finding rather than a note: the same read on a hardened build, the same
+request as a different role, or the documented expectation it contradicts. A finding with no flow and no
+image raises a format warning at every severity, not just High.
+
+### One finding per root cause
+
+The same failed control on five endpoints is one finding with five affected targets, not five findings.
+Split only when the fix differs. Before filing, list the existing findings: if the cause is one you have
+already filed, add the endpoint and its flows to that finding as another target. Fragmenting one issue
+across endpoints inflates the count, buries the real story, and makes the report read as noise.
+
 ### House style
 
 The reader is a working pentester triaging a list. They already know the vulnerability class: say where it

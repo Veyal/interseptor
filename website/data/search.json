@@ -775,6 +775,11 @@
     "url": "findings-and-reporting/#multiple-affected-targets"
   },
   {
+    "title": "One finding per root cause",
+    "text": "The same failed control on five endpoints is one finding with five affected targets, not five findings. Split only when the fix differs. Before filing, list the existing findings: if the cause is one you have already filed, add the endpoint and its flows to that finding as another target. Fragmenting one issue across endpoints inflates the count, buries the real story, and makes the report read as noise.",
+    "url": "findings-and-reporting/#one-finding-per-root-cause"
+  },
+  {
     "title": "Passive session inspection",
     "text": "Select existing History rows and choose Inspect session from the context menu. Assign Anonymous, User, or Admin labels to compare already captured observations. The inspector shows status and response fingerprints, redacted cookie names/attributes, candidate rotations within the same observed client and cookie scope, and redirects. Repeated role captures remain visible; the latest observation per role drives the summary comparison. This view sends no requests. Selected captures may be an incomplete login chain. Proxy observations cannot establish browser cookie acceptance/rejection, authenticated state, MFA completion, validation order, or hidden side effects. Those states remain unknown or explicitly labelled candidates. The view also does not normalize dynamic response bodies or attach a differential run automatically.",
     "url": "findings-and-reporting/#passive-session-inspection"
@@ -783,6 +788,11 @@
     "title": "Presets",
     "text": "- Report proof / Differential proof — baseline → action → result. This is the story above. Use it for every filed finding, including IDOR/BOLA, privilege changes, and state transitions. - Input → Result — action → result. Use for injection, reflection, and request-driven behavior. - Exposure proof — observation → result. Use for public data, missing controls, and passive issues. - Control failure — setup or baseline → observation → control/result. Use for configuration and policy defects. - Custom — any ordered roles that accurately reproduce the issue. Presets are authoring shortcuts. They do not change the stored schema or the exported format.",
     "url": "findings-and-reporting/#presets"
+  },
+  {
+    "title": "Rating what you proved",
+    "text": "Severity is the outcome you demonstrated, not the worst case the flaw could enable. If the impact sentence needs a precondition you did not demonstrate — \"given any injection in that origin\", \"if an attacker already holds a token\", \"once chained with a stored XSS\" — either demonstrate that precondition or rate the finding at what you actually proved and describe the chain as the escalation it would allow. A High that rests on an undemonstrated step is a Low with a story attached, and a reviewer will find the gap before the client does. Writing a finding at Critical or High with a conditional impact raises a format warning. A configuration observation with no demonstrated exploitation — a missing header, a weak cipher, a verbose banner, an absent hardening flag — is Low or Info. It rises only when you attach the step that uses it. A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.",
+    "url": "findings-and-reporting/#rating-what-you-proved"
   },
   {
     "title": "Read and edit a finding",
@@ -818,6 +828,11 @@
     "title": "Screenshot provenance",
     "text": "Evidence image source describes the reviewer's classification. The server-owned provenance object separately records ingestion, originalSource, ingestedTs, classifiedBy, and classifiedTs. An uploaded real screenshot can be reclassified in Evidence as a browser or device capture without reuploading. The upload history is preserved, and the edit is recorded as a revision. Classification identifies the writing boundary (for example API client), not a verified person's identity. Older images have an unknown legacy ingestion time instead of an invented timestamp. Generated previews keep their origin when their content hash is reused in another finding.",
     "url": "findings-and-reporting/#screenshot-provenance"
+  },
+  {
+    "title": "When the finding is not an HTTP exchange",
+    "text": "Interseptor captures traffic, so the natural evidence is a flow. Plenty of real findings live outside that: on-device storage, application logs, a manifest or build artefact, client-side enforcement, a debugging socket. A captured flow cannot prove any of them, and attaching a loosely related flow is worse than attaching nothing — it looks like proof and is not. Attach what does prove the claim, and keep the same action / result / control structure: The claim is about Attach --- --- Device or app state A real device screenshot (add finding image), plus the exact path and how you read it in the action block File or log contents The smallest excerpt that shows it, as a text block naming the file and the command that produced it; redact the value and keep a length or digest A static or build fact The file, the line, and the build or package the artefact came from Rendered browser behaviour A real browser screenshot of the observed result; a generated preview never qualifies The control is what makes it a finding rather than a note: the same read on a hardened build, the same request as a different role, or the documented expectation it contradicts. A finding with no flow and no imag",
+    "url": "findings-and-reporting/#when-the-finding-is-not-an-http-exchange"
   },
   {
     "title": "Getting started",

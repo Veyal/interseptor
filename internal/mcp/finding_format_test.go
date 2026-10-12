@@ -308,3 +308,96 @@ func TestMCPFindingAssessmentFieldsReachAPI(t *testing.T) {
 		})
 	}
 }
+
+func warnsFor(t *testing.T, in findingFormatInput) []string {
+	t.Helper()
+	err, warns := validateFindingFormat(in)
+	if err != nil {
+		t.Fatalf("unexpected hard rejection: %v", err)
+	}
+	return warns
+}
+
+func hasWarn(warns []string, substr string) bool {
+	for _, w := range warns {
+		if strings.Contains(w, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// Reviewing a real engagement: 64 findings, and the weakest High was the only
+// one whose impact was conditional -- "Given any injection in that origin, an
+// attacker steals the session token". The evidence proved the headers were
+// missing, which is a Low; the High rested on an injection nobody demonstrated.
+// The guide said to narrow impact to the evidence, but nothing checked it.
+func TestConditionalImpactAtHighIsFlagged(t *testing.T) {
+	base := findingFormatInput{
+		Severity: "High", Summary: "GET / on the token-bearing origin is served with no CSP or HSTS.",
+		Why: "no response hardening", Fix: "set CSP and HSTS", Retest: "headers present on GET /",
+	}
+
+	conditional := base
+	conditional.Impact = "Given any injection in that origin, an attacker steals the session token and takes over the account."
+	if w := warnsFor(t, conditional); !hasWarn(w, "precondition") {
+		t.Errorf("a High resting on an undemonstrated precondition must be flagged; got %v", w)
+	}
+
+	// Phrasings an agent actually reaches for.
+	for _, impact := range []string{
+		"If an attacker already holds a valid token, they read every partner record.",
+		"Once chained with a stored XSS, this yields full account takeover.",
+		"Could potentially allow an attacker to escalate to admin.",
+	} {
+		c := base
+		c.Impact = impact
+		if w := warnsFor(t, c); !hasWarn(w, "precondition") {
+			t.Errorf("conditional impact %q was not flagged; got %v", impact, w)
+		}
+	}
+
+	// A demonstrated outcome must stay quiet.
+	demonstrated := base
+	demonstrated.Impact = "A staging operator reads production partner records including emails and bank details."
+	if w := warnsFor(t, demonstrated); hasWarn(w, "precondition") {
+		t.Errorf("a demonstrated High must not be flagged; got %v", w)
+	}
+
+	// Already rated conservatively: nothing to correct.
+	low := base
+	low.Severity = "Low"
+	low.Impact = "Given any injection in that origin, an attacker steals the session token."
+	if w := warnsFor(t, low); hasWarn(w, "precondition") {
+		t.Errorf("a Low with a conditional impact is correctly rated; got %v", w)
+	}
+}
+
+// In the same engagement 13 of 64 findings carried no evidence at all, two of
+// them High. They were device and static findings -- plaintext token storage,
+// logcat leakage, manifest flags -- where a captured flow cannot exist, so the
+// agent attached nothing. The existing no-flow warning only fired for
+// Critical/High, so eleven of them passed in silence.
+func TestFindingWithNoEvidenceAtAllIsFlagged(t *testing.T) {
+	for _, sev := range []string{"High", "Medium", "Low", "Info"} {
+		in := findingFormatInput{
+			Severity: sev, Summary: "Reset tokens are written to the device log by the deeplink handler.",
+			Impact: "A local app reads a live reset token from the log.", Why: "secrets logged",
+			Fix: "stop logging the token", Retest: "log shows no token after a reset",
+		}
+		w := warnsFor(t, in)
+		if !hasWarn(w, "no evidence attached") {
+			t.Errorf("severity %s: a substantial finding with no flow and no image must be flagged; got %v", sev, w)
+		}
+		// The message has to tell a mobile/static finding what to attach instead.
+		if !hasWarn(w, "device screenshot") {
+			t.Errorf("severity %s: the warning must name the non-HTTP alternatives; got %v", sev, w)
+		}
+	}
+
+	// A title-only stub is an allowed intermediate step and must stay quiet.
+	stub := findingFormatInput{Severity: "Low", Title: "placeholder"}
+	if w := warnsFor(t, stub); hasWarn(w, "no evidence attached") {
+		t.Errorf("a stub create must not be nagged; got %v", w)
+	}
+}
