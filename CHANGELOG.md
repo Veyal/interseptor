@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.1` release.
+
 ## [2.12.1] - 2026-10-12
 
 > Patch release: findings are rated on what was demonstrated rather than what the flaw could enable, findings that are not HTTP exchanges get evidence rules that fit them, and the finding document stops stranding its text beside an empty half of the panel. The documentation site is now a product page with real screenshots and an honest comparison against Burp, ZAP, Caido and mitmproxy.
