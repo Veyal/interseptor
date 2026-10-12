@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-10-12
+
+> Patch release: findings are rated on what was demonstrated rather than what the flaw could enable, findings that are not HTTP exchanges get evidence rules that fit them, and the finding document stops stranding its text beside an empty half of the panel. The documentation site is now a product page with real screenshots and an honest comparison against Burp, ZAP, Caido and mitmproxy.
+
 ### Changed
 
 - **The finding guide now rates what you proved, and knows that not every finding is an HTTP exchange.** Reviewing a real 64-finding engagement showed three gaps the old guide did not close. Severity was being set from the escalation story rather than the demonstration: the weakest High was the only finding whose impact opened with a precondition ("given any injection in that origin...") that nobody had executed, while every other High was a demonstrated outcome. Thirteen findings -- a fifth of the project -- carried no evidence at all, and they were almost all device, log, manifest and build findings where a captured flow cannot exist, so the agent attached nothing rather than the device screenshot or file excerpt that would have proved them. And twenty-one near-duplicate pairs fragmented single root causes across endpoints, including one cross-environment trust issue filed three times. The guide and `docs/findings-and-reporting.md` now state that severity follows the demonstrated outcome and that a configuration observation without a demonstrated chain is Low or Info; that a claim living outside HTTP attaches a device screenshot, a named file or log excerpt, or a build artefact reference, keeping the same action/result/control structure; and that one root cause is one finding with several affected targets, not several findings.
