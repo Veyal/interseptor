@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.13.1] - 2026-10-14
+
+> Patch release: an intercept filter now decides which responses are held, so switching response
+> interception on with a filter set no longer floods the hold queue, and the proxy keeps idle
+> upstream connections per host instead of re-handshaking under parallel traffic.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.13.0` release.
