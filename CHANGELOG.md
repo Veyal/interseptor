@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.13.0` release.
+
 ### Fixed
 
 - **An intercept filter now decides which responses are held, not just which requests.** `HoldResponseContext` never read the conditional-intercept filter, so an operator who narrowed intercept to one host and then switched response interception on had every in-scope response held: images, fonts, stylesheets and analytics alike. The hold queue floods and browser tabs hang waiting on bodies nobody meant to inspect. The same filter now gates both directions. A `url` or `method` filter reads the flow exactly as it does for requests, `header` and `body` read that response, and `any` -- the default -- sees the request line as well as the response, so a path filter still selects the exchanges it names instead of silently matching nothing ([#98](https://github.com/Veyal/interseptor/issues/98)).
