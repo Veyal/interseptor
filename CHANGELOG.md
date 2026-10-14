@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.13.1` release.
+
 ## [2.13.1] - 2026-10-14
 
 > Patch release: an intercept filter now decides which responses are held, so switching response
