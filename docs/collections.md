@@ -63,7 +63,7 @@ Postman Collection v3 files, Postman cloud workspaces and monitors are not suppo
 
 ## Variables and scopes
 
-Variables use double braces around a name: {% raw %}`{{token}}`{% endraw %}. One resolver serves the UI, runner, CLI,
+Variables use double braces around a name: `{{token}}`. One resolver serves the UI, runner, CLI,
 MCP and scripts, so a preview always matches what is sent.
 
 Precedence, narrowest to widest:
@@ -80,7 +80,7 @@ Precedence, narrowest to widest:
 Rules that differ from what you may expect:
 
 - **Unresolved variables block the send** by default. The request is not sent with a literal
-  {% raw %}`{{name}}`{% endraw %} on the wire. A request or folder can opt into `literal` or `empty` explicitly in its settings.
+  `{{name}}` on the wire. A request or folder can opt into `literal` or `empty` explicitly in its settings.
 - **Initial and current values.** The initial value is shared (it travels in exports). The current
   value is local to this machine and is what scripts write. Secret-typed variables have no initial
   value at all: the value lives only in the local current-value table.

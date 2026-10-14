@@ -73,7 +73,7 @@ Every route is listed by `GET /api/` with its description.
 | --- | --- |
 | Collections and items | `GET/POST /api/collections`, `GET/PUT/DELETE /api/collections/{uid}`, `POST /api/collections/{uid}/items`, `GET/PUT/DELETE /api/items/{uid}`, `POST /api/items/{uid}/duplicate`, `/api/items/{uid}/examples` |
 | Environments and variables | `/api/environments`, `/api/environments/{uid}`, `GET/PUT /api/variables/{kind}/{uid}`, `PUT .../current`, `POST .../current/reset`, `POST /api/variables/resolve` |
-| Import | `POST /api/import/collection/preview` then `/commit` (raw file, 64 MiB cap; `?format=auto|postman|openapi|curl|insomnia|bruno|bruno-files|har|burp`) |
+| Import | `POST /api/import/collection/preview` then `/commit` (raw file, 64 MiB cap; `?format=auto\|postman\|openapi\|curl\|insomnia\|bruno\|bruno-files\|har\|burp`) |
 | Send and run | `POST /api/collections/send`, `POST /api/collections/run` (sequential, max 1000 requests, 10 minutes), `GET /api/collections/{uid}/runs`, `GET /api/runs/{uid}` |
 | Async runner | `POST /api/runner/runs` (202 with a run uid), `GET /api/runner/runs`, `GET /api/runner/runs/{uid}?since=N`, `.../events` (SSE), `.../pause`, `.../resume`, `.../abort`, `.../persist` |
 | Scripts and trust | `GET /api/collections/{uid}/scripts`, `POST .../trust`, `POST .../trust/revoke` |

@@ -8,7 +8,7 @@ interseptor [flags]
 
 | Flag or environment variable | Meaning |
 |---|---|
-| `--project <name|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
+| `--project <name\|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
 | `--open` / `INTERSEPTOR_OPEN_BROWSER` | Open the control UI after startup. |
 | `INTERSEPTOR_NO_BROWSER` | Disable browser opening even when another option enables it. |
 | `--control-port <port>` | Bind the control UI/API to that port on loopback. |

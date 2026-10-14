@@ -1,0 +1,24 @@
+{{- /*
+  "sidebar" is the docs navigation column; "nav-groups" renders the groups for both the
+  sidebar and the drawer. Each group carries its candy colour as data-color (pink, sky,
+  mint, grape), which chrome.css maps to --group and --group-tint.
+*/ -}}
+{{define "sidebar" -}}
+<nav class="docs-sidebar docs-nav" id="docs-navigation" aria-label="Documentation">
+  {{template "nav-groups" (dict "Nav" .Site.Nav "Prefix" "nav")}}
+</nav>
+{{- end}}
+
+{{define "nav-groups" -}}
+{{- $prefix := .Prefix}}
+{{- range .Nav}}
+<div class="nav-group" data-color="{{.Color}}"{{if .Current}} data-current="true"{{end}}>
+  <p class="nav-group-title" id="{{$prefix}}-{{.ID}}"><span class="chip chip-{{.Color}}">{{.Title}}</span></p>
+  <ul class="nav-list" aria-labelledby="{{$prefix}}-{{.ID}}">
+    {{- range .Links}}
+    <li><a class="nav-link" href="{{.URL}}"{{if .Current}} aria-current="page"{{end}}><span class="nav-tile" aria-hidden="true">{{with .Icon}}{{icon .}}{{end}}</span><span class="nav-text">{{.Title}}</span></a></li>
+    {{- end}}
+  </ul>
+</div>
+{{- end}}
+{{- end}}

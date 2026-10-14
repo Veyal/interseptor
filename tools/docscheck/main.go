@@ -2,8 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path"
@@ -12,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const repositoryURL = "https://github.com/Veyal/interseptor"
@@ -28,10 +32,14 @@ type SearchItem struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
 	URL   string `json:"url"`
+	Page  string `json:"page"`
+	Group string `json:"group"`
 }
 
 type pageMeta struct{ Slug, Title, Class string }
-type command struct{ name, site, root string }
+type command struct{ name, site, root, out, addr string }
+
+const usage = "usage: docscheck generate [root] | check [root] | build <outdir> [root] | serve [-addr host:port] [root] | check-site <site> [root]"
 
 var (
 	publicDocs = map[string]pageMeta{
@@ -40,15 +48,14 @@ var (
 		"docs/getting-started.md": {"getting-started", "Getting started", "current"}, "docs/api-and-mcp.md": {"api-and-mcp", "API and MCP", "current"}, "docs/history-search.md": {"history-search", "History search", "current"}, "docs/architecture.md": {"architecture", "Architecture", "current"}, "docs/custom-checks.md": {"custom-checks", "Custom checks", "current"}, "docs/rule-packs.md": {"rule-packs", "Rule packs", "current"}, "docs/vault.md": {"vault", "Project vault", "current"}, "docs/collections.md": {"collections", "Collections", "current"}, "docs/engagement-closeout.md": {"engagement-closeout", "Engagement close-out", "current"}, "docs/content-discovery.md": {"content-discovery", "Content discovery", "current"}, "docs/http2.md": {"http2", "HTTP/2", "current"}, "docs/message-codecs.md": {"message-codecs", "Message codecs", "current"}, "docs/extensions.md": {"extensions", "Extensions", "current"}, "docs/benchmarks.md": {"benchmarks", "Benchmarks", "reference"}, "docs/product/mcp-cookbook.md": {"mcp-cookbook", "MCP cookbook", "current"}, "docs/agents.md": {"ai-agents", "Interseptor for AI agents", "current"},
 		"docs/proxy-and-tls.md": {"proxy-and-tls", "Proxy, TLS, and networking", "current"}, "docs/findings-and-reporting.md": {"findings-and-reporting", "Findings and reporting", "current"}, "docs/cli-reference.md": {"cli-reference", "CLI reference", "reference"}, "docs/projects-and-data.md": {"projects-and-data", "Projects and data", "current"}, "docs/mobile-testing.md": {"mobile-testing", "Mobile testing", "current"}, "docs/troubleshooting.md": {"troubleshooting", "Troubleshooting", "reference"},
 	}
-	markdownLink  = regexp.MustCompile(`\]\(([^)]+)\)`)
-	featureTitle  = regexp.MustCompile(`(?m)^- \*\*([^*]+)\*\*`)
-	hrefPattern   = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
-	idPattern     = regexp.MustCompile(`(?i)\s+id=["']([^"']+)["']`)
-	searchHeading = regexp.MustCompile(`(?m)^(#{2,3})[ \t]+(.+?)[ \t]*$`)
-	fencedBlock   = regexp.MustCompile("(?s)```.*?```")
-	htmlTag       = regexp.MustCompile(`<[^>]+>`)
-	markdownURL   = regexp.MustCompile(`\[([^]]+)\]\([^)]+\)`)
-	nonSlug       = regexp.MustCompile(`[^a-z0-9 -]+`)
+	markdownLink   = regexp.MustCompile(`\]\(([^)]+)\)`)
+	featureTitle   = regexp.MustCompile(`(?m)^- \*\*([^*]+)\*\*`)
+	refPattern     = regexp.MustCompile(`(?i)\s(?:href|src)=["']([^"']+)["']`)
+	idPattern      = regexp.MustCompile(`(?i)\s+id=["']([^"']+)["']`)
+	fencedBlock    = regexp.MustCompile("(?s)```.*?```")
+	htmlTag        = regexp.MustCompile(`<[^>]+>`)
+	markdownURL    = regexp.MustCompile(`\[([^]]+)\]\([^)]+\)`)
+	releaseHeading = regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
 )
 
 func parseCommand(args []string) (command, error) {
@@ -56,7 +63,7 @@ func parseCommand(args []string) (command, error) {
 		return command{name: "generate", root: "."}, nil
 	}
 	if len(args) == 0 {
-		return command{}, errors.New("usage: docscheck generate [root] | check [root] | check-site <site> [root]")
+		return command{}, errors.New(usage)
 	}
 	cmd := command{name: args[0], root: "."}
 	switch cmd.name {
@@ -67,13 +74,31 @@ func parseCommand(args []string) (command, error) {
 		if len(args) == 2 {
 			cmd.root = args[1]
 		}
-	case "check-site":
+	case "check-site", "build":
 		if len(args) < 2 || len(args) > 3 {
-			return command{}, errors.New("check-site requires <site> and optional [root]")
+			return command{}, fmt.Errorf("%s requires a directory and an optional [root]", cmd.name)
 		}
-		cmd.site = args[1]
+		if cmd.name == "build" {
+			cmd.out = args[1]
+		} else {
+			cmd.site = args[1]
+		}
 		if len(args) == 3 {
 			cmd.root = args[2]
+		}
+	case "serve":
+		flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		addr := flags.String("addr", defaultServeAddr, "listen address")
+		if err := flags.Parse(args[1:]); err != nil {
+			return command{}, fmt.Errorf("serve: %w", err)
+		}
+		if flags.NArg() > 1 {
+			return command{}, errors.New("serve accepts at most one root")
+		}
+		cmd.addr = *addr
+		if flags.NArg() == 1 {
+			cmd.root = flags.Arg(0)
 		}
 	default:
 		return command{}, fmt.Errorf("unknown command %q", cmd.name)
@@ -174,48 +199,12 @@ func validateFeatureGuides(features []Feature) error {
 	return nil
 }
 
-func rewriteLinks(body, source string) string {
-	return markdownLink.ReplaceAllStringFunc(body, func(link string) string {
-		target := link[2 : len(link)-1]
-		if target == "" || strings.HasPrefix(target, "#") || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {
-			return link
-		}
-		parts := strings.SplitN(target, "#", 2)
-		resolved := path.Clean(path.Join(path.Dir(source), parts[0]))
-		fragment := ""
-		if len(parts) == 2 {
-			fragment = "#" + parts[1]
-		}
-		if meta, ok := publicDocs[resolved]; ok {
-			return `]({{ "/` + meta.Slug + `/" | relative_url }}` + fragment + `)`
-		}
-		kind := "blob"
-		if strings.HasSuffix(parts[0], "/") || path.Ext(resolved) == "" {
-			kind = "tree"
-		}
-		absolute := repositoryURL + "/" + kind + "/main/" + resolved
-		if kind == "tree" && strings.HasSuffix(parts[0], "/") {
-			absolute += "/"
-		}
-		return "](" + absolute + fragment + ")"
-	})
-}
-
-func pageContent(root, source string, meta pageMeta) (string, error) {
-	data, err := os.ReadFile(filepath.Join(root, source))
-	if err != nil {
-		return "", err
-	}
-	body := rewriteLinks(string(data), source)
-	return fmt.Sprintf("---\nlayout: default\ntitle: %s\nclassification: %s\nsource: %s\n---\n%s\n", meta.Title, meta.Class, source, body), nil
-}
-
 func loadFeatures(root string) ([]Feature, string, error) {
 	canonical, err := os.ReadFile(filepath.Join(root, "docs", "FEATURES.md"))
 	if err != nil {
 		return nil, "", fmt.Errorf("read canonical features: %w", err)
 	}
-	yml, err := os.ReadFile(filepath.Join(root, "_data", "features.yml"))
+	yml, err := os.ReadFile(filepath.Join(root, featuresFile))
 	if err != nil {
 		return nil, "", fmt.Errorf("read published features: %w", err)
 	}
@@ -232,178 +221,105 @@ func loadFeatures(root string) ([]Feature, string, error) {
 	return features, string(canonical), nil
 }
 
-func searchSlug(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = nonSlug.ReplaceAllString(s, "")
-	// Match kramdown's auto IDs: punctuation is removed, then every remaining
-	// whitespace character becomes a hyphen. Spaces on both sides of punctuation
-	// therefore intentionally produce a double hyphen ("Limits & safety" →
-	// "limits--safety").
-	s = strings.NewReplacer(" ", "-", "\t", "-", "\n", "-", "\r", "-").Replace(s)
-	return strings.Trim(s, "-")
-}
+// tableDelimiterRow matches a table's |---|:---:| row (and a --- rule).
+var tableDelimiterRow = regexp.MustCompile(`(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$`)
 
+// searchableText flattens Markdown into the plain text of a search excerpt:
+// no code samples, link targets, tags, emphasis marks or table structure.
 func searchableText(s string) string {
 	s = fencedBlock.ReplaceAllString(s, " ")
+	s = tableDelimiterRow.ReplaceAllString(s, " ")
 	s = markdownURL.ReplaceAllString(s, "$1")
 	s = htmlTag.ReplaceAllString(s, " ")
-	s = strings.NewReplacer("`", "", "#", " ", "*", "", "_", " ", ">", " ", "|", " ").Replace(s)
+	s = strings.NewReplacer(`\|`, " ", "`", "", "#", " ", "*", "", "_", " ", ">", " ", "|", " ").Replace(s)
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > 1200 {
-		s = s[:1200]
+		cut := 1200
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
 	}
 	return s
 }
 
-func searchSections(body string, meta pageMeta) []SearchItem {
-	matches := searchHeading.FindAllStringSubmatchIndex(body, -1)
-	introEnd := len(body)
-	if len(matches) > 0 {
-		introEnd = matches[0][0]
-	}
-	items := []SearchItem{{Title: meta.Title, Text: searchableText(body[:introEnd]), URL: meta.Slug + "/"}}
-	for i, match := range matches {
-		end := len(body)
-		if i+1 < len(matches) {
-			end = matches[i+1][0]
-		}
-		title := strings.TrimSpace(body[match[4]:match[5]])
-		items = append(items, SearchItem{
-			Title: searchableText(title),
-			Text:  searchableText(body[match[1]:end]),
-			URL:   meta.Slug + "/#" + searchSlug(title),
-		})
-	}
-	return items
-}
-
-func searchJSON(root string, features []Feature) ([]byte, error) {
-	copyFeatures := append([]Feature(nil), features...)
-	sort.Slice(copyFeatures, func(i, j int) bool { return copyFeatures[i].ID < copyFeatures[j].ID })
-	search := make([]SearchItem, 0, len(copyFeatures)+len(publicDocs))
-	for _, f := range copyFeatures {
-		search = append(search, SearchItem{f.Title, f.Text, "features/#" + f.ID})
-	}
-	for source, meta := range publicDocs {
-		body, err := os.ReadFile(filepath.Join(root, source))
-		if err != nil {
-			return nil, fmt.Errorf("index %s: %w", source, err)
-		}
-		search = append(search, searchSections(string(body), meta)...)
-	}
-	sort.Slice(search, func(i, j int) bool {
-		if search[i].URL == search[j].URL {
-			return search[i].Title < search[j].Title
-		}
-		return search[i].URL < search[j].URL
-	})
-	return json.MarshalIndent(search, "", "  ")
-}
-
+// generate writes the committed generated files: llms.txt, llms-full.txt and
+// the reference block of docs/agents.md. The site itself is built by build.
 func generate(root string) error {
-	features, _, err := loadFeatures(root)
-	if err != nil {
-		return err
-	}
-	if err := writeAgentFiles(root); err != nil {
-		return err
-	}
-	for source, meta := range publicDocs {
-		content, err := pageContent(root, source, meta)
-		if err != nil {
-			return fmt.Errorf("generate %s: %w", meta.Slug, err)
-		}
-		if err := os.WriteFile(filepath.Join(root, meta.Slug+".md"), []byte(content), 0o644); err != nil {
-			return err
-		}
-	}
-	data, err := searchJSON(root, features)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(root, "website/data/search.json"), data, 0o644); err != nil {
-		return err
-	}
-	release, err := releaseJSON(root)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(root, "_data/release.json"), release, 0o644)
+	return writeAgentFiles(root)
 }
 
-// Read the published entry rather than the development fallback, which can lag
-// a tag until post-release maintenance. Unreleased work never advances the badge.
-func releaseJSON(root string) ([]byte, error) {
+// loadRelease reads the newest published changelog entry rather than the
+// development fallback, which can lag a tag until post-release maintenance.
+// Unreleased work never advances the badge.
+func loadRelease(root string) (Release, error) {
 	data, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
 	if err != nil {
-		return nil, err
+		return Release{}, err
 	}
-	match := regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$`).FindSubmatch(data)
+	match := releaseHeading.FindSubmatch(data)
 	if match == nil {
-		return nil, errors.New("changelog has no published release")
+		return Release{}, errors.New("changelog has no published release")
 	}
-	return json.MarshalIndent(map[string]string{"version": string(match[1]), "date": string(match[2])}, "", "  ")
+	return Release{Version: string(match[1]), Date: string(match[2])}, nil
 }
 
 func check(root string) error {
-	features, _, err := loadFeatures(root)
-	if err != nil {
+	if _, _, err := loadFeatures(root); err != nil {
 		return err
 	}
 	if err := checkAgentFiles(root); err != nil {
 		return err
 	}
-	for source, meta := range publicDocs {
-		want, err := pageContent(root, source, meta)
+	for _, source := range sortedKeys(publicDocs) {
+		body, err := readDoc(root, source)
 		if err != nil {
 			return err
 		}
-		got, err := os.ReadFile(filepath.Join(root, meta.Slug+".md"))
+		if err := validateProjectLinks(root, rewriteLinks(body, source)); err != nil {
+			return fmt.Errorf("%s: %w", publicDocs[source].Slug, err)
+		}
+		if err := validateTablePipes(body); err != nil {
+			return fmt.Errorf("%s: %w", source, err)
+		}
+	}
+	pages, err := filepath.Glob(filepath.Join(root, pagesDir, "*"))
+	if err != nil {
+		return err
+	}
+	for _, page := range pages {
+		body, err := os.ReadFile(page)
 		if err != nil {
-			return fmt.Errorf("missing generated page %s: %w", meta.Slug, err)
+			return err
 		}
-		if string(got) != want {
-			return fmt.Errorf("generated page stale: %s.md", meta.Slug)
+		if err := validateProjectLinks(root, string(body)); err != nil {
+			return fmt.Errorf("%s: %w", filepath.Base(page), err)
 		}
-		if err := validateProjectLinks(root, want); err != nil {
-			return fmt.Errorf("%s: %w", meta.Slug, err)
+		if filepath.Ext(page) == ".md" {
+			if err := validateTablePipes(string(body)); err != nil {
+				return fmt.Errorf("%s: %w", filepath.Base(page), err)
+			}
 		}
-	}
-	want, err := searchJSON(root, features)
-	if err != nil {
-		return err
-	}
-	got, err := os.ReadFile(filepath.Join(root, "website/data/search.json"))
-	if err != nil {
-		return fmt.Errorf("missing search index: %w", err)
-	}
-	if string(got) != string(want) {
-		return errors.New("generated search index stale")
-	}
-	want, err = releaseJSON(root)
-	if err != nil {
-		return err
-	}
-	got, err = os.ReadFile(filepath.Join(root, "_data/release.json"))
-	if err != nil {
-		return fmt.Errorf("missing release metadata: %w", err)
-	}
-	if string(got) != string(want) {
-		return errors.New("generated release metadata stale")
 	}
 	return nil
 }
 
-// validateProjectLinks fails when a markdown link targets
+// validateProjectLinks fails when a Markdown link or an href targets
 // https://github.com/Veyal/interseptor/(blob|tree)/main/<path> and that path is
 // not in the local repo. Other absolute links are left alone. Fenced samples
 // are not links on the published page.
 func validateProjectLinks(root, body string) error {
 	body = fencedBlock.ReplaceAllString(body, "")
+	var targets []string
+	for _, match := range markdownLink.FindAllStringSubmatch(body, -1) {
+		targets = append(targets, markdownLinkTarget(match[1]))
+	}
+	for _, match := range refPattern.FindAllStringSubmatch(body, -1) {
+		targets = append(targets, match[1])
+	}
 	var dead []string
 	seen := map[string]bool{}
-	for _, match := range markdownLink.FindAllStringSubmatch(body, -1) {
-		target := markdownLinkTarget(match[1])
+	for _, target := range targets {
 		rel, kind, ok := projectLinkPath(target)
 		if !ok || seen[target] {
 			continue
@@ -468,8 +384,10 @@ func projectPathExists(root, rel, kind string) bool {
 	return !info.IsDir()
 }
 
+// expectedSitePages lists the pages every build must contain: directories
+// served as <name>/index.html, and files ending in .html.
 func expectedSitePages() []string {
-	pages := []string{"index.html", "features", "reference"}
+	pages := []string{"index.html", "404.html", "features", "reference", "compare"}
 	for _, meta := range publicDocs {
 		pages = append(pages, meta.Slug)
 	}
@@ -477,27 +395,29 @@ func expectedSitePages() []string {
 	return pages
 }
 
+var requiredSiteFiles = []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg", searchFile, "sitemap.xml", "robots.txt"}
+
 func validateBuiltSite(site, basePath string) error {
-	for _, forbidden := range []string{"AGENTS.md", "CLAUDE.md", "SECURITY.md", "internal", "examples", ".github", ".claude", ".opencode", "docs"} {
-		if _, err := os.Stat(filepath.Join(site, forbidden)); err == nil {
+	for _, forbidden := range []string{"AGENTS.md", "CLAUDE.md", "SECURITY.md", "internal", "examples", ".github", ".claude", ".opencode", "docs", pagesDir, templatesDir, navFile, featuresFile} {
+		if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(forbidden))); err == nil {
 			return fmt.Errorf("forbidden publication: %s", forbidden)
 		}
 	}
 	for _, page := range expectedSitePages() {
 		file := filepath.Join(site, page)
-		if page != "index.html" {
+		if !strings.HasSuffix(page, ".html") {
 			file = filepath.Join(file, "index.html")
 		}
 		if _, err := os.Stat(file); err != nil {
 			return fmt.Errorf("missing built page %s: %w", page, err)
 		}
 	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg", "website/data/search.json"} {
+	for _, asset := range requiredSiteFiles {
 		if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(asset))); err != nil {
 			return fmt.Errorf("missing built asset %s: %w", asset, err)
 		}
 	}
-	return filepath.Walk(site, func(file string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(site, func(file string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -508,65 +428,160 @@ func validateBuiltSite(site, basePath string) error {
 		if err != nil {
 			return err
 		}
-		for _, match := range hrefPattern.FindAllStringSubmatch(string(data), -1) {
-			href := match[1]
-			if strings.HasPrefix(href, "/") && basePath != "" && href != basePath && !strings.HasPrefix(href, basePath+"/") {
-				return fmt.Errorf("%s has link outside base path: %s", file, href)
-			}
-			parsed, err := url.Parse(href)
-			if err != nil || parsed.Scheme != "" || parsed.Host != "" {
-				continue
-			}
-			local := parsed.Path
-			if basePath != "" && (local == basePath || strings.HasPrefix(local, basePath+"/")) {
-				local = strings.TrimPrefix(local, basePath)
-			}
-			local = strings.TrimPrefix(local, "/")
-			if local == "" && parsed.Path == "" {
-				local, err = filepath.Rel(site, file)
-				if err != nil {
-					return err
-				}
-			} else if local == "" {
-				local = "index.html"
-			} else if strings.HasSuffix(local, "/") {
-				local += "index.html"
-			}
-			if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(local))); err != nil {
-				return fmt.Errorf("%s has broken local href %s", file, href)
-			}
-			if parsed.Fragment != "" && strings.HasSuffix(local, ".html") {
-				target, err := os.ReadFile(filepath.Join(site, filepath.FromSlash(local)))
-				if err != nil {
-					return err
-				}
-				found := false
-				for _, id := range idPattern.FindAllStringSubmatch(string(target), -1) {
-					if id[1] == parsed.Fragment {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return fmt.Errorf("%s has broken local heading %s", file, href)
-				}
+		if err := validateDocumentMetadata(string(data)); err != nil {
+			return fmt.Errorf("%s %w", file, err)
+		}
+		for _, match := range refPattern.FindAllStringSubmatch(string(data), -1) {
+			if err := checkLocalTarget(site, basePath, file, match[1]); err != nil {
+				return err
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if err := validateSearchIndex(site, basePath); err != nil {
+		return err
+	}
+	return validateSitemap(site, basePath)
 }
 
-func configuredBasePath(root string) string {
-	data, err := os.ReadFile(filepath.Join(root, "_config.yml"))
-	if err != nil {
-		return ""
+// checkLocalTarget verifies that a site-local href or src stays under the base
+// path, names a built file, and, for a page, names an existing id.
+func checkLocalTarget(site, basePath, file, href string) error {
+	if strings.HasPrefix(href, "/") && !strings.HasPrefix(href, "//") && basePath != "" && href != basePath && !strings.HasPrefix(href, basePath+"/") {
+		return fmt.Errorf("%s has link outside base path: %s", file, href)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "baseurl:") {
-			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "baseurl:")), `"'`)
+	parsed, err := url.Parse(href)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return nil
+	}
+	local := parsed.Path
+	if basePath != "" && (local == basePath || strings.HasPrefix(local, basePath+"/")) {
+		local = strings.TrimPrefix(local, basePath)
+	}
+	local = strings.TrimPrefix(local, "/")
+	if local == "" && parsed.Path == "" {
+		local, err = filepath.Rel(site, file)
+		if err != nil {
+			return err
+		}
+		local = filepath.ToSlash(local)
+	} else if local == "" {
+		local = "index.html"
+	} else if strings.HasSuffix(local, "/") {
+		local += "index.html"
+	}
+	if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(local))); err != nil {
+		return fmt.Errorf("%s has broken local href %s", file, href)
+	}
+	if parsed.Fragment != "" && strings.HasSuffix(local, ".html") {
+		target, err := os.ReadFile(filepath.Join(site, filepath.FromSlash(local)))
+		if err != nil {
+			return err
+		}
+		for _, id := range idPattern.FindAllStringSubmatch(string(target), -1) {
+			if id[1] == parsed.Fragment {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s has broken local heading %s", file, href)
+	}
+	return nil
+}
+
+var (
+	htmlLang     = regexp.MustCompile(`(?is)<html\b[^>]*\slang="en"`)
+	titleElement = regexp.MustCompile(`(?is)<title\b[^>]*>(.*?)</title>`)
+	metaTag      = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+	linkTag      = regexp.MustCompile(`(?is)<link\b[^>]*>`)
+	tagAttr      = regexp.MustCompile(`(?is)\s([a-z:-]+)\s*=\s*"([^"]*)"`)
+	h1Open       = regexp.MustCompile(`(?i)<h1[\s>]`)
+)
+
+// validateDocumentMetadata requires what every published page needs: a
+// language, a title, a description, a canonical URL and exactly one h1.
+func validateDocumentMetadata(doc string) error {
+	if !htmlLang.MatchString(doc) {
+		return errors.New(`lacks <html lang="en">`)
+	}
+	if m := titleElement.FindStringSubmatch(doc); m == nil || strings.TrimSpace(htmlTag.ReplaceAllString(m[1], "")) == "" {
+		return errors.New("lacks a non-empty <title>")
+	}
+	if !hasTag(metaTag, doc, "name", "description", "content") {
+		return errors.New(`lacks <meta name="description">`)
+	}
+	if !hasTag(linkTag, doc, "rel", "canonical", "href") {
+		return errors.New("lacks a canonical link")
+	}
+	if n := len(h1Open.FindAllStringIndex(doc, -1)); n != 1 {
+		return fmt.Errorf("has %d <h1> elements, want exactly one", n)
+	}
+	return nil
+}
+
+// hasTag reports whether a tag has key=value and a non-empty required attribute.
+func hasTag(pattern *regexp.Regexp, doc, key, value, required string) bool {
+	for _, tag := range pattern.FindAllString(doc, -1) {
+		attrs := map[string]string{}
+		for _, a := range tagAttr.FindAllStringSubmatch(tag, -1) {
+			attrs[strings.ToLower(a[1])] = a[2]
+		}
+		if strings.EqualFold(attrs[key], value) && strings.TrimSpace(attrs[required]) != "" {
+			return true
 		}
 	}
-	return ""
+	return false
+}
+
+// validateSearchIndex resolves every search result to a built page and id.
+func validateSearchIndex(site, basePath string) error {
+	data, err := os.ReadFile(filepath.Join(site, filepath.FromSlash(searchFile)))
+	if err != nil {
+		return err
+	}
+	var items []SearchItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return fmt.Errorf("%s: %w", searchFile, err)
+	}
+	for _, item := range items {
+		if item.Title == "" || item.URL == "" || strings.HasPrefix(item.URL, "/") {
+			return fmt.Errorf("%s has an invalid item: %+v", searchFile, item)
+		}
+		if err := checkLocalTarget(site, basePath, searchFile, basePath+"/"+item.URL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateSitemap resolves every sitemap URL to a built page.
+func validateSitemap(site, basePath string) error {
+	data, err := os.ReadFile(filepath.Join(site, "sitemap.xml"))
+	if err != nil {
+		return err
+	}
+	var sitemap struct {
+		URLs []struct {
+			Loc string `xml:"loc"`
+		} `xml:"url"`
+	}
+	if err := xml.Unmarshal(data, &sitemap); err != nil {
+		return fmt.Errorf("sitemap.xml: %w", err)
+	}
+	if len(sitemap.URLs) == 0 {
+		return errors.New("sitemap.xml lists no pages")
+	}
+	for _, u := range sitemap.URLs {
+		local, ok := strings.CutPrefix(u.Loc, siteOrigin)
+		if !ok || !strings.HasPrefix(local, basePath+"/") {
+			return fmt.Errorf("sitemap.xml lists a URL outside the site: %s", u.Loc)
+		}
+		if err := checkLocalTarget(site, basePath, "sitemap.xml", local); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func run(args []string) error {
@@ -579,8 +594,12 @@ func run(args []string) error {
 		err = generate(cmd.root)
 	case "check":
 		err = check(cmd.root)
+	case "build":
+		err = buildSite(cmd.root, cmd.out)
+	case "serve":
+		err = serve(cmd.root, cmd.addr, os.Stdout)
 	case "check-site":
-		err = validateBuiltSite(cmd.site, configuredBasePath(cmd.root))
+		err = validateBuiltSite(cmd.site, siteBase)
 		if err == nil {
 			err = validateBuiltLLMS(cmd.site, cmd.root)
 		}

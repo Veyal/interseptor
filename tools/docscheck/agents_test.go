@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -101,9 +102,6 @@ func TestAgentReferenceListsEveryToolAndRoute(t *testing.T) {
 			t.Errorf("reference lacks finding field %s", field)
 		}
 	}
-	if err := validateLiquidSafe(ref); err != nil {
-		t.Errorf("reference is not Liquid-safe: %v", err)
-	}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -188,8 +186,8 @@ func TestLLMSDescribesEveryPublicPage(t *testing.T) {
 		if llmsDescriptions[meta.Slug] == "" {
 			t.Errorf("llmsDescriptions lacks %s", meta.Slug)
 		}
-		// Generated root pages share a directory with repository files; macOS
-		// and Windows file systems are case-insensitive.
+		// Slugs become top-level site directories, and macOS and Windows file
+		// systems are case-insensitive; keep them clear of repository names.
 		for _, r := range reserved {
 			if strings.EqualFold(meta.Slug, r) {
 				t.Errorf("slug %q collides with %s on case-insensitive file systems", meta.Slug, r)
@@ -263,37 +261,9 @@ func TestRewriteLinksTextMakesLinksAbsolute(t *testing.T) {
 	}
 }
 
-func TestValidateLiquidSafe(t *testing.T) {
-	if validateLiquidSafe("plain {\"a\":{\"b\":1}} text") != nil {
-		t.Error("JSON braces without a double open brace are safe")
-	}
-	if validateLiquidSafe("a {{ b }} c") == nil || validateLiquidSafe("a {% if %}") == nil {
-		t.Error("Liquid delimiters must be rejected")
-	}
-	if validateLiquidSafe("a {% raw %}{{ b }}{% endraw %} c") != nil {
-		t.Error("raw-wrapped Liquid must be accepted")
-	}
-	if got := liquidSafe("x {{token}} y"); validateLiquidSafe(got) != nil {
-		t.Errorf("liquidSafe left %q unprotected", got)
-	}
-}
-
-func TestDocsSiteMatchesJekyllConfig(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, "_config.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var url, base string
-	for _, line := range strings.Split(string(data), "\n") {
-		if v, ok := strings.CutPrefix(line, "url:"); ok {
-			url = strings.TrimSpace(v)
-		}
-		if v, ok := strings.CutPrefix(line, "baseurl:"); ok {
-			base = strings.TrimSpace(v)
-		}
-	}
-	if version.DocsSite != url+base {
-		t.Fatalf("version.DocsSite = %q, Jekyll serves %q", version.DocsSite, url+base)
+func TestDocsSiteMatchesSiteConfig(t *testing.T) {
+	if version.DocsSite != siteOrigin+siteBase {
+		t.Fatalf("version.DocsSite = %q, the site builds %q", version.DocsSite, siteOrigin+siteBase)
 	}
 }
 
@@ -323,5 +293,40 @@ func TestValidateBuiltLLMS(t *testing.T) {
 	os.Remove(filepath.Join(site, llmsFile))
 	if err := validateBuiltLLMS(site, root); err == nil {
 		t.Fatal("missing built llms.txt accepted")
+	}
+}
+
+// Placeholders such as <host> are HTML tags to a Markdown renderer, which hides
+// them; the generated reference writes them as code.
+func TestOneLineCodesTagLikePlaceholders(t *testing.T) {
+	for in, want := range map[string]string{
+		"Mark a bodiless 'CONNECT <host> status 0' flow.":                                   "Mark a bodiless 'CONNECT `<host>` status 0' flow.",
+		"Download into ~/.interseptor/projects/<name>.":                                     "Download into `~/.interseptor/projects/<name>`.",
+		"one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate": "one sentence, <=140 chars; `<METHOD path>` `<what happens>` to `<role>`; do not restate",
+		"Already `<code>` stays, list<string> does not.":                                    "Already `<code>` stays, `list<string>` does not.",
+		"See <https://example.com/docs> or <ops@example.com> first.":                        "See <https://example.com/docs> or <ops@example.com> first.",
+		"Pipes a|b and <x|y> stay escaped.":                                                 `Pipes a\|b and ` + "`<x\\|y>`" + ` stay escaped.`,
+	} {
+		if got := oneLine(in, 200); got != want {
+			t.Errorf("oneLine(%q)\n got %q\nwant %q", in, got, want)
+		}
+	}
+}
+
+// Every tag in the rendered reference must be one the renderer writes; a
+// placeholder parsed as HTML would show up as an unknown element.
+func TestGeneratedReferenceRendersNoPlaceholderTags(t *testing.T) {
+	out, err := renderMarkdown([]byte(agentReference()), docInput(agentSource))
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, name := range strings.Fields("a aside blockquote br button code del div em h2 h3 h4 hr img input li ol p pre span strong table tbody td th thead tr ul") {
+		known[name] = true
+	}
+	for _, m := range regexp.MustCompile(`</?([A-Za-z][A-Za-z0-9-]*)`).FindAllStringSubmatch(out.HTML, -1) {
+		if !known[strings.ToLower(m[1])] {
+			t.Fatalf("generated reference renders <%s> as HTML; write placeholders as code", m[1])
+		}
 	}
 }

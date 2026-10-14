@@ -1,10 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -64,29 +62,6 @@ var llmsDescriptions = map[string]string{
 	"benchmarks":             "Performance benchmarks",
 }
 
-var (
-	liquidRaw       = regexp.MustCompile(`\{%\s*raw\s*%\}|\{%\s*endraw\s*%\}`)
-	liquidVariable  = regexp.MustCompile(`\{\{[^}\n]*\}\}`)
-	rawWrappedBlock = regexp.MustCompile(`(?s)\{%\s*raw\s*%\}.*?\{%\s*endraw\s*%\}`)
-)
-
-// liquidSafe protects text from Liquid, which would otherwise evaluate a
-// double-brace variable in generated tables.
-func liquidSafe(s string) string {
-	return liquidVariable.ReplaceAllStringFunc(s, func(m string) string {
-		return "{% raw %}" + m + "{% endraw %}"
-	})
-}
-
-// validateLiquidSafe fails when a page would be evaluated as Liquid.
-func validateLiquidSafe(body string) error {
-	rest := rawWrappedBlock.ReplaceAllString(body, "")
-	if strings.Contains(rest, "{{") || strings.Contains(rest, "{%") {
-		return errors.New("unprotected Liquid delimiter ({{ or {%): wrap in {% raw %}")
-	}
-	return nil
-}
-
 var sentenceEnd = regexp.MustCompile(`[.!?](\s|$)`)
 
 // oneLine returns the first sentence of a description, flattened for a table
@@ -103,7 +78,29 @@ func oneLine(desc string, max int) string {
 		}
 		s = strings.TrimRight(cut, " ,;:") + "..."
 	}
-	return strings.ReplaceAll(s, "|", `\|`)
+	return strings.ReplaceAll(codePlaceholders(s), "|", `\|`)
+}
+
+// tagLike matches a <placeholder> with the word it is part of, such as
+// ~/.interseptor/projects/<name>.
+var tagLike = regexp.MustCompile("[^\\s'\"(<>`]*<[A-Za-z][^<>`]*>[^\\s<>`]*")
+
+// codePlaceholders writes each <placeholder> outside code as code. Markdown
+// would read <host> as an HTML tag and hide it; as code it reads the same in
+// llms-full.txt and on the page. Autolinks and e-mail addresses are kept.
+func codePlaceholders(s string) string {
+	parts := strings.Split(s, "`")
+	for i := 0; i < len(parts); i += 2 {
+		parts[i] = tagLike.ReplaceAllStringFunc(parts[i], func(m string) string {
+			core := strings.TrimRight(m, ".,;:!?)'\"")
+			inner := core[strings.IndexByte(core, '<'):]
+			if strings.Contains(inner, "://") || strings.Contains(inner, "@") {
+				return m
+			}
+			return "`" + core + "`" + m[len(core):]
+		})
+	}
+	return strings.Join(parts, "`")
 }
 
 type toolRow struct{ Name, Required, Desc string }
@@ -221,7 +218,7 @@ func agentReference() string {
 	for _, r := range routes {
 		fmt.Fprintf(&b, "| %s | `%s` | %s |\n", r.Method, r.Path, r.Desc)
 	}
-	return liquidSafe(b.String())
+	return b.String()
 }
 
 // injectReference replaces the content between the reference markers.
@@ -254,31 +251,11 @@ func readDoc(root, source string) (string, error) {
 
 // rewriteLinksText makes every relative link absolute for plain-text output.
 func rewriteLinksText(body, source string) string {
-	return markdownLink.ReplaceAllStringFunc(body, func(link string) string {
-		target := link[2 : len(link)-1]
-		if target == "" || strings.HasPrefix(target, "#") || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {
-			return link
-		}
-		parts := strings.SplitN(target, "#", 2)
-		resolved := pathClean(source, parts[0])
-		fragment := ""
-		if len(parts) == 2 {
-			fragment = "#" + parts[1]
-		}
-		if meta, ok := publicDocs[resolved]; ok {
-			return "](" + version.DocsSite + "/" + meta.Slug + "/" + fragment + ")"
-		}
-		kind := "blob"
-		if strings.HasSuffix(parts[0], "/") || extOf(resolved) == "" {
-			kind = "tree"
-		}
-		return "](" + repositoryURL + "/" + kind + "/main/" + resolved + fragment + ")"
-	})
+	return rewriteLinksWith(body, source, docSitePaths(), version.DocsSite)
 }
 
 func plainText(body, source string) string {
-	body = liquidRaw.ReplaceAllString(body, "")
-	return strings.TrimRight(rewriteLinksText(body, source), "\n") + "\n"
+	return strings.TrimRight(rewriteLinksText(stripLiquidRaw(body), source), "\n") + "\n"
 }
 
 func llmsFullText(root string) (string, error) {
@@ -384,9 +361,6 @@ func checkAgentFiles(root string) error {
 	if string(got) != want {
 		return fmt.Errorf("%s generated reference stale: run go run ./tools/docscheck generate", agentSource)
 	}
-	if err := validateLiquidSafe(want); err != nil {
-		return fmt.Errorf("%s: %w", agentSource, err)
-	}
 	if err := validateAgentGuide(root, want); err != nil {
 		return err
 	}
@@ -430,7 +404,3 @@ func validateBuiltLLMS(site, root string) error {
 	}
 	return nil
 }
-
-func pathClean(source, rel string) string { return path.Clean(path.Join(path.Dir(source), rel)) }
-
-func extOf(p string) string { return path.Ext(p) }

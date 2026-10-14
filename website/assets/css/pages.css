@@ -1,0 +1,594 @@
+/* Interseptor pages: features (collected abilities), compare (boss stats), reference and the 404.
+   Built only from the tokens and primitives in site.css, in the recipes DESIGN.md section 4
+   describes. Every rule lives under a page wrapper (.features-page, .matrix, .ref-grid,
+   .not-found and the compare blocks), so docs.css and chrome.css are never fought: where a docs
+   rule has to be undone (.prose lists, .table-scroll), the selector says so and is one step
+   more specific. Page-specific motion is limited to what answers a touch. */
+
+/* Candy accents: data-color picks --group (the fill) and --group-tint (the wash). These are the
+   same values chrome.css defines; repeating them keeps these pages correct on their own. */
+[data-color='pink'] { --group: var(--candy-pink); --group-tint: var(--tint-pink); }
+[data-color='sky'] { --group: var(--candy-sky); --group-tint: var(--tint-sky); }
+[data-color='mint'] { --group: var(--candy-mint); --group-tint: var(--tint-mint); }
+[data-color='grape'] { --group: var(--candy-grape); --group-tint: var(--tint-grape); }
+[data-color='yellow'] { --group: var(--candy-yellow); --group-tint: var(--tint-yellow); }
+
+/* A candy circle with a lucide icon in it: the sticker every card here starts with. */
+.sticker-icon {
+  display: inline-grid; place-items: center; flex: none;
+  width: 3rem; height: 3rem;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-pill);
+  background: var(--group, var(--candy-yellow));
+  color: var(--on-candy);
+  box-shadow: var(--shadow-xs);
+}
+.sticker-icon .icon { width: 1.5rem; height: 1.5rem; vertical-align: 0; }
+
+/* A small candy dot that prints a colour next to the word that names it. */
+.theme-dot {
+  display: inline-block; flex: none;
+  width: 0.8rem; height: 0.8rem;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-pill);
+  background: var(--group, var(--candy-yellow));
+}
+
+/* =====================================================================================
+   Features: collected abilities (pages/features.html)
+   ===================================================================================== */
+.features-page { display: grid; gap: var(--space-6); min-width: 0; }
+.features-page > .lede { margin: 0; }
+
+/* The filter panel is veyal's "player stats" panel: a butter-cream inset with a label. Without
+   scripting there is nothing to filter with, so it is not drawn. */
+.ability-tools {
+  display: grid; gap: var(--space-4);
+  padding: var(--space-5);
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-lg);
+  background: var(--card-alt);
+  box-shadow: var(--shadow-lg);
+}
+@media (scripting: none) { .ability-tools { display: none; } }
+html:not(.js) .ability-tools { display: none; }
+.ability-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-5); }
+.ability-search-main { display: grid; flex: 1 1 18rem; gap: var(--space-2); max-width: 34rem; min-width: 0; }
+.ability-search-label { font-size: var(--text-sm); font-weight: 800; line-height: 1.3; }
+.ability-field { position: relative; display: flex; align-items: center; }
+.ability-field > .icon { position: absolute; left: 0.9rem; z-index: 1; width: 1.25rem; height: 1.25rem; color: var(--fg-muted); pointer-events: none; vertical-align: 0; }
+.ability-field > .field-input { padding-inline: 2.75rem 3rem; font-size: var(--text-base); -webkit-appearance: none; appearance: none; }
+.ability-field > .field-input::-webkit-search-cancel-button,
+.ability-field > .field-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.ability-clear { position: absolute; right: 2px; width: 40px; height: 40px; border-radius: calc(var(--radius-md) - 2px); box-shadow: none; }
+.ability-count { margin: 0; padding-bottom: 0.6rem; color: var(--fg-muted); font-size: var(--text-sm); font-weight: 700; line-height: 1.4; }
+.ability-count strong { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* Theme chips are radio buttons dressed as chips: one choice, arrow keys, no scripting needed to
+   read them. The colour is a fill and the word is printed on it. */
+.ability-themes { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
+.ability-chip { position: relative; display: inline-flex; }
+.ability-chip > input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.ability-chip > .chip {
+  min-height: 44px; gap: 0.5rem; padding: 0.375rem 1rem;
+  font-size: var(--text-sm);
+  transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.ability-chip > .chip .icon { display: none; width: 1rem; height: 1rem; vertical-align: 0; }
+.ability-chip:hover > .chip { background: var(--group, var(--candy-yellow)); color: var(--on-candy); }
+.ability-chip > input:checked + .chip { background: var(--group, var(--candy-yellow)); color: var(--on-candy); box-shadow: none; translate: 2px 2px; }
+.ability-chip > input:checked + .chip .icon { display: inline-block; }
+.ability-chip > input:checked + .chip .theme-dot { display: none; }
+.ability-chip[data-theme-chip='all'] > input:checked + .chip { background: var(--fg); color: var(--bg); }
+.ability-chip > input:focus-visible + .chip { outline: 3px solid var(--focus); outline-offset: 2px; }
+.ability-chip-count { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* The grid. Columns follow the width of the column the grid sits in, not the viewport. */
+.ability-wrap { container: abilities / inline-size; min-width: 0; }
+.ability-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: 0 6px 6px 0; }
+@container abilities (min-width: 37.5rem) {
+  .ability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ability-cap { grid-column: 1 / -1; }
+}
+@container abilities (min-width: 65rem) {
+  .ability-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ability-cap { grid-column: auto; }
+}
+
+.ability {
+  position: relative;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  scroll-margin-top: var(--space-2);
+}
+.ability-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.ability-icon { rotate: -4deg; transition: rotate var(--dur) var(--ease); }
+.ability:nth-child(3n + 2) .ability-icon { rotate: 3deg; }
+.ability:nth-child(3n) .ability-icon { rotate: -2deg; }
+.ability-num {
+  padding: 0.15rem 0.6rem;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--fg);
+  font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600; line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+}
+.features-page .ability h2 { font-size: var(--text-xl); font-weight: 800; line-height: 1.2; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+.ability-text { margin: 0; color: var(--fg-muted); font-size: var(--text-base); font-weight: 600; line-height: 1.55; }
+.ability-foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4);
+  margin-top: auto; padding-top: var(--space-3);
+  border-top: 2px dashed color-mix(in srgb, var(--edge) 28%, transparent);
+}
+.ability-theme { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--fg-muted); font-size: var(--text-sm); font-weight: 800; line-height: 1.3; }
+/* The guide link is stretched over the whole card: one link in the tree, a big target on screen. */
+.ability-link { display: inline-flex; align-items: center; min-height: 2rem; font-size: var(--text-sm); font-weight: 800; }
+.ability-link::after { content: ''; position: absolute; inset: 0; border-radius: calc(var(--radius-lg) - 2px); }
+@media (prefers-reduced-motion: no-preference) {
+  .ability:hover .ability-icon { rotate: 0deg; }
+}
+.ability-link:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@supports selector(:has(*)) {
+  .ability-link:focus-visible { outline: none; }
+  .ability:has(.ability-link:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+}
+
+/* A deep link (/features/#scanner) lights its card up in butter. */
+.ability:target {
+  background: color-mix(in srgb, var(--candy-yellow) 30%, var(--card));
+  box-shadow: var(--shadow-xl);
+}
+.ability:target .ability-num { background: var(--candy-yellow); color: var(--on-candy); }
+.ability:target :is(.ability-text, .ability-theme) { color: var(--fg); }
+
+/* The card that fills the last cell: not an ability, so a dashed edge on butter cream. */
+.ability-cap {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 2px dashed var(--edge);
+  border-radius: var(--radius-lg);
+  background: var(--card-alt);
+  box-shadow: var(--shadow-lg);
+}
+.ability-cap-title { margin: 0; font-family: var(--font-display); font-size: var(--text-xl); font-weight: 800; line-height: 1.2; }
+.ability-cap-text { margin: 0; color: var(--fg-muted); font-weight: 600; }
+
+.ability-empty {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5);
+  margin-top: var(--space-5); padding: var(--space-5);
+}
+.ability-empty-art { width: 7rem; height: 7rem; }
+.ability-empty-title { margin: 0; font-family: var(--font-display); font-size: var(--text-xl); font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.ability-empty-text { margin: var(--space-2) 0 0; color: var(--fg-muted); font-weight: 600; }
+.ability-empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
+
+@media (max-width: 39.99rem) {
+  .ability-tools { padding: var(--space-4); }
+  .ability-themes { gap: 6px; }
+  .ability-chip > .chip { gap: 0.4rem; padding-inline: 0.75rem; }
+  .ability-count { padding-bottom: 0; }
+  .ability-empty { grid-template-columns: minmax(0, 1fr); }
+  .ability-empty-art { width: 5.5rem; height: 5.5rem; }
+}
+
+/* =====================================================================================
+   Compare: boss stats (pages/compare.md)
+   docs.css gives this page its .prose type and the .table-scroll frame; this file adds the
+   scoreboard, the legend and the matrix itself.
+   ===================================================================================== */
+
+/* docs.css holds every direct child of .prose to the reading measure. The scoreboard and the
+   matrix are wide on purpose. */
+.prose > :is(.matrix, .matrix-summary) { max-width: none; }
+
+/* What Interseptor does not do: the page opens on its limits, so they read as a list of stickers. */
+.prose ul.limits { display: grid; gap: var(--space-3); margin-left: 0; padding-left: 0; list-style: none; }
+.prose ul.limits > li {
+  position: relative;
+  margin: 0; padding: var(--space-3) var(--space-4) var(--space-3) 4.25rem;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow: var(--shadow-xs);
+}
+.prose ul.limits > li::before {
+  content: '';
+  position: absolute; left: var(--space-3); top: 50%; translate: 0 -50%;
+  width: 2.25rem; height: 2.25rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: url('../icons/x.svg') center / 58% no-repeat, var(--candy-pink);
+  box-shadow: none;
+}
+
+/* "Cost." paragraphs read as a price tag. */
+.prose > p:has(> strong:first-child) {
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-md);
+  background: var(--tint-yellow);
+  box-shadow: var(--shadow-xs);
+}
+
+/* "Where Interseptor has an edge" and "Where it has a real gap": a sticker label per list, with
+   the same colour on the list's own markers. The words carry the meaning; the colour repeats it. */
+.prose p.edge-label, .prose p.gap-label {
+  display: flex; align-items: center; gap: 0.6rem; width: fit-content; max-width: 100%;
+  padding: 0.2rem 0.9rem 0.2rem 0.35rem;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-pill);
+  color: var(--on-candy);
+  font-size: var(--text-base); font-weight: 800; line-height: 1.4;
+  box-shadow: var(--shadow-xs);
+}
+.prose p.edge-label { background: var(--candy-mint); }
+.prose p.gap-label { background: var(--candy-pink); }
+.prose p.edge-label::before, .prose p.gap-label::before {
+  content: ''; flex: none;
+  width: 1.6rem; height: 1.6rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--candy-yellow) center / 62% no-repeat;
+}
+.prose p.edge-label::before { background-image: url('../icons/check.svg'); }
+.prose p.gap-label::before { background-image: url('../icons/x.svg'); }
+.prose :is(p.edge-label, p.gap-label) + ul { margin-top: var(--space-3); }
+.prose p.edge-label + ul > li::before, .prose p.gap-label + ul > li::before {
+  left: -1.85em; top: 0.3em;
+  width: 1.15em; height: 1.15em;
+  border: 2px solid var(--edge);
+  background: center / 62% no-repeat;
+  box-shadow: none;
+}
+.prose p.edge-label + ul > li::before { background-color: var(--candy-mint); background-image: url('../icons/check.svg'); }
+.prose p.gap-label + ul > li::before { background-color: var(--candy-pink); background-image: url('../icons/x.svg'); }
+.prose p.edge-label + ul, .prose p.gap-label + ul { padding-left: 2.4em; }
+
+/* The "should you use it" list: each reason is a sticker row that names the thing to use instead. */
+.prose h2#when-you-should-not-use-interseptor + ul { display: grid; gap: var(--space-3); padding-left: 0; list-style: none; }
+.prose h2#when-you-should-not-use-interseptor + ul > li {
+  margin: 0; padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 0.4rem);
+  border: 2px solid var(--edge);
+  border-left-width: 8px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow: var(--shadow-xs);
+}
+.prose h2#when-you-should-not-use-interseptor + ul > li::before { content: none; }
+.prose h2#when-you-should-not-use-interseptor + ul > li > strong:first-child { display: block; margin-bottom: 0.2em; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 800; line-height: 1.3; }
+.prose h2#when-you-should-not-use-interseptor + ul > li:nth-child(5n + 1) { border-left-color: var(--candy-pink); }
+.prose h2#when-you-should-not-use-interseptor + ul > li:nth-child(5n + 2) { border-left-color: var(--candy-yellow); }
+.prose h2#when-you-should-not-use-interseptor + ul > li:nth-child(5n + 3) { border-left-color: var(--candy-mint); }
+.prose h2#when-you-should-not-use-interseptor + ul > li:nth-child(5n + 4) { border-left-color: var(--candy-sky); }
+.prose h2#when-you-should-not-use-interseptor + ul > li:nth-child(5n) { border-left-color: var(--candy-grape); }
+
+/* ---------- The scoreboard: where it wins, ties and loses, counted from the matrix ---------- */
+.matrix-summary { container: scoreboard / inline-size; display: grid; gap: var(--space-4); margin-top: var(--space-5); }
+.matrix-summary-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-5); padding: 0 5px 5px 0; }
+@container scoreboard (min-width: 44rem) { .matrix-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.summary-card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+}
+.summary-head { display: flex; align-items: center; gap: var(--space-3); }
+.summary-icon {
+  display: block; flex: none;
+  width: 2.5rem; height: 2.5rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: center / 58% no-repeat, var(--group, var(--candy-yellow));
+  box-shadow: var(--shadow-xs);
+}
+.summary-card[data-outcome='win'] .summary-icon { background-image: url('../icons/check.svg'); }
+.summary-card[data-outcome='tie'] .summary-icon { background-image: url('../icons/equal.svg'); }
+.summary-card[data-outcome='lose'] .summary-icon { background-image: url('../icons/x.svg'); }
+.prose .summary-card h3 { margin: 0; font-size: var(--text-2xl); line-height: 1.1; }
+.summary-count {
+  margin-left: auto;
+  padding: 0.1rem 0.7rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--group, var(--candy-yellow)); color: var(--on-candy);
+  font-size: var(--text-sm); font-weight: 800; line-height: 1.5; white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+}
+.prose .summary-card p { max-width: none; margin: 0; color: var(--fg-muted); font-size: var(--text-sm); font-weight: 700; line-height: 1.45; }
+.prose .summary-rows { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.prose .summary-rows > li { margin: 0; padding: 0; }
+.prose .summary-rows > li::before { content: none; }
+.summary-rows a {
+  display: flex; align-items: baseline; gap: 0.6rem;
+  margin-inline: -0.5rem; padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--fg); font-size: var(--text-sm); font-weight: 700; line-height: 1.35;
+  text-decoration: none;
+}
+.summary-rows a:hover { background: var(--group-tint, var(--muted)); text-decoration: underline; text-decoration-color: var(--group, var(--candy-pink)); text-decoration-thickness: 2px; text-underline-offset: 0.18em; }
+.prose p.matrix-rule { max-width: var(--measure); color: var(--fg-muted); font-size: var(--text-sm); font-weight: 600; }
+
+/* ---------- The matrix: sticky header row and first column, "you are here", chips with words ---------- */
+.row-num {
+  display: inline-grid; place-items: center; flex: none;
+  min-width: 1.45rem; height: 1.45rem; padding: 0 0.3rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--card); color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix { container: matrix / inline-size; display: grid; gap: var(--space-4); }
+.matrix-legend {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3) var(--space-5);
+  margin: 0; padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--edge); border-radius: var(--radius-md);
+  background: var(--card-alt);
+}
+@container matrix (min-width: 30rem) { .matrix-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container matrix (min-width: 56rem) { .matrix-legend { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.matrix-legend > div { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.matrix-legend dt { flex: none; margin: 0; }
+.matrix-legend dd { margin: 0; padding-top: 0.05rem; font-size: var(--text-sm); font-weight: 600; line-height: 1.45; }
+
+/* The scroll cue: drawn when the table is wider than its frame, gone at the far edge. */
+.matrix-hint { display: none; align-items: center; gap: 0.5rem; margin: 0; color: var(--fg-muted); font-size: var(--text-sm); font-weight: 800; }
+.matrix-hint::before {
+  content: ''; flex: none; width: 1.1rem; height: 1.1rem;
+  background: currentColor;
+  -webkit-mask: url('../icons/arrow-right.svg') center / contain no-repeat;
+  mask: url('../icons/arrow-right.svg') center / contain no-repeat;
+}
+@container matrix (max-width: 60.99rem) { .matrix-hint { display: flex; } }
+.matrix[data-scrollable='true'] .matrix-hint { display: flex; }
+.matrix[data-scrollable='false'] .matrix-hint, .matrix[data-edge='end'] .matrix-hint { display: none; }
+
+/* Column widths: roomy when the table scrolls, tight enough to fit when the page is wide. */
+.matrix-scroll { --col-cap: 6.75rem; --col-self: 9.75rem; --col-tool: 9rem; }
+@container matrix (min-width: 36rem) { .matrix-scroll { --col-cap: 10.5rem; --col-self: 11rem; --col-tool: 9.5rem; } }
+@container matrix (min-width: 61rem) { .matrix-scroll { --col-tool: 7.85rem; } }
+
+.table-scroll.matrix-scroll {
+  position: relative; max-width: 100%;
+  overflow: auto; overscroll-behavior-x: contain;
+  max-height: min(78vh, 46rem);
+  border: 2px solid var(--edge); border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+  scrollbar-width: thin;
+  margin-inline: 0;
+}
+.table-scroll.matrix-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.table-scroll.matrix-scroll > .matrix-table {
+  width: 100%;
+  min-width: calc(var(--col-cap) + var(--col-self) + 5 * var(--col-tool));
+  table-layout: fixed;
+  border-collapse: separate; border-spacing: 0;
+  font-size: var(--text-sm); line-height: 1.5;
+}
+.table-scroll.matrix-scroll :is(th, td) {
+  border-bottom: 1px solid color-mix(in srgb, var(--edge) 14%, transparent);
+  text-align: left; vertical-align: top;
+}
+.table-scroll.matrix-scroll :is(th, td) + :is(th, td) { border-left: 1px solid color-mix(in srgb, var(--edge) 14%, transparent); }
+.table-scroll.matrix-scroll thead th { position: sticky; top: 0; z-index: 2; border-bottom: 2px solid var(--edge); }
+.table-scroll.matrix-scroll tbody tr > * { background: var(--card); }
+.table-scroll.matrix-scroll tbody tr:nth-child(even) > * { background: var(--muted); }
+.table-scroll.matrix-scroll tbody tr:last-child > * { border-bottom: 0; }
+.table-scroll.matrix-scroll tbody th[scope='row'] { position: sticky; left: 0; }
+.table-scroll.matrix-scroll caption {
+  caption-side: top; border-bottom: 2px solid var(--edge);
+  background: var(--card-alt); color: var(--fg-muted);
+  font-size: var(--text-sm); font-weight: 700; text-align: left;
+}
+.matrix-table col.col-cap { width: var(--col-cap); }
+.matrix-table col.col-self { width: var(--col-self); }
+
+/* Caption: the title bar. The text stays pinned to the left edge while the table scrolls. */
+.table-scroll.matrix-scroll caption { padding: 0; }
+.matrix-caption-text { position: sticky; left: 0; display: inline-block; max-width: calc(100cqw - 1rem); padding: var(--space-3) 14px; }
+
+.table-scroll.matrix-scroll :is(th, td) { padding: 0.7rem 0.8rem; overflow-wrap: break-word; }
+@container matrix (max-width: 35.99rem) { .table-scroll.matrix-scroll :is(th, td) { padding: 0.6rem 0.6rem; } }
+.table-scroll.matrix-scroll td:last-child { min-width: 0; }
+.table-scroll.matrix-scroll tbody tr { scroll-margin-top: 6rem; }
+
+/* Header row: names in the display face. The Interseptor column wears the full butter. */
+.table-scroll.matrix-scroll thead th {
+  background: var(--card-alt); color: var(--fg);
+  font-family: var(--font-display); font-size: var(--text-base); font-weight: 800; line-height: 1.2;
+  white-space: normal;
+  vertical-align: bottom;
+}
+.matrix .table-scroll.matrix-scroll thead th:first-child { left: 0; z-index: 5; border-right: 2px solid var(--edge); font-family: var(--font-body); font-size: var(--text-sm); }
+.table-scroll.matrix-scroll thead th.matrix-self { background: var(--candy-yellow); color: var(--on-candy); }
+.here-tag {
+  display: block; width: fit-content; margin-bottom: 0.4rem; padding: 0.05rem 0.55rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--card); color: var(--fg);
+  font-family: var(--font-body); font-size: 0.6875rem; font-weight: 800; line-height: 1.5;
+  rotate: -3deg;
+  box-shadow: var(--shadow-xs);
+}
+
+/* Row headers: pinned to the left, number first. */
+.table-scroll.matrix-scroll tbody th[scope='row'] {
+  z-index: 3;
+  border-right: 2px solid var(--edge);
+  font-size: var(--text-sm); font-weight: 800; line-height: 1.35;
+}
+.matrix-table tbody th[scope='row'] .row-num { display: grid; width: fit-content; margin-bottom: 0.3rem; }
+@container matrix (min-width: 36rem) {
+  .matrix-table tbody th[scope='row'] .row-num { display: inline-grid; margin: 0 0.45rem 0 0; vertical-align: 0.05em; }
+}
+
+/* The Interseptor column: a tint down its whole length and an ink edge on each side. */
+.table-scroll.matrix-scroll tbody tr > td.matrix-self { background: var(--tint-yellow); }
+.table-scroll.matrix-scroll tbody tr:nth-child(even) > td.matrix-self { background: color-mix(in srgb, var(--tint-yellow) 78%, var(--candy-yellow)); }
+.table-scroll.matrix-scroll :is(th, td).matrix-self { border-inline: 2px solid var(--edge); }
+.table-scroll.matrix-scroll thead th.matrix-self { border-bottom: 2px solid var(--edge); }
+
+/* A row you jumped to from the scoreboard. */
+.table-scroll.matrix-scroll tbody tr:target > *,
+.table-scroll.matrix-scroll tbody tr:target > td.matrix-self,
+.table-scroll.matrix-scroll tbody tr:nth-child(even):target > td.matrix-self {
+  background: color-mix(in srgb, var(--candy-yellow) 42%, var(--card));
+  box-shadow: inset 0 2px 0 var(--edge), inset 0 -2px 0 var(--edge);
+}
+
+/* Cells: the chip is the answer, the words after it are the reason. */
+.matrix-table td { color: var(--fg); font-weight: 600; line-height: 1.4; }
+/* No max-width: the chip never wraps, and "Not checked" is wider than the content box of the tightest wide column. */
+.matrix-table td > :is(.cell-yes, .cell-partial, .cell-no, .cell-unknown) { display: flex; width: fit-content; margin-bottom: 0.35rem; }
+
+.cell-yes, .cell-partial, .cell-no, .cell-unknown {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.05rem 0.6rem 0.05rem 0.4rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--card); color: var(--on-candy);
+  font-size: var(--text-xs); font-weight: 800; line-height: 1.5; white-space: nowrap;
+}
+.cell-yes::before, .cell-partial::before, .cell-no::before, .cell-unknown::before {
+  content: ''; flex: none; width: 0.95rem; height: 0.95rem;
+  background: currentColor;
+  -webkit-mask: var(--chip-icon) center / contain no-repeat;
+  mask: var(--chip-icon) center / contain no-repeat;
+}
+.cell-yes { --chip-icon: url('../icons/check.svg'); background: var(--candy-mint); }
+.cell-partial { --chip-icon: url('../icons/contrast.svg'); background: var(--candy-yellow); }
+.cell-no { --chip-icon: url('../icons/x.svg'); background: var(--candy-pink); }
+.cell-unknown { --chip-icon: url('../icons/circle-help.svg'); border-style: dashed; background: var(--card); color: var(--fg); }
+
+/* A wide page: the frame stops scrolling and the header row sticks under the site header instead. */
+@container matrix (min-width: 61rem) {
+  .table-scroll.matrix-scroll { max-height: none; overflow: clip; }
+  .table-scroll.matrix-scroll thead th { top: var(--header-h); }
+}
+
+/* ---------- Objections: docs.css already draws .prose details as sticker accordions. This list
+   only sets the rhythm, and puts the question in a butter badge. ---------- */
+.qa-list { display: grid; gap: var(--space-3); }
+.prose .qa-list > details + details { margin-top: 0; }
+.prose .qa-list > details > summary { font-size: var(--text-lg); }
+.prose .qa-list > details[open] { background: var(--card); }
+.prose .qa-list > details[open] > summary { background: var(--card-alt); }
+.prose .qa-list > details > summary::after {
+  width: 1.9rem; height: 1.9rem; padding: 0.3rem;
+  box-sizing: border-box;
+  border: 2px solid var(--edge); border-radius: var(--radius-pill);
+  background: var(--candy-yellow);
+  -webkit-mask: none; mask: none;
+  background-image: url('../icons/chevron-down.svg');
+  background-position: center; background-repeat: no-repeat; background-size: 70%;
+}
+
+/* =====================================================================================
+   Reference (pages/reference.html)
+   ===================================================================================== */
+.reference-page { display: grid; gap: var(--space-6); min-width: 0; }
+.reference-page > .lede { margin: 0; }
+.ref-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: 0 6px 6px 0; }
+@media (min-width: 52rem) { .ref-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); } }
+.ref-card {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-6);
+  background: var(--group-tint, var(--card));
+}
+.ref-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.ref-card .sticker-icon { width: 3.5rem; height: 3.5rem; }
+.ref-card .sticker-icon .icon { width: 1.75rem; height: 1.75rem; }
+.reference-page .ref-card h2 { font-size: var(--text-2xl); line-height: 1.15; }
+.ref-card p { margin: 0; font-weight: 600; }
+.ref-card p + p { margin-top: calc(-1 * var(--space-2)); color: var(--fg-muted); }
+.ref-links { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: auto 0 0; padding: var(--space-2) 0 0; list-style: none; }
+.ref-links .btn-ghost { background: var(--card); }
+.ref-links .btn-ghost:hover { background: var(--candy-yellow); }
+
+/* =====================================================================================
+   404 (layouts/notfound.html, pages/404.html)
+   ===================================================================================== */
+.not-found { padding-block: var(--space-6) var(--space-7); }
+.nf-stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: center; }
+.nf-art { justify-self: start; width: min(11rem, 42vw); }
+.nf-frog { display: block; width: 100%; height: auto; aspect-ratio: 1; filter: drop-shadow(4px 4px 0 var(--edge)); transition: rotate var(--dur) var(--ease); }
+.nf-art:hover .nf-frog { animation: wiggle 600ms var(--ease) 1; }
+.nf-copy { display: grid; gap: var(--space-4); justify-items: start; min-width: 0; }
+.not-found .nf-copy :is(.page-eyebrow, .mono-label, .page-title, h1) { margin: 0; }
+.not-found h1 { font-size: var(--text-4xl); line-height: 1.05; }
+.nf-copy .lede { margin: 0; }
+.nf-request {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; max-width: 100%;
+  margin: 0; padding: 0.4rem 0.9rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-md);
+  background: var(--card);
+  font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 500; line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+}
+.nf-request code { padding: 0; border: 0; background: none; font-size: 1em; overflow-wrap: anywhere; word-break: break-all; }
+.nf-method, .nf-status { padding: 0 0.5rem; border: 2px solid var(--edge); border-radius: var(--radius-sm); color: var(--on-candy); font-size: var(--text-xs); font-weight: 600; line-height: 1.5; }
+.nf-method { background: var(--candy-mint); }
+.nf-status { background: var(--candy-pink); }
+.nf-search {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%; max-width: 30rem;
+  min-height: 52px; padding: 0 0.875rem;
+  border: 2px solid var(--edge); border-radius: var(--radius-md);
+  background: var(--card); color: var(--fg-muted);
+  font-size: var(--text-base); font-weight: 700; text-align: left; text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: translate var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nf-search:hover { color: var(--fg); box-shadow: 6px 6px 0 var(--edge); text-decoration: none; }
+.nf-search:active { box-shadow: 1px 1px 0 var(--edge); }
+@media (prefers-reduced-motion: no-preference) {
+  .nf-search:hover { translate: -2px -2px; }
+  .nf-search:active { translate: 2px 2px; }
+}
+.nf-search > .icon { color: var(--fg); }
+.nf-search > span { flex: 1; }
+.nf-popular { display: grid; gap: var(--space-3); margin: 0; }
+.nf-popular-title { margin: 0; color: var(--fg-muted); font-size: var(--text-sm); font-weight: 800; }
+.nf-chips { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.nf-chips .chip { min-height: 44px; gap: 0.5rem; padding: 0.375rem 1rem; font-size: var(--text-sm); }
+.nf-chips .chip .icon { width: 1.1rem; height: 1.1rem; vertical-align: 0; }
+.nf-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-2) 0 0; }
+@media (min-width: 52rem) {
+  .not-found { padding-block: var(--space-8) var(--space-9); }
+  .nf-stage { grid-template-columns: minmax(0, 1fr) minmax(0, 21rem); gap: var(--space-8); }
+  .nf-art { order: 2; justify-self: center; width: 100%; max-width: 21rem; }
+}
+
+/* =====================================================================================
+   Accessibility modes
+   ===================================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .nf-art:hover .nf-frog { animation: none; }
+}
+@media (forced-colors: active) {
+  .ability-tools, .ability-cap, .summary-card, .matrix-legend, .ref-card, .nf-request, .nf-search,
+  .prose ul.limits > li, .prose > p:has(> strong:first-child), .table-scroll.matrix-scroll { box-shadow: none; border-color: CanvasText; }
+  .ability:target, .table-scroll.matrix-scroll tbody tr:target > * { outline: 3px solid Highlight; outline-offset: -3px; }
+  .cell-yes::before, .cell-partial::before, .cell-no::before, .cell-unknown::before,
+  .matrix-hint::before { forced-color-adjust: none; background: CanvasText; }
+  .summary-icon, .prose ul.limits > li::before, .prose :is(p.edge-label, p.gap-label)::before,
+  .prose :is(p.edge-label, p.gap-label) + ul > li::before { forced-color-adjust: none; }
+  .nf-frog { filter: none; }
+}
+@media print {
+  .ability-tools, .ability-empty, .matrix-hint, .nf-art { display: none !important; }
+  .ability, .summary-card, .ref-card { box-shadow: none; break-inside: avoid; }
+  .ability-link::after { content: none; }
+  /* The matrix prints as a plain table: no frame to scroll, no pinned cells, no minimum width. */
+  .table-scroll.matrix-scroll { overflow: visible; max-height: none; box-shadow: none; }
+  .table-scroll.matrix-scroll > .matrix-table { min-width: 0; table-layout: auto; font-size: 9pt; }
+  .table-scroll.matrix-scroll :is(th, td), .table-scroll.matrix-scroll thead th { position: static; padding: 0.3rem 0.4rem; }
+  .matrix-caption-text { position: static; max-width: none; }
+  .here-tag, .cell-yes, .cell-partial, .cell-no, .cell-unknown { box-shadow: none; rotate: none; }
+  .matrix-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Keep the checked date whole when the caption wraps. */
+.matrix-caption-text time { white-space: nowrap; }

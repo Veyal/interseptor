@@ -10,14 +10,19 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Page.Updated comes from git log; a shallow clone has no history.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod}
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: go run ./tools/docscheck generate
-      - run: git diff --exit-code -- website/data/search.json _data/release.json '*.md'
+      - run: git diff --exit-code -- llms.txt llms-full.txt docs/agents.md
       - run: go test ./tools/docscheck
       - run: go run ./tools/docscheck check
+      - run: go run ./tools/docscheck build _site
+      - run: go run ./tools/docscheck check-site _site
       - run: go test ./...
       - run: go vet ./...
   deploy:
@@ -33,16 +38,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Page.Updated comes from git log; a shallow clone has no history.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: go run ./tools/docscheck build _site
+      - run: go run ./tools/docscheck check-site _site
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - uses: actions/jekyll-build-pages@v1
-        with:
-          source: .
-          destination: ./_site
-      - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod}
-      - run: go run ./tools/docscheck check-site _site
       - uses: actions/upload-pages-artifact@v3
         with: {path: _site}
       - id: deployment

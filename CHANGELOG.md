@@ -9,13 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- **Product media for the website.** A 35-second silent screen recording of the real app, in light and dark, shows a request held in Intercept, its order id edited from 1042 to 1043, another customer's order coming back, and that flow attached as evidence to a finding. It ships with matching stills, posters, an original frog mascot drawn as SVG, a social card and touch icons. Everything was recorded from the real binary against a throwaway data directory, with synthetic `*.example.com` traffic answered by a loopback mock, so no request reached a third-party host and no engagement data, real domain or credential appears in any file. Geist Mono joins the self-hosted fonts under the SIL OFL so code on the site matches the terminal card on veyal.land.
-
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.1` release.
+- **The documentation site no longer uses Jekyll.** `go run ./tools/docscheck build <dir>` renders the canonical `docs/*.md` guides and `website/pages/*` through Go templates in `website/templates/`, using goldmark (pinned at v1.8.6, the only new module, used by the build tool alone) with kramdown-compatible heading ids so every existing link, anchor and search result keeps working. `go run ./tools/docscheck serve` previews the site on loopback and rebuilds on change. The Pages workflow now builds and validates that output on every pull request and deploys it from main. `generate` only writes `llms.txt`, `llms-full.txt` and the agent-guide reference block; the search index, sitemap, `robots.txt` and release badge are produced at build time. `check-site` also fails a page that lacks exactly one h1, a title, a description, a canonical link or `lang`. Code blocks are rendered at build time as copyable code cards with dependency-free syntax highlighting for shell, JSON, HTTP, YAML, Go, JavaScript, Python and TOML. A fuzz target proves that highlighted output always unescapes back to the exact source. Markdown tables sit in labelled, keyboard-scrollable regions, GitHub-style `> [!NOTE]` alerts render as callouts, and each guide carries the date of its last commit.
+- **The website is redesigned as the boss stage of veyal.land.** Every page now uses veyal.github.io's exact tokens: cream paper, ink outlines, hard offset shadows, candy fills, Baloo 2 and Nunito, and Geist Mono so code matches the main site's terminal card. `DESIGN.md` is rewritten as the design contract. The landing page opens with a playable hold tray: switch Intercept on, a frog's tongue catches the next request, you change order 1042 to 1043, forward it, and a finding with its evidence attached fills the report slot. No request leaves the browser. Below it sits a 35-second silent recording of the real app doing the same thing, in light and dark, with clickable chapters that double as its text description. It was recorded from the real binary on synthetic `*.example.com` traffic answered by a loopback mock. The rest of the landing page is:
+  - a stage map from capture to report built on real stills;
+  - eight ability cards;
+  - an agent section listing real MCP tool names;
+  - a "boss stats" card that rates the weak spots as honestly as the strengths;
+  - questions;
+  - an install card.
+
+  The docs are a three-column reading room:
+  - a sidebar coloured by group;
+  - the article on a white sheet, with code shown as terminal cards;
+  - an outline with scroll tracking and reading progress;
+  - previous and next cards;
+  - a last-updated date;
+  - a Cmd/Ctrl+K search palette with grouped results.
+
+  The features page is a filterable grid of collected abilities. The comparison opens with a scoreboard counted from its matrix: 3 wins, 7 ties and 6 losses against the best other tool. The matrix keeps its header and first column in view. The 404 page says the request was dropped and offers search and popular pages. An original frog mascot, hand-drawn as SVG, a new social card, and touch and app icons round it out. Every page passes automated checks at 390 and 1440 pixels in both themes: no horizontal scroll, one h1, no console errors, and no serious axe violations. Reduced motion stops every animation, and the background doodles float once and then stay still.
+
+### Fixed
+
+- **Docs text that Jekyll silently deleted now shows.** Liquid removed `{{variables}}`, `{{variable}}` and `{{references}}` from the collections and API guides. The 284-row REST route table in the agent guide rendered as a paragraph of pipes and is now a table. `\|` inside table code showed its backslash. The published sitemap was unrendered Liquid. The workspace guide's feature-index link pointed at the GitHub source of a generated file instead of the features page. The generated MCP reference in the agent guide and `llms-full.txt` wrote placeholders such as `<host>`, `<name>` and `<role>` as bare angle brackets, so every renderer treated them as HTML tags and hid them; they are now written as code. The comparison page described rows 10 to 15 as where Interseptor "loses or ties", but against the best other tool all six are losses, and the ties are rows 1 to 6 and 16. The text now matches the matrix.
+
+### Removed
+
+- **Jekyll scaffolding.** `_config.yml`, `_layouts/`, `_includes/`, `_data/` (navigation and feature data now live in `website/data/`), the 24 generated root copies of the guides, and the committed `website/data/search.json` and `_data/release.json` are gone.
 
 ## [2.12.1] - 2026-10-12
 

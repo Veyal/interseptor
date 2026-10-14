@@ -1,0 +1,6 @@
+{{- /* The landing page (the boss stage). The head partial adds html.js before first paint,
+       so landing.css can render the scripted states (the hold tray's idle view, the video
+       player strip, the stage tabs) without a flash of the no-JavaScript fallback. */ -}}
+{{define "main" -}}
+<main id="main" class="landing lp" tabindex="-1">{{.Page.Content}}</main>
+{{- end}}

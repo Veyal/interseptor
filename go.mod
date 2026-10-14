@@ -7,6 +7,7 @@ require (
 	github.com/dop251/goja v0.0.0-20261006212518-44620e89763c
 	github.com/klauspost/compress v1.18.6
 	github.com/pandatix/go-cvss v0.6.4
+	github.com/yuin/goldmark v1.8.6
 	go.starlark.net v0.0.0-20260613233743-8ba36ccb83fb
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.44.0

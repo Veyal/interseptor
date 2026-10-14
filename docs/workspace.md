@@ -129,5 +129,5 @@ contexts. These tools can send new traffic, unlike History, Decoder, and passive
 Their results still require human review before being represented as confirmed findings.
 
 Checks and rule packs extend passive analysis; Message codecs add project-specific body views.
-The [feature index](../features.md) links to the available guides. For connection problems or
+The [feature index](../website/pages/features.html) links to the available guides. For connection problems or
 stale drafts, start with [Troubleshooting](troubleshooting.md).

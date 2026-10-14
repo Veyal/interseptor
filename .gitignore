@@ -45,3 +45,6 @@ docs/SPEC-agent-pentest*.md
 
 # Playwright MCP local output (console logs, browser profile) — machine-local.
 .playwright-mcp/
+
+# Documentation site build output (go run ./tools/docscheck build _site).
+/_site/

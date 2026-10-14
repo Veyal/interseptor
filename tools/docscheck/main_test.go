@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestReleaseMetadataUsesPublishedChangelogEntry(t *testing.T) {
@@ -14,12 +14,8 @@ func TestReleaseMetadataUsesPublishedChangelogEntry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte(changelog), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	data, err := releaseJSON(root)
+	got, err := loadRelease(root)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var got struct{ Version, Date string }
-	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Version != "2.1.0" || got.Date != "2026-09-08" {
@@ -28,7 +24,7 @@ func TestReleaseMetadataUsesPublishedChangelogEntry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte("## [Unreleased]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := releaseJSON(root); err == nil {
+	if _, err := loadRelease(root); err == nil {
 		t.Fatal("missing published release must not produce a misleading version badge")
 	}
 }
@@ -45,9 +41,16 @@ func TestParseCommand(t *testing.T) {
 		{[]string{"check-site", "_site"}, command{name: "check-site", root: ".", site: "_site"}, false},
 		{[]string{"check-site", "_site", "/repo"}, command{name: "check-site", root: "/repo", site: "_site"}, false},
 		{[]string{"--write"}, command{name: "generate", root: "."}, false},
+		{[]string{"build", "_site"}, command{name: "build", root: ".", out: "_site"}, false},
+		{[]string{"build", "_site", "/repo"}, command{name: "build", root: "/repo", out: "_site"}, false},
+		{[]string{"serve"}, command{name: "serve", root: ".", addr: "127.0.0.1:4000"}, false},
+		{[]string{"serve", "-addr", "127.0.0.1:4100", "/repo"}, command{name: "serve", root: "/repo", addr: "127.0.0.1:4100"}, false},
 		{nil, command{}, true},
 		{[]string{"generate", "one", "two"}, command{}, true},
 		{[]string{"check-site"}, command{}, true},
+		{[]string{"build"}, command{}, true},
+		{[]string{"serve", "-port", "4000"}, command{}, true},
+		{[]string{"serve", "a", "b"}, command{}, true},
 		{[]string{"wat"}, command{}, true},
 	}
 	for _, tt := range tests {
@@ -115,7 +118,7 @@ func TestRewriteLinksClassifiesTargetsAfterResolvingSourcePath(t *testing.T) {
 	}, "\n")
 	got := rewriteLinks(body, "docs/api-and-mcp.md")
 	for _, want := range []string{
-		`[cookbook]({{ "/mcp-cookbook/" | relative_url }}#recipe)`,
+		`[cookbook](/interseptor/mcp-cookbook/#recipe)`,
 		`[security](https://github.com/Veyal/interseptor/blob/main/SECURITY.md)`,
 		`[checks](https://github.com/Veyal/interseptor/blob/main/internal/checks/README.md)`,
 		`[examples](https://github.com/Veyal/interseptor/tree/main/examples/checks/)`,
@@ -159,6 +162,27 @@ func TestSearchSectionsIndexesHeadingsAndReadableBody(t *testing.T) {
 	assertItem("Browser prompt", "proxy-and-tls/#browser-prompt", "realm is Interseptor")
 }
 
+func TestSearchableTextDropsTableEscapes(t *testing.T) {
+	if got := searchableText("| `type must be text\\|flow\\|image` | Fix it |"); got != "type must be text flow image Fix it" {
+		t.Fatalf("searchableText = %q", got)
+	}
+}
+
+// Search excerpts must not show table structure: delimiter rows and pipes.
+func TestSearchableTextDropsTableStructure(t *testing.T) {
+	in := "Intro.\n\n| Field | Meaning |\n|---|:---:|\n| `a\\|b` | x |\n|-|-|\n---\n\nAfter   the table.\n"
+	if got, want := searchableText(in), "Intro. Field Meaning a b x After the table."; got != want {
+		t.Fatalf("searchableText = %q, want %q", got, want)
+	}
+}
+
+func TestSearchableTextCutsAtACharacterBoundary(t *testing.T) {
+	got := searchableText(strings.Repeat("a", 1199) + "—b")
+	if !utf8.ValidString(got) || len(got) > 1200 {
+		t.Fatalf("truncated excerpt is %d bytes, valid UTF-8 %v", len(got), utf8.ValidString(got))
+	}
+}
+
 func TestSearchSlugMatchesKramdownPunctuationIDs(t *testing.T) {
 	for input, want := range map[string]string{
 		"Limits & safety":                       "limits--safety",
@@ -200,17 +224,20 @@ func TestDocumentationSearchLoadsPublishedIndexPath(t *testing.T) {
 	}
 }
 
-func TestJekyllConfigPublishesSearchIndex(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "_config.yml"))
-	if err != nil {
+// fixtureDocument wraps body in the metadata check-site requires.
+func fixtureDocument(body string) string {
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fixture</title>` +
+		`<meta name="description" content="Fixture page."><link rel="canonical" href="https://veyal.github.io/interseptor/">` +
+		`</head><body><h1>Fixture</h1>` + body + `</body></html>`
+}
+
+func writeFixture(t *testing.T, file, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := string(data)
-	if !strings.Contains(config, "  - website/data/search.json") {
-		t.Fatal("Jekyll config does not explicitly include the generated search index")
-	}
-	if strings.Contains(config, "  - '*.json'") || strings.Contains(config, "  - \"*.json\"") {
-		t.Fatal("Jekyll config excludes every JSON file, including the generated search index")
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -219,38 +246,25 @@ func builtSiteFixture(t *testing.T) string {
 	site := t.TempDir()
 	for _, name := range expectedSitePages() {
 		file := filepath.Join(site, name)
-		if name != "index.html" {
+		if !strings.HasSuffix(name, ".html") {
 			file = filepath.Join(file, "index.html")
 		}
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file, []byte(`<a href="/interseptor/features/">Features</a><h2 id="scanner">Scanner</h2>`), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		writeFixture(t, file, fixtureDocument(`<a href="/interseptor/features/">Features</a><h2 id="scanner">Scanner</h2>`))
 	}
-	if err := os.MkdirAll(filepath.Join(site, "assets"), 0o755); err != nil {
-		t.Fatal(err)
+	writeFixture(t, filepath.Join(site, "assets", "site.css"), "")
+	for _, asset := range []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg"} {
+		writeFixture(t, filepath.Join(site, filepath.FromSlash(asset)), "[]")
 	}
-	if err := os.WriteFile(filepath.Join(site, "assets", "site.css"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg", "website/data/search.json"} {
-		file := filepath.Join(site, filepath.FromSlash(asset))
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file, []byte("[]"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFixture(t, filepath.Join(site, filepath.FromSlash(searchFile)), `[{"title":"Scanner","text":"t","url":"features/#scanner","page":"Feature index","group":"Start here"}]`)
+	writeFixture(t, filepath.Join(site, "sitemap.xml"), string(sitemapXML([]*Page{{Path: "/features/", Canonical: "https://veyal.github.io/interseptor/features/"}})))
+	writeFixture(t, filepath.Join(site, "robots.txt"), robotsTxt(siteOrigin+siteBase))
 	return site
 }
 
 func TestValidateBuiltSiteAcceptsBasePrefixedTargets(t *testing.T) {
 	site := builtSiteFixture(t)
 	links := `<link href="/interseptor/assets/site.css"><a href="/interseptor/features/">Features</a><a href="/interseptor/features/#scanner">Scanner</a>`
-	if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(links), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(fixtureDocument(links)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateBuiltSite(site, "/interseptor"); err != nil {
@@ -262,7 +276,7 @@ func TestValidateBuiltSiteRejectsInvalidTargets(t *testing.T) {
 	for _, href := range []string{"/features/", "/interseptor/assets/missing.css"} {
 		t.Run(href, func(t *testing.T) {
 			site := builtSiteFixture(t)
-			if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(`<a href="`+href+`">bad</a>`), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(fixtureDocument(`<a href="`+href+`">bad</a>`)), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			if err := validateBuiltSite(site, "/interseptor"); err == nil {
@@ -314,7 +328,7 @@ func TestValidateProjectLinksRejectsDeadBlobAndAcceptsLive(t *testing.T) {
 
 func TestValidateBuiltSiteRejectsMissingFragments(t *testing.T) {
 	site := builtSiteFixture(t)
-	if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(`<a href="/interseptor/features/#renamed-heading">Guide</a>`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(fixtureDocument(`<a href="/interseptor/features/#renamed-heading">Guide</a>`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateBuiltSite(site, "/interseptor"); err == nil {

@@ -544,7 +544,7 @@ arrive as `400` with `{"error":...}`.
 | `send blocks or legacy body, not both` | Send `blocks` only. |
 | `evidence role "x"` | Use one of the eight roles. |
 | `evidence source "x"` | Use a value from the evidence table or `captured_flow`. |
-| `type must be text|flow|image` | Fix the block `type`. |
+| `type must be text\|flow\|image` | Fix the block `type`. |
 | `flow not found: N` | The flow id does not exist. Re-list flows. Never guess ids. |
 | `environment must be production, staging, development, testing, local, or legacy prod` | Use a listed environment or omit it. |
 | `cvss is not a valid CVSS v4.0 vector` | Build the vector from the 11 base metrics and evaluate it first. |
@@ -831,7 +831,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `android_setup` | none | One-click Android HTTPS intercept via adb: set global proxy + install CA. |
 | `android_status` | none | List USB-connected Android devices (requires adb on PATH): serial, model, emulator hint, suggested CA mode... |
 | `android_teardown` | none | Clear Android global proxy and adb reverse. |
-| `annotate_flow_interception` | `id` | Mark a bodiless 'CONNECT <host> status 0' flow as pinning_blocked (interception was intended but pinning... |
+| `annotate_flow_interception` | `id` | Mark a bodiless 'CONNECT `<host>` status 0' flow as pinning_blocked (interception was intended but pinning... |
 | `append_notes` | `text` | Append a markdown block to the project notebook (e.g. |
 | `audit_endpoint` | `id` | Consolidated endpoint triage: takes a flow id, analyzes its structure, parameters, auth context, and passive... |
 | `auth_timeline` | `flowId` | Read-only auth timeline for a login flow and the same client's following captures: redirects, Set-Cookie... |
@@ -951,7 +951,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `update_finding` | `id` | Update a finding (only fields you pass change) using the same evidence-first format as the UI. |
 | `update_rule` | `id`, `type`, `match` | Update a match-&-replace rule. |
 | `vault_backup` | none | Snapshot the active project and upload it to the configured vault as a new revision. |
-| `vault_import` | `id` | Download a vault project revision into a NEW named local project under ~/.interseptor/projects/<name>. |
+| `vault_import` | `id` | Download a vault project revision into a NEW named local project under `~/.interseptor/projects/<name>`. |
 | `vault_list` | none | List projects stored on the configured project vault (always-on archive store, e.g. |
 | `vault_merge` | `id` | Download a vault project revision and merge (additive union) into the active project. |
 | `ws_send` | `url`, `message` | Open a fresh WebSocket, send one message, return the server's reply frames. |
@@ -1040,7 +1040,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `retest` | string | expected secure behavior and negative verification case |
 | `severity` | string |  |
 | `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|fixed |
-| `summary` | string | one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title |
+| `summary` | string | one sentence, <=140 chars; `<METHOD path>` `<what happens>` to `<role>`; do not restate the title |
 | `tags` | string | report-scope labels (comma/space-separated or array): cms, website, app, api, out-of-scope |
 | `target` | string | legacy primary target; first targets entry takes precedence |
 | `targets` | array | Ordered affected targets; first is primary. |

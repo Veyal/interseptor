@@ -1,0 +1,35 @@
+{{- /*
+  The menu drawer below 960px: a modal <dialog> opened by the header menu button
+  (site.js). It holds the primary navigation and, except on the landing page, the
+  docs navigation. A closed dialog takes no space, so without JavaScript it is simply
+  absent; docs pages then show their sidebar after the article instead.
+*/ -}}
+{{define "drawer" -}}
+{{- $path := .Page.Path -}}
+<dialog class="site-drawer" id="site-menu" aria-labelledby="site-menu-title">
+  <div class="drawer-head">
+    <p class="drawer-title" id="site-menu-title">Menu</p>
+    <button class="icon-btn drawer-close" type="button" data-drawer-close>{{icon "x"}}<span class="sr-only">Close menu</span></button>
+  </div>
+  <div class="drawer-body">
+    <nav class="drawer-primary" aria-label="Primary">
+      <ul>
+        <li><a href="{{url "/getting-started/"}}"{{if eq $path "/getting-started/"}} aria-current="page"{{end}}>{{icon "book-open"}}<span>Docs</span></a></li>
+        <li><a href="{{url "/features/"}}"{{if eq $path "/features/"}} aria-current="page"{{end}}>{{icon "layout-grid"}}<span>Features</span></a></li>
+        <li><a href="{{url "/compare/"}}"{{if eq $path "/compare/"}} aria-current="page"{{end}}>{{icon "scale"}}<span>Compare</span></a></li>
+        <li><a href="{{url "/ai-agents/"}}"{{if eq $path "/ai-agents/"}} aria-current="page"{{end}}>{{icon "bot"}}<span>For agents</span></a></li>
+      </ul>
+    </nav>
+    {{- if ne .Page.Kind "landing"}}
+    <nav class="drawer-docs docs-nav" aria-label="Documentation">
+      {{template "nav-groups" (dict "Nav" .Site.Nav "Prefix" "drawer-nav")}}
+    </nav>
+    {{- end}}
+  </div>
+  <div class="drawer-foot">
+    {{template "release-chip" .}}
+    <a class="chip" href="{{.Site.Repo}}">{{icon "github"}}<span>GitHub</span></a>
+    <a class="chip" href="{{.Site.Parent}}">{{icon "arrow-left"}}<span>veyal.land</span></a>
+  </div>
+</dialog>
+{{- end}}

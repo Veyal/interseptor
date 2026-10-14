@@ -1,244 +1,385 @@
+/* Interseptor site behaviour on every page: the theme switch, the menu drawer, copy buttons
+   and code cards, and the docs outline (section tracking and reading progress).
+   Contracts other pages rely on:
+   - document.documentElement.dataset.theme is 'light' or 'dark'; a change dispatches
+     document 'themechange' with detail {theme}.
+   - button.copy-button copies data-copy-url (fetched text), data-copy-text (a literal), or
+     data-copy="#selector" (that element's text without [data-copy-skip] parts), then shows
+     data-state="copied" for about two seconds and announces the result.
+   - .code-card > .code-bar > button.code-copy[hidden] is revealed and copies its pre code. */
 (() => {
+  'use strict';
   const root = document.documentElement;
-  const themeButton = document.querySelector('.theme-toggle');
-  const darkPreference = window.matchMedia('(prefers-color-scheme: dark)');
+  // Smooth in-page scrolling only after the browser's own jump to a #section on arrival.
+  const smooth = () => requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('smooth-scroll')));
+  if (document.readyState === 'complete') smooth(); else window.addEventListener('load', smooth, { once: true });
+  const body = document.body;
+
+  /* ---------- Theme ---------- */
+  const THEME_KEY = 'interseptor-docs-theme';
+  const THEME_COLORS = { light: '#fff8eb', dark: '#1a1722' };
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+  function storedTheme() {
+    try {
+      const theme = localStorage.getItem(THEME_KEY);
+      return theme === 'dark' || theme === 'light' ? theme : null;
+    } catch (_) { return null; }
+  }
   function applyTheme(theme) {
+    const changed = root.dataset.theme !== theme;
     root.dataset.theme = theme;
-    themeButton?.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1a1722' : '#fff6e8');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[theme]);
+    document.querySelectorAll('.theme-toggle').forEach(button => button.setAttribute('aria-pressed', String(theme === 'dark')));
+    if (changed) document.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
   }
-  applyTheme(root.dataset.theme || (darkPreference.matches ? 'dark' : 'light'));
-  if (themeButton) {
-    themeButton.hidden = false;
-    themeButton.addEventListener('click', () => {
-      applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
-      try { localStorage.setItem('interseptor-docs-theme', root.dataset.theme); } catch (_) {}
+  applyTheme(storedTheme() || root.dataset.theme || (systemDark.matches ? 'dark' : 'light'));
+  document.querySelectorAll('.theme-toggle').forEach(button => {
+    button.addEventListener('click', () => {
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+    });
+  });
+  systemDark.addEventListener('change', event => {
+    if (!storedTheme()) applyTheme(event.matches ? 'dark' : 'light');
+  });
+
+  /* ---------- Shared helpers ---------- */
+  const status = document.createElement('div');
+  status.className = 'sr-only';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-atomic', 'true');
+  body.append(status);
+  let statusTimer;
+  function announce(message) {
+    status.textContent = '';
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { status.textContent = message; }, 40);
+  }
+  function focusables(container) {
+    return [...container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), summary, [tabindex]:not([tabindex="-1"])')]
+      .filter(el => el.getClientRects().length > 0);
+  }
+  // Keeps Tab inside an open modal dialog, wrapping at either end.
+  function trapFocus(dialog) {
+    dialog.addEventListener('keydown', event => {
+      if (event.key !== 'Tab') return;
+      const items = focusables(dialog);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
   }
-
-  const menu = document.querySelector('.menu-toggle');
-  const sidebar = document.querySelector('.sidebar');
-  const mobile = window.matchMedia('(max-width: 960px)');
-  function setMenu(open, returnFocus = false) {
-    document.body.classList.toggle('nav-open', open);
-    menu?.setAttribute('aria-expanded', String(open));
-    menu?.setAttribute('aria-label', `${open ? 'Close' : 'Open'} documentation menu`);
-    if (returnFocus) menu?.focus();
-  }
-  if (menu) {
-    document.body.classList.add('nav-enhanced');
-    menu.hidden = false;
-    menu.addEventListener('click', () => setMenu(menu.getAttribute('aria-expanded') !== 'true'));
-    mobile.addEventListener('change', () => setMenu(false));
-    document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && document.body.classList.contains('nav-open')) {
-        event.preventDefault();
-        setMenu(false, true);
-      }
-    });
-  }
-  const activePage = sidebar?.querySelector('[aria-current="page"]');
-  if (activePage && !mobile.matches) {
-    sidebar.scrollTop = Math.max(0, activePage.offsetTop - sidebar.offsetTop - sidebar.clientHeight / 2);
-  }
-
-  // Copy text with the async clipboard API, falling back to a hidden textarea; returns success.
-  async function copyText(text, returnFocus) {
-    try { await navigator.clipboard.writeText(text); return true; } catch (_) {
-      const area = document.createElement('textarea');
-      area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;top:-100px;opacity:0';
-      document.body.append(area); area.select();
-      let ok = false;
-      try { ok = document.execCommand('copy'); } catch (__) {}
-      area.remove(); returnFocus?.focus();
-      return ok;
+  // Scrolls box (not the page) so item sits in its middle, when it is out of view.
+  function revealWithin(box, item) {
+    if (!box || !item || box.scrollHeight <= box.clientHeight) return;
+    const outer = box.getBoundingClientRect();
+    const inner = item.getBoundingClientRect();
+    if (inner.top < outer.top || inner.bottom > outer.bottom) {
+      box.scrollTop += inner.top - outer.top - (outer.height - inner.height) / 2;
     }
   }
 
-  // Code cards: label and copy button. Without JavaScript the plain bordered block remains.
-  document.querySelectorAll('main div.highlighter-rouge').forEach(block => {
-    const code = block.querySelector('pre');
-    if (!code) return;
-    const lang = ((block.className.match(/language-([\w+-]+)/) || [])[1] || 'code').replace(/^plaintext$/, 'text');
-    const card = document.createElement('div');
-    card.className = 'code-card';
-    const bar = document.createElement('div');
-    bar.className = 'code-bar';
-    const label = document.createElement('span');
-    label.className = 'code-lang';
-    label.textContent = lang;
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'chip';
-    copy.textContent = 'Copy';
-    copy.setAttribute('aria-label', `Copy ${lang} code`);
-    let reset;
-    copy.addEventListener('click', async () => {
-      const ok = await copyText(code.textContent.replace(/\n$/, ''), copy);
-      copy.textContent = ok ? 'Copied' : 'Press Ctrl+C';
-      copy.dataset.state = ok ? 'copied' : 'failed';
-      clearTimeout(reset);
-      reset = setTimeout(() => { copy.textContent = 'Copy'; delete copy.dataset.state; }, 1800);
+  /* ---------- Menu drawer (below 960px) ---------- */
+  const drawer = document.getElementById('site-menu');
+  const menuButton = document.querySelector('.menu-btn');
+  if (drawer && menuButton && typeof drawer.showModal === 'function') {
+    const closeDrawer = () => { if (drawer.open) drawer.close(); };
+    menuButton.addEventListener('click', () => {
+      if (drawer.open) return;
+      drawer.showModal();
+      menuButton.setAttribute('aria-expanded', 'true');
+      revealWithin(drawer.querySelector('.drawer-body'), drawer.querySelector('.drawer-docs [aria-current="page"]'));
+      drawer.querySelector('[data-drawer-close]')?.focus();
     });
-    bar.append(label, copy);
-    block.replaceWith(card);
-    card.append(bar, block);
-  });
-  // Last resort when no clipboard path works: select the source text so Ctrl+C still copies it.
+    drawer.addEventListener('close', () => {
+      menuButton.setAttribute('aria-expanded', 'false');
+      menuButton.focus({ preventScroll: true });
+    });
+    drawer.querySelector('[data-drawer-close]')?.addEventListener('click', closeDrawer);
+    drawer.addEventListener('click', event => {
+      if (event.target === drawer) {
+        const box = drawer.getBoundingClientRect();
+        const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+        if (!inside) closeDrawer();
+        return;
+      }
+      if (event.target.closest('a[href]')) closeDrawer();
+    });
+    trapFocus(drawer);
+    window.matchMedia('(min-width: 960px)').addEventListener('change', event => { if (event.matches) closeDrawer(); });
+  }
+
+  /* ---------- Clipboard ---------- */
+  async function writeText(text, anchor) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    // Older browsers and plain-http previews: copy through a hidden textarea next to the
+    // button, so it stays inside an open dialog and is not inert.
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.setAttribute('aria-hidden', 'true');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    area.style.opacity = '0';
+    const returnTo = document.activeElement;
+    (anchor?.parentElement || body).append(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    area.remove();
+    if (returnTo && typeof returnTo.focus === 'function') returnTo.focus({ preventScroll: true });
+    return ok;
+  }
+  // Copies the text at url. Safari keeps the click's permission only when the clipboard
+  // write starts at once, which a ClipboardItem holding a promise allows.
+  async function writeFetched(url, anchor) {
+    const load = () => fetch(url, { credentials: 'omit' }).then(response => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    });
+    if (window.ClipboardItem && navigator.clipboard?.write && window.isSecureContext) {
+      try {
+        const blob = load().then(text => new Blob([text], { type: 'text/plain' }));
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+        return true;
+      } catch (_) {}
+    }
+    try { return await writeText(await load(), anchor); } catch (_) { return false; }
+  }
+  // Selects node's text so Ctrl+C or Command+C still works when no clipboard path does.
   function selectText(node) {
-    if (!node) return;
     const selection = window.getSelection();
-    if (!selection) return;
+    if (!node || !selection) return;
     const range = document.createRange();
     range.selectNodeContents(node);
     selection.removeAllRanges();
     selection.addRange(range);
   }
+  function plainText(node, skip) {
+    const clone = node.cloneNode(true);
+    clone.querySelectorAll(skip).forEach(part => part.remove());
+    return clone.textContent;
+  }
+  // The visible label is the last text outside icons and screen-reader-only text.
+  function labelNode(button) {
+    const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.nodeValue.trim() && !node.parentElement.closest('svg, .sr-only') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    let last = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) last = node;
+    return last;
+  }
+  function showCopied(button, ok, message, failedLabel = 'Press Ctrl+C') {
+    const label = labelNode(button);
+    if (label && button.dataset.copyLabel === undefined) button.dataset.copyLabel = label.nodeValue;
+    if (label) label.nodeValue = ok ? 'Copied' : failedLabel;
+    button.dataset.state = ok ? 'copied' : 'failed';
+    announce(message);
+    clearTimeout(button.copyTimer);
+    button.copyTimer = setTimeout(() => {
+      if (label) label.nodeValue = button.dataset.copyLabel;
+      delete button.dataset.state;
+    }, 2000);
+  }
+  function copiedMessage(text) {
+    const clean = text.trim();
+    return clean.length <= 120 ? `Copied: ${clean}` : 'Copied to the clipboard.';
+  }
+  const FAILED = 'Copy failed. The text is selected; press Ctrl+C or Command+C.';
+  const BLOCKED = 'Copy failed: this browser blocked the clipboard.';
 
-  // Landing page copy buttons (install command, terminal example). The button names its
-  // source with data-copy (a selector) or data-copy-text (a literal), otherwise the
-  // nearest .command or .terminal is used. [data-copy-skip] descendants are dropped, so
-  // prompts and sample output stay out of the clipboard while still being announced.
-  // Each button is a real <button>, so keyboard use needs nothing extra; confirmation is
-  // both visible (label and fill) and announced through an adjacent live region.
   document.querySelectorAll('.copy-button').forEach(button => {
-    const status = document.createElement('span');
-    status.className = 'sr-only';
-    status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    status.setAttribute('aria-atomic', 'true');
-    button.after(status);
-    const label = button.textContent.trim() || 'Copy';
     const source = () => {
       if (button.dataset.copy) {
         try { return document.querySelector(button.dataset.copy); } catch (_) { return null; }
       }
-      return button.closest('.command, .terminal')?.querySelector('.command-text, .terminal-body');
+      return button.closest('.command, .terminal')?.querySelector('.command-text, .terminal-body') || null;
     };
-    const payload = () => {
-      if (button.dataset.copyText) return button.dataset.copyText;
-      const node = source();
-      if (!node) return '';
-      const clone = node.cloneNode(true);
-      clone.querySelectorAll('[data-copy-skip]').forEach(skip => skip.remove());
-      return clone.textContent.replace(/[ \t]+$/gm, '').trim();
-    };
-    let reset;
     button.addEventListener('click', async () => {
-      const text = payload();
-      const ok = text ? await copyText(text, button) : false;
-      if (!ok) selectText(source());
-      button.textContent = ok ? 'Copied' : 'Press Ctrl+C';
-      button.dataset.state = ok ? 'copied' : 'failed';
-      status.textContent = ok ? `Copied: ${text}` : 'Copy failed. The text is selected; press Ctrl+C or Command+C.';
-      clearTimeout(reset);
-      reset = setTimeout(() => {
-        button.textContent = label;
-        delete button.dataset.state;
-        status.textContent = '';
-      }, 2000);
+      if (button.dataset.copyUrl) {
+        if (await writeFetched(button.dataset.copyUrl, button)) { showCopied(button, true, 'Full text copied to the clipboard.'); return; }
+        const fallback = button.dataset.copyText || '';
+        const ok = fallback ? await writeText(fallback, button) : false;
+        showCopied(button, ok, ok ? 'The full text did not load, so the short prompt was copied instead.' : 'Copy failed. Check your connection and try again.', 'Copy failed');
+        return;
+      }
+      const node = button.dataset.copyText ? null : source();
+      const text = button.dataset.copyText || (node ? plainText(node, '[data-copy-skip]').replace(/[ \t]+$/gm, '').trim() : '');
+      const ok = text ? await writeText(text, button) : false;
+      if (!ok) selectText(node);
+      if (ok || node) showCopied(button, ok, ok ? copiedMessage(text) : FAILED);
+      else showCopied(button, false, BLOCKED, 'Copy failed');
     });
   });
 
-  // Agent guide: one-click copy of the ready-to-paste prompt or the full llms-full.txt text.
-  // The fetch is same-origin; if it fails the prompt is copied instead.
-  if (/\/ai-agents\/?$/.test(location.pathname)) {
-    const base = document.body.dataset.baseurl || '/';
-    const fullUrl = new URL(`${base}llms-full.txt`, location.origin).href;
-    const prompt = `Read ${fullUrl} and follow it.`;
-    const anchor = document.querySelector('main h1 + p');
-    if (anchor) {
-      const row = document.createElement('div');
-      row.className = 'agent-actions';
-      const status = document.createElement('span');
-      status.className = 'sr-only';
-      status.setAttribute('role', 'status');
-      status.setAttribute('aria-live', 'polite');
-      const make = (label, aria) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'chip';
-        button.textContent = label;
-        button.setAttribute('aria-label', aria);
-        return button;
-      };
-      const flash = (button, label, ok, message) => {
-        button.textContent = ok ? 'Copied' : 'Press Ctrl+C';
-        button.dataset.state = ok ? 'copied' : 'failed';
-        status.textContent = message;
-        clearTimeout(button._reset);
-        button._reset = setTimeout(() => { button.textContent = label; delete button.dataset.state; }, 2200);
-      };
-      const promptButton = make('Copy for agent', 'Copy the prompt that points an agent at llms-full.txt');
-      promptButton.addEventListener('click', async () => {
-        flash(promptButton, 'Copy for agent', await copyText(prompt, promptButton), 'Prompt copied');
-      });
-      const fullButton = make('Copy full guide text', 'Copy the complete agent guide as plain text');
-      fullButton.addEventListener('click', async () => {
-        let text = prompt, note = 'Could not load the guide; copied the prompt instead';
-        try {
-          const response = await fetch(fullUrl, { credentials: 'omit' });
-          if (response.ok) { text = await response.text(); note = 'Full guide copied'; }
-        } catch (_) {}
-        flash(fullButton, 'Copy full guide text', await copyText(text, fullButton), note);
-      });
-      row.append(promptButton, fullButton, status);
-      anchor.after(row);
+  /* ---------- Code cards ---------- */
+  const scrollable = 'ResizeObserver' in window ? new ResizeObserver(entries => entries.forEach(entry => markScrollable(entry.target))) : null;
+  // A code block that scrolls sideways becomes a focusable, named region for keyboard users.
+  const codeCards = [...document.querySelectorAll('.code-card')];
+  function markScrollable(pre) {
+    const card = pre.closest('.code-card');
+    if (pre.scrollWidth > pre.clientWidth + 1) {
+      pre.tabIndex = 0;
+      pre.setAttribute('role', 'region');
+      pre.setAttribute('aria-label', `Code example ${codeCards.indexOf(card) + 1}, ${card?.dataset.lang || 'text'}`);
+    } else if (pre.hasAttribute('tabindex')) {
+      pre.removeAttribute('tabindex');
+      pre.removeAttribute('role');
+      pre.removeAttribute('aria-label');
     }
   }
-  // Tables scroll inside their own focusable region instead of widening the page.
-  document.querySelectorAll('main table').forEach(table => {
-    if (table.parentElement.classList.contains('table-wrap') || table.parentElement.classList.contains('table-scroll')) return;
+  // Raw <pre> blocks (HTML pages) get the same card markup the Markdown renderer emits.
+  document.querySelectorAll('.prose pre:not(.code)').forEach(pre => {
+    if (pre.closest('.code-card')) return;
+    const lang = ((pre.querySelector('code')?.className.match(/language-([\w+-]+)/) || [])[1] || 'text');
+    const card = document.createElement('div');
+    card.className = 'code-card';
+    card.dataset.lang = lang;
+    const bar = document.createElement('div');
+    bar.className = 'code-bar';
+    const name = document.createElement('span');
+    name.className = 'code-lang';
+    name.textContent = lang;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'code-copy';
+    copy.hidden = true;
+    copy.textContent = 'Copy';
+    bar.append(name, copy);
+    pre.classList.add('code');
+    pre.replaceWith(card);
+    card.append(bar, pre);
+  });
+  codeCards.splice(0, codeCards.length, ...document.querySelectorAll('.code-card'));
+  codeCards.forEach(card => {
+    const button = card.querySelector('.code-copy');
+    const pre = card.querySelector('pre');
+    if (!pre) return;
+    if (scrollable) scrollable.observe(pre); else markScrollable(pre);
+    if (!button) return;
+    const lang = card.dataset.lang || 'text';
+    const extra = document.createElement('span');
+    extra.className = 'sr-only';
+    extra.textContent = lang === 'text' ? ' code block' : ` ${lang} code`;
+    button.append(extra);
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      const code = pre.querySelector('code') || pre;
+      // Prompts ($ ) are not part of the command.
+      const text = plainText(code, '.tok-prompt, [data-copy-skip]').replace(/\n$/, '');
+      const ok = await writeText(text, button);
+      if (!ok) selectText(code);
+      showCopied(button, ok, ok ? 'Code copied to the clipboard.' : FAILED);
+    });
+  });
+
+  // Raw tables inside prose scroll in their own region, like the Markdown ones.
+  document.querySelectorAll('.prose table').forEach(table => {
+    if (table.closest('.table-wrap, .table-scroll')) return;
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap';
     wrap.tabIndex = 0;
     wrap.setAttribute('role', 'region');
     const caption = table.querySelector('caption')?.textContent.trim();
-    wrap.setAttribute('aria-label', caption ? `${caption} (scrollable table)` : 'Scrollable table');
+    wrap.setAttribute('aria-label', caption ? `Table: ${caption}` : 'Table');
     table.replaceWith(wrap);
     wrap.append(table);
   });
 
-  const outline = document.querySelector('.outline');
-  const outlineNav = document.querySelector('#page-outline');
-  const headings = [...document.querySelectorAll('main h2[id]')];
-  if (outline && outlineNav && headings.length > 1) {
-    outline.hidden = false;
-    const links = headings.map(heading => {
-      const link = document.createElement('a');
-      link.href = `#${encodeURIComponent(heading.id)}`;
-      link.textContent = heading.textContent;
-      outlineNav.append(link);
-      return link;
-    });
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'outline-toggle';
-    toggle.textContent = 'On this page';
-    toggle.setAttribute('aria-controls', 'page-outline');
-    outline.prepend(toggle);
-    const compact = window.matchMedia('(max-width: 1200px)');
-    function setOutline(open) {
-      outlineNav.hidden = !open;
-      toggle.setAttribute('aria-expanded', String(open));
-    }
-    setOutline(!compact.matches);
-    compact.addEventListener('change', () => setOutline(!compact.matches));
-    toggle.addEventListener('click', () => setOutline(outlineNav.hidden));
-    let queued = false;
-    function highlightSection() {
-      queued = false;
-      const top = parseFloat(getComputedStyle(root).getPropertyValue('--header')) + 40;
-      let current = 0;
-      headings.forEach((heading, i) => { if (heading.getBoundingClientRect().top <= top) current = i; });
-      links.forEach((link, i) => {
-        if (i === current) link.setAttribute('aria-current', 'location');
-        else link.removeAttribute('aria-current');
+  // Long unbroken tokens in table cells (API paths, dotted field names, value lists such as
+  // a|b|c, CVSS vectors) may wrap after / . _ : | and similar separators instead of widening
+  // the table. <wbr> adds a break opportunity and is never copied with the text.
+  const SEPARATORS = '/._:,|=&?]';
+  document.querySelectorAll('.table-wrap td, .table-scroll td').forEach(cell => {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    const long = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) if (/\S{20,}/.test(node.nodeValue)) long.push(node);
+    long.forEach(node => {
+      const parts = document.createDocumentFragment();
+      node.nodeValue.split(/(\s+)/).forEach(chunk => {
+        if (chunk.length < 20 || /\s/.test(chunk)) { parts.append(chunk); return; }
+        let start = 0;
+        for (let i = 0; i < chunk.length - 1; i++) {
+          if (SEPARATORS.includes(chunk[i]) && i + 1 - start >= 3) {
+            parts.append(chunk.slice(start, i + 1), document.createElement('wbr'));
+            start = i + 1;
+          }
+        }
+        parts.append(chunk.slice(start));
       });
-    }
-    window.addEventListener('scroll', () => {
-      if (!queued) { queued = true; requestAnimationFrame(highlightSection); }
-    }, { passive: true });
-    highlightSection();
+      node.replaceWith(parts);
+    });
+  });
+
+  // Scroll regions need distinct names: a repeated table label gets a number.
+  const regionNames = new Map();
+  document.querySelectorAll('.table-wrap[aria-label], .table-scroll[aria-label]').forEach(region => {
+    const name = region.getAttribute('aria-label');
+    const seen = (regionNames.get(name) || 0) + 1;
+    regionNames.set(name, seen);
+    if (seen > 1) region.setAttribute('aria-label', `${name} (${seen})`);
+  });
+
+  // Task-list checkboxes are read-only status marks; name each after its item.
+  document.querySelectorAll('.prose li > input[type="checkbox"]').forEach(box => {
+    if (box.labels?.length || box.hasAttribute('aria-label') || box.hasAttribute('aria-labelledby')) return;
+    const item = box.parentElement.cloneNode(true);
+    item.querySelectorAll('ul, ol, input').forEach(part => part.remove());
+    const text = item.textContent.replace(/\s+/g, ' ').trim();
+    if (text) box.setAttribute('aria-label', text.length > 140 ? `${text.slice(0, 139)}…` : text);
+  });
+
+  /* ---------- Docs sidebar: keep the current page in view ---------- */
+  const sidebar = document.querySelector('.docs-sidebar');
+  revealWithin(sidebar, sidebar?.querySelector('[aria-current="page"]'));
+
+  /* ---------- Outline: the section being read, and reading progress ---------- */
+  const outlineLinks = [...document.querySelectorAll('.outline-list a[href^="#"]')];
+  const ids = [...new Set(outlineLinks.map(link => decodeURIComponent(link.hash.slice(1))))];
+  const headings = ids.map(id => document.getElementById(id)).filter(Boolean);
+  const outlineScroll = document.querySelector('.outline .outline-scroll');
+  const progress = document.querySelector('.outline-progress');
+  const sheet = document.querySelector('.doc-sheet');
+  if (headings.length && sheet) {
+    let current = null;
+    let queued = false;
+    const update = () => {
+      queued = false;
+      const offset = (parseFloat(getComputedStyle(root).scrollPaddingTop) || 80) + 16;
+      let active = null;
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top <= offset) active = heading;
+        else break;
+      }
+      const atEnd = window.innerHeight + window.scrollY >= root.scrollHeight - 4;
+      if (atEnd) active = headings[headings.length - 1];
+      if (active !== current) {
+        current = active;
+        const hash = active ? `#${active.id}` : '';
+        outlineLinks.forEach(link => {
+          if (hash && decodeURIComponent(link.hash) === hash) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+        revealWithin(outlineScroll, outlineScroll?.querySelector('[aria-current="location"]'));
+      }
+      if (progress) {
+        const box = sheet.getBoundingClientRect();
+        const travel = box.height - window.innerHeight;
+        const read = travel > 0 ? Math.min(1, Math.max(0, -box.top / travel)) : 1;
+        progress.style.setProperty('--read', read.toFixed(3));
+      }
+    };
+    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+    window.addEventListener('scroll', queue, { passive: true });
+    window.addEventListener('resize', queue, { passive: true });
+    update();
   }
 })();

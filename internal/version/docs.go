@@ -1,7 +1,8 @@
 package version
 
-// DocsSite is the published documentation root. It must equal the Jekyll
-// `url` plus `baseurl` in _config.yml (tools/docscheck verifies this).
+// DocsSite is the published documentation root. It must equal the origin plus
+// base path the documentation generator builds for (tools/docscheck verifies
+// this).
 const DocsSite = "https://veyal.github.io/interseptor"
 
 // Machine-readable entry points for AI agents. llms.txt and llms-full.txt are
