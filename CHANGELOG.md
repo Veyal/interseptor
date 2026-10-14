@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **An intercept filter now decides which responses are held, not just which requests.** `HoldResponseContext` never read the conditional-intercept filter, so an operator who narrowed intercept to one host and then switched response interception on had every in-scope response held: images, fonts, stylesheets and analytics alike. The hold queue floods and browser tabs hang waiting on bodies nobody meant to inspect. The same filter now gates both directions. A `url` or `method` filter reads the flow exactly as it does for requests, `header` and `body` read that response, and `any` -- the default -- sees the request line as well as the response, so a path filter still selects the exchanges it names instead of silently matching nothing ([#98](https://github.com/Veyal/interseptor/issues/98)).
+- **The proxy keeps idle upstream connections per host.** Its transport set `MaxIdleConns` but not `MaxIdleConnsPerHost`, so Go's default of 2 applied: ten parallel requests to one API host kept two connections and tore the other eight down, paying a fresh TCP and TLS handshake on the next request to that host. The pool now holds 64 per host and 512 in total, which is at least as generous as the sender's ([#100](https://github.com/Veyal/interseptor/issues/100)).
 
 ## [2.13.0] - 2026-10-14
 

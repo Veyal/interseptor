@@ -101,8 +101,13 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 			}
 			return up, nil
 		},
-		MaxIdleConns:    100,
-		IdleConnTimeout: 90 * time.Second,
+		// Go's default MaxIdleConnsPerHost is 2, so ten parallel requests to one
+		// API host kept two connections and tore the rest down, paying a TCP and
+		// TLS handshake again on the next request. The proxy fans out across far
+		// more hosts than the sender, so the totals are larger.
+		MaxIdleConns:        512,
+		MaxIdleConnsPerHost: 64,
+		IdleConnTimeout:     90 * time.Second,
 		// No ResponseHeaderTimeout: slow/long-polling upstreams must not be cut
 		// off by the proxy. Dial still has its own connect bound.
 		// Prefer HTTP/2 to the origin when ALPN negotiates it. The MITM leg to
