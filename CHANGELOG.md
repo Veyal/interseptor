@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-10-14
+
+> Minor release: the documentation site is built by this repository instead of GitHub Pages'
+> Jekyll, which restores guide text that Liquid had been deleting, and the whole site is
+> redesigned as the boss stage of veyal.land, with a playable intercept on the landing page
+> and a recording of the real app doing the same thing. No product behaviour changes.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.1` release.
