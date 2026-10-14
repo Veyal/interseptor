@@ -78,6 +78,13 @@ Intercept shows traffic held by the proxy, separate from completed History captu
 state affects whether matching traffic waits for a decision. If a browser appears to stall,
 check the held-item count and current intercept state before changing network settings.
 
+**Only hold when** narrows both directions. The same filter decides which requests and which
+responses are held, so switching responses on while a filter is set does not flood the queue with
+images, fonts and stylesheets. A `url` or `method` filter reads the exchange's method, host and
+path. `header` and `body` read the message in front of you: the request when a request is held,
+that response when a response is held. `any`, the default, matches the request line as well as the
+message, so a path pattern still selects the exchanges it names.
+
 ## Scanner and Map
 
 Scanner groups passive observations from captured responses. An alert is a review lead; it is

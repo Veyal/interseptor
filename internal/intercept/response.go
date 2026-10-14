@@ -31,6 +31,27 @@ type respItem struct {
 	done chan ResponseDecision
 }
 
+// matchResponseField tests the intercept filter against a response. "url" and
+// "method" read the flow, exactly as on the request side. "header" and "body"
+// read this response. "any" is the default target and an operator writes it
+// against the whole exchange, so it sees the request line as well; matching only
+// the response bytes would make a path filter silently hold nothing.
+func matchResponseField(target string, re *regexp.Regexp, flow *store.Flow, raw []byte) bool {
+	if target == "any" || target == "" {
+		var b strings.Builder
+		if flow != nil {
+			b.WriteString(flow.Method)
+			b.WriteByte(' ')
+			b.WriteString(flow.Host)
+			b.WriteString(flow.Path)
+			b.WriteString("\r\n")
+		}
+		b.Write(raw)
+		return re.MatchString(b.String())
+	}
+	return matchField(target, re, flow, raw)
+}
+
 // ResponseEnabled reports whether response interception is on.
 func (e *Engine) ResponseEnabled() bool {
 	e.mu.Lock()
@@ -68,6 +89,13 @@ func (e *Engine) HoldResponse(flow *store.Flow, raw []byte) ResponseDecision {
 func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw []byte) ResponseDecision {
 	e.mu.Lock()
 	if !e.respEnabled {
+		e.mu.Unlock()
+		return ResponseDecision{Raw: raw}
+	}
+	// The same conditional-intercept filter selects requests and responses. Without
+	// this, turning response interception on holds every in-scope response -- images,
+	// fonts, analytics, stylesheets -- and the queue floods.
+	if e.matchEnabled && e.matchRe != nil && !matchResponseField(e.matchTarget, e.matchRe, flow, raw) {
 		e.mu.Unlock()
 		return ResponseDecision{Raw: raw}
 	}
