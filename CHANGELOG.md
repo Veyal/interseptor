@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Product media for the website.** A 35-second silent screen recording of the real app, in light and dark, shows a request held in Intercept, its order id edited from 1042 to 1043, another customer's order coming back, and that flow attached as evidence to a finding. It ships with matching stills, posters, an original frog mascot drawn as SVG, a social card and touch icons. Everything was recorded from the real binary against a throwaway data directory, with synthetic `*.example.com` traffic answered by a loopback mock, so no request reached a third-party host and no engagement data, real domain or credential appears in any file. Geist Mono joins the self-hosted fonts under the SIL OFL so code on the site matches the terminal card on veyal.land.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.12.1` release.
