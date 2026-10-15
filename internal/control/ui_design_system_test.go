@@ -302,7 +302,7 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 		"js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
-		"js/apipanel.js", "js/setup.js", "js/flowmodal.js"}
+		"js/apipanel.js", "js/setup.js"}
 
 	// These ranges were originally too narrow and let ⚡ (U+26A1, which has
 	// Emoji_Presentation=Yes and therefore renders in full colour), ➕ (U+2795),
@@ -748,7 +748,7 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
-		"js/setup.js", "js/flowmodal.js") {
+		"js/setup.js") {
 		for _, m := range regexp.MustCompile(`font-size:\s*([0-9.]+)px`).FindAllStringSubmatch(readUIAsset(t, name), -1) {
 			f, _ := strconv.ParseFloat(m[1], 64)
 			if f > 0 && f < 11 {

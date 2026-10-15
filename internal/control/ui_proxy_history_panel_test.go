@@ -48,8 +48,10 @@ func TestUIHistoryBulkDeleteHasInFlightState(t *testing.T) {
 func TestUIHistoryFindInResponseCachesRawBody(t *testing.T) {
 	src := readUIAsset(t, "js/proxy.js")
 	requireUIContains(t, src, "function fetchRawMessage(flowId,side,detail)", "rawCache")
-	if strings.Count(src, "await fetchRawMessage(flowId,side,detail)") != 2 {
-		t.Error("renderSide raw/hex fetches must go through the cached helper")
+	// raw/pretty, hex, and the structured sub-tabs (JSON/Params/GraphQL) each fetch
+	// the reconstructed message through the cached helper, never raw api().
+	if strings.Count(src, "await fetchRawMessage(flowId,side,detail)") != 3 {
+		t.Error("renderSide raw/hex/structured fetches must go through the cached helper")
 	}
 }
 

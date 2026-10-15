@@ -1,5 +1,8 @@
 import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
+import { on as busOn, EVENTS } from './bus.js';
+import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL } from './inspector-structure.js';
+import { highlightJSON } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
@@ -173,8 +176,14 @@ function flowColGrid(){
 // Push the current column template into a CSS var the header and every row read
 // (.thead / .trow both use `grid-template-columns:var(--flow-cols)`), so a live
 // drag repaints all tracks with one write instead of restyling every row.
+let lastFlowGrid='';
 function applyFlowGrid(){
   const grid=flowColGrid();
+  // Skip the write when the template is unchanged: reconcileVirtualRows/renderRows
+  // call this immediately before computeWindow reads clientHeight/scrollTop, so a
+  // redundant style write on every scroll tick would force a synchronous reflow.
+  if(grid===lastFlowGrid)return;
+  lastFlowGrid=grid;
   const h=$('#flowHead');if(h)h.style.setProperty('--flow-cols',grid);
   const box=$('#rows');if(box)box.style.setProperty('--flow-cols',grid);
 }
@@ -458,10 +467,8 @@ function wireFlowRow(r){
   r.onclick=e=>flowRowClick(id,e);
   r.ondblclick=e=>{
     if(e.target.closest&&e.target.closest('.flowtag,.rowOverflow,button,a,input,select,textarea'))return;
-    import('./flowmodal.js').then(m=>{
-      m.closeFlowPopup({updateRoute:false});
-      return m.flowPopup(id,{modal:true});
-    }).catch(err=>toastError('Open flow',err));
+    getHook('closeFlow')?.({updateRoute:false});
+    openFlowDrawer(id,{source:'proxy'});
   };
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
   const flow=flowStore.byId.get(id);
@@ -704,6 +711,33 @@ function reconcileFlowLoadEvent(event){
   upsertFlow(f);
   return true;
 }
+// Freeze / "Pause live stream" (#104): while frozen, new flows still land in the
+// store (and on disk server-side) but the History viewport is not re-rendered or
+// scrolled, so rows stop shifting under the cursor during a high-throughput
+// capture. Resuming flushes everything that arrived into the list.
+let liveFrozen=false,frozenNew=0;
+export function isLiveFrozen(){return liveFrozen;}
+function updateFreezeBadge(){
+  const b=$('#freezeCount');
+  if(b){b.textContent=frozenNew>0?('+'+frozenNew):'';b.hidden=!(liveFrozen&&frozenNew>0);}
+}
+export function setLiveFrozen(on){
+  const next=!!on;
+  const btn=$('#freezeBtn');
+  if(next===liveFrozen){updateFreezeBadge();return;}
+  liveFrozen=next;
+  if(btn){
+    btn.setAttribute('aria-pressed',liveFrozen?'true':'false');
+    btn.classList.toggle('on',liveFrozen);
+    if(btn.firstChild&&btn.firstChild.nodeType===3)btn.firstChild.textContent=liveFrozen?'Resume':'Pause';
+    btn.title=liveFrozen?'Resume live history updates (Ctrl+Alt+P or Space)':'Pause live history updates (Ctrl+Alt+P or Space) — capture to disk continues';
+  }
+  if(!liveFrozen){frozenNew=0;updateFreezeBadge();renderRows();}
+  else updateFreezeBadge();
+}
+export function toggleLiveFreeze(){setLiveFrozen(!liveFrozen);}
+{const fb=$('#freezeBtn');if(fb)fb.onclick=()=>toggleLiveFreeze();}
+
 export function handleFlowNew(f){
   if(!f)return;
   rememberFlowLoadEvent('new',f);
@@ -714,6 +748,8 @@ export function handleFlowNew(f){
   refreshMethodFilter();
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   if(!proxy||!proxy.classList.contains('active'))return;
+  // Frozen: keep the flow (upserted above) but hold the viewport; count arrivals.
+  if(liveFrozen){frozenNew++;updateFreezeBadge();return;}
   queueFlowSignal(f.id);
   flowRowLiveUpdate(f,true);
 }
@@ -774,9 +810,14 @@ export function getStartedCard(){
 export function syncInspectorVisibility(){
   const has=!!state.selId;
   const insp=$('#inspect'),spl=$('#inspectSplitter'),nb=$('#noteBar');
-  if(insp)insp.style.display=has?'flex':'none';
-  if(spl)spl.style.display=has?'':'none';
-  if(nb&&!has)nb.style.display='none';
+  // Guard each write: this runs immediately before computeWindow reads layout on
+  // every scroll tick, so setting display to its current value would needlessly
+  // force a synchronous reflow. Only write when the value actually changes.
+  const inspV=has?'flex':'none';
+  if(insp&&insp.style.display!==inspV)insp.style.display=inspV;
+  const splV=has?'':'none';
+  if(spl&&spl.style.display!==splV)spl.style.display=splV;
+  if(nb&&!has&&nb.style.display!=='none')nb.style.display='none';
 }
 // Drop the single-flow selection and collapse the request/response inspector.
 // Returns whether it had anything open, so the Escape handler can chain cleanly.
@@ -1379,24 +1420,39 @@ function fetchRawMessage(flowId,side,detail){
   const cache=rawCache;
   return api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{cache.map.set(key,raw);return raw;});
 }
+// A socket can stream far more frames than are worth holding in the DOM at once
+// (the issue flags 10,000+ nodes). Render the most recent WS_FRAME_RENDER_CAP and
+// note the rest, so the pane stays light without pausing capture to disk.
+const WS_FRAME_RENDER_CAP=1000;
 function wsFrameRow(dir,opcode,length,text){
   const arrow=dir==='send'?'<span class="ws-dir-send">'+icon('arrow-up')+' send</span>':'<span class="u-accent">'+icon('arrow-down')+' recv</span>';
   const replayable=opcode===1; // text frames only — binary has no editable text to load
-  return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" title="Click to load this frame into the replay box"`:''}>
+  return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" tabindex="0" role="button" aria-label="Load this text frame into the WebSocket replay editor" title="Click to load this frame into the replay box"`:''}>
     <span class="ws-col ws-col-dir">${arrow}</span>
     <span class="ws-col ws-col-op">${wsOpcodeName(opcode)}</span>
     <span class="ws-col ws-col-len">${length} B</span>
     <span class="ws-col-text">${esc(text)}</span>${replayable?'<span class="hint ws-load-hint">↩ load</span>':''}</div>`;
 }
-// wireWsFrames makes text frames click-to-replay: clicking loads that frame's text
-// into the #wsMsg box (the most-expected WS-replay affordance that was missing).
-function wireWsFrames(root){
-  if(!root)return;
-  root.querySelectorAll('.ws-frame-replay').forEach(el=>{
-    const activate=()=>{const m=$('#wsMsg');if(m){m.value=el.dataset.replay||'';m.focus();}};
-    el.setAttribute('aria-label','Load this text frame into the WebSocket replay editor');
-    wireRowKey(el,activate);
-  });
+// wsFramesListHTML renders the capped, most-recent slice (oldest-visible first),
+// with a leading note when older frames are elided.
+function wsFramesListHTML(frames){
+  const extra=frames.length-WS_FRAME_RENDER_CAP;
+  const shown=extra>0?frames.slice(-WS_FRAME_RENDER_CAP):frames;
+  const note=extra>0?`<div class="hint ws-frame-cap">Showing the latest ${WS_FRAME_RENDER_CAP} of ${frames.length} frames.</div>`:'';
+  return note+shown.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('');
+}
+// WS frame click-to-replay is handled by one delegated listener on the stable
+// #resView ancestor (installed once) instead of rebinding every .ws-frame-replay
+// row on each 250ms live refresh. Clicking (or Enter/Space on) a text frame loads
+// its text into the #wsMsg box — rows carry role/tabindex/aria-label in markup.
+let wsFrameDelegationBound=false;
+function ensureWsFrameDelegation(){
+  if(wsFrameDelegationBound)return;
+  const root=$('#resView');if(!root)return;
+  wsFrameDelegationBound=true;
+  const load=row=>{const m=$('#wsMsg');if(m){m.value=row.dataset.replay||'';m.focus();}};
+  root.addEventListener('click',e=>{const row=e.target.closest?.('.ws-frame-replay');if(row&&root.contains(row))load(row);});
+  root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const row=e.target.closest?.('.ws-frame-replay');if(row&&root.contains(row)){e.preventDefault();load(row);}});
 }
 function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${d.host}${def?'':':'+d.port}${d.path||'/'}`;}
 export async function renderWSFrames(id){
@@ -1409,14 +1465,16 @@ export async function renderWSFrames(id){
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
     if(!current())return;
     const url=flowWsURL(detail||{});
-    const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
+    const list=frames.length?wsFramesListHTML(frames)
       :'<span class="u-fg3">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
     // A live frame only refreshes the frame list: rebuilding the whole pane would
-    // destroy the replay input's value and focus mid-typing.
+    // destroy the replay input's value and focus mid-typing. Click-to-replay is a
+    // delegated listener on #resView (ensureWsFrameDelegation), so the refreshed
+    // rows need no rebinding.
     const existing=$('#wsFrameList');
     if(existing&&existing.dataset.flowId===String(id)&&$('#wsMsg')&&$('#resView').contains(existing)){
       existing.innerHTML=list;
-      wireWsFrames(existing);
+      ensureWsFrameDelegation();
       return;
     }
     const box=`<div class="ws-replay-row">
@@ -1424,7 +1482,7 @@ export async function renderWSFrames(id){
         <button class="btn accent" id="wsSendBtn">${icon('arrow-up')} Send</button></div>
       <div id="wsReplayOut" class="ws-replay-out"></div>`;
     $('#resView').innerHTML=box+`<div id="wsFrameList" data-flow-id="${id}">${list}</div>`;
-    wireWsFrames($('#resView'));
+    ensureWsFrameDelegation();
     const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
     const inp=document.getElementById('wsMsg');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')wsReplay(url);};
   }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
@@ -1453,11 +1511,98 @@ async function wsReplay(url){
     const frames=r.frames||[];
     const head=`<div class="micro-label ws-send-head">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
     if(!current())return;
-    if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
+    if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');ensureWsFrameDelegation();}
   }catch(e){if(current())out.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';
   }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.innerHTML=icon('arrow-up')+' Send';}}
 }
+/* ---- #104 structured inspector sub-tabs: Headers grid (with cookie jar), JSON
+   tree (with JSONPath copy), Query/Form params, GraphQL viewer, and inline image
+   preview. Parsing is the pure, node-tested inspector-structure.js; these build
+   the markup from it and are wired into renderSide's view switch below. One
+   delegated listener on #inspect handles copy, tree folding and header filtering,
+   so re-rendering a view never leaks per-row handlers. ---- */
+const STRUCT_VIEWS=['headers','json','params','gql'];
+function kvCopyBtn(text,label){return `<button type="button" class="btn xs insp-copy" data-copy="${escAttr(text)}" aria-label="${escAttr(label)}" title="${escAttr(label)}">${icon('copy')}</button>`;}
+function inspHeadersHTML(detail,side){
+  const rows=headerRows(side==='req'?detail.reqHeaders:detail.resHeaders);
+  if(!rows.length)return '<div class="insp-struct"><div class="hint body-note">No headers.</div></div>';
+  const body=rows.map(r=>{
+    let extra='';
+    const low=r.name.toLowerCase();
+    if(low==='cookie')extra=parseCookies(r.value).map(c=>`<tr class="insp-kv-sub" data-name="${escAttr(c.name)}" data-value="${escAttr(c.value)}"><td class="insp-kv-k insp-cookie-k">${esc(c.name)}</td><td class="insp-kv-v">${esc(c.value)}${kvCopyBtn(c.value,'Copy cookie '+c.name)}</td></tr>`).join('');
+    else if(low==='set-cookie'){const sc=parseSetCookie(r.value);extra=`<tr class="insp-kv-sub" data-name="${escAttr(sc.name)}" data-value="${escAttr(sc.value)}"><td class="insp-kv-k insp-cookie-k">${esc(sc.name)}</td><td class="insp-kv-v">${esc(sc.value)}${sc.attrs.length?' <span class="insp-cookie-attrs">'+sc.attrs.map(a=>esc(a.k)+(a.v?'='+esc(a.v):'')).join(' · ')+'</span>':''}${kvCopyBtn(sc.value,'Copy cookie '+sc.name)}</td></tr>`;}
+    return `<tr data-name="${escAttr(r.name)}" data-value="${escAttr(r.value)}"><td class="insp-kv-k">${esc(r.name)}</td><td class="insp-kv-v">${esc(r.value)}${kvCopyBtn(r.value,'Copy '+r.name+' value')}</td></tr>`+extra;
+  }).join('');
+  return `<div class="insp-struct insp-headers"><input type="search" class="insp-filter" placeholder="Filter headers" aria-label="Filter headers"><table class="insp-kv"><tbody>${body}</tbody></table></div>`;
+}
+function jsonValText(value,type){if(type==='string')return JSON.stringify(value);if(type==='null')return 'null';return String(value);}
+function inspJsonHTML(bodyText){
+  const parsed=tryParseJson(bodyText);
+  if(!parsed.ok)return `<div class="insp-struct"><div class="hint body-note">Body is not valid JSON — use Pretty or Raw.<br><span class="u-fg3">${esc(parsed.error||'')}</span></div></div>`;
+  const {rows,truncated}=flattenJson(parsed.value);
+  const html=rows.map(r=>{
+    const copy=kvCopyBtn(r.path,'Copy JSONPath '+r.path);
+    if(r.container)return `<div class="insp-json-row" role="treeitem" aria-expanded="true" data-depth="${r.depth}" style="--insp-depth:${r.depth}"><button type="button" class="insp-fold" aria-label="Collapse ${escAttr(r.path)}">${icon('chevron')}</button><span class="insp-json-key">${esc(r.key)}</span><span class="insp-json-preview">${esc(r.preview)}</span>${copy}</div>`;
+    return `<div class="insp-json-row insp-json-leaf" role="treeitem" data-depth="${r.depth}" style="--insp-depth:${r.depth}"><span class="insp-json-key">${esc(r.key)}:</span><span class="insp-json-val insp-json-${r.type}">${esc(jsonValText(r.value,r.type))}</span>${copy}</div>`;
+  }).join('');
+  return `<div class="insp-struct insp-json" role="tree" aria-label="JSON tree">${html}${truncated?'<div class="hint">… tree truncated for display</div>':''}</div>`;
+}
+function kvTable(pairs,emptyLabel){
+  if(!pairs.length)return `<div class="hint body-note">${esc(emptyLabel)}</div>`;
+  return `<table class="insp-kv"><tbody>${pairs.map(p=>`<tr data-name="${escAttr(p.key||p.name||'')}"><td class="insp-kv-k">${esc(p.key!=null?p.key:p.name)}</td><td class="insp-kv-v">${esc(p.value!=null?p.value:'')}${p.filename?' <span class="insp-file">'+icon('attach')+' '+esc(p.filename)+(p.contentType?' · '+esc(p.contentType):'')+'</span>':''}${kvCopyBtn(p.value!=null?p.value:'','Copy value')}</td></tr>`).join('')}</tbody></table>`;
+}
+function inspParamsHTML(detail,raw){
+  const query=parseFormEncoded(queryOf(detail.path||''));
+  const ct=bodyMime(detail,'req');
+  const {body}=splitHeadBody(raw);
+  let formSection='';
+  if(isFormUrlEncoded(ct))formSection=`<div class="micro-label">FORM BODY (urlencoded)</div>${kvTable(parseFormEncoded(body),'No form fields.')}`;
+  else{const b=multipartBoundary(ct);if(b)formSection=`<div class="micro-label">FORM BODY (multipart)</div>${kvTable(parseMultipart(body,b),'No multipart fields.')}`;}
+  return `<div class="insp-struct insp-params"><div class="micro-label">QUERY STRING</div>${kvTable(query,'No query parameters.')}${formSection}</div>`;
+}
+function inspGraphQLHTML(detail,raw){
+  const ct=bodyMime(detail,'req');
+  const {body}=splitHeadBody(raw);
+  const g=detectGraphQL(body,ct);
+  if(!g.isGraphQL)return '<div class="insp-struct"><div class="hint body-note">Not a GraphQL request (no JSON <code>query</code> field).</div></div>';
+  return `<div class="insp-struct insp-gql">${g.operationName||g.batched?`<div class="insp-gql-op">${g.operationName?'Operation: <b>'+esc(g.operationName)+'</b>':''}${g.batched?' <span class="hint">· batched (first operation shown)</span>':''}</div>`:''}<div class="micro-label">QUERY</div><pre class="insp-gql-query">${highlightBodyText(g.query,'application/graphql')}</pre>${g.variables?`<div class="micro-label">VARIABLES</div><pre class="insp-gql-vars">${highlightJSON(g.variables)}</pre>`:''}</div>`;
+}
+function inspImageHTML(el,flowId,side,mime,len){
+  const href=flowBodyDownloadHref(flowId,side),dl=flowBodyDownloadName(flowId,side,mime);
+  el.innerHTML=`<div class="insp-struct insp-image"><img class="insp-image-img" alt="Inline ${esc(side==='req'?'request':'response')} image preview" src="${escAttr(href)}"><div class="hint insp-image-meta"><b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} · <span class="insp-image-dims" aria-live="polite">measuring…</span></div><a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download</a></div>`;
+  const img=el.querySelector('.insp-image-img'),dims=el.querySelector('.insp-image-dims');
+  if(img&&dims){const show=()=>{dims.textContent=img.naturalWidth?img.naturalWidth+'×'+img.naturalHeight+' px':'unknown size';};img.onload=show;img.onerror=()=>{dims.textContent='could not load';};if(img.complete)show();}
+}
+// One delegated listener per inspector pane handles the structured views' copy
+// buttons, JSON-tree folding and header filter — re-rendering never rebinds rows.
+let inspStructBound=false;
+function ensureInspStructDelegation(){
+  if(inspStructBound)return;
+  const root=$('#inspect');if(!root)return;
+  inspStructBound=true;
+  root.addEventListener('click',e=>{
+    const copy=e.target.closest?.('.insp-copy');
+    if(copy&&root.contains(copy)){copyText(copy.dataset.copy||'','copied');return;}
+    const fold=e.target.closest?.('.insp-fold');
+    if(fold&&root.contains(fold)){
+      const row=fold.closest('.insp-json-row');if(!row)return;
+      const depth=Number(row.dataset.depth);const open=row.getAttribute('aria-expanded')!=='false';
+      row.setAttribute('aria-expanded',open?'false':'true');
+      for(let n=row.nextElementSibling;n&&n.classList.contains('insp-json-row')&&Number(n.dataset.depth)>depth;n=n.nextElementSibling)n.hidden=open;
+    }
+  });
+  root.addEventListener('input',e=>{
+    const f=e.target.closest?.('.insp-filter');if(!f||!root.contains(f))return;
+    const term=f.value.trim().toLowerCase();
+    f.closest('.insp-headers')?.querySelectorAll('tr[data-name]').forEach(tr=>{
+      const hit=!term||(tr.dataset.name||'').toLowerCase().includes(term)||(tr.dataset.value||'').toLowerCase().includes(term);
+      tr.hidden=!hit;
+    });
+  });
+}
+
 export async function renderSide(side){
+  ensureInspStructDelegation();
   const el=side==='req'?$('#reqView'):$('#resView');
   const dec=side==='req'?$('#reqDecode'):$('#resDecode');
   if(dec)dec.hidden=true;
@@ -1488,6 +1633,16 @@ export async function renderSide(side){
   const draw=async()=>{await drawBody();refreshInspectFinder(side);};
   const drawBody=async()=>{
     try{
+      if(view==='headers'){el.innerHTML=inspHeadersHTML(detail,side);return;}
+      if(view==='json'||view==='params'||view==='gql'){
+        const raw=await fetchRawMessage(flowId,side,detail);
+        if(!current())return;
+        el._rawText=raw;el._pretty=true;
+        if(view==='json')el.innerHTML=inspJsonHTML(splitHeadBody(raw).body);
+        else if(view==='params')el.innerHTML=inspParamsHTML(detail,raw);
+        else el.innerHTML=inspGraphQLHTML(detail,raw);
+        return;
+      }
       if(view==='decoded'){
         const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
         if(!current())return;
@@ -1529,11 +1684,16 @@ export async function renderSide(side){
       el.innerHTML=html;
     }catch(e){if(current())el.textContent='(error: '+e.message+')';}
   };
+  // Structured views (Headers always; JSON/Params/GraphQL best-effort) take
+  // precedence over the binary-body note so headers stay readable for an image.
+  if(STRUCT_VIEWS.includes(view)){await draw();return;}
   if(isBinaryMime(mime)){
     if(view==='hex'){
       await draw();
       return;
     }
+    // Inline image preview instead of "binary, not rendered" for image bodies.
+    if(/^image\//i.test(mime)){inspImageHTML(el,flowId,side,mime,len);return;}
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint body-note body-note-flush">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
@@ -2882,3 +3042,11 @@ function pngSelectionFlowId(){
     if(f){const r=more.getBoundingClientRect();showCtx(r.left,r.bottom+2,f,'');}
   },true);
 }
+
+// Settings (import/restore, retention delete) and other panels ask History to
+// reload over the bus rather than importing proxy.js — the back-edge that closed
+// the settings→proxy ESM cycle. loadFlows/loadScope/refreshVisibleRows are
+// defined above, so these subscriptions are live as soon as the module evaluates.
+busOn(EVENTS.PROXY_RELOAD_FLOWS, () => { loadFlows(); });
+busOn(EVENTS.PROXY_RELOAD_SCOPE, () => { loadScope(); });
+busOn(EVENTS.PROXY_REFRESH_ROWS, () => { refreshVisibleRows(); });

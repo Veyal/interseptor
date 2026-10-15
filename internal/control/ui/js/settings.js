@@ -1,12 +1,17 @@
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, getHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
-import { loadFlows, loadScope } from './proxy.js';
-import { loadRules } from './intercept.js';
+import { emit as busEmit, on as busOn, EVENTS } from './bus.js';
+// Cross-panel reloads go over the bus instead of a static import of proxy.js /
+// intercept.js — that back-edge closed the proxy↔findings↔settings ESM cycle.
+// The call sites below keep calling loadFlows()/loadScope()/loadRules(); the panel
+// that owns each list listens for the event and runs the real reload.
+const loadFlows = () => busEmit(EVENTS.PROXY_RELOAD_FLOWS);
+const loadScope = () => busEmit(EVENTS.PROXY_RELOAD_SCOPE);
+const loadRules = () => busEmit(EVENTS.INTERCEPT_RELOAD_RULES);
 import { prefersReducedMotion } from './motion.js';
 import { createSplitPane } from './split.js';
 import { matchSections, searchSummary, highlightRanges } from './settings-model.js';
 import { confirmTyped } from './settings-confirm.js';
-import { mountChecklist } from './checklist.js';
 import './settings-appearance.js';
 import './settings-health.js';
 
@@ -633,7 +638,7 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||docum
 })();
 
 /* ---- first-run checklist (Project & data) ---- */
-{const checklistHost=$('#settingsChecklistMount');if(checklistHost)mountChecklist(checklistHost);}
+{const checklistHost=$('#settingsChecklistMount');if(checklistHost)getHook('mountChecklist')?.(checklistHost);}
 
 /* ---- settings ---- */
 let apiLoaded=false;
@@ -2502,3 +2507,8 @@ $('#iosSshInstallCaBtn')&&($('#iosSshInstallCaBtn').onclick=()=>iosSshAction(asy
   if(hint)hint.textContent=r.message||'Profile opened on device';
   toast(r.message||'Profile opened on device');
 }));
+
+// Findings (and any panel) asks to open a Settings section over the bus rather
+// than importing openSettingsSection — the edge that closed the findings→settings
+// cycle. openSettingsSection is a hoisted declaration, so this runs at load.
+busOn(EVENTS.SETTINGS_OPEN_SECTION, (sec) => openSettingsSection(typeof sec === 'string' ? sec : 'proxy'));

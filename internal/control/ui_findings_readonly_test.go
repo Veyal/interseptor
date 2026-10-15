@@ -65,7 +65,7 @@ func TestFindingsReadOnlyGate(t *testing.T) {
 	for _, want := range []string{
 		`id="findModeChip"`, `<button type="button" class="btn xs find-mode-chip"`,
 		`href="#i-lock"`, `href="#i-lock-open"`, "Agent-maintained", "Editing on",
-		"aria-label=", "openSettingsSection('project')",
+		"aria-label=", "EVENTS.SETTINGS_OPEN_SECTION, 'project'",
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("findings.js missing mode chip anchor %q", want)
@@ -366,7 +366,6 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 	}
 	for file, want := range map[string]string{
 		"js/tools.js":     `class="btn xs findings-write" id="repAddFinding"`,
-		"js/flowmodal.js": "finding.className='btn findings-write'",
 		"js/scanner.js":   `class="btn accent findings-write" id="scanPromote"`,
 		"js/proxy.js":     "if(findingsEditable()){",
 		"js/findings.js":  "document.documentElement.dataset.findingsEditing",

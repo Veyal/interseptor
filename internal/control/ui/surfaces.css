@@ -333,3 +333,12 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 /* The bottom navigation gets out of the way of the soft keyboard. */
 :root[data-soft-keyboard="true"] #dock{display:none}
 #toast .toast-dismiss{margin-left:var(--sp-2);vertical-align:middle}
+
+/* ---- Decoder as a slide-up bottom "Convert" drawer (#102). It stays a
+   focus-trapped entry in MODAL_IDS (Esc, scrim, focus restore) but docks to the
+   bottom edge full-width instead of floating centered, and is reachable globally
+   with Cmd/Ctrl+J. Motion is transform-only; the global reduced-motion block
+   turns the slide off. ---- */
+#decModal{align-items:flex-end;justify-content:stretch}
+#decModal .modal-shell{width:100%;max-width:100%;max-height:72vh;margin:0;border-radius:var(--r-lg) var(--r-lg) 0 0;animation:dec-slide-up var(--motion-base) var(--motion-enter)}
+@keyframes dec-slide-up{from{transform:translateY(24px)}to{transform:translateY(0)}}

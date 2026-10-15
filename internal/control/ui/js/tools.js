@@ -6,6 +6,7 @@ import { wireIntruderPreview } from './evidence-render.js';
 import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
 import { flowPngMenuItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
+import { createListView, openFlow } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -2255,17 +2256,18 @@ export function renderIntr(st,{authoritative=true}={}){
     stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
   }
   const box=$('#intrResults');
-  if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
+  if(st.error){intrSuspendListView();box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!displayRes.length){
+    intrSuspendListView();
     box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
   if(!view.length){
+    intrSuspendListView();
     box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No results match this filter.</p></div>';
     return;
   }
-  if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);
-  else{box.innerHTML=view.map(intrRowHTML).join('');wireIntrResultRows(box);}
+  intrViewItems=view;ensureIntrListView(box).render();
 }
 {const seg=$('#intrResFilter');
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -2331,49 +2333,36 @@ function intrRowHTML(r){
     <div class="intr-len" style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
     <div class="intr-ms" style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
 }
-async function openIntrResult(el){
+function openIntrResult(el){
   const fid=Number(el.dataset.flow||0);
   const err=el.dataset.err||'';
   if(fid>0){
-    try{
-      const {flowPopup}=await import('./flowmodal.js');
-      await flowPopup(fid);
-    }catch(e){toast(e.message||'evidence no longer in history','warn');}
+    if(!openFlow(fid,{source:'intruder'}))toast('flow inspector unavailable','warn');
     return;
   }
   toast(err||'no captured flow for this attempt (send failed or evidence purged)','warn');
 }
-function wireIntrResultRows(root){
-  if(!root)return;
-  root.querySelectorAll('.intr-row').forEach(el=>{
-    el.onclick=()=>openIntrResult(el);
-    wireRowKey(el,()=>openIntrResult(el));
+// Intruder results are rendered through the shared createListView helper
+// (core.js): above INTR_VIRT_MIN rows it windows the DOM (the same spacer +
+// translateY shape this module used to hand-roll, keeping its .intr-virt-*
+// classes so UI_SELECT_SKIP and the CSS still match); below it renders the whole
+// list. Either way one delegated click/keydown listener on #intrResults replaces
+// the per-row rebind loop, so a running attack's poll no longer re-wires every row.
+let intrListView=null,intrViewItems=[];
+function ensureIntrListView(box){
+  if(intrListView&&intrListView.container===box)return intrListView;
+  intrListView=createListView({
+    container:box,rowHeight:INTR_ROW_H,threshold:INTR_VIRT_MIN,buffer:8,
+    rowSelector:'.intr-row',renderRow:intrRowHTML,getItems:()=>intrViewItems,
+    containerClass:'intr-virt',bodyClass:'intr-virt-body',spacerClass:'intr-virt-spacer',
+    on:{
+      click:(row)=>openIntrResult(row),
+      keydown:(row,e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openIntrResult(row);}},
+    },
   });
+  return intrListView;
 }
-function paintIntrWindow(box){
-  const res=box._res||[];const st=box.scrollTop,vh=box.clientHeight||360;
-  const start=Math.max(0,Math.floor(st/INTR_ROW_H)-8);
-  const end=Math.min(res.length,Math.ceil((st+vh)/INTR_ROW_H)+8);
-  const body=box.querySelector('.intr-virt-body');if(!body)return;
-  body.style.transform=`translateY(${start*INTR_ROW_H}px)`;
-  body.innerHTML=res.slice(start,end).map(intrRowHTML).join('');
-  wireIntrResultRows(body);
-}
-function renderIntrVirtual(box,res){
-  box._res=res;
-  let sp=box.querySelector('.intr-virt-spacer');
-  if(!sp){
-    box.classList.add('intr-virt');
-    box.innerHTML='<div class="intr-virt-spacer"></div><div class="intr-virt-body"></div>';
-    if(!box._virtBound){
-      box.addEventListener('scroll',()=>{if(box._virtQ)return;box._virtQ=true;requestAnimationFrame(()=>{box._virtQ=false;paintIntrWindow(box);});});
-      box._virtBound=true;
-    }
-    sp=box.querySelector('.intr-virt-spacer');
-  }
-  sp.style.height=(res.length*INTR_ROW_H)+'px';
-  paintIntrWindow(box);
-}
+function intrSuspendListView(){if(intrListView)intrListView.suspend();}
 // Apply structured AI Intruder suggestion (#16). Does not Start the attack.
 export function applyIntruderPayloadSuggestion(data, opts){
   if(!data||!Array.isArray(data.positions)||!data.positions.length){toast('no payload positions in AI reply','warn');return;}

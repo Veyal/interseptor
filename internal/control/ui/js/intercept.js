@@ -6,6 +6,7 @@ import { createSplitPane } from './split.js';
 import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
+import { on as busOn, EVENTS } from './bus.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
@@ -845,3 +846,7 @@ try{
     $('#heldList').addEventListener('keydown',e=>{if(e.key==='Enter')open(e);});
   }
 }catch(e){/* the plain two-column layout still works without the split */}
+
+// Settings' import/restore asks the intercept rule list to reload over the bus
+// instead of importing it from settings.js (part of breaking the settings cycle).
+busOn(EVENTS.INTERCEPT_RELOAD_RULES, () => { loadRules(); });

@@ -19,7 +19,12 @@ const root = document.getElementById('flowDrawer');
 const OVERLAY_QUERY = '(max-width: 1100px)';
 const WIDTH_KEY = 'interseptor.flowDrawerW';
 
-const cur = { id: 0, detail: null, raw: {}, ws: null, timeline: null, auth: null, tab: 'request', opts: {}, epoch: 0, tabEpoch: 0, opener: null, overlay: false, open: false };
+const cur = { id: 0, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, tab: 'request', opts: {}, epoch: 0, tabEpoch: 0, opener: null, overlay: false, open: false };
+
+// A flow modified in Intercept carries its pre-interception bytes; the Compare
+// control (folded in from the deleted flowmodal.js) switches the Request/Response
+// body between the forwarded "current" bytes and the captured "original".
+function hasOriginal(d) { return !!(d && (d.originalReqBodyHash || d.originalResBodyHash || d.originalReqHeaders || d.originalResHeaders)); }
 
 function storedWidth() {
   try { return clampDrawerWidth(localStorage.getItem(projectStorageKey(WIDTH_KEY))); } catch (e) { return DRAWER_WIDTH.def; }
@@ -49,7 +54,8 @@ const bodyDeps = {
   isBinaryMime,
   headerText: (detail, side) => headerBlockText(detail, side),
 };
-const flowView = () => ({ id: cur.id, detail: cur.detail, raw: cur.raw, ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
+const rawStore = () => (cur.variant === 'original' ? cur.rawOrig : cur.raw);
+const flowView = () => ({ id: cur.id, detail: cur.detail, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
 
 function paintBody() {
   const body = $('#fdBody');
@@ -74,11 +80,12 @@ async function loadTab(tab) {
   const side = tab === 'request' ? 'req' : tab === 'response' ? 'res' : '';
   try {
     if (side) {
-      if (rawState(cur.detail, side, bodyDeps) !== 'text' || typeof cur.raw[side] === 'string') return paintBody();
+      const store = rawStore();
+      if (rawState(cur.detail, side, bodyDeps) !== 'text' || typeof store[side] === 'string') return paintBody();
       renderState($('#fdBody'), 'loading', { rows: 4, title: 'Loading ' + (side === 'req' ? 'request' : 'response') });
-      const raw = await api('/api/flows/' + id + '/raw?side=' + side);
+      const raw = await api('/api/flows/' + id + '/raw?side=' + side + (cur.variant === 'original' ? '&variant=original' : ''));
       if (!live()) return;
-      cur.raw[side] = raw;
+      store[side] = raw;
     } else if (tab === 'timeline' && !cur.timeline) {
       renderState($('#fdBody'), 'loading', { rows: 3, title: 'Loading timeline' });
       const t = await api('/api/flows/session-inspect?ids=' + id);
@@ -147,6 +154,45 @@ function paintHeader() {
   $('#fdStatus').textContent = d.status ? `${d.status}${d.durationMs ? ' in ' + d.durationMs + ' ms' : ''}` : (d.error || 'No response');
   mountFlowCopyPng($('#fdCopyPng'), cur.id, 'btn');
   syncSteps();
+  syncVariantToggle();
+}
+// syncVariantToggle injects an Original/Current segmented control into the drawer
+// head when (and only when) the flow was modified in Intercept, preserving the
+// deleted modal's Compare. It is built dynamically so index.html carries no dead
+// control for the common unmodified flow.
+function syncVariantToggle() {
+  const head = $('#fdHead');
+  if (!head) return;
+  let wrap = $('#fdVariant');
+  if (!hasOriginal(cur.detail)) { if (wrap) wrap.remove(); return; }
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'fdVariant';
+    wrap.className = 'seg fd-variant';
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Compare request/response with the pre-interception original');
+    for (const [value, label] of [['current', 'Current'], ['original', 'Original']]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.variant = value;
+      b.textContent = label;
+      wrap.appendChild(b);
+    }
+    wrap.addEventListener('click', (e) => { const b = e.target.closest('[data-variant]'); if (b) setVariant(b.dataset.variant); });
+    head.appendChild(wrap);
+  }
+  wrap.querySelectorAll('[data-variant]').forEach((b) => {
+    const on = b.dataset.variant === cur.variant;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+}
+function setVariant(v) {
+  const next = v === 'original' ? 'original' : 'current';
+  if (next === cur.variant) return;
+  cur.variant = next;
+  syncVariantToggle();
+  loadTab(cur.tab);
 }
 function syncSteps() {
   const sib = cur.opts.siblings;
@@ -323,7 +369,7 @@ export function openFlow(id, opts = {}) {
   cur.tabEpoch++;
   const epoch = cur.epoch;
   if (!reopen) { cur.opener = opts.opener || document.activeElement; width = storedWidth(); }
-  Object.assign(cur, { id: flowId, detail: null, raw: {}, ws: null, timeline: null, auth: null, opts, tab: opts.tab || 'response' });
+  Object.assign(cur, { id: flowId, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, opts, tab: opts.tab || 'response' });
   syncMode();
   cur.open = true;
   $('#fdTitle').textContent = 'Flow #' + flowId;
@@ -396,6 +442,17 @@ $('#fdPanel').addEventListener('keydown', (e) => {
   });
   sash.addEventListener('dblclick', () => applyWidth(DRAWER_WIDTH.def, true));
 })();
+
+// Markdown flow links (a.md-flow-link, injected by the safe markdown renderer in
+// notes/findings) open in the unified inspector. Moved here from the deleted
+// flowmodal.js so the one inspector owns every "open this flow" entry point.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a.md-flow-link');
+  if (!a) return;
+  e.preventDefault();
+  const id = Number(a.dataset.flow);
+  if (id) openFlow(id, { source: 'md-link' });
+});
 
 registerHook('openFlow', openFlow);
 registerHook('closeFlow', closeFlowDrawer);

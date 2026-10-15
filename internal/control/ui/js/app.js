@@ -4,7 +4,7 @@
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
-import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind } from './proxy.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -16,7 +16,6 @@ import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLo
 import { loadFindings, handleAppHash, addFlowToFinding, pickFindingForSelection } from './findings.js';
 import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
-import './flowmodal.js'; // side-effect: flow inspect popup + modal handlers
 import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
@@ -523,6 +522,7 @@ function exactModifiers(e,{mod=false,shift=false,alt=false}={}){
 function isModShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true});}
 function isModSpace(e){return (e.key===' '||e.code==='Space')&&exactModifiers(e,{mod:true});}
 function isPlainShortcut(e,key,{shift=false}={}){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{shift});}
+function isModShiftShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true,shift:true});}
 function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
 function isTypingTarget(t){
   const tag=(t?.tagName||'').toLowerCase();
@@ -540,15 +540,30 @@ document.addEventListener('keydown',e=>{
   const typing=isTypingTarget(e.target);
   if(gotoPending&&(typing||hasAnyModifier(e)))resetGoto();
   if(isModShortcut(e,'k')){e.preventDefault();isCommandPaletteOpen()?cmdkClose():cmdkOpen();return;}
+  // Cmd/Ctrl+J opens the Decoder "Convert" drawer from anywhere (#102).
+  if(isModShortcut(e,'j')){e.preventDefault();openDecoder();return;}
   if(isCommandPaletteOpen())return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
   if(workflowShortcutBlocked())return;
   // Repeater Send works while the request editor is focused (caret in textarea).
   if(activePanel()==='repeater'&&(isModSpace(e)||isModShortcut(e,'Enter'))){e.preventDefault();repSend();return;}
   if(activePanel()==='intruder'&&isModShortcut(e,'Enter')){e.preventDefault();intrStart();return;}
+  // Intercept: Cmd/Ctrl+Enter forwards and Cmd/Ctrl+Shift+D drops the held
+  // message. Placed before the typing guard so they work with the caret inside
+  // the #heldRaw editor — tampering with a payload no longer needs the mouse.
+  if(state.heldSel&&activePanel()==='intercept'){
+    if(isModShortcut(e,'Enter')){e.preventDefault();$('#forwardBtn')?.click();return;}
+    if(isModShiftShortcut(e,'d')){e.preventDefault();$('#dropBtn')?.click();return;}
+  }
+  // Pause/resume the live History stream. Ctrl+Alt+P works anywhere in Proxy;
+  // capture to disk is unaffected, only the viewport is held.
+  if(activePanel()==='proxy'&&e.ctrlKey&&e.altKey&&!e.metaKey&&!e.shiftKey&&e.key.toLowerCase()==='p'){e.preventDefault();toggleLiveFreeze();return;}
   // Plain-letter workflow shortcuts never act through an editor. In particular,
   // typing an f or d into a held HTTP message must not forward or drop it.
   if(typing)return;
+  // Space also toggles the freeze, but not when a row or control is focused
+  // (there Space is activation), so it never steals row selection.
+  if(activePanel()==='proxy'&&(e.key===' '||e.code==='Space')&&!hasAnyModifier(e)&&!(e.target&&e.target.closest&&e.target.closest('button,a,input,select,textarea,[role="button"],.trow'))){e.preventDefault();toggleLiveFreeze();return;}
   if(activePanel()==='intercept'&&state.heldSel&&(isPlainShortcut(e,'f')||isPlainShortcut(e,'d'))){
     e.preventDefault();$(e.key.toLowerCase()==='d'?'#dropBtn':'#forwardBtn').click();return;
   }

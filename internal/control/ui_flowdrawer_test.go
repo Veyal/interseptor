@@ -171,19 +171,38 @@ func TestUIEvidenceAttachKeyboardAndDrag(t *testing.T) {
 	requireUIContains(t, src, "data-evidence-drop", "FLOW_DRAG_TYPE")
 }
 
-func TestUIFlowModalIsAShimOverTheDrawer(t *testing.T) {
-	src := executableJS(readUIAsset(t, "js/flowmodal.js"))
-	requireUIContains(t, src,
-		"export function closeFlowPopup(", "export async function flowPopup(", "export async function fmRenderSide(",
-		"if(openFlow(id,{source:'popup'}))return;",
-		"getHook('closeFlow')",
+func TestUIFlowInspectorIsUnifiedAndFlowModalIsGone(t *testing.T) {
+	// #103 unified the three inspection surfaces into the single Flow Drawer and
+	// deleted flowmodal.js; every caller opens a flow through core's openFlow hook.
+	if _, err := uiFS.ReadFile("ui/js/flowmodal.js"); err == nil {
+		t.Fatal("flowmodal.js must be deleted — the Flow Drawer is the one inspector")
+	}
+	drawer := executableJS(readUIAsset(t, "js/flowdrawer.js"))
+	requireUIContains(t, drawer,
+		"export function openFlow(id, opts",
+		"export function closeFlowDrawer(",
+		"registerHook('openFlow', openFlow)",
+		"registerHook('closeFlow', closeFlowDrawer)",
+		// Compare (original vs current) folded in from the deleted modal.
+		"function hasOriginal(d)",
+		"variant === 'original'",
+		"'&variant=original'",
+		// The md-flow-link entry point moved here.
+		"a.md-flow-link",
 	)
 	core := readUIAsset(t, "js/core.js")
+	requireUIContains(t, core, "export function closeFlow(opts)")
 	if !strings.Contains(core, "'flowDrawer'") {
 		t.Error("flowDrawer must stay in MODAL_IDS so overlay mode is treated as a modal")
 	}
 	if !strings.Contains(readUIAsset(t, "js/shell-hooks.js"), "'flowbody', 'flowdrawer', 'evidence-attach'") {
 		t.Error("the three flow drawer modules must stay in OPTIONAL_MODULES")
+	}
+	// No feature module may still import the deleted module.
+	for _, name := range allUIJSFiles(t) {
+		if strings.Contains(readUIAsset(t, name), "from './flowmodal.js'") || strings.Contains(readUIAsset(t, name), "import('./flowmodal.js')") {
+			t.Errorf("%s still imports the deleted flowmodal.js", name)
+		}
 	}
 }
 

@@ -22,9 +22,17 @@
 <link rel="stylesheet" href="/css/collections.css">
 <link rel="stylesheet" href="/css/collections-matrix.css">
 <link rel="stylesheet" href="/mobile.css">
-<!-- Modulepreload hints for the tabs users most often visit right after Proxy
-     (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
-     doesn't stall on module fetch/parse (Phase 4a, UI-REDESIGN-ROADMAP.md §4). -->
+<!-- Modulepreload hints flatten the HTTP/1.1 import waterfall: the root modules
+     every boot path needs (core, the event bus, and the first-wave panels app.js
+     imports synchronously) are fetched/parsed in parallel instead of being
+     discovered one import-wave at a time. Plus the tabs users most often visit
+     right after Proxy (Repeater/Intruder via tools, Scanner). (#105) -->
+<link rel="modulepreload" href="/js/core.js">
+<link rel="modulepreload" href="/js/bus.js">
+<link rel="modulepreload" href="/js/proxy.js">
+<link rel="modulepreload" href="/js/intercept.js">
+<link rel="modulepreload" href="/js/settings.js">
+<link rel="modulepreload" href="/js/findings.js">
 <link rel="modulepreload" href="/js/tools.js">
 <link rel="modulepreload" href="/js/scanner.js">
 <script>
@@ -231,6 +239,7 @@
       <button type="button" class="btn xs" id="scopeEdit" title="Open Settings, Scope, to add or change include and exclude rules">Edit scope</button>
       <button type="button" class="btn" id="filtersBtn" title="Source, notes, tag and saved-search filters" aria-haspopup="true" aria-expanded="false" aria-controls="proxyFilters"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-filter"/></svg> Filters <span id="filtersCount" class="filters-count" hidden></span></button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn" id="freezeBtn" aria-pressed="false" title="Pause live history updates (Ctrl+Alt+P or Space) — capture to disk continues" aria-label="Pause live history updates; capture continues">Pause<span id="freezeCount" class="filters-count" hidden></span></button>
       <div class="spacer"></div>
       <div class="seg" id="inspectDock" role="group" aria-label="Flow inspector placement">
         <button type="button" data-dock="drawer" aria-pressed="false" title="Show the selected flow in the side drawer, beside the history list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-right"/></svg> Side drawer</button>
@@ -291,7 +300,7 @@
     <div id="inspect">
       <div class="pane">
         <div class="pane-head"><span class="lbl">REQUEST</span>
-          <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
+          <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false">JSON</button><button type="button" data-view="params" title="Query string and form parameters" aria-pressed="false">Params</button><button type="button" data-view="gql" title="GraphQL query and variables" aria-pressed="false">GraphQL</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
           <div class="spacer"></div>
           <button class="btn btn-compact accent findings-write" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-attach"/></svg> Attach as evidence</button>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
@@ -308,7 +317,7 @@
       <div class="pane">
         <div class="pane-head"><span class="lbl">RESPONSE</span>
           <span id="resStatus" class="statusline"></span>
-          <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
+          <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false">JSON</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
         </div>
         <div class="sel-decode" id="resDecode" hidden></div>
         <pre id="resView"><span class="u-fg3">Select a flow to inspect its response.</span></pre>
@@ -1454,28 +1463,6 @@ Content-Type: application/json
 <!-- /region:flowdrawer -->
 <div id="ctxmenu"></div>
 <!-- region:modals-tools -->
-<div id="flowModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell flow-inspector" data-mobile-side="res">
-    <div class="row flow-inspector-toolbar">
-      <div id="fmTitle" class="u-flex-1 u-fs-sm u-truncate"></div>
-      <div class="seg" id="fmSeg"><button type="button" data-v="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-v="pretty" aria-pressed="true">Pretty</button><button type="button" data-v="compare" hidden aria-pressed="false">Compare</button></div>
-      <button class="btn" id="fmCopyUrl" title="Copy full URL"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy URL</button>
-      <button class="btn" id="fmCopyLink" title="Copy deep link to this flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy link</button>
-      <button class="btn" id="fmRepeater" title="Send this flow to Repeater">Repeater <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-external"/></svg></button>
-      <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-external"/></svg></button>
-      <button class="btn" id="fmClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
-    </div>
-    <div class="flow-inspector-sides seg" id="fmSides" role="group" aria-label="Captured flow side"><button type="button" data-side="req" aria-controls="fmReqPane" aria-pressed="false">Request</button><button type="button" data-side="res" aria-controls="fmResPane" aria-pressed="true" class="on">Response</button></div>
-    <div class="flow-inspector-panes">
-      <div class="pane flow-inspector-request" id="fmReqPane" role="region" aria-label="Captured request"><div class="pane-head"><span class="lbl">REQUEST</span></div>
-        <div class="sel-decode" id="fmReqDecode" hidden></div>
-        <pre id="fmReq"></pre></div>
-      <div class="pane flow-inspector-response" id="fmResPane" role="region" aria-label="Captured response"><div class="pane-head"><span class="lbl">RESPONSE</span><span id="fmStatus" class="statusline"></span></div>
-        <div class="sel-decode" id="fmResDecode" hidden></div>
-        <pre id="fmRes"></pre></div>
-    </div>
-  </div>
-</div>
 <div id="shortcutsModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="scTitle" class="modal-shell sc-dialog">
     <div class="row modal-shell-head">

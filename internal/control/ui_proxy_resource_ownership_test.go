@@ -212,7 +212,7 @@ func TestUIWebSocketFramesUseEachEndpointContract(t *testing.T) {
 	// two mappings explicit prevents a superficially tempting but breaking
 	// normalization in the inspector.
 	requireUIContracts(t, "js/proxy.js",
-		"frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview))",
+		"wsFrameRow(f.dir,f.opcode,f.length,f.preview)",
 		"frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text))",
 	)
 }

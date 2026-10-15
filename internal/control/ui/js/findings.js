@@ -1,4 +1,6 @@
-import { openSettingsSection } from './settings.js';
+// Opening a Settings section goes over the bus instead of importing settings.js
+// directly — that back-edge was part of the proxy↔findings↔settings ESM cycle.
+import { emit as busEmit, EVENTS } from './bus.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
 import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
@@ -6,7 +8,9 @@ import { filterFindingRecords, parseFindingRoute, findingSectionForGap, createFi
 import { findingRouteTarget, ANCHOR_IDS, buildReproductionSteps, timelineHTML, readDocumentHTML, readPropertiesHTML, stepElementId } from './finding-document.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
 import { evidenceSourceLabel } from './evidence-attach.js';
-import { flowPopup, closeFlowPopup } from './flowmodal.js';
+// Flow evidence opens in the one unified inspector (the Flow Drawer) through
+// core's openFlow/closeFlow hooks; the separate centered flowmodal.js is gone.
+import { openFlow, closeFlow } from './core.js';
 import { sendToRepeater } from './tools.js';
 import { renderCvssEditor, bindCvssEditor } from './cvss.js';
 import { readinessMeterHTML } from './readiness-meter.js';
@@ -1510,7 +1514,7 @@ function renderFindingDetail() {
     focusTarget?.scrollIntoView({block:'nearest'});
     focusTarget?.focus({preventScroll:true});
   }));
-  $('#findModeChip')?.addEventListener('click', () => openSettingsSection('project'));
+  $('#findModeChip')?.addEventListener('click', () => busEmit(EVENTS.SETTINGS_OPEN_SECTION, 'project'));
   const moreBtn = $('#findMore');
   if (moreBtn) moreBtn.onclick = e => openFindingMore(e, moreBtn, f);
   for (const id of expanded) { const el = box.querySelector('#' + id); if(el?.tagName==='DETAILS')el.open=true; }
@@ -2169,13 +2173,13 @@ function openFindingFlow(flowId) {
   } else {
     try { history.replaceState(null, '', `#flow-${flowId}`); } catch { /* ignore */ }
   }
-  flowPopup(flowId, {modal:true});
+  openFlow(flowId, {source:'finding'});
 }
 
 // Deep-link: #finding-<id>, #finding-<id>/flow-<id>, #flow-<id>, #flow/<id>
 export function handleAppHash() {
   const h = location.hash || '';
-  closeFlowPopup({updateRoute:false});
+  closeFlow({updateRoute:false});
   const route = parseFindingRoute(h);
   if (route) {
     const {id:fid,section,flowId}=route;
@@ -2190,7 +2194,7 @@ export function handleAppHash() {
       activateFindingSection(section,{navigate:false});
       $('#findList')?.classList.remove('find-mobile-list-visible');
       $('#findDetail')?.classList.add('find-mobile-detail-visible');
-      if (flowId) flowPopup(flowId, {modal:true});
+      if (flowId) openFlow(flowId, {source:'finding'});
     });
     return;
   }
@@ -2204,7 +2208,7 @@ export function handleAppHash() {
   const m = h.match(/^#flow-(\d+)$/i) || h.match(/^#flow\/(\d+)$/i);
   if (m) {
     const id = Number(m[1]);
-    if (id) flowPopup(id);
+    if (id) openFlow(id, {source:'finding'});
   }
 }
 window.addEventListener('hashchange', handleAppHash);

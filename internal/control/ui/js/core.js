@@ -9,6 +9,7 @@
 import { placeFloatingSurface } from './surface-position.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
+import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -1151,9 +1152,13 @@ export function registerHook(name,fn){
   return ()=>{if(hooks.get(name)===fn)hooks.delete(name);};
 }
 export function getHook(name){return hooks.get(name)||null;}
-// openFlow(id, {source, tab}) opens a flow wherever the drawer is mounted; it
-// returns false when no implementation is registered yet.
+// openFlow(id, {source, tab}) opens a flow wherever the unified flow inspector is
+// mounted; it returns false when no implementation is registered yet.
 export function openFlow(id,opts){const h=hooks.get('openFlow');return h?h(id,opts||{}):false;}
+// closeFlow({updateRoute}) closes the flow inspector; the symmetric wrapper for
+// openFlow so callers never import the inspector module (and the old flowmodal
+// shim is gone). Returns false when nothing was open or no implementation exists.
+export function closeFlow(opts){const h=hooks.get('closeFlow');return h?h(opts||{}):false;}
 // renderFlowBody(flow, tab) returns the shared body markup, or null before the
 // renderer registers.
 export function renderFlowBody(flow,tab){const h=hooks.get('renderFlowBody');return h?h(flow,tab):null;}
@@ -1209,6 +1214,107 @@ export function createDensityVirtualList(opts){
   });
   vl.dispose=dispose;
   return vl;
+}
+
+/* ---- createListView: the one windowed-list renderer with container-level event
+   delegation, built on the pure computeVirtualWindow math above. It replaces the
+   per-feature "el.innerHTML = items.map(rowHTML).join(''); then
+   el.querySelectorAll(rowSel).forEach(n=>n.onclick=…)" pattern — the serialize-
+   all-then-rebind-all shape that leaks listeners, pressures GC and left big lists
+   (Intruder results, WebSocket frames, Scanner issues) unvirtualized.
+
+   With a fixed `rowHeight` and more than `threshold` rows it mounts only the
+   visible window inside a spacer (same spacer + translateY shape Intruder used,
+   so its `.intr-virt-body` DOM and CSS are preserved when it passes those class
+   names); below the threshold, or with no usable row height, it renders the whole
+   list. Either way ONE delegated listener per wired event sits on the container
+   and dispatches to the row via `e.target.closest(rowSelector)`, so rows carry no
+   per-element handlers. Handlers receive `(rowElement, event)` and read the row's
+   own dataset, exactly as the old per-row closures did.
+
+   Options: {container, rowHeight (number|()=>number; 0/omitted ⇒ never
+   virtualize), threshold=80, buffer=8, rowSelector, renderRow(item,index)->html,
+   getItems()->array, on:{click,contextmenu,keydown,dblclick,…}, containerClass,
+   bodyClass='vlist-body', spacerClass='vlist-spacer'}.
+   Returns {render, refresh, isVirtual, destroy, container}. ---- */
+export function createListView(opts){
+  const {container,rowSelector,renderRow,getItems=()=>[],on={},
+    threshold=80,buffer=8,containerClass='',bodyClass='vlist-body',spacerClass='vlist-spacer'}=opts;
+  if(!container||typeof renderRow!=='function'||typeof rowSelector!=='string')
+    throw new Error('createListView: needs {container, rowSelector, renderRow}');
+  const rowH=()=>{const h=typeof opts.rowHeight==='function'?opts.rowHeight():opts.rowHeight;return h>0?h:0;};
+  let lastWin=null,virtual=false,scrollBound=false,scrollTick=false,destroyed=false;
+  const delegates=[];
+  const items=()=>getItems()||[];
+  function windowFor(list){
+    return computeVirtualWindow({total:list.length,scrollTop:container.scrollTop,viewportH:container.clientHeight,rowH:rowH(),threshold,buffer});
+  }
+  function mountWindow(list,win){
+    let sp=container.querySelector(':scope > .'+spacerClass);
+    let body=container.querySelector(':scope > .'+bodyClass);
+    if(!sp||!body){
+      container.innerHTML='<div class="'+spacerClass+'" aria-hidden="true"></div><div class="'+bodyClass+'"></div>';
+      sp=container.querySelector(':scope > .'+spacerClass);
+      body=container.querySelector(':scope > .'+bodyClass);
+    }
+    sp.style.height=(list.length*rowH())+'px';
+    body.style.transform='translateY('+win.topPad+'px)';
+    body.innerHTML=list.slice(win.start,win.end).map((it,k)=>renderRow(it,win.start+k)).join('');
+  }
+  function bindScroll(){
+    if(scrollBound)return;scrollBound=true;
+    container.addEventListener('scroll',()=>{
+      if(!virtual||scrollTick)return;
+      scrollTick=true;
+      requestAnimationFrame(()=>{scrollTick=false;if(!destroyed)refresh();});
+    },{passive:true});
+  }
+  // render() does a full (re)paint from current items; refresh() only re-windows.
+  function render(){
+    const list=items();
+    const win=windowFor(list);
+    if(!win){
+      virtual=false;
+      if(containerClass)container.classList.remove(containerClass);
+      container.innerHTML=list.map((it,i)=>renderRow(it,i)).join('');
+      lastWin=null;
+      return;
+    }
+    virtual=true;
+    if(containerClass)container.classList.add(containerClass);
+    bindScroll();
+    mountWindow(list,win);
+    lastWin=win;
+  }
+  function refresh(){
+    if(!virtual){render();return;}
+    const list=items();
+    const win=windowFor(list);
+    if(!win){render();return;}
+    if(sameWindow(win,lastWin))return;
+    mountWindow(list,win);
+    lastWin=win;
+  }
+  for(const type of Object.keys(on)){
+    const handler=on[type];
+    if(typeof handler!=='function')continue;
+    const listener=e=>{
+      const row=e.target.closest&&e.target.closest(rowSelector);
+      if(!row||!container.contains(row))return;
+      handler(row,e);
+    };
+    container.addEventListener(type,listener);
+    delegates.push([type,listener]);
+  }
+  return {
+    render,refresh,container,
+    isVirtual:()=>virtual,
+    // suspend() lets the feature paint its own non-row state (empty, error) into
+    // the container: it stops the scroll handler from re-rendering over that
+    // markup until the next render().
+    suspend(){virtual=false;lastWin=null;},
+    destroy(){destroyed=true;for(const [type,listener] of delegates)container.removeEventListener(type,listener);delegates.length=0;},
+  };
 }
 
 /* ---- createAutosave: shared debounced-save-with-status pattern.

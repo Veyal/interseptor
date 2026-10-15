@@ -72,7 +72,6 @@ func TestUIMapUsesOnlyRealDataAndDrawer(t *testing.T) {
 	requireUIContains(t, mapJS,
 		"from './map-coverage.js'",
 		"openFlow(id, { source: 'map' })",
-		"flowPopup(id)",
 		"api('/api/findings')",
 		"renderState(host, 'error'",
 		"renderState(host, 'loading'",

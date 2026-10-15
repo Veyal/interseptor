@@ -164,6 +164,15 @@ shared by main navigation and Proxy's **Search in Map** action. Feature behavior
 feature module; `app.js` owns global navigation, shortcuts, SSE dispatch, and boot. No build step or
 bundler; the binary stays single and static.
 
+Modules coordinate without importing each other through three layers, lightest first: the
+synchronous `bus.js` publish/subscribe bus (a module emits an intent — e.g. "reload History flows" —
+and whichever module owns that behaviour listens), the `core.js` `registerHook`/`getHook` mediator
+(one implementor answers a question), and the `shell-hooks.js` SSE dispatcher. The bus closed the
+`proxy → findings → settings` ESM import cycle so a change in evaluation order can no longer raise a
+Temporal Dead Zone `ReferenceError` at boot. `index.html` `modulepreload`s the root modules
+(`core`, `bus`, `proxy`, `intercept`, `settings`, `findings`) so the first import wave loads in
+parallel instead of one depth at a time.
+
 Findings uses `finding-workspace.js` for section routes and filtering, with
 `findings.js` retaining data and editor ownership. `findings.css` styles its
 searchable list, section reader and inline evidence. `surfaces.css` supplies
@@ -190,14 +199,24 @@ popover (listener addresses, device proxy, live-update state) and the five-secon
 dialogs stay reachable. `keyboard.js` owns the shared key registry, chord continuations and the
 "Single-key shortcuts" switch.
 
-`flowdrawer.js` is the Flow Drawer (a docked `complementary` region above 1100px, an overlay with
-core's focus trap below) fed by the pure `flowbody.js`; `evidence-attach.js` and `evidence-tray.js`
+`flowdrawer.js` is the one flow inspector — a docked `complementary` region above 1100px, an overlay
+with core's focus trap below — fed by the pure `flowbody.js`. Every panel opens a flow through core's
+`openFlow`/`closeFlow` hooks; the old centered `flowmodal.js` is deleted and the drawer carries its one
+distinct feature, a Current/Original **Compare** control shown only for a flow modified in Intercept.
+The Proxy in-panel inspector (`#inspect`, `proxy.js`) stays as the fast-path view set and gained the
+structured sub-tabs from the pure `inspector-structure.js`: a Headers grid with cookie parsing, a
+collapsible JSON tree with JSONPath copy, a Query/Form parameter table, a GraphQL viewer, and an
+inline image preview, plus a "Pause live stream" freeze that holds the history viewport while capture
+continues. `evidence-attach.js` and `evidence-tray.js`
 attach, order and undo evidence through the existing finding endpoints, and `readiness-meter.js`
 draws a finding's server-reported stage as `role=meter`. `report-preflight.js` is the Findings
 Report sub-view with gated export. `checklist.js` is the first-run checklist, derived from real
 state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (BottomSheet),
-`statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js` and
-`finder.js`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
+`statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js`,
+`finder.js`, the `bus.js` event bus, and `core.js`'s `createListView` — the one windowed-list
+renderer with container-level event delegation (built on the pure `virtual-list-model.js` windowing
+math) that now backs Intruder results and the WebSocket frame list. The Decoder is a slide-up bottom
+"Convert" drawer reachable anywhere with `Cmd/Ctrl+J`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
 conversion, a promise-valued `ClipboardItem`, secure-context fallbacks). `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
 

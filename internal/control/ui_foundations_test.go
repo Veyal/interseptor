@@ -469,7 +469,7 @@ func TestUIFoundationRegionMarkersAppearExactlyOnce(t *testing.T) {
 			t.Errorf("modals-tools must enclose %s", id)
 		}
 	}
-	for _, id := range []string{"flowModal", "shortcutsModal", "checksModal", "compareModal", "decModal"} {
+	for _, id := range []string{"shortcutsModal", "checksModal", "compareModal", "decModal"} {
 		if !strings.Contains(mt, `id="`+id+`"`) {
 			t.Errorf("modals-tools must contain %s", id)
 		}

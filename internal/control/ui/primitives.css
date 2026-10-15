@@ -80,3 +80,11 @@
 .diff-expand{display:block;width:100%;margin:var(--sp-1) 0;text-align:center}
 .diff-note{margin:0;padding:var(--sp-4);color:var(--fg2);font-family:var(--ui);font-size:var(--fs-md)}
 .diff-row:focus-visible,.diff-split-row:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+
+/* ---- createListView (core.js) windowed-list primitive. The container scrolls
+   and positions the body; the spacer reserves the full scroll height of all rows
+   while only the visible window is mounted inside the translated body. Intruder
+   keeps its own .intr-virt-* class names (same shape) for back-compat. ---- */
+.vlist{position:relative}
+.vlist-spacer{pointer-events:none}
+.vlist-body{position:absolute;left:0;right:0;top:0;will-change:transform}

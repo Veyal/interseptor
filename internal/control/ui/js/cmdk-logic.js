@@ -233,7 +233,7 @@ export function modeHint(mode, { hasSelection = false } = {}) {
 // tab} | {open: 'shortcuts'|'selected-flow'|'authz'|'session'|'auth-timeline'}
 // | {transient: reason} for dialogs that only exist while another action runs.
 export const LEGACY_MODALS = [
-  { id: 'flowModal', title: 'Open selected flow in the inspector dialog', kw: 'flow inspector popup raw request response', how: { open: 'selected-flow' } },
+  { id: 'flowModal', title: 'Open selected flow in the inspector', kw: 'flow inspector popup raw request response', how: { open: 'selected-flow' } },
   { id: 'shortcutsModal', title: 'Keyboard shortcut sheet', kw: 'help cheatsheet keys hotkeys', how: { open: 'shortcuts' } },
   { id: 'checksModal', title: 'Edit custom scanner checks', kw: 'starlark checks passive custom rules', how: { cmd: 'Edit custom scanner checks' } },
   { id: 'codecsModal', title: 'Edit message codecs', kw: 'encrypt decrypt aes codec', how: { cmd: 'Edit message codecs' } },

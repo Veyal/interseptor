@@ -19,6 +19,7 @@ const GO = [
 
 export const LEGACY_SHORTCUTS = [
   L('Navigation', 'global', 'Ctrl+K', 'Command palette: jump anywhere, run anything', 'app.js', "isModShortcut(e,'k')"),
+  L('Navigation', 'global', 'Ctrl+J', 'Open the Decoder "Convert" drawer', 'app.js', "isModShortcut(e,'j')"),
   L('Navigation', 'global', '?', 'Keyboard shortcut sheet', 'app.js', 'isHelpShortcut(e)'),
   ...GO.map(([k, name]) => L('Navigation', 'global', 'g ' + k, 'Go to ' + name, 'app.js', `${k}:'${name.toLowerCase()}'`)),
   L('Navigation', 'global', 'Up / Down / Home / End', 'Move between rail tabs', 'app.js', "e.key==='Home'"),
@@ -27,6 +28,7 @@ export const LEGACY_SHORTCUTS = [
   L('History', 'proxy', 'j / k', 'Walk rows (or Up / Down)', 'app.js', "e.key!=='j'"),
   L('History', 'proxy', 'Ctrl+Shift+A', 'Select or clear all shown flows', 'app.js', "e.key.toLowerCase()==='a'"),
   L('History', 'proxy', 'x', 'Toggle selection on the current flow', 'app.js', "isPlainShortcut(e,'x')"),
+  L('History', 'proxy', 'Ctrl+Alt+P / Space', 'Pause or resume the live history stream (capture continues)', 'app.js', 'toggleLiveFreeze()'),
   L('Send and replay', 'proxy', 'r', 'Send the selected flow to Repeater', 'app.js', "isPlainShortcut(e,'r')"),
   L('Send and replay', 'proxy', 'i', 'Send the selected flow to Intruder', 'app.js', "isPlainShortcut(e,'i')"),
   L('Send and replay', 'proxy', 'Ctrl+R', 'Send the selected flow to Repeater', 'app.js', "isModShortcut(e,'r')"),
@@ -39,6 +41,8 @@ export const LEGACY_SHORTCUTS = [
   L('Send and replay', 'intruder', 'Alt+M', 'Wrap the selected text in section-sign markers', 'tools.js', "e.code!=='KeyM'"),
   L('Intercept', 'intercept', 'f', 'Forward the selected held request (outside editors)', 'app.js', "isPlainShortcut(e,'f')"),
   L('Intercept', 'intercept', 'd', 'Drop the selected held request (outside editors)', 'app.js', "isPlainShortcut(e,'d')"),
+  L('Intercept', 'intercept', 'Ctrl+Enter', 'Forward the held request (works in the editor)', 'app.js', "isModShortcut(e,'Enter')"),
+  L('Intercept', 'intercept', 'Ctrl+Shift+D', 'Drop the held request (works in the editor)', 'app.js', "isModShiftShortcut(e,'d')"),
   L('General', 'global', 'Esc', 'Close dialog, then context menu, then collapse the inspector', 'app.js', "e.key==='Escape'"),
 ];
 

@@ -1,5 +1,4 @@
-import { $, requireFindingsEditing, findingsEditable, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon, openCtxMenu } from './core.js';
-import { flowPopup } from './flowmodal.js';
+import { $, requireFindingsEditing, findingsEditable, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon, openCtxMenu, openFlow } from './core.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
@@ -908,7 +907,7 @@ function showScanIssueCtx(e,g){
 // Per-target actions. Every one starts from the issue's own flow id.
 function scanTargetAction(act,issue,button){
   const target=verifyTarget(issue);if(!target)return;
-  if(act==='open'){flowPopup(target.id);return;}
+  if(act==='open'){openFlow(target.id,{source:'scanner'});return;}
   if(act==='verify'){
     // Issues carry no payload, so Repeater is preloaded with the affected flow only.
     import('./tools.js').then(m=>m.sendToRepeater(target)).catch(e=>toastError('Repeater',e));

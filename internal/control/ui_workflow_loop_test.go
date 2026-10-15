@@ -111,25 +111,23 @@ func TestUIIntruderPollingBacksOffAndSkipsUnchangedRenders(t *testing.T) {
 		t.Error("Intruder must not poll every 120ms")
 	}
 	body := tools[strings.Index(tools, "export function renderIntr("):]
-	if strings.Count(body[:strings.Index(body, "wireIntrResultRows(box);}")], "intrApplyFilter(displayRes)") != 1 {
+	if strings.Count(body[:strings.Index(body, "ensureIntrListView(box).render();")], "intrApplyFilter(displayRes)") != 1 {
 		t.Error("renderIntr must filter and sort results exactly once per render")
 	}
 }
 
-func TestUIFlowPopupCarriesIntruderAndFindingActions(t *testing.T) {
-	popup := readUIAsset(t, "js/flowmodal.js")
-	requireUIContains(t, popup,
-		"import { sendToRepeater, sendToIntruder } from './tools.js'",
-		"function wireFlowPopupActions()",
-		"intruder.id='fmIntruder'",
-		"finding.id='fmFinding'",
-		"repeater.after(intruder,finding)",
-		"sendToIntruder({id})",
-		"m.addFlowToFinding(id)",
+func TestUIFlowDrawerCarriesOnwardActions(t *testing.T) {
+	// The onward actions the deleted flowmodal.js injected (Repeater, Intruder,
+	// add to a finding) live in the unified Flow Drawer footer, wired to the
+	// shared tools/evidence modules, so inspecting a flow from any surface offers
+	// the same next steps (#103).
+	drawer := executableJS(readUIAsset(t, "js/flowdrawer.js"))
+	requireUIContains(t, drawer,
+		"m.sendToRepeater({ id: cur.id })",
+		"m.sendToIntruder({ id: cur.id })",
+		"attachEvidence({ kind: 'flow', refs: [cur.id]",
 	)
-	if strings.Count(popup, "closeModal($('#flowModal'));\n    sendToIntruder") != 1 || strings.Count(popup, "closeModal($('#flowModal'));\n    import('./findings.js')") != 1 {
-		t.Error("popup actions must close the popup before navigating")
-	}
+	requireUIContains(t, readUIAsset(t, "index.html"), `id="fdRepeater"`, `id="fdIntruder"`, `id="fdAttach"`)
 }
 
 func TestUIIntruderMarkerShortcutFollowsTheWrapButton(t *testing.T) {

@@ -53,7 +53,7 @@ function legacyOpen(kind) {
   const flows = selectedFlows();
   if (kind === 'shortcuts') { openModal($('#shortcutsModal')); return; }
   if (!flows.length) { toast(NEED_FLOW); return; }
-  if (kind === 'selected-flow') import('./flowmodal.js').then((m) => m.flowPopup(flows[0].id));
+  if (kind === 'selected-flow') openFlow(flows[0].id, { source: 'palette' });
   else if (kind === 'session') import('./session-inspection.js').then((m) => m.openSessionInspector(flows.map((f) => f.id)));
   else if (kind === 'auth-timeline') import('./authtimeline.js').then((m) => m.openAuthTimeline(flows[0].id));
 }

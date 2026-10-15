@@ -32,7 +32,6 @@ function wireRovingGroup(elsLike){
     });
   });
 }
-import { flowPopup } from './flowmodal.js';
 
 function labelMapControls() {
   const labels = {
@@ -480,7 +479,7 @@ function mapCoverageHTML(e){
 // registered, the legacy popup otherwise.
 function openMapFlow(id){
   if(!id) return;
-  if(!openFlow(id, { source: 'map' })) flowPopup(id);
+  openFlow(id, { source: 'map' });
 }
 
 function mapCtxFor(trigger){
@@ -674,10 +673,10 @@ function renderMapParams(d){
       <td><button type="button" class="btn xs map-param-inspect" aria-label="Inspect flow #${p.lastFlowId} for parameter ${escAttr(p.name)}">#${p.lastFlowId}</button></td>
     </tr>`).join('')}
     </tbody></table></div>`).join('');
-  box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
+  box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)openFlow(Number(tr.dataset.flow),{source:'map'});};});
   box.querySelectorAll('tbody').forEach(tbody=>{
     const rows=tbody.querySelectorAll('.map-param-row[data-flow]');
-    rows.forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
+    rows.forEach(tr=>keyClick(tr,()=>openFlow(Number(tr.dataset.flow),{source:'map'}),true));
     wireRovingGroup(rows);
   });
 }
@@ -1327,7 +1326,7 @@ export function renderMapGraph(eps){
       selectGraphNode(el);
       if(el.dataset.kind === 'ep'){
         const f = el.dataset.flow;
-        if(f) flowPopup(Number(f));
+        if(f) openFlow(Number(f),{source:'map'});
         return;
       }
       const k = el.dataset.key;
