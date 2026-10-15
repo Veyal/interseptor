@@ -29,7 +29,10 @@ func projectHTMLFromMD(md, lintNotice string) string {
 // projectHTMLDoc assembles the one HTML report document. Every HTML and PDF
 // export goes through here, so the two cannot differ.
 func projectHTMLDoc(md, lintNotice string, brand store.ReportBranding) string {
-	body := markdownToHTML(md)
+	// markdownBlocks keeps the byte-stable conversion the unit tests pin; the
+	// enrichment pass then upgrades the flat blocks into severity-tinted finding
+	// cards. Both HTML and PDF go through here, so the document stays one thing.
+	body := strings.Join(enrichReport(markdownBlocks(md)), "\n")
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
@@ -53,34 +56,452 @@ func projectHTMLDoc(md, lintNotice string, brand store.ReportBranding) string {
 }
 
 const reportHTMLCSS = `
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;color:#1a1a1a;background:#fff;margin:0;padding:32px 24px}
-article.md{max-width:860px;margin:0 auto}
-h1{font-size:22px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid #ddd}
-h2{font-size:17px;margin:22px 0 10px;color:#111}
-h3{font-size:14px;margin:18px 0 8px;color:#222}
-p{margin:8px 0}
-ul,ol{margin:8px 0 8px 4px;padding-left:20px}
+:root{
+  --page:#eef1f5;--sheet:#fff;--ink:#1a2230;--ink2:#49546b;--ink3:#737e8f;
+  --line:#e6eaf0;--line2:#d4dae3;--soft:#f6f8fb;
+  --accent:#047857;--accent2:#065f46;--accent-bg:#ecfdf3;--accent-bd:#a7e8cf;
+  --sev-critical:#b42318;--sev-critical-bg:#fef3f2;--sev-critical-bd:#fda29b;
+  --sev-high:#b93815;--sev-high-bg:#fff4ed;--sev-high-bd:#f7b27a;
+  --sev-medium:#b54708;--sev-medium-bg:#fffaeb;--sev-medium-bd:#fdb022;
+  --sev-low:#175cd3;--sev-low-bg:#eff8ff;--sev-low-bd:#84caff;
+  --sev-info:#475467;--sev-info-bg:#f2f4f7;--sev-info-bd:#d0d5dd;
+  --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+}
+*{box-sizing:border-box}
+body{font-family:var(--sans);line-height:1.62;color:var(--ink);background:var(--page);margin:0;padding:40px 18px;font-size:14px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+article.md{max-width:900px;margin:0 auto;background:var(--sheet);border:1px solid var(--line);border-radius:14px;padding:44px 48px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 16px 40px rgba(16,24,40,.07)}
+
+/* severity palette tokens, shared by cards, group headers and pills */
+.sev-critical{--sv:var(--sev-critical);--svbg:var(--sev-critical-bg);--svbd:var(--sev-critical-bd)}
+.sev-high{--sv:var(--sev-high);--svbg:var(--sev-high-bg);--svbd:var(--sev-high-bd)}
+.sev-medium{--sv:var(--sev-medium);--svbg:var(--sev-medium-bg);--svbd:var(--sev-medium-bd)}
+.sev-low{--sv:var(--sev-low);--svbg:var(--sev-low-bg);--svbd:var(--sev-low-bd)}
+.sev-info{--sv:var(--sev-info);--svbg:var(--sev-info-bg);--svbd:var(--sev-info-bd)}
+
+/* cover title + subtitle */
+article.md h1{font-size:30px;line-height:1.18;letter-spacing:-.021em;font-weight:800;color:var(--ink);margin:0 0 18px;padding:2px 0 20px 18px;border:0;border-left:4px solid var(--accent)}
+article.md>p.meta:first-of-type,article.md h1+p.meta{font-size:15px;color:var(--ink2);font-style:normal;margin:-8px 0 20px}
+.meta{color:var(--ink3);font-style:italic}
+
+/* section headers */
+article.md h2{font-size:17px;font-weight:700;letter-spacing:-.012em;color:var(--ink);margin:38px 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line2)}
+article.md h2.sevhead{display:flex;align-items:center;gap:9px;border-bottom:0;margin:34px 0 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--sv)}
+article.md h2.sevhead::before{content:"";display:inline-block;width:13px;height:13px;border-radius:4px;background:var(--sv)}
+article.md h3{font-size:14px;font-weight:700;color:var(--ink);margin:18px 0 8px}
+
+p{margin:9px 0}
+ul,ol{margin:9px 0 9px 2px;padding-left:22px}
 li{margin:4px 0}
-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px}
-pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:6px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
-pre code{background:none;border:none;padding:0;font-size:inherit}
-table{table-layout:fixed;overflow-wrap:anywhere;width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
-th,td{border:1px solid #ddd;padding:7px 10px;text-align:left;vertical-align:top}
-th{background:#f5f5f5;font-weight:700}
-blockquote{border-left:3px solid #0a8f62;margin:12px 0;padding:8px 14px;background:#f7f7f7;color:#333;border-radius:0 6px 6px 0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
-hr{border:none;border-top:1px solid #ddd;margin:20px 0}
-em{font-style:italic;color:#444}
 strong{font-weight:700}
-.meta{color:#555;font-style:italic}
-.secret-lint{max-width:860px;margin:0 auto 18px;padding:10px 14px;border:1px solid #b45309;border-left-width:4px;background:#fffbeb;color:#78350f;border-radius:6px;font-size:13px}
-.secret-lint ul{margin:6px 0 0}
-@media print{.secret-lint{display:none}body{padding:12px}h2,h3,h4{break-after:avoid}pre,img,tr{break-inside:avoid}a,code,p,li{overflow-wrap:anywhere}}
+em{font-style:italic;color:var(--ink2)}
+a{color:var(--accent2);text-decoration:none;border-bottom:1px solid var(--accent-bd)}
+hr{border:0;border-top:1px solid var(--line2);margin:26px 0}
+
+code{font-family:var(--mono);font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:1px 5px;word-break:break-word}
+pre{font-family:var(--mono);font-size:12px;line-height:1.55;background:#0f1623;color:#d7e0ee;border:1px solid #223049;border-radius:9px;padding:14px 16px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:12px 0}
+pre code{background:none;border:0;padding:0;color:inherit;font-size:inherit}
+
+table{table-layout:fixed;overflow-wrap:anywhere;width:100%;border-collapse:separate;border-spacing:0;font-size:13px;margin:14px 0;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+th,td{border-bottom:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:700;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:0}
+
+blockquote{border-left:3px solid var(--accent);margin:12px 0;padding:10px 14px;background:var(--soft);color:var(--ink2);border-radius:0 8px 8px 0;font-family:var(--mono);font-size:12px}
+blockquote p{margin:4px 0}
+
+/* finding cards */
+.finding{margin:20px 0;border:1px solid var(--line);border-left:4px solid var(--sv,var(--sev-info));border-radius:11px;background:var(--sheet);overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.finding-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:15px 18px;background:linear-gradient(180deg,color-mix(in srgb,var(--svbg) 55%,#fff),#fff);border-bottom:1px solid var(--line)}
+.finding-id{flex:none;align-self:center;font:800 12px/1 var(--mono);color:#fff;background:var(--sv);border-radius:7px;padding:7px 9px;min-width:26px;text-align:center}
+.finding-title{flex:1 1 auto;min-width:200px;margin:0;font-size:17px;font-weight:700;letter-spacing:-.012em;color:var(--ink);line-height:1.3}
+.finding-tags{display:flex;gap:7px;align-items:center;margin-left:auto}
+.sev-tag{font:700 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.05em;color:var(--sv);background:var(--svbg);border:1px solid var(--svbd);border-radius:999px;padding:5px 11px}
+.score-tag{font:800 12px/1 var(--mono);color:#fff;background:var(--sv);border-radius:999px;padding:5px 10px}
+
+.finding-meta{display:flex;flex-direction:column;gap:10px;padding:13px 18px;background:var(--soft);border-bottom:1px solid var(--line)}
+.m-badges{display:flex;flex-wrap:wrap;gap:7px}
+.m-badge{display:inline-flex;align-items:baseline;gap:6px;font-size:12px;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:4px 10px}
+.m-badge .m-k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
+.m-badge .m-v{color:var(--ink);font-weight:600}
+.m-badge.status{color:var(--stc,var(--ink));background:var(--stbg,#fff);border-color:var(--stbd,var(--line2))}
+.m-badge.status .m-k{color:var(--stc,var(--ink3));opacity:.8}
+.m-badge.status .m-v{color:var(--stc,var(--ink))}
+.st-verified{--stc:#067647;--stbg:#ecfdf3;--stbd:#abefc6}
+.st-open,.st-needs-verification{--stc:#b54708;--stbg:#fffaeb;--stbd:#fdb022}
+.st-fixed{--stc:#175cd3;--stbg:#eff8ff;--stbd:#84caff}
+.st-wont-fix,.st-false-positive{--stc:#475467;--stbg:#f2f4f7;--stbd:#d0d5dd}
+.m-row{display:flex;gap:12px;align-items:baseline;font-size:12.5px}
+.m-row .m-k{flex:none;min-width:116px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);padding-top:1px}
+.m-row .m-v{color:var(--ink2);min-width:0;overflow-wrap:anywhere}
+.m-vec{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:#fff;border:1px solid var(--line2);border-radius:6px;padding:3px 8px;overflow-wrap:anywhere}
+.m-tagwrap{display:flex;flex-wrap:wrap;gap:5px}
+.m-tag{font-size:11px;font-family:var(--mono);color:var(--accent2);background:var(--accent-bg);border:1px solid var(--accent-bd);border-radius:999px;padding:2px 9px}
+
+.finding-body{padding:14px 18px 18px}
+.finding-body>:first-child{margin-top:0}
+.finding-body>:last-child{margin-bottom:0}
+.finding-body>p>strong:first-child{color:var(--accent2)}
+.finding-body img{max-width:100%;height:auto;border:1px solid var(--line2);border-radius:8px;margin-top:6px}
+img{max-width:100%}
+
+/* secret-lint callout */
+.secret-lint{display:block;max-width:900px;margin:0 auto 18px;padding:12px 16px;border:1px solid var(--sev-medium-bd);border-left-width:4px;background:var(--sev-medium-bg);color:#7a3e08;border-radius:9px;font-size:13px}
+.secret-lint ul{margin:8px 0 0}
+.secret-lint code{background:#fff}
+
+@media (max-width:560px){
+  body{padding:16px 0}
+  article.md{border-radius:0;border-left:0;border-right:0;padding:24px 18px}
+  .finding-head{gap:9px}
+  .finding-title{font-size:16px;flex-basis:100%}
+  .finding-tags{margin-left:0}
+  .m-row{flex-direction:column;gap:2px}
+  .m-row .m-k{min-width:0}
+}
+@media print{
+  :root{--page:#fff}
+  body{padding:0;font-size:12px}
+  article.md{max-width:none;border:0;border-radius:0;box-shadow:none;padding:0}
+  .secret-lint{display:none}
+  .finding,table,pre,blockquote,tr,img,.finding-head{break-inside:avoid}
+  h1,h2,h3,.finding-head{break-after:avoid}
+  pre{background:#f4f4f4;color:#111;border:1px solid #ddd}
+  a,code,p,li{overflow-wrap:anywhere}
+}
 `
+
+// enrichReport upgrades the flat block list from markdownBlocks into a
+// designed report: engagement findings become severity-tinted cards and their
+// leading "- **Label:** value" bullet list becomes a metadata badge band. Every
+// other block passes through untouched, so the conversion and its tests are
+// unaffected and the HTML the PDF renderer prints is the HTML downloaded.
+func enrichReport(blocks []string) []string {
+	out := make([]string, 0, len(blocks)+len(blocks)/4)
+	var cur []string // blocks of the finding currently being buffered
+	curSev := ""     // severity from the most recent "## <Severity>" group header
+
+	flush := func() {
+		if len(cur) > 0 {
+			out = append(out, renderFindingCard(cur, curSev)...)
+			cur = nil
+		}
+	}
+
+	for _, b := range blocks {
+		switch {
+		case isFindingHeading(b):
+			flush()
+			cur = []string{b}
+		case strings.HasPrefix(b, "<h2>"):
+			flush()
+			sev := severityOfHeading(b)
+			curSev = sev
+			out = append(out, decorateHeading(b, sev))
+		case strings.HasPrefix(b, "<h1>"), strings.HasPrefix(b, "<hr>"):
+			flush()
+			out = append(out, b)
+		default:
+			if len(cur) > 0 {
+				cur = append(cur, b)
+			} else {
+				out = append(out, b)
+			}
+		}
+	}
+	flush()
+	return out
+}
+
+// isFindingHeading reports whether a block is a numbered finding heading
+// ("### 3. Title"); the engagement-context sub-head "### How evidence was
+// obtained" deliberately does not match, so it is never boxed as a finding.
+func isFindingHeading(block string) bool {
+	inner, ok := innerOfTag(block, "h3")
+	if !ok {
+		return false
+	}
+	num, _ := splitFindingTitle(inner)
+	return num != ""
+}
+
+// severityOfHeading returns the severity slug when an <h2> is exactly one of the
+// severity group headers Project emits, else "".
+func severityOfHeading(block string) string {
+	inner, ok := innerOfTag(block, "h2")
+	if !ok {
+		return ""
+	}
+	return sevSlug(inner)
+}
+
+// decorateHeading tags a severity group header so CSS can colour it; other
+// section headers pass through so their generic styling applies.
+func decorateHeading(block, sev string) string {
+	if sev == "" {
+		return block
+	}
+	inner, _ := innerOfTag(block, "h2")
+	return `<h2 class="sevhead sev-` + sev + `">` + inner + `</h2>`
+}
+
+// renderFindingCard turns a buffered finding (heading, metadata list, body
+// blocks) into a severity card. groupSev is the enclosing "## <Severity>"
+// group, used when the finding carries no calculated CVSS of its own.
+func renderFindingCard(cur []string, groupSev string) []string {
+	title, _ := innerOfTag(cur[0], "h3")
+	num, name := splitFindingTitle(title)
+
+	// The metadata list, when present, is exactly: cur[1]=="<ul>", then "<li>"
+	// items, then "</ul>". Its items all carry a "<strong>Label:</strong>".
+	metaStart, metaEnd := -1, -1
+	if len(cur) >= 3 && cur[1] == "<ul>" && strings.Contains(cur[2], "<strong>") {
+		for j := 2; j < len(cur); j++ {
+			if cur[j] == "</ul>" {
+				metaStart, metaEnd = 1, j
+				break
+			}
+		}
+	}
+	var items []string
+	if metaStart >= 0 {
+		items = cur[metaStart+1 : metaEnd]
+	}
+
+	sev, score := groupSev, ""
+	if s, sc := scanCalculatedCVSS(items); sc != "" || s != "" {
+		score = sc
+		if sev == "" {
+			sev = s
+		}
+	}
+	if sev == "" {
+		sev = "info"
+	}
+
+	out := make([]string, 0, len(cur)+6)
+	out = append(out, `<section class="finding sev-`+sev+`">`)
+	out = append(out, findingHead(num, name, sev, score))
+	if len(items) > 0 {
+		out = append(out, buildMetaBand(items))
+	}
+	out = append(out, `<div class="finding-body">`)
+	for i := 1; i < len(cur); i++ {
+		if metaStart >= 0 && i >= metaStart && i <= metaEnd {
+			continue
+		}
+		out = append(out, cur[i])
+	}
+	out = append(out, `</div>`, `</section>`)
+	return out
+}
+
+func findingHead(num, name, sev, score string) string {
+	var b strings.Builder
+	b.WriteString(`<header class="finding-head">`)
+	if num != "" {
+		b.WriteString(`<span class="finding-id">` + num + `</span>`)
+	}
+	b.WriteString(`<h3 class="finding-title">` + name + `</h3>`)
+	b.WriteString(`<span class="finding-tags">`)
+	b.WriteString(`<span class="sev-tag">` + sevLabel(sev) + `</span>`)
+	if score != "" {
+		b.WriteString(`<span class="score-tag" title="CVSS v4.0 base score">` + score + `</span>`)
+	}
+	b.WriteString(`</span></header>`)
+	return b.String()
+}
+
+// buildMetaBand lays the metadata bullets out as a badge band: short fields as
+// chips, long ones (CVSS vector, verification notes, readiness gaps) as rows,
+// tags as pills. Nothing is dropped — an unrecognised label becomes a row.
+func buildMetaBand(items []string) string {
+	var badges, rows []string
+	for _, li := range items {
+		label, value := parseMetaItem(li)
+		if value == "" && label == "" {
+			continue
+		}
+		switch label {
+		case "", "Calculated CVSS v4.0":
+			// Score is surfaced in the header; a bare value becomes a row.
+			if label == "" && value != "" {
+				rows = append(rows, metaRow("", value))
+			}
+		case "Tags":
+			rows = append(rows, metaTagsRow(value))
+		case "CVSS":
+			rows = append(rows, `<div class="m-row"><span class="m-k">CVSS vector</span><code class="m-vec">`+value+`</code></div>`)
+		case "Status":
+			badges = append(badges, `<span class="m-badge status st-`+slugify(value)+`"><span class="m-k">Status</span><span class="m-v">`+value+`</span></span>`)
+		case "Confidence", "CWE", "Environment", "Impact verification", "Autopilot confidence",
+			"action evidence", "result evidence", "control evidence":
+			badges = append(badges, metaBadge(label, value))
+		default:
+			rows = append(rows, metaRow(label, value))
+		}
+	}
+	if len(badges) == 0 && len(rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="finding-meta">`)
+	if len(badges) > 0 {
+		b.WriteString(`<div class="m-badges">` + strings.Join(badges, "") + `</div>`)
+	}
+	b.WriteString(strings.Join(rows, ""))
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+func metaBadge(label, value string) string {
+	return `<span class="m-badge"><span class="m-k">` + label + `</span><span class="m-v">` + value + `</span></span>`
+}
+
+func metaRow(label, value string) string {
+	if label == "" {
+		return `<div class="m-row"><span class="m-v">` + value + `</span></div>`
+	}
+	return `<div class="m-row"><span class="m-k">` + label + `</span><span class="m-v">` + value + `</span></div>`
+}
+
+func metaTagsRow(value string) string {
+	var chips strings.Builder
+	for _, t := range strings.Split(value, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		chips.WriteString(`<span class="m-tag">` + t + `</span>`)
+	}
+	return `<div class="m-row"><span class="m-k">Tags</span><span class="m-tagwrap">` + chips.String() + `</span></div>`
+}
+
+// scanCalculatedCVSS pulls the score (e.g. "8.7") and severity slug from the
+// "Calculated CVSS v4.0: 8.7 (HIGH, CVSS-B)" metadata line, when present.
+func scanCalculatedCVSS(items []string) (sev, score string) {
+	for _, li := range items {
+		label, value := parseMetaItem(li)
+		if label != "Calculated CVSS v4.0" {
+			continue
+		}
+		score = firstField(value)
+		if lp := strings.Index(value, "("); lp >= 0 {
+			rating := value[lp+1:]
+			if c := strings.IndexAny(rating, ",)"); c >= 0 {
+				rating = rating[:c]
+			}
+			sev = sevSlug(rating)
+		}
+		return sev, score
+	}
+	return "", ""
+}
+
+// parseMetaItem splits a "<li><strong>Label:</strong> value</li>" item into the
+// label (trailing colon removed) and the remaining value HTML.
+func parseMetaItem(li string) (label, value string) {
+	inner, ok := innerOfTag(li, "li")
+	if !ok {
+		return "", ""
+	}
+	if strings.HasPrefix(inner, "<strong>") {
+		if end := strings.Index(inner, "</strong>"); end >= 0 {
+			label = strings.TrimSuffix(strings.TrimSpace(inner[len("<strong>"):end]), ":")
+			value = strings.TrimSpace(inner[end+len("</strong>"):])
+			return label, value
+		}
+	}
+	return "", strings.TrimSpace(inner)
+}
+
+// splitFindingTitle pulls the leading "N." number off a finding heading, so
+// "3. SQL injection" yields ("3", "SQL injection"). A heading with no leading
+// number yields ("", heading).
+func splitFindingTitle(inner string) (num, name string) {
+	i := 0
+	for i < len(inner) && inner[i] >= '0' && inner[i] <= '9' {
+		i++
+	}
+	if i > 0 && strings.HasPrefix(inner[i:], ". ") {
+		return inner[:i], strings.TrimSpace(inner[i+2:])
+	}
+	return "", inner
+}
+
+// innerOfTag returns the content of a block wrapped in exactly <tag>...</tag>.
+func innerOfTag(block, tag string) (string, bool) {
+	open, close := "<"+tag+">", "</"+tag+">"
+	if strings.HasPrefix(block, open) && strings.HasSuffix(block, close) && len(block) >= len(open)+len(close) {
+		return block[len(open) : len(block)-len(close)], true
+	}
+	return "", false
+}
+
+func firstField(s string) string {
+	if i := strings.IndexByte(s, ' '); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// sevSlug maps any severity or CVSS rating word to a palette slug, or "".
+func sevSlug(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "critical":
+		return "critical"
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	case "low":
+		return "low"
+	case "info", "informational", "none":
+		return "info"
+	}
+	return ""
+}
+
+func sevLabel(slug string) string {
+	switch slug {
+	case "critical":
+		return "Critical"
+	case "high":
+		return "High"
+	case "medium":
+		return "Medium"
+	case "low":
+		return "Low"
+	default:
+		return "Info"
+	}
+}
+
+// slugify lowercases and dashes a value for a CSS class suffix (status badges).
+func slugify(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' || r == '_' || r == '-':
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
 
 // markdownToHTML converts the subset of Markdown emitted by Project/Findings into HTML.
 func markdownToHTML(md string) string {
+	return strings.Join(markdownBlocks(md), "\n")
+}
+
+// markdownBlocks is markdownToHTML's worker: it returns the HTML block elements
+// in order. markdownToHTML joins them, so its output is byte-for-byte what it
+// always was; projectHTMLDoc enriches the slice before joining.
+func markdownBlocks(md string) []string {
 	if md == "" {
-		return ""
+		return nil
 	}
 	lines := strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n")
 	var out []string
@@ -214,7 +635,7 @@ func markdownToHTML(md string) string {
 	flushQuote()
 	closeList()
 	flushTable()
-	return strings.Join(out, "\n")
+	return out
 }
 
 func backtickFenceLen(line string) int {
