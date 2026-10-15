@@ -158,8 +158,10 @@ func TestUIEverySurfaceHasACategorisedMenu(t *testing.T) {
 			"function flowDeleteRoot(f)", "function flowColumnRoot(f,field)",
 			"function showWsFrameCtx(e,frame)",
 		},
-		"js/findings.js": {"function showFindingRowCtx(event, id)", "el.oncontextmenu = event =>"},
-		"js/scanner.js":  {"function showScanIssueCtx(e,g)", "el.oncontextmenu=e=>"},
+		// Both lists are windowed, so a row carries no handler: one delegated contextmenu listener on the
+		// container opens the menu (ui_virtual_lists_test.go pins the rest of the delegation).
+		"js/findings.js": {"function showFindingRowCtx(event, id)", "showFindingRowCtx(event, Number(row.dataset.id))"},
+		"js/scanner.js":  {"function showScanIssueCtx(e,g)", "showScanIssueCtx(e,(scanState.groups||[])[i])"},
 		"js/intruder.js": {"head: 'ATTEMPT · flow #'", "label: 'Copy attempt as'"},
 		"js/repeater.js": {"resView.addEventListener('contextmenu'", "head: 'RESPONSE'"},
 		"js/tools.js":    {"function repShowEncodeCtx(e,el)", "openTextFieldCtxMenu(e,el,{payloadMarker:true", "head:'TAB · '"},

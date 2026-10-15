@@ -49,8 +49,15 @@
 .scan-progress progress{flex:0 1 240px;min-width:0;height:var(--sp-2);accent-color:var(--accent)}
 
 .scan-passive-view.split{height:auto;flex:1;min-height:0}
-.scan-passive-view.split>.scan-list-col{display:flex;flex-direction:column;background:var(--bg1)}
-.scan-list-col .scan-list{width:auto;flex:none;overflow:visible;border-right:0}
+.scan-passive-view.split>.scan-list-col{display:flex;flex-direction:column;background:var(--bg1);overflow:hidden}
+/* #scanList is the scroller of the windowed issue list (js/windowed-list.js, createListView): the
+   severity chips stay put above it, and the column no longer scrolls as a whole. */
+.scan-list-col .scan-list{width:auto;flex:1;min-height:0;overflow:auto;border-right:0}
+/* app.css's shared focus ring is (1,1,0) because of its :not(#inspectSplitter), so a class selector
+   loses to it and the ring would sit 2px outside the list, where the column's overflow:hidden clips it. */
+#scanList:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px;box-shadow:none}
+/* The same for the rows: a key-moved row sits flush against the scroller's edge, which clips an outside ring. */
+#scanList .scan-item:focus-visible{outline-offset:-3px;box-shadow:none}
 .scan-passive-view[data-mode="stack"] .scan-list{max-height:none}
 .scan-passive-view.split>.scan-detail-pane{display:block;border-right:0}
 
@@ -61,6 +68,12 @@
 .scan-sev-chip:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 .scan-item .sev .icon,.scan-wrap .sev .icon{width:1em;height:1em}
+/* A virtualized issue list (.vlist) needs every row at one fixed height, which is what lets the window
+   be computed (the first mounted row is measured). A title that does not fit is cut with an
+   ellipsis; the full text is the row's tooltip and the detail pane's heading. A short list is not
+   virtualized and keeps its natural rows, wrapped titles included. */
+.scan-list.vlist .scan-item{height:74px;overflow:hidden}
+.scan-list.vlist .scan-item .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scan-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin:var(--sp-3) 0 var(--sp-2)}
 .scan-title{flex:1;min-width:0;margin:0;font-size:var(--fs-2xl);font-weight:700;line-height:1.3}
 .scan-title:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
@@ -73,12 +86,14 @@
 .scan-tgt-evidence{margin-top:var(--sp-2)}
 .scan-tgt-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
 .scan-tgt-actions .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.scan-tgt-more{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin:var(--sp-2) 0 var(--sp-4)}
+.scan-tgt-more .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 @media (max-width:720px){
   .scan-progress{padding-inline:var(--sp-4)}
   .scan-tools-menu{min-width:min(240px,calc(100vw - 32px))}
 }
 @media (pointer:coarse){
-  .scan-tgt-actions .btn{min-height:var(--hit-min)}
+  .scan-tgt-actions .btn,.scan-tgt-more .btn{min-height:var(--hit-min)}
 }
 .icpt-autofwd{flex:none;padding:var(--sp-1) var(--sp-3);border-bottom:1px solid var(--line);font-size:var(--fs-xs)}

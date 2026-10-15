@@ -1,9 +1,11 @@
-import { $, requireFindingsEditing, findingsEditable, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon, openCtxMenu, openFlow } from './core.js';
+import { $, requireFindingsEditing, findingsEditable, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, saveFile, uiConfirm, renderLoadError, icon, openCtxMenu, openFlow } from './core.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
 import { renderState } from './statepanel.js';
 import { getShellApi } from './shell-hooks.js';
+import { createWindowedList } from './windowed-list.js';
+import { stepIndex } from './list-rows-model.js';
 import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
@@ -790,20 +792,89 @@ function renderScanChips(groups){
     return `<button type="button" class="scan-sev-chip" data-sev="${escAttr(severity)}" aria-pressed="${on?'true':'false'}">${icon(m.icon)} ${esc(m.label)} <b>${count}</b></button>`;
   }).join('');
 }
-export function renderScan(){
+/* ---- The issue list is windowed (createListView via windowed-list.js): a project with a great many
+   issue types keeps only the rows near the viewport in the DOM, and click / right-click / keys are
+   three delegated listeners on #scanList instead of three closures per row. Every row has one
+   fixed height (panel-scan.css), which is what lets the window be computed. Below SCAN_VIRT_MIN
+   rows everything is mounted exactly as before. ---- */
+const SCAN_VIRT_MIN=150;
+let scanListWin=null;
+function scanItemHTML(g,idx){
+  const on=idx===scanState.sel;
+  return `<div class="scan-item ${on?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" data-key="${escAttr(g.title)}" role="option" tabindex="${on?'0':'-1'}" aria-selected="${on?'true':'false'}" aria-posinset="${idx+1}" aria-setsize="${(scanState.groups||[]).length}">
+    ${sevChip(g.severity)}
+    <div class="t" title="${escAttr(g.title)}">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`;
+}
+function ensureScanListWin(list){
+  if(scanListWin&&scanListWin.container===list)return scanListWin;
+  if(scanListWin)scanListWin.destroy();
+  scanListWin=createWindowedList({
+    container:list,rowHeight:74,threshold:SCAN_VIRT_MIN,buffer:8,
+    rowSelector:'.scan-item',getItems:()=>scanState.groups||[],renderRow:scanItemHTML,
+    // A row is identified by its issue title, not its position: a scan that re-sorts the list while a row
+    // has focus must hand focus back to that issue, not to whichever issue now sits at its old index.
+    keyOf:row=>row.dataset.key,findRow:key=>[...list.querySelectorAll('.scan-item')].find(r=>r.dataset.key===key)||null,
+    indexOf:row=>Number(row.dataset.i),
+    onContainerKey:e=>moveScanSelection(e,scanState.sel),
+    on:{
+      click:row=>chooseScanIssue(Number(row.dataset.i)),
+      contextmenu:(row,e)=>{
+        e.preventDefault();
+        const i=Number(row.dataset.i);
+        chooseScanIssue(i);
+        showScanIssueCtx(e,(scanState.groups||[])[i]);
+      },
+      keydown:(row,e)=>{
+        if(e.key==='Enter'||e.key===' '){e.preventDefault();chooseScanIssue(Number(row.dataset.i));return;}
+        moveScanSelection(e,Number(row.dataset.i));
+      },
+    },
+  });
+  return scanListWin;
+}
+function chooseScanIssue(i){
+  const list=$('#scanList');
+  scanState.sel=i;renderScan();
+  const row=list.querySelector('#scan-issue-'+scanState.sel);
+  requestAnimationFrame(()=>row?.focus());
+  // Phones show one pane at a time: opening an issue pushes its detail.
+  if(scanUI.pane&&scanUI.pane.mode()==='stack')scanUI.pane.showDetail(row);
+}
+// Arrows wrap, Home/End and Page keys clamp. The next row may be outside the mounted window, so the
+// list is scrolled to it before it is rendered and focused.
+function moveScanSelection(e,from){
+  const count=(scanState.groups||[]).length;
+  const rowH=scanListWin?scanListWin.rowHeight():74;
+  const page=Math.max(1,Math.floor(($('#scanList')?.clientHeight||0)/rowH)-1);
+  const next=stepIndex({current:from,count,key:e.key,page,wrap:true});
+  if(next<0)return;
+  e.preventDefault();
+  const nextTitle=(scanState.groups||[])[next]?.title||'';
+  scanState.sel=next;
+  if(scanListWin)scanListWin.reveal(next);
+  // renderScan follows the issue that had focus; a move names the issue that should have it instead, or a
+  // long jump (End, Home, a wrap-around) would be carried back to the row it started from.
+  renderScan({focusTitle:nextTitle});
+  // Focus the new row now as well as next frame: a key repeating faster than a frame would otherwise
+  // land on the row the render just rebuilt and step from the wrong place.
+  $('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true});
+  requestAnimationFrame(()=>$('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true}));
+}
+export function renderScan(opts){
   const list=$('#scanList');
   const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||'';
   const focusedIssue=!!document.activeElement?.closest?.('#scanList .scan-item');
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
-  const focusedTitle=Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
+  const focusedTitle=opts&&typeof opts.focusTitle==='string'?opts.focusTitle:Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
   list.removeAttribute('data-state');
-  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';if(scanListWin)scanListWin.suspend();list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
   const all=groupIssues(scanState.issues);
   const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
   renderScanChips(all);
   $('#scanCount').textContent=summaryText(all,scanState.issues);
   if(!groups.length){
     scanState.sel=null;
+    if(scanListWin)scanListWin.suspend();
     renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size,onClear:()=>{scanUI.sevActive=new Set();renderScan();}});
     setScanDetailHTML(SCAN_NO_SELECTION);
     return;
@@ -811,37 +882,15 @@ export function renderScan(){
   const preservedSelection=previousSelectedTitle?groups.findIndex(group=>group.title===previousSelectedTitle):-1;
   if(preservedSelection>=0)scanState.sel=preservedSelection;
   else if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
-  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" role="option" tabindex="${idx===scanState.sel?'0':'-1'}" aria-selected="${idx===scanState.sel?'true':'false'}">
-    ${sevChip(g.severity)}
-    <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
-  list.querySelectorAll('.scan-item').forEach(el=>{
-    const choose=()=>{
-      scanState.sel=Number(el.dataset.i);renderScan();
-      const row=list.querySelector('#scan-issue-'+scanState.sel);
-      requestAnimationFrame(()=>row?.focus());
-      // Phones show one pane at a time: opening an issue pushes its detail.
-      if(scanUI.pane&&scanUI.pane.mode()==='stack')scanUI.pane.showDetail(row);
-    };
-    el.onclick=choose;wireRowKey(el);
-    el.oncontextmenu=e=>{e.preventDefault();choose();showScanIssueCtx(e,groups[Number(el.dataset.i)]);};
-    el.addEventListener('keydown',e=>{
-      if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
-      e.preventDefault();
-      const items=[...list.querySelectorAll('.scan-item')];
-      let next=Number(el.dataset.i);
-      if(e.key==='ArrowDown')next=(next+1)%items.length;
-      else if(e.key==='ArrowUp')next=(next-1+items.length)%items.length;
-      else if(e.key==='Home')next=0;
-      else next=items.length-1;
-      scanState.sel=next;
-      renderScan();
-      requestAnimationFrame(()=>list.querySelector('#scan-issue-'+next)?.focus());
-    });
-  });
+  ensureScanListWin(list).render();
   renderScanDetail();
   if(focusedTitle){
     const nextFocus=groups.findIndex(group=>group.title===focusedTitle);
-    if(nextFocus>=0)list.querySelector('#scan-issue-'+nextFocus)?.focus({preventScroll:true});
+    if(nextFocus>=0){
+      // The issue may have moved out of the mounted window (a re-sort): bring it back before focusing it.
+      if(!list.querySelector('#scan-issue-'+nextFocus)&&scanListWin&&scanListWin.reveal(nextFocus,{align:'center'}))scanListWin.refresh();
+      list.querySelector('#scan-issue-'+nextFocus)?.focus({preventScroll:true});
+    }
   }
 }
 function scanTargetRow(i,n,shared){
@@ -853,10 +902,27 @@ function scanTargetRow(i,n,shared){
     ${(!shared&&i.detail)?`<div class="scan-tgt-detail">${esc(i.detail)}</div>`:''}
     ${i.evidence?`<div class="evidence scan-tgt-evidence">${esc(i.evidence)}</div>`:''}${actions}</div>`;
 }
+// An issue's affected targets can run to thousands (one "Missing security response headers" target per
+// URL). They are cards of varying height, which a fixed-row window cannot mount, so the open issue
+// mounts the first SCAN_TARGET_PAGE and a Show more control reveals the rest a page at a time. Copy
+// "Affected targets" in the issue menu and Promote to Finding still use every target.
+const SCAN_TARGET_PAGE=100;
+let scanDetailGroup=null;  // the issue group the detail pane is showing
+let scanDetailShared=false;
+let scanTargetsShown=0;    // how many of its targets are mounted
+let scanTargetsTitle='';   // the issue scanTargetsShown belongs to
+function scanTargetsMoreHTML(total,shown){
+  if(shown>=total)return '';
+  const next=Math.min(SCAN_TARGET_PAGE,total-shown);
+  return `<div class="scan-tgt-more"><button type="button" class="btn" data-scan-more>Show ${next} more target${next===1?'':'s'}</button><span class="hint" role="status">Showing ${shown} of ${total} targets</span></div>`;
+}
 export function renderScanDetail(){
   const g=(scanState.groups||[])[scanState.sel];if(!g)return;
   const first=g.items[0];
   const shared=g.items.every(i=>i.detail===first.detail); // show a common description once
+  if(scanTargetsTitle!==g.title){scanTargetsTitle=g.title;scanTargetsShown=SCAN_TARGET_PAGE;}
+  scanDetailGroup=g;scanDetailShared=shared;
+  const shown=Math.min(g.items.length,scanTargetsShown);
   setScanDetailHTML(`<div class="scan-wrap">
     ${sevChip(g.severity)}
     <div class="scan-head">
@@ -865,15 +931,42 @@ export function renderScanDetail(){
     </div>
     ${(shared&&first.detail)?`<p class="scan-detail-text">${esc(first.detail)}</p>`:''}
     <div class="micro-label scan-sec-label">AFFECTED TARGETS (${g.items.length})</div>
-    ${g.items.map((i,n)=>scanTargetRow(i,n,shared)).join('')}
+    ${g.items.slice(0,shown).map((i,n)=>scanTargetRow(i,n,shared)).join('')}
+    ${scanTargetsMoreHTML(g.items.length,shown)}
     ${first.fix?`<div class="micro-label scan-sec-label">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`);
-  const detail=$('#scanDetail');
-  detail.querySelectorAll('[data-act]').forEach(b=>{
-    const issue=g.items[Number(b.dataset.n)];
-    b.onclick=()=>scanTargetAction(b.dataset.act,issue,b);
-  });
   const pm=$('#scanPromote'); if(pm){pm.onclick=()=>promoteFinding(g);if(promoteFindingPending)setPromoteFindingState(pm,'pending');}
 }
+// Show more appends the next page of cards in place, so focus, scroll position and the cards already
+// shown are untouched.
+function showMoreScanTargets(){
+  const g=scanDetailGroup,more=$('#scanDetail')?.querySelector('.scan-tgt-more');
+  if(!g||!more)return;
+  const total=g.items.length,from=Math.min(total,scanTargetsShown);
+  scanTargetsShown=Math.min(total,from+SCAN_TARGET_PAGE);
+  const last=more.previousElementSibling;
+  more.insertAdjacentHTML('beforebegin',g.items.slice(from,scanTargetsShown).map((i,k)=>scanTargetRow(i,from+k,scanDetailShared)).join(''));
+  const status=more.querySelector('.hint'),button=more.querySelector('[data-scan-more]');
+  if(scanTargetsShown>=total){
+    const firstNew=last?last.nextElementSibling:null;
+    more.remove();
+    // The control that had focus is gone; land on the first card that was just added (its first action, or
+    // the card itself when it has none) so Tab carries on from where the operator was, not from the title.
+    if(firstNew&&!firstNew.querySelector('[data-act]'))firstNew.tabIndex=-1;
+    (firstNew?.querySelector('[data-act]')||firstNew||$('#scanDetail')?.querySelector('.scan-title'))?.focus({preventScroll:true});
+    return;
+  }
+  const next=Math.min(SCAN_TARGET_PAGE,total-scanTargetsShown);
+  if(button)button.textContent='Show '+next+' more target'+(next===1?'':'s');
+  if(status)status.textContent='Showing '+scanTargetsShown+' of '+total+' targets';
+}
+// The per-target actions and Show more are two delegated listeners on the detail pane, so an issue
+// with thousands of targets binds nothing per card.
+$('#scanDetail')?.addEventListener('click',e=>{
+  if(e.target.closest?.('[data-scan-more]')){showMoreScanTargets();return;}
+  const b=e.target.closest?.('.scan-tgt-actions [data-act]');
+  if(!b||!scanDetailGroup)return;
+  scanTargetAction(b.dataset.act,scanDetailGroup.items[Number(b.dataset.n)],b);
+});
 // showScanIssueCtx — the scanner issue list used to swallow right-click. Every
 // action here already exists as a button; the menu just makes them reachable
 // from the row. Suppress / false-positive and "edit the check that fired" are
@@ -989,7 +1082,12 @@ try{
   if(root)scanUI.pane=createSplitPane({
     root,key:'scanner.split',orientation:'right',min:[240,320],default:34,stackBelow:720,scopeKey:projectStorageKey,
     label:'Resize scanner results and detail',backLabel:'Results',
-    onView:view=>{if(view==='list')requestAnimationFrame(()=>root.querySelector('.scan-item.sel')?.focus({preventScroll:true}));},
+    // Back from a detail view the list is shown again, scrolled to the top (a hidden element keeps no
+    // scroll offset), so bring the open issue back into the window before focusing it.
+    onView:view=>{if(view==='list')requestAnimationFrame(()=>{
+      if(scanListWin&&scanState.sel!=null&&scanListWin.reveal(scanState.sel,{align:'center'}))scanListWin.refresh();
+      root.querySelector('.scan-item.sel')?.focus({preventScroll:true});
+    });},
   });
 }catch(e){/* the plain flex layout still works without the split */}
 // Tools menu: a disclosure holding the modal-backed tools (Checks, Codecs,

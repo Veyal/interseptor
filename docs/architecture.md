@@ -236,7 +236,7 @@ state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (B
 `statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js`,
 `finder.js`, the `bus.js` event bus, and `core.js`'s `createListView` — the one windowed-list
 renderer with container-level event delegation (built on the pure `virtual-list-model.js` windowing
-math) that now backs Intruder results and the WebSocket frame list. The Decoder is a slide-up bottom
+math) that now backs Intruder results and the WebSocket frame list; `windowed-list.js` (with its `list-rows-model.js`) layers group headers and a sticky header on top of it for the Findings and Scanner-issue lists, so a project with thousands of findings or issues renders a bounded window of rows. The Decoder is a slide-up bottom
 "Convert" drawer reachable anywhere with `Cmd/Ctrl+J`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
 conversion, a promise-valued `ClipboardItem`, secure-context fallbacks). `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.

@@ -49,6 +49,24 @@
 .find-group{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-4);background:var(--bg1);border-bottom:1px solid var(--line);font-family:var(--mono);font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--fg3)}
 .find-group .bar{width:14px;height:2px;background:var(--sv)}
 .find-group .n{margin-left:auto;font-variant-numeric:tabular-nums}
+/* The list is windowed (createListView, js/windowed-list.js): once it is virtualized (.vlist) the
+   window arithmetic needs every row at one fixed height, and the row is measured, so the height is
+   set once here. A finding row is --find-row-h (what min-height:50px always made it) and a severity
+   header becomes the same height, because headers are rows of the flat list then. A short list is
+   not virtualized and keeps its natural rows and sticky headers untouched. */
+#findList{--find-row-h:50px}
+#findList.vlist .find-row{height:var(--find-row-h);overflow:hidden}
+#findList.vlist .find-group{position:relative;height:var(--find-row-h)}
+/* A virtualized list unmounts the current group's own header as it scrolls, so one pinned copy
+   (aria-hidden; the real headers stay in the tree) is drawn over the top. The zero-height sticky
+   wrapper keeps it out of the row flow; the header inside is offset by the next group's push. */
+.find-sticky{position:sticky;top:0;z-index:2;height:0;overflow:visible}
+#findList.vlist .find-sticky .find-group{position:absolute;left:0;right:0;top:0;height:var(--find-row-h)}
+#findList:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px;box-shadow:none}
+/* A keyboard move leaves the row flush against the list's edge or under the pinned header, so the shared
+   2px-outside ring (app.css, (1,1,0): it beats .find-browser .find-row:focus-visible above) would be clipped
+   by the scroller on three sides. Inside the row it is always whole. */
+#findList .find-row:focus-visible{outline-offset:-3px;box-shadow:none}
 .find-outside-filter{display:grid;gap:8px;padding:10px 12px;font-size:var(--fs-xs);color:var(--fg3);border-bottom:1px solid var(--line)}
 .find-outside-filter button{justify-self:start}
 .find-view.is-empty .find-browser{width:100%;border-right:0}

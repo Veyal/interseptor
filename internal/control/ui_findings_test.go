@@ -141,7 +141,8 @@ func TestUIFindingsEvidenceTrayContract(t *testing.T) {
 // the list (500 findings must not repaint on every event).
 func TestUIFindingsListUsesKeyedRender(t *testing.T) {
 	src := readUIAsset(t, "js/findings.js")
-	requireUIContains(t, src, "function findingRowKey(f)", "box.dataset.listKey !== listKey", "if (rowsChanged) box.querySelectorAll('.find-row')", "delete box.dataset.listKey")
+	// A changed key re-windows the list; an unchanged one leaves the mounted rows (and focus) alone.
+	requireUIContains(t, src, "function findingRowKey(f)", "box.dataset.listKey !== listKey", "if (rowsChanged) {", "ensureFindListWin(box).render()", "delete box.dataset.listKey")
 	start := strings.Index(src, "function findingRowKey(f)")
 	end := strings.Index(src[start:], "function renderFindings()")
 	for _, field := range []string{"f.id", "f.title", "f.severity", "f.status", "f.target", "findingPocCount(f)", "r.stage", "r.gaps"} {

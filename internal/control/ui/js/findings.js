@@ -17,6 +17,8 @@ import { readinessMeterHTML } from './readiness-meter.js';
 import { evidenceTrayHTML, wireEvidenceTray, showUndoToast } from './evidence-tray.js';
 import { createSplitPane } from './split.js';
 import { projectState } from './project-state.js';
+import { createWindowedList } from './windowed-list.js';
+import { buildRows, stepIndex, stickyState } from './list-rows-model.js';
 
 // Generated (never real visual proof) image sources, including evidence_render.
 const GENERATED_SOURCES = ['flow_preview', 'generated_image', 'evidence_render'];
@@ -543,6 +545,178 @@ function findingRowKey(f) {
   const r = f.readiness;
   return [f.id, f.title, f.severity, f.status, f.target || '', f.cwe || '', f.targets?.length || f.targetCount || 0, findingPocCount(f), findingHasScreenshot(f) ? 'img' : '', r ? r.stage : '', r && Array.isArray(r.gaps) ? r.gaps.join(',') : '', findingsEditable() ? 'rw' : 'ro'].join('\u0001');
 }
+
+/* ---- The list is windowed. createListView (via windowed-list.js) mounts only the rows near
+   the viewport, so a project with thousands of findings keeps a handful of rows in the DOM.
+   Severity group headers are folded into the one flat row list as rows of the same height; a
+   copy of the current header is drawn pinned over the top (the headers themselves scroll away
+   with their window, so position:sticky cannot do it). Click, right-click and keys are three
+   delegated listeners on #findList; a row carries no handler of its own. Below FIND_VIRT_MIN
+   rows everything is mounted and the headers are plain sticky elements. ---- */
+const FIND_VIRT_MIN = 150;
+let findListWin = null;
+let findRowModel = { rows: [], itemRow: [], groupRows: [] };
+let findOrder = [];                // the visible findings, in display order
+let findOrderIndex = new Map();    // finding id → position in findOrder
+let findTabId = null;              // the row that carries the roving tab stop
+let findRevealedId = null;         // the open finding the list was last scrolled to
+let findRevealPending = false;
+let findSticky = null;             // the pinned header drawn over a virtualized, grouped list
+
+function setFindingRows(list) {
+  findOrder = list;
+  findOrderIndex = new Map(list.map((f, i) => [f.id, i]));
+  findRowModel = buildRows(list, findGroupBySeverity ? f => severityKey(f.severity) : null);
+}
+const findRowHTML = row => row.kind === 'group'
+  ? findingGroupHeaderHTML(row.key, row.count)
+  : findingRowHTML(row.item, row.item.id === findTabId);
+
+function ensureFindListWin(box) {
+  if (findListWin && findListWin.container === box) return findListWin;
+  if (findListWin) findListWin.destroy();
+  findListWin = createWindowedList({
+    container: box, rowHeight: 50, threshold: FIND_VIRT_MIN, buffer: 8,
+    rowSelector: '.find-row', getItems: () => findRowModel.rows, renderRow: findRowHTML,
+    keyOf: row => row.dataset.id, findRow: id => box.querySelector(`.find-row[data-id="${id}"]`),
+    // Where the one tab stop goes when the open row is not mounted: the first row in the viewport.
+    indexOf: row => { const k = findOrderIndex.get(Number(row.dataset.id)); return k === undefined ? -1 : findRowModel.itemRow[k]; },
+    topInset: () => (findGroupBySeverity && findListWin ? findListWin.rowHeight() : 0),
+    onWindow: (win, scrollTop) => { syncFindStickyHeader(win, scrollTop); flushFindReveal(); },
+    onContainerKey: event => moveFindingByKey(event, selFinding),
+    on: {
+      click: (row, event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        selectFindingRow(Number(row.dataset.id), true);
+      },
+      contextmenu: (row, event) => { event.preventDefault(); showFindingRowCtx(event, Number(row.dataset.id)); },
+      keydown: (row, event) => onFindingRowKey(row, event),
+    },
+  });
+  return findListWin;
+}
+
+function selectFindingRow(id, moveToDetail) {
+  findingNavigationEpoch++;
+  if (id !== selFinding) { findEditMode = false; findSection = 'overview'; }
+  selFinding = id;
+  findRevealedId = id; // it was just clicked or entered, so it is already in view
+  rememberFindingRoute(id);
+  $('#findList')?.classList.remove('find-mobile-list-visible');
+  $('#findDetail')?.classList.add('find-mobile-detail-visible');
+  renderFindings();
+  if (moveToDetail) setTimeout(() => {
+    const target = window.matchMedia('(max-width:600px)').matches ? $('#findBackToList') : $('#findTitleText');
+    target?.focus({ preventScroll: true });
+  }, 0);
+}
+
+function onFindingRowKey(row, event) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const id = Number(row.dataset.id);
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectFindingRow(id, true); return; }
+  moveFindingByKey(event, id);
+}
+
+// Arrows, Home/End and Page keys move the open finding. The next row may be outside the
+// mounted window, so the list is scrolled to it before it is rendered and focused.
+function moveFindingByKey(event, fromId) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const rowH = findListWin ? findListWin.rowHeight() : 50;
+  const page = Math.max(1, Math.floor(($('#findList')?.clientHeight || 0) / rowH) - 1);
+  const next = stepIndex({ current: findOrderIndex.has(fromId) ? findOrderIndex.get(fromId) : -1, count: findOrder.length, key: event.key, page });
+  if (next < 0) return;
+  event.preventDefault();
+  selFinding = findOrder[next].id;
+  findRevealedId = selFinding;
+  findingNavigationEpoch++;
+  findEditMode = false;
+  findSection = 'overview';
+  rememberFindingRoute(selFinding);
+  revealFinding(selFinding, 'nearest');
+  renderFindings();
+  // Focus the new row now, not on a later tick: the render rebuilt the old row's DOM, and a key
+  // repeating faster than the timer would otherwise land on it and step from the wrong place.
+  focusFindingRow(selFinding);
+  setTimeout(() => $('#findList')?.querySelector(`.find-row[data-id="${selFinding}"]`)?.focus({ preventScroll: true }), 0);
+}
+
+// revealFinding scrolls #findList so a finding's row is visible (it is not mounted until it is).
+// Grouped, the pinned header covers the first row of the viewport, so that row is not "visible".
+function revealFinding(id, align) {
+  const win = findListWin;
+  const k = findOrderIndex.get(id);
+  if (!win || k === undefined) return false;
+  return win.reveal(findRowModel.itemRow[k], { align, inset: findStickyInset(win) });
+}
+// The height of the header that covers the top of the viewport: one row when virtualized (the
+// pinned copy), otherwise the natural height of the first sticky header.
+function findStickyInset(win) {
+  if (!findGroupBySeverity) return 0;
+  return win.isVirtual() ? win.rowHeight() : (win.container.querySelector('.find-group')?.offsetHeight || 0);
+}
+
+function flushFindReveal() {
+  // A filter can hide the open finding (a deep link opened under one). The reveal waits until it is
+  // in the list; this check is a Map lookup because it runs on every scroll frame while pending.
+  if (!findRevealPending || !findOrderIndex.has(selFinding)) return;
+  const win = findListWin;
+  if (!win || !win.container.clientHeight) return; // hidden: retried when the list is shown
+  findRevealPending = false;
+  if (revealFinding(selFinding, 'center')) win.refresh();
+}
+
+// focusFindingRow focuses a finding's row, scrolling it into the window first if need be.
+function focusFindingRow(id) {
+  // Re-window even when nothing scrolled: the list may only just have been shown again (the phone's
+  // Back button), when its mounted rows can still be the ones for a different viewport.
+  revealFinding(id, 'center');
+  if (findListWin) findListWin.refresh();
+  const box = $('#findList');
+  // A filter can hide the open finding, leaving no row for it: land on the list's tab stop (or the
+  // list itself) rather than on a control that is about to disappear.
+  (box?.querySelector(`.find-row[data-id="${id}"]`) || box?.querySelector('.find-row[tabindex="0"]') || box)?.focus({ preventScroll: true });
+}
+
+function buildFindSticky(box) {
+  const root = document.createElement('div');
+  root.className = 'find-sticky';
+  root.setAttribute('aria-hidden', 'true');
+  root.hidden = true;
+  const head = document.createElement('div');
+  const bar = document.createElement('span');
+  bar.className = 'bar';
+  const label = document.createElement('span');
+  const count = document.createElement('span');
+  count.className = 'n';
+  head.append(bar, label, count);
+  root.append(head);
+  box.insertBefore(root, box.firstChild);
+  return { root, head, label, count, stamp: '' };
+}
+
+// syncFindStickyHeader draws (or hides) the pinned copy of the current severity header. The
+// real headers are ordinary rows; this one is a single element updated from the scroll offset.
+function syncFindStickyHeader(win, scrollTop) {
+  const on = win.isVirtual() && findGroupBySeverity && findRowModel.groupRows.length > 0;
+  if (!on) { if (findSticky) findSticky.root.hidden = true; return; }
+  if (!findSticky || findSticky.root.parentNode !== win.container) findSticky = buildFindSticky(win.container);
+  const h = win.rowHeight();
+  const state = stickyState({ groupRows: findRowModel.groupRows, scrollTop, rowH: h, stickyH: h });
+  if (!state) { findSticky.root.hidden = true; return; }
+  const group = findRowModel.rows[state.group];
+  const stamp = group.key + ':' + group.count;
+  if (findSticky.stamp !== stamp) {
+    findSticky.stamp = stamp;
+    findSticky.head.className = 'find-group find-row-sev-' + group.key;
+    findSticky.label.textContent = group.key;
+    findSticky.count.textContent = String(group.count);
+  }
+  findSticky.head.style.transform = state.offset ? 'translateY(' + state.offset + 'px)' : '';
+  findSticky.root.hidden = false;
+}
+
 function renderFindings() {
   syncFindingsEditChrome();
   const box = $('#findList'); if (!box) return;
@@ -565,6 +739,8 @@ function renderFindings() {
   if (!findings.length) {
     setFindingsViewEmpty(true);
     delete box.dataset.listKey;
+    setFindingRows([]);
+    if (findListWin) findListWin.suspend();
     box.innerHTML = findingsEmptyHTML();
     wireFindingsEmptyActions(box);
     selFinding = null;
@@ -575,6 +751,8 @@ function renderFindings() {
   setFindingsViewEmpty(false);
   if (!list.length) {
     delete box.dataset.listKey;
+    setFindingRows([]);
+    if (findListWin) findListWin.suspend();
     box.innerHTML = `<div class="state-empty find-empty"><div class="state-empty-title">No matching findings</div><p class="state-empty-hint">Try another search or clear the filters.</p><button type="button" class="btn" id="findClearTagFilter">Clear filters</button></div>`;
     const clr = box.querySelector('#findClearTagFilter');
     if (clr) clr.onclick = () => { resetFindingFilters(); renderFindings(); };
@@ -586,53 +764,15 @@ function renderFindings() {
   const rowsChanged = box.dataset.listKey !== listKey;
   if (rowsChanged) {
     box.dataset.listKey = listKey;
-    const focusable = list.some(x => x.id === selFinding);
-    const counts = {};
-    for (const f of list) counts[severityKey(f.severity)] = (counts[severityKey(f.severity)] || 0) + 1;
-    let group = '';
-    box.innerHTML = list.map((f, i) => {
-      const key = severityKey(f.severity);
-      const head = findGroupBySeverity && key !== group ? findingGroupHeaderHTML(key, counts[key]) : '';
-      group = key;
-      return head + findingRowHTML(f, f.id === selFinding || (!focusable && i === 0));
-    }).join('');
+    // The roving tab stop sits on the open finding, or on the first row when a filter hides it.
+    findTabId = list.some(x => x.id === selFinding) ? selFinding : list[0].id;
+    setFindingRows(list);
+    ensureFindListWin(box).render();
   }
-  const selectRow = (id, moveToDetail) => {
-    findingNavigationEpoch++;
-    if (id !== selFinding) { findEditMode = false; findSection = 'overview'; }
-    selFinding = id;
-    rememberFindingRoute(id);
-    $('#findList')?.classList.remove('find-mobile-list-visible');
-    $('#findDetail')?.classList.add('find-mobile-detail-visible');
-    renderFindings();
-    if (moveToDetail) setTimeout(() => {
-      const target = window.matchMedia('(max-width:600px)').matches ? $('#findBackToList') : $('#findTitleText');
-      target?.focus({ preventScroll: true });
-    }, 0);
-  };
-  if (rowsChanged) box.querySelectorAll('.find-row').forEach(el => {
-    el.oncontextmenu = event => { event.preventDefault(); showFindingRowCtx(event, Number(el.dataset.id)); };
-    el.onclick = event => { if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return; event.preventDefault(); selectRow(Number(el.dataset.id), true); };
-    el.onkeydown = event => {
-      if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectRow(Number(el.dataset.id), true); return; }
-      const current = list.findIndex(f => f.id === Number(el.dataset.id));
-      let next = current;
-      if (event.key === 'ArrowDown') next = Math.min(list.length - 1, current + 1);
-      else if (event.key === 'ArrowUp') next = Math.max(0, current - 1);
-      else if (event.key === 'Home') next = 0;
-      else if (event.key === 'End') next = list.length - 1;
-      else return;
-      event.preventDefault();
-      selFinding = list[next].id;
-      findingNavigationEpoch++;
-      findEditMode = false;
-      findSection = 'overview';
-      rememberFindingRoute(selFinding);
-      renderFindings();
-      setTimeout(() => box.querySelector(`.find-row[data-id="${selFinding}"]`)?.focus({ preventScroll: true }), 0);
-    };
-  });
+  // A finding opened from elsewhere (a link, a new finding, a delete) scrolls into view; one the
+  // operator just clicked or arrowed to is already there. Rows that are not mounted cannot be seen.
+  if (selFinding !== findRevealedId) { findRevealedId = selFinding; findRevealPending = true; }
+  flushFindReveal();
   if (findingDetailEditPending() && selFinding === bodyFindingId) findingDetailRefreshDeferred = true;
   else { findingDetailRefreshDeferred = false; renderFindingDetail(); }
 }
@@ -1526,7 +1666,7 @@ function renderFindingDetail() {
     $('#findList')?.classList.add('find-mobile-list-visible');
     box.classList.remove('find-mobile-detail-visible');
     if(location.hash!=='#findings')history.pushState(null,'','#findings');
-    setTimeout(() => document.querySelector(`.find-row[data-id="${selFinding}"]`)?.focus({ preventScroll: true }), 0);
+    setTimeout(() => focusFindingRow(selFinding), 0);
   });
 
   bodyFindingId = f.id;
