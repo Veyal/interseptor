@@ -1,7 +1,7 @@
 // authz.js — authorization (access-control) testing. Replays captured request(s)
 // under each saved identity (role) and diffs responses to surface IDOR / broken
 // access control. Launched from History right-click or command palette.
-import { $, esc, escAttr, state, api, toast, toastError, openModal, closeModal, statusColor, fmtSize, wireRowKey, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, api, toast, toastError, openModal, closeModal, statusColor, fmtSize, wireRowKey, renderLoadError, copyPreviewPng } from './core.js';
 import { selectFlow, refreshAuthzIds } from './proxy.js';
 
 let authzFlowId = null;
@@ -345,12 +345,18 @@ function renderAuthzMatrix(runs){
 // authzImageButton is the "Render image" action for a captured run: the server
 // keeps the last runs in memory and returns a runId for them.
 function authzImageButton(d){
-  return d&&d.runId?'<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image</button>':'';
+  if(!(d&&d.runId))return '';
+  // Two affordances, one renderer: preview (inspect, download, attach) and a
+  // single click that puts the matrix straight on the clipboard.
+  return '<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image</button>'
+    +'<button class="btn xs" id="authzCopyMatrixPng" aria-label="Copy this authorization matrix as a PNG image" title="Copy the matrix straight to the clipboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy matrix as PNG</button>';
 }
 function wireAuthzImageButton(d){
   const b=$('#authzRenderImage');
   if(!b||!d.runId)return;
   b.onclick=()=>import('./evidence-render.js').then(m=>{const p=m.authzPreview(d.runId);return m.open(p.kind,p.params,{opener:b});}).catch(e=>toastError('Render failed',e));
+  const c=$('#authzCopyMatrixPng');
+  if(c)c.onclick=()=>copyPreviewPng('/api/render/authz/'+encodeURIComponent(d.runId)+'.png','authz-matrix-'+d.runId);
 }
 function renderAuthzResults(d){
   const runs=d.runs||[];

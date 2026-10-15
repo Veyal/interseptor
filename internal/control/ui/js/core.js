@@ -8,6 +8,7 @@
 
 import { placeFloatingSurface } from './surface-position.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
+import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -1470,74 +1471,456 @@ export function countListLines(text, ignoreComments=false){
   return parseListLines(text, {ignoreComments}).length;
 }
 
-/* ---- shared right-click context menu (#ctxmenu) ---- */
+/* ---- shared right-click context menu (#ctxmenu) ----
+   One engine renders every right-click menu in the UI. A menu is sections of
+   items; an item with `children` becomes a cascading flyout, so a surface with
+   thirty actions is seven categorised roots instead of a flat list with its own
+   scrollbar. The root panel is #ctxmenu; each open flyout is its own panel
+   appended to <body> (the root scrolls, so a nested child would be clipped).
+   See js/ctxmenu-model.js for the geometry, keyboard and menu-model rules. */
+let ctxPanels=[];          // [{el, rows, sel, depth, parentRow}] root first
+let ctxHoverTimer=null;
+let ctxReturnFocus=null;
+let ctxReturnTrigger=null;
+
+// ctxMenuContains reports whether a node sits in the open menu — root panel or
+// any flyout. Outside-click dismissal must use this, not #ctxmenu.contains().
+export function ctxMenuContains(node){
+  if(!node)return false;
+  return ctxPanels.some(p=>p.el===node||p.el.contains(node));
+}
+export function ctxMenuOpen(){return ctxPanels.length>0;}
+
+function ctxClearHoverTimer(){if(ctxHoverTimer){clearTimeout(ctxHoverTimer);ctxHoverTimer=null;}}
+
+// ctxClosePanelsFrom tears down every panel at `depth` and deeper.
+function ctxClosePanelsFrom(depth){
+  for(let i=ctxPanels.length-1;i>=Math.max(1,depth);i--){
+    const p=ctxPanels[i];
+    if(p.parentRow){p.parentRow.setAttribute('aria-expanded','false');p.parentRow.classList.remove('ctx-open');}
+    p.el.remove();
+    ctxPanels.pop();
+  }
+}
+
 export function hideCtxMenu({restoreFocus=false}={}){
   const ctx=$('#ctxmenu');if(!ctx)return;
   const wasOpen=ctx.classList.contains('show');
-  if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
+  ctxClearHoverTimer();
+  ctxClosePanelsFrom(1);
+  ctxPanels=[];
   ctx.classList.remove('show');ctx._acts=null;
   ctx.removeAttribute('data-motion-side');
-  if(ctx._returnTrigger?.isConnected)ctx._returnTrigger.setAttribute('aria-expanded','false');
-  if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
-    ctx._returnFocus?.focus({preventScroll:true});
+  if(ctxReturnTrigger?.isConnected)ctxReturnTrigger.setAttribute('aria-expanded','false');
+  if(restoreFocus&&wasOpen&&ctxReturnFocus?.isConnected&&typeof ctxReturnFocus.focus==='function'){
+    ctxReturnFocus?.focus({preventScroll:true});
   }
-  ctx._returnFocus=null;ctx._returnTrigger=null;
+  ctxReturnFocus=null;ctxReturnTrigger=null;
 }
 
+// ctxItemHTML renders one row. Labels are escaped, so markup cannot be smuggled
+// through it.label — the icon has to be its own field (it.icon names a sprite
+// symbol). A row with children gets the chevron and the menu ARIA that says so.
+function ctxItemHTML(it,i){
+  const kids=hasChildren(it);
+  const dStyle=it.danger?' style="color:var(--red)"':'';
+  const val=it.val!=null&&it.val!==''?String(it.val):(it.hint||'');
+  const right=val?`<span class="mono ctx-value"${dStyle}>${esc(val)}</span>`:'';
+  const glyph=it.icon?icon(it.icon):'';
+  const arrow=kids?`<span class="ctx-arrow" aria-hidden="true">${icon('chevron')}</span>`:'';
+  const cls=['ctx-item'];
+  if(right)cls.push('ctx-has-value');
+  if(kids)cls.push('ctx-has-sub');
+  if(it.on)cls.push('on');
+  if(it.disabled)cls.push('ctx-disabled');
+  const aria=kids?' aria-haspopup="menu" aria-expanded="false"':'';
+  const dis=it.disabled?' aria-disabled="true"':'';
+  return `<div class="${cls.join(' ')}" role="menuitem" tabindex="-1" data-i="${i}"${aria}${dis}${it.danger&&!right?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}${arrow}</div>`;
+}
+
+// ctxPaintPanel fills a panel element and returns its focusable rows, each
+// carrying the item it renders (`row._item`).
+function ctxPaintPanel(el,sections){
+  let html='';let i=0;
+  for(const sec of sections){
+    if(sec.head)html+=`<div class="ctx-head">${esc(sec.head)}</div>`;
+    for(const it of sec.items){
+      if(it.sep){html+='<div class="ctx-sep"></div>';continue;}
+      html+=ctxItemHTML(it,i++);
+    }
+  }
+  el.innerHTML=html;
+  const items=menuRows(sections);
+  const rows=Array.from(el.querySelectorAll('.ctx-item'));
+  rows.forEach((row,n)=>{row._item=items[n];});
+  return rows;
+}
+
+function ctxViewport(){
+  const vv=window.visualViewport;
+  return {width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+}
+
+// ctxPaintSel highlights the current row of one panel. Focus moves only when
+// asked, so hovering does not steal it from a keyboard walk.
+function ctxPaintSel(depth,moveFocus=false){
+  const p=ctxPanels[depth];if(!p)return;
+  p.rows.forEach((el,i)=>{const on=i===p.sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});
+  const cur=p.rows[p.sel];
+  if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}
+}
+
+// ctxOpenSubmenu renders the flyout for row `idx` of panel `depth`, beside its
+// parent and flipped to the left when the right edge is too close.
+function ctxOpenSubmenu(depth,idx,{focus=false}={}){
+  const parent=ctxPanels[depth];if(!parent)return;
+  const row=parent.rows[idx];const it=row&&row._item;
+  if(!it||it.disabled||!hasChildren(it))return;
+  const open=ctxPanels[depth+1];
+  if(open&&open.parentRow===row){if(focus)ctxFocusRow(depth+1,0);return;}
+  ctxClosePanelsFrom(depth+1);
+  const sections=childSections(it);
+  if(!sections.length)return;
+  const el=document.createElement('div');
+  el.className='ctx-submenu';
+  el.setAttribute('role','menu');
+  el.setAttribute('aria-label',it.label||'Submenu');
+  document.body.appendChild(el);
+  const rows=ctxPaintPanel(el,sections);
+  // Measure at natural width before placing, exactly as the root does.
+  el.style.left='0px';el.style.top='0px';el.style.width='max-content';el.style.maxHeight='none';
+  el.classList.add('show');
+  const box=el.getBoundingClientRect();
+  const place=submenuPlacement({parent:parent.el.getBoundingClientRect(),item:row.getBoundingClientRect(),width:box.width,height:box.height,viewport:ctxViewport()});
+  el.style.left=place.left+'px';el.style.top=place.top+'px';el.style.width=place.width+'px';el.style.maxHeight=place.maxHeight+'px';
+  el.dataset.ctxSide=place.side;
+  row.setAttribute('aria-expanded','true');row.classList.add('ctx-open');
+  ctxPanels.push({el,rows,sel:0,depth:depth+1,parentRow:row});
+  // A flyout is a fresh element every time it opens, so it is wired here; the
+  // root is wired once because it is the one panel that outlives a menu.
+  ctxWirePanel(depth+1,el);
+  ctxPaintSel(depth+1,focus);
+}
+
+function ctxFocusRow(depth,idx){
+  const p=ctxPanels[depth];if(!p||!p.rows.length)return;
+  p.sel=Math.max(0,Math.min(p.rows.length-1,idx));
+  ctxPaintSel(depth,true);
+}
+
+// ctxRunRow executes a row's action. The menu closes first so the action can
+// open its own modal or menu without being torn down by the dismissal.
+function ctxRunRow(depth,idx){
+  const p=ctxPanels[depth];if(!p)return;
+  const row=p.rows[idx];const it=row&&row._item;
+  if(!it||it.disabled)return;
+  if(hasChildren(it)){ctxOpenSubmenu(depth,idx,{focus:true});return;}
+  const fn=it.act;
+  hideCtxMenu({restoreFocus:true});
+  if(fn)fn();
+}
+
+function ctxRowIndex(depth,target){
+  const p=ctxPanels[depth];if(!p)return -1;
+  const row=target&&target.closest?target.closest('.ctx-item'):null;
+  return row?p.rows.indexOf(row):-1;
+}
+
+// ctxWirePanel gives a panel its pointer behaviour: click runs or opens, and a
+// 120 ms rest opens a flyout (or closes a stale one) so a diagonal sweep towards
+// an open flyout never swaps it out from under the pointer.
+function ctxWirePanel(depth,el){
+  el.addEventListener('click',e=>{
+    const i=ctxRowIndex(depth,e.target);
+    if(i<0)return;
+    e.preventDefault();e.stopPropagation();
+    ctxRunRow(depth,i);
+  });
+  el.addEventListener('pointermove',e=>{
+    const i=ctxRowIndex(depth,e.target);
+    if(i<0)return;
+    const p=ctxPanels[depth];if(!p||p.sel===i&&ctxHoverTimer)return;
+    p.sel=i;ctxPaintSel(depth);
+    ctxClearHoverTimer();
+    const row=p.rows[i];const it=row&&row._item;
+    ctxHoverTimer=setTimeout(()=>{
+      ctxHoverTimer=null;
+      if(!ctxPanels[depth]||ctxPanels[depth].rows[i]!==row)return;
+      if(it&&hasChildren(it)&&!it.disabled)ctxOpenSubmenu(depth,i);
+      else ctxClosePanelsFrom(depth+1);
+    },SUBMENU_HOVER_MS);
+  });
+}
+
+// ctxKeyHandler is registered once, at module load, so it runs before the
+// feature modules' own Escape handlers: ArrowLeft/Escape inside a flyout must
+// close that one level, not the whole menu.
+function ctxKeyHandler(e){
+  if(!ctxPanels.length)return;
+  if(e.defaultPrevented)return;
+  const depth=ctxPanels.length-1;
+  const p=ctxPanels[depth];
+  const row=p.rows[p.sel];const it=row&&row._item;
+  const action=menuKeyAction(e.key,{children:hasChildren(it)&&!it?.disabled,depth});
+  if(!action)return;
+  // Tab keeps its meaning: focus leaves the menu, so the menu closes with it.
+  if(e.key==='Tab'){hideCtxMenu();return;}
+  e.preventDefault();e.stopImmediatePropagation();
+  switch(action){
+    case 'next':case 'prev':case 'first':case 'last':
+      p.sel=nextIndex(p.sel,p.rows.length,action);
+      ctxClosePanelsFrom(depth+1);
+      ctxPaintSel(depth,true);
+      break;
+    case 'open':ctxOpenSubmenu(depth,p.sel,{focus:true});break;
+    case 'close':
+      ctxClosePanelsFrom(depth);
+      if(ctxPanels.length)ctxPaintSel(ctxPanels.length-1,true);
+      break;
+    case 'activate':ctxRunRow(depth,p.sel);break;
+    case 'dismiss':hideCtxMenu({restoreFocus:true});break;
+  }
+}
+document.addEventListener('keydown',ctxKeyHandler);
+
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
+// An item may carry `children` (a flat item list, or [{head,items}] groups) to
+// become a cascading flyout instead of another root-level row.
 export function openCtxMenu(x,y,sections,trigger=null){
   const ctx=$('#ctxmenu');if(!ctx)return;
   closeAllUiSelects(); // ctx/Views menus and ui-select dropdowns are one mutually-exclusive group
   hideCtxMenu();
-  ctx._returnFocus=trigger||document.activeElement;
-  ctx._returnTrigger=trigger||null;
+  const secs=normalizeSections(sections);
+  if(!secs.length)return;
+  ctxReturnFocus=trigger||document.activeElement;
+  ctxReturnTrigger=trigger||null;
   if(trigger){trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','true');}
   ctx.setAttribute('role','menu');
-  const acts=[];let html='';
-  sections.forEach(sec=>{
-    const items=(sec.items||[]).filter(Boolean);
-    if(!items.length)return;
-    if(sec.head)html+=`<div class="ctx-head">${esc(sec.head)}</div>`;
-    items.forEach(it=>{
-      if(it.sep){html+='<div class="ctx-sep"></div>';return;}
-      const dStyle=it.danger?' style="color:var(--red)"':'';
-      const right=it.val!=null?`<span class="mono ctx-value"${dStyle}>${esc(it.val)}</span>`:'';
-      // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
-      // smuggled through it.label — the icon has to be its own field.
-      const glyph=it.icon?icon(it.icon):'';
-      html+=`<div class="ctx-item${right?' ctx-has-value':''}${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}</div>`;
-      acts.push(it.act);
-    });
-  });
-  if(!acts.length)return;
-  ctx.innerHTML=html;ctx._acts=acts;ctx._sel=0;
-  const items=ctx.querySelectorAll('.ctx-item');
-  items.forEach((el,i)=>el.classList.toggle('on',i===0));
-  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu({restoreFocus:true});if(fn)fn();});
+  const rows=ctxPaintPanel(ctx,secs);
+  if(!rows.length)return;
+  if(!ctx._ctxWired){ctxWirePanel(0,ctx);ctx._ctxWired=true;}
   // Measure this menu afresh: the previous menu's constrained width must not
   // squeeze the next menu, and wrapping must settle before height placement.
   ctx.style.left='0px';ctx.style.top='0px';ctx.style.width='max-content';ctx.style.maxHeight='none';ctx.classList.add('show');
   const anchor=trigger?.getBoundingClientRect?.()||{left:x,top:y,right:x,bottom:y};
-  const vv=window.visualViewport;
-  const viewport={width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+  const viewport=ctxViewport();
   ctx.style.width=Math.min(ctx.getBoundingClientRect().width,Math.max(0,viewport.width-16))+'px';
   const size=ctx.getBoundingClientRect();
   const placement=placeFloatingSurface(anchor,size.width,size.height,viewport);
   ctx.style.left=placement.left+'px';ctx.style.top=placement.top+'px';ctx.style.width=placement.width+'px';ctx.style.maxHeight=placement.maxHeight+'px';
-  const paintSel=(moveFocus=false)=>{items.forEach((el,i)=>{const on=i===ctx._sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});const cur=items[ctx._sel];if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}};
-  ctx._keyHandler=e=>{
-    if(!ctx.classList.contains('show'))return;
-    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel(true);}
-    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel(true);}
-    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu({restoreFocus:true});if(fn)fn();}
-    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu({restoreFocus:true});}
-    else if(e.key==='Tab')hideCtxMenu();
-  };
-  document.addEventListener('keydown',ctx._keyHandler);
-  paintSel();
-  if(items[0])items[0].focus();
+  ctxPanels=[{el:ctx,rows,sel:0,depth:0,parentRow:null}];
+  ctxPaintSel(0);
+  if(rows[0])rows[0].focus();
   ctx.dataset.motionSide=placement.side;
 }
+
+/* ---- universal right-click dispatcher ----
+   The native menu is suppressed app-wide, which takes Cut/Copy/Paste away from
+   every text field and leaves the views without a handler dead. This dispatcher
+   closes both holes: a feature handler that already rendered a menu calls
+   preventDefault() and wins; everything else lands on a text-field, selection or
+   workspace menu. Registered on document in the bubble phase, after load. */
+const ctxWorkspaceBuilders=[];
+// registerWorkspaceCtxSection lets a feature module contribute roots to the
+// fallback workspace menu without core.js importing it (which would cycle).
+// build(info) returns a section, an array of sections, or nothing.
+export function registerWorkspaceCtxSection(build){if(typeof build==='function')ctxWorkspaceBuilders.push(build);}
+
+const TEXT_INPUT_TYPES=new Set(['','text','search','url','tel','password','email','number']);
+// isTextField: an element whose own text the clipboard bridge can act on.
+export function isTextField(el){
+  if(!el||el.disabled)return false;
+  const tag=(el.tagName||'').toLowerCase();
+  if(tag==='textarea')return true;
+  if(tag==='input')return TEXT_INPUT_TYPES.has((el.getAttribute('type')||'').toLowerCase());
+  return !!el.isContentEditable;
+}
+
+function fieldValue(el){return el.isContentEditable?(el.innerText||''):String(el.value==null?'':el.value);}
+function fieldSelection(el){
+  if(el.isContentEditable){const s=window.getSelection?.();return s&&!s.isCollapsed&&el.contains(s.anchorNode)?String(s):'';}
+  const a=el.selectionStart,b=el.selectionEnd;
+  return a==null||b==null||a===b?'':fieldValue(el).slice(a,b);
+}
+function fieldEditable(el){return !el.readOnly&&!el.disabled&&(el.isContentEditable||'value'in el);}
+
+// replaceFieldSelection writes `text` over the selection (or at the caret) and
+// notifies the owning module through the same `input` event typing would fire.
+function replaceFieldSelection(el,text){
+  if(el.isContentEditable){
+    const s=window.getSelection?.();
+    if(s&&s.rangeCount&&el.contains(s.anchorNode)){
+      const r=s.getRangeAt(0);r.deleteContents();r.insertNode(document.createTextNode(text));
+      s.collapseToEnd();
+    }else el.append(document.createTextNode(text));
+  }else{
+    const a=el.selectionStart??el.value.length,b=el.selectionEnd??el.value.length;
+    el.value=el.value.slice(0,a)+text+el.value.slice(b);
+    el.selectionStart=a;el.selectionEnd=a+text.length;
+  }
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+
+async function clipboardWrite(text){
+  if(!text)return false;
+  try{await navigator.clipboard.writeText(text);return true;}
+  catch{toast('Clipboard write was blocked by the browser','error');return false;}
+}
+async function clipboardRead(){
+  try{return await navigator.clipboard.readText();}
+  catch{toast('Clipboard read was blocked — use the keyboard paste shortcut','error');return null;}
+}
+
+// runCodecOp transforms the selection (or the whole field) through /api/decode,
+// the same endpoint the Decoder and Repeater encode menus use.
+async function runCodecOp(el,op,label){
+  const whole=!fieldSelection(el);
+  const input=whole?fieldValue(el):fieldSelection(el);
+  if(!input){toast('nothing to '+label.toLowerCase());return;}
+  const before=fieldValue(el);
+  try{
+    const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input})});
+    if(r.error){toast(r.error);return;}
+    if(!el.isConnected||fieldValue(el)!==before)return; // the field moved on; discard
+    if(whole){
+      if(el.isContentEditable)el.textContent=r.output;
+      else el.value=r.output;
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    }else replaceFieldSelection(el,r.output);
+  }catch(e){toastError(label+' failed',e);}
+}
+
+function insertSnippet(el,id){
+  const spec=INSERT_SNIPPETS.find(s=>s.id===id);
+  if(!spec)return;
+  let text=spec.value;
+  if(id==='marker')text=PAYLOAD_MARKER;
+  else if(id==='uuid')text=randomUUID();
+  else if(id==='timestamp')text=new Date().toISOString();
+  replaceFieldSelection(el,text||'');
+}
+// randomUUID: crypto.randomUUID needs a secure context, so fall back to the
+// same v4 shape built from crypto.getRandomValues (never Math.random).
+function randomUUID(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const b=crypto.getRandomValues(new Uint8Array(16));
+  b[6]=(b[6]&0x0f)|0x40;b[8]=(b[8]&0x3f)|0x80;
+  const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
+
+// ctxDecoderOpeners lets scanner.js hand core.js the Decoder drawer without an
+// import cycle; the menu item is hidden until something registers one.
+let ctxDecoderOpener=null;
+export function registerCtxDecoder(open){if(typeof open==='function')ctxDecoderOpener=open;}
+let ctxHistorySearch=null;
+export function registerCtxHistorySearch(search){if(typeof search==='function')ctxHistorySearch=search;}
+
+// bindTextFieldActions turns the declarative model's action ids into real work.
+function bindTextFieldActions(sections,el){
+  const run=(action)=>{
+    if(action==='cut')return async()=>{const s=fieldSelection(el);if(await clipboardWrite(s))replaceFieldSelection(el,'');};
+    if(action==='copy')return()=>{clipboardWrite(fieldSelection(el));};
+    if(action==='paste')return async()=>{const t=await clipboardRead();if(t!=null)replaceFieldSelection(el,t);};
+    if(action==='select-all')return()=>{el.focus();if(el.isContentEditable)document.getSelection()?.selectAllChildren(el);else el.select?.();};
+    if(action==='clear')return()=>{if(el.isContentEditable)el.textContent='';else el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.focus();};
+    if(action==='decoder')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxDecoderOpener)ctxDecoderOpener(t);else copyText(t,'copied — open Decoder from Scanner');};
+    if(action==='search')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxHistorySearch)ctxHistorySearch(t);};
+    if(action&&action.startsWith('codec:')){const op=action.slice(6);const c=CODEC_OPS.find(x=>x.op===op);return()=>runCodecOp(el,op,c?c.label:'Transform');}
+    if(action&&action.startsWith('insert:'))return()=>insertSnippet(el,action.slice(7));
+    return null;
+  };
+  const walk=(items)=>items.map(it=>{
+    if(it.sep)return it;
+    const out={...it};
+    if(hasChildren(it))out.children=walk(it.children.filter(Boolean));
+    else if(it.action)out.act=run(it.action);
+    return out;
+  });
+  return sections.map(sec=>({head:sec.head,items:walk(sec.items||[])}));
+}
+
+// openTextFieldCtxMenu is the clipboard bridge: it gives a text field back the
+// Cut/Copy/Paste/Select-all the suppressed native menu took away, plus the
+// encoders and inserts a request editor actually needs.
+export function openTextFieldCtxMenu(e,el,opts={}){
+  const sel=fieldSelection(el);
+  const model=textFieldMenuModel({
+    selection:sel,
+    editable:fieldEditable(el),
+    empty:!fieldValue(el),
+    payloadMarker:!!opts.payloadMarker,
+    clipboardRead:typeof navigator!=='undefined'&&!!navigator.clipboard?.readText,
+  });
+  const sections=bindTextFieldActions(model,el);
+  if(sel)sections[0]={...sections[0],head:'SELECTION · '+shortLabel(sel,28)};
+  const extra=opts.sections||[];
+  openCtxMenu(e.clientX,e.clientY,[...extra,...sections]);
+}
+
+// openSelectionCtxMenu handles a live text selection outside a text field
+// (highlighted markdown, a rendered body, a table cell).
+function openSelectionCtxMenu(e,text){
+  const run=(action)=>{
+    if(action==='copy')return()=>copyText(text,'copied');
+    if(action==='decoder')return()=>{if(ctxDecoderOpener)ctxDecoderOpener(text);else copyText(text,'copied');};
+    if(action==='search')return()=>{if(ctxHistorySearch)ctxHistorySearch(text);};
+    if(action&&action.startsWith('codec:'))return()=>copyDecoded(text,action.slice(6));
+    return null;
+  };
+  const walk=(items)=>items.map(it=>{
+    const out={...it};
+    if(hasChildren(it))out.children=walk(it.children.filter(Boolean));
+    else if(it.action)out.act=run(it.action);
+    return out;
+  });
+  const model=selectionMenuModel({selection:text}).map(sec=>({head:sec.head+' · '+shortLabel(text,28),items:walk(sec.items)}));
+  openCtxMenu(e.clientX,e.clientY,model);
+}
+// copyDecoded transforms read-only text through /api/decode and copies the
+// result: a rendered pane is not editable, so the transform can only be handed
+// back as a value. Exported because the inspector panes need the same behaviour.
+export async function copyDecoded(text,op){
+  try{
+    const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:text})});
+    if(r.error){toast(r.error);return;}
+    copyText(r.output,'transformed and copied');
+  }catch(e){toastError('Transform failed',e);}
+}
+
+// openWorkspaceCtxMenu is the last resort: right-click on empty canvas, a feed,
+// a list with no menu of its own. It is never empty, so no view is a dead zone.
+function openWorkspaceCtxMenu(e){
+  const info={target:e.target};
+  const sections=[];
+  for(const build of ctxWorkspaceBuilders){
+    let out=null;
+    try{out=build(info);}catch{out=null;}
+    if(!out)continue;
+    if(Array.isArray(out))sections.push(...out);else sections.push(out);
+  }
+  if(!sections.length)return;
+  openCtxMenu(e.clientX,e.clientY,sections);
+}
+
+function documentSelectionText(){
+  const s=window.getSelection?.();
+  if(!s||s.isCollapsed)return '';
+  const t=String(s);
+  return t.trim()?t:'';
+}
+
+document.addEventListener('contextmenu',e=>{
+  // A feature handler that rendered its own menu already called preventDefault.
+  if(e.defaultPrevented)return;
+  const t=e.target instanceof Element?e.target:null;
+  const field=t&&t.closest('input,textarea,[contenteditable=""],[contenteditable="true"]');
+  if(field&&isTextField(field)){e.preventDefault();openTextFieldCtxMenu(e,field);return;}
+  const sel=documentSelectionText();
+  if(sel){e.preventDefault();openSelectionCtxMenu(e,sel);return;}
+  e.preventDefault();
+  openWorkspaceCtxMenu(e);
+});
 
 // formatHexDump returns a canonical hexdump (offset, 16 hex bytes, ASCII text).
 export function formatHexDump(strOrBytes, maxBytes=32768){
@@ -1983,17 +2366,62 @@ export function copyImageButton(src, what, name, opts) {
 // flowCopyPngButton renders the History "Copy as PNG" control for one flow: the
 // server-rendered request+response preview, in the UI's active theme (re-read on
 // click, so a theme switch after render still applies).
-export function flowCopyPngButton(id, className) {
-  return copyImageButton(flowPreviewPngURL(id, { theme: activeFlowTheme(document.documentElement) }), '', 'flow-' + id + '-preview', {
+// opts: {side: both|req|res, layout: vertical|horizontal, theme: light|dark,
+// text, ariaLabel}. Without an explicit theme the control follows the UI theme
+// and re-reads it on click, so a theme switch after render still applies.
+export function flowCopyPngButton(id, className, opts) {
+  const o = opts || {};
+  const side = o.side || 'both';
+  const what = side === 'req' ? 'request' : side === 'res' ? 'response' : 'request and response';
+  const name = 'flow-' + id + '-preview' + (side === 'both' ? '' : '-' + side) + (o.layout === 'horizontal' ? '-side-by-side' : '');
+  return copyImageButton(flowPreviewPngURL(id, { side, layout: o.layout, theme: o.theme || activeFlowTheme(document.documentElement) }), '', name, {
     className: className || 'btn btn-compact',
-    text: 'Copy as PNG',
-    ariaLabel: 'Copy flow #' + id + ' request and response as PNG',
-    themeAware: true,
+    text: o.text != null ? o.text : 'Copy as PNG',
+    ariaLabel: o.ariaLabel || ('Copy flow #' + id + ' ' + what + ' as PNG'),
+    themeAware: !o.theme,
   });
 }
 // mountFlowCopyPng paints (or clears, when id is null) the Copy as PNG control into a mount element.
-export function mountFlowCopyPng(el, id, className) {
-  if (el) el.innerHTML = id == null ? '' : flowCopyPngButton(id, className);
+export function mountFlowCopyPng(el, id, className, opts) {
+  if (el) el.innerHTML = id == null ? '' : flowCopyPngButton(id, className, opts);
+}
+// copyPreviewPng copies a server-rendered PNG to the clipboard without a button
+// behind it, so a context-menu item can do it. It must start the clipboard write
+// inside the activating gesture, which is why it calls copyImage() directly.
+export function copyPreviewPng(src, name) {
+  const run = copyImage(src);
+  run.result.then(res => {
+    if (res.ok) { toast('Image copied', 'success'); return; }
+    const t = toast(copyFailureMessage(res.reason), 'error');
+    if (!t) return;
+    run.blob.then(blob => {
+      const dl = document.createElement('button');
+      dl.type = 'button';
+      dl.className = 'btn xs';
+      dl.setAttribute('aria-label', 'Download image as PNG');
+      dl.innerHTML = icon('download') + ' Download';
+      dl.addEventListener('click', () => { void saveFile(blob, copyImageFileName(name), 'image/png'); });
+      t.insertBefore(dl, t.querySelector('.toast-dismiss'));
+    }, () => {});
+  });
+}
+// copyFlowPng copies one flow's rendered preview. opts matches flowCopyPngButton.
+export function copyFlowPng(id, opts) {
+  const o = opts || {};
+  const side = o.side || 'both';
+  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, theme: o.theme || activeFlowTheme(document.documentElement) }),
+    'flow-' + id + '-' + side + '-preview');
+}
+// flowPngMenuItems are the "Copy as PNG" rows every flow menu shares, so the
+// Proxy row menu, the inspector menu and the Repeater menu offer the same three.
+export function flowPngMenuItems(id) {
+  if (!(Number(id) > 0)) return [];
+  return [
+    { label: 'Flow as PNG · both stacked', icon: 'image', act: () => copyFlowPng(id) },
+    { label: 'Request as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'req' }) },
+    { label: 'Response as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'res' }) },
+    { label: 'Flow as PNG · side by side', icon: 'image', act: () => copyFlowPng(id, { layout: 'horizontal' }) },
+  ];
 }
 // The click handler starts the clipboard write synchronously (Safari keeps the
 // user gesture only for a ClipboardItem built from a promise inside the handler).

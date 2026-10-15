@@ -164,7 +164,7 @@ export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast
 // toastError, openCtxMenu, repCur}. Returns {afterSend, sync, setAttached}.
 export function wireRepeaterExtras(deps) {
   const doc = document;
-  const { $, api, toast, toastError, openCtxMenu, repCur } = deps;
+  const { $, api, toast, toastError, openCtxMenu, repCur, mountFlowCopyPng, flowPngMenuItems, saveFile } = deps;
   const group = $('#repActions');
   const resPane = doc.querySelector('#panel-repeater .rep-res');
   const work = doc.querySelector('#panel-repeater .rep-work');
@@ -184,10 +184,45 @@ export function wireRepeaterExtras(deps) {
   chip.hidden = true;
   chip.appendChild(iconNode(doc, 'attach'));
   chip.appendChild(doc.createTextNode(' Attached'));
-  group.prepend(attach, proof, diff, copy, chip);
+  // The PNG control is painted by core.js (the clipboard write has to start
+  // inside the click), so the toolbar only reserves a mount point for it.
+  const pngMount = doc.createElement('span');
+  pngMount.id = 'repCopyPng';
+  pngMount.className = 'rep-copy-png';
+  group.prepend(attach, proof, diff, copy, pngMount, chip);
+
+  // A compact icon in the response head, next to status, duration and size:
+  // the picture is of the response, so the control belongs beside it.
+  const resHead = resPane.querySelector('.pane-head');
+  const resPngMount = doc.createElement('span');
+  resPngMount.id = 'repResCopyPng';
+  resPngMount.className = 'rep-res-copy-png';
+  if (resHead) resHead.appendChild(resPngMount);
+
+  // pngFlowId is the sent exchange a picture can be made of: a captured flow,
+  // not an in-flight send and not an unsent tab.
+  const pngFlowId = (t) => (t && t.resId && !t.sendPending ? t.resId : 0);
+  function syncPng(t) {
+    const id = pngFlowId(t);
+    if (!mountFlowCopyPng) return;
+    if (id) {
+      mountFlowCopyPng(pngMount, id, 'btn xs');
+      mountFlowCopyPng(resPngMount, id, 'btn xs rep-res-png', { side: 'res', text: '', ariaLabel: 'Copy this response as a PNG image' });
+      return;
+    }
+    const why = t && t.sendPending ? 'Wait for the send to finish' : 'Send the request first to copy it as a PNG';
+    for (const [mount, text] of [[pngMount, 'Copy as PNG'], [resPngMount, '']]) {
+      mount.replaceChildren();
+      const b = button(doc, { icon: 'image', text, label: why, cls: text ? 'btn xs' : 'btn xs rep-res-png' });
+      b.disabled = true;
+      if (!text) b.setAttribute('aria-label', 'Copy this response as a PNG image');
+      mount.appendChild(b);
+    }
+  }
 
   function sync() {
     const t = repCur();
+    syncPng(t);
     const a = attachModel(t);
     attach.disabled = proof.disabled = a.disabled;
     attach.title = a.title;
@@ -230,6 +265,42 @@ export function wireRepeaterExtras(deps) {
   }
   diff.addEventListener('click', runDiff);
   const closeDiff = (o) => diffPanel.close(o);
+
+  /* response pane menu — the response view used to be a dead right-click */
+  resView.addEventListener('contextmenu', async (e) => {
+    const t = repCur();
+    const id = pngFlowId(t);
+    const sel = String(doc.getSelection && doc.getSelection() || '');
+    e.preventDefault();
+    const png = id && flowPngMenuItems ? flowPngMenuItems(id) : [];
+    const items = [
+      sel ? { label: 'Copy selection', icon: 'copy', act: () => navigator.clipboard.writeText(sel).then(() => toast('copied'), () => toast('Clipboard write was blocked', 'error')) } : null,
+      { label: 'Copy response body', icon: 'copy', disabled: !id, act: () => copyResponseBody(id) },
+      { label: 'Save response to a file', icon: 'download', disabled: !id, act: () => saveResponseBody(id, t) },
+      png.length ? { label: 'Copy exchange as PNG', icon: 'image', children: png } : { label: 'Copy exchange as PNG', icon: 'image', disabled: true },
+      { sep: true },
+      { label: 'Diff vs previous send', icon: 'diff', disabled: !diffModel(t || {}).ok, act: runDiff },
+      { label: 'Attach as evidence', icon: 'attach', disabled: attachModel(t).disabled, act: () => runAttach(false, resView) },
+      { label: 'Save as proof', icon: 'status-done', disabled: attachModel(t, { proof: true }).disabled, act: () => runAttach(true, resView) },
+    ].filter(Boolean);
+    openCtxMenu(e.clientX, e.clientY, [{ head: 'RESPONSE', items }]);
+  });
+  async function copyResponseBody(id) {
+    try {
+      const raw = await api('/api/flows/' + id + '/raw?side=res');
+      await navigator.clipboard.writeText(splitRawMessage(raw).body);
+      toast('response body copied');
+    } catch (e) { toastError('Copy response body failed', e); }
+  }
+  async function saveResponseBody(id, t) {
+    try {
+      const raw = await api('/api/flows/' + id + '/raw?side=res');
+      const name = 'repeater-' + id + '-response.http';
+      if (saveFile) await saveFile(new Blob([String(raw == null ? '' : raw)], { type: 'message/http' }), name, 'message/http');
+      else { toast('Saving files is not available here', 'warn'); return; }
+      toast('exported ' + name);
+    } catch (e) { if (e && e.name === 'AbortError') return; toastError('Export response failed', e); }
+  }
 
   /* find in the response pane: Ctrl/Cmd+F while focus is inside it */
   const finder = createFinder(resPane, { root: resView, label: 'Find in response' });

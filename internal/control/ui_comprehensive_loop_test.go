@@ -99,16 +99,27 @@ func TestUISettingsAcknowledgementsRetainNewerEdits(t *testing.T) {
 func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
 	core := requireUIContracts(t, "js/core.js",
 		"export function hideCtxMenu({restoreFocus=false}={})",
-		"if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected",
+		"if(restoreFocus&&wasOpen&&ctxReturnFocus?.isConnected",
 		"hideCtxMenu({restoreFocus:true})",
-		"else if(e.key==='Tab')hideCtxMenu()",
+		"if(e.key==='Tab'){hideCtxMenu();return;}",
 	)
-	if strings.Count(core, "hideCtxMenu({restoreFocus:true})") < 3 {
+	// Click and Enter now share one activation path (ctxRunRow), so there are two
+	// focus-restoring call sites rather than three: running an item, and dismissing.
+	if strings.Count(core, "hideCtxMenu({restoreFocus:true})") < 2 {
 		t.Error("context menu activation and keyboard cancellation must restore opener focus")
 	}
+	if !strings.Contains(core, "case 'dismiss':hideCtxMenu({restoreFocus:true})") {
+		t.Error("Escape must restore the opener's focus")
+	}
+	// A cascading flyout is a sibling panel, not a child of #ctxmenu, so the
+	// outside-click test has to ask the engine which panels are open.
 	requireUIContracts(t, "js/proxy.js",
-		"if(!ctx.contains(e.target))hideCtx({restoreFocus:false})",
+		"if(!ctxMenuContains(e.target))hideCtx({restoreFocus:false})",
 		"if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}",
+	)
+	requireUIContracts(t, "js/core.js",
+		"export function ctxMenuContains(node)",
+		"return ctxPanels.some(p=>p.el===node||p.el.contains(node))",
 	)
 }
 
@@ -270,10 +281,10 @@ func TestUIMapCollapseAndGraphLabelsMatchVisibleState(t *testing.T) {
 
 func TestUIContextMenuMovesAndRestoresFocus(t *testing.T) {
 	requireUIContracts(t, "js/core.js",
-		"ctx._returnFocus=trigger||document.activeElement",
+		"ctxReturnFocus=trigger||document.activeElement",
 		`role="menuitem" tabindex="-1"`,
-		"items[0].focus()",
-		"ctx._returnFocus?.focus",
+		"if(rows[0])rows[0].focus()",
+		"ctxReturnFocus?.focus",
 	)
 }
 

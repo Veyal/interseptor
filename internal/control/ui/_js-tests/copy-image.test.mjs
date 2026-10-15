@@ -10,11 +10,20 @@ const PNG_HEAD = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
 const JPG_HEAD = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0]);
 const blobOf = (bytes, type) => new Blob([bytes], { type });
 
-test('only the finding own image URLs may be fetched', () => {
+test('only Interseptor own image URLs may be fetched', () => {
   const ok = [
     '/api/findings/images/' + 'a'.repeat(64),
     ORIGIN + '/api/findings/images/' + 'b'.repeat(64),
     '/api/flows/42/preview.png?side=both&pretty=1&layout=vertical&theme=light',
+    // Server-rendered evidence images: the Comparer, the authz matrix and the
+    // Intruder run charts all copy through the same clipboard path.
+    '/api/render/flow-diff.png?a=1&b=2',
+    '/api/render/authz/run-7.png',
+    '/api/render/authz/run-7',
+    '/api/render/flow-waterfall.png?ids=1,2',
+    '/api/render/finding-chain.png?findingId=3',
+    '/api/evidence-render?kind=flow_diff&flowIdA=1&flowIdB=2',
+    '/api/intruder/attacks/abc123/render.png?kind=timeline',
   ];
   for (const u of ok) assert.equal(isCopyableImageURL(u, ORIGIN), true, u);
   const bad = [
@@ -22,6 +31,9 @@ test('only the finding own image URLs may be fetched', () => {
     '//evil.example.com/api/findings/images/' + 'a'.repeat(64),
     '/api/findings/images/../../etc/passwd', '/api/findings/images/zz',
     '/api/flows/x/preview.png', '/api/settings', 'data:image/png;base64,AAAA', 'javascript:alert(1)',
+    // Near misses on the render routes stay blocked.
+    '/api/render/', '/api/render/authz/', '/api/render/anything.png',
+    '/api/evidence-render/extra', '/api/intruder/attacks/abc/results',
   ];
   for (const u of bad) assert.equal(isCopyableImageURL(u, ORIGIN), false, String(u));
 });

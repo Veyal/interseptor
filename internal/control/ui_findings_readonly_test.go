@@ -368,7 +368,7 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 		"js/tools.js":     `class="btn xs findings-write" id="repAddFinding"`,
 		"js/flowmodal.js": "finding.className='btn findings-write'",
 		"js/scanner.js":   `class="btn accent findings-write" id="scanPromote"`,
-		"js/proxy.js":     "if(findingsEditable())fitems.push({label:'Add to finding'",
+		"js/proxy.js":     "if(findingsEditable()){",
 		"js/findings.js":  "document.documentElement.dataset.findingsEditing",
 	} {
 		if !strings.Contains(readUIAsset(t, file), want) {

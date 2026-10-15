@@ -607,6 +607,7 @@ function renderFindings() {
     }, 0);
   };
   if (rowsChanged) box.querySelectorAll('.find-row').forEach(el => {
+    el.oncontextmenu = event => { event.preventDefault(); showFindingRowCtx(event, Number(el.dataset.id)); };
     el.onclick = event => { if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return; event.preventDefault(); selectRow(Number(el.dataset.id), true); };
     el.onkeydown = event => {
       if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
@@ -630,6 +631,42 @@ function renderFindings() {
   });
   if (findingDetailEditPending() && selFinding === bodyFindingId) findingDetailRefreshDeferred = true;
   else { findingDetailRefreshDeferred = false; renderFindingDetail(); }
+}
+
+// showFindingRowCtx — the findings list used to swallow right-click entirely.
+// Status and severity are the two edits a triager makes most, so they are the
+// first two flyouts; everything destructive stays last and confirms.
+function showFindingRowCtx(event, id) {
+  const f = findings.find(x => x.id === id);
+  if (!f) return;
+  const write = findingsEditable();
+  const setStatus = s => () => { patchFinding(id, { status: s }).then(r => { if (r && r.latest) { f.status = s; toast('status: ' + statusLabel(s)); renderFindings(); } }); };
+  const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }); };
+  openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #' + id, items: [
+    { label: 'Open', icon: 'external', act: () => { location.hash = findingHref(id, 'overview').replace(/^#/, ''); } },
+    { label: 'Set status', icon: 'status-todo', val: statusLabel(f.status), disabled: !write,
+      children: STATUSES.map(s => ({ label: statusLabel(s), icon: findingStatusIcon(s), on: f.status === s, act: setStatus(s) })) },
+    { label: 'Set severity', icon: 'sev-critical', val: f.severity || '', disabled: !write,
+      children: SEVERITY_ORDER.map(s => ({ label: s, on: severityKey(f.severity) === s, act: setSeverity(s) })) },
+    { label: 'Re-score CVSS v4.0', icon: 'readiness', val: f.cvss || 'not scored', disabled: !write, act: () => { location.hash = findingHref(id, 'assessment').replace(/^#/, ''); } },
+    { label: 'Copy', icon: 'copy', children: [
+      { label: 'Title', act: () => copyText(f.title || '', 'title copied') },
+      { label: 'Link to this finding', act: () => copyText(location.origin + '/' + findingHref(id, 'overview'), 'link copied') },
+      { label: 'CVSS vector', disabled: !f.cvss, act: () => copyText(f.cvss || '', 'vector copied') },
+      { label: 'Summary line for a report', act: () => copyText(findingSummaryLine(f), 'summary copied') },
+    ] },
+    { sep: true },
+    { label: 'Delete finding', icon: 'trash', danger: true, disabled: !write, act: () => deleteFinding(id) },
+  ] }]);
+}
+// findingSummaryLine is the one row a triager pastes into a ticket or a chat.
+function findingSummaryLine(f) {
+  return [
+    '[' + severityKey(f.severity).toUpperCase() + ']',
+    f.title || 'untitled finding',
+    f.cvss ? '· ' + f.cvss : '',
+    '· ' + statusLabel(f.status),
+  ].filter(Boolean).join(' ');
 }
 
 // ---- block editor --------------------------------------------------------

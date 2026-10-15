@@ -8,6 +8,7 @@
    by side look like they came from different applications. --surface-frame is
    the token that exists for exactly this edge, and it is defined per theme. */
 #ctxmenu,
+.ctx-submenu,
 .col-picker,
 .ui-select-menu,
 .map-graph-tip,
@@ -27,12 +28,56 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
-#ctxmenu .ctx-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 34px; }
-#ctxmenu .ctx-has-value { grid-template-columns: minmax(0, 1fr) minmax(0, 42%); }
-#ctxmenu .lbl { min-width: 0; white-space: normal; }
-#ctxmenu .ctx-label-text { min-width: 0; overflow-wrap: anywhere; }
-#ctxmenu .ctx-value { min-width: 0; max-width: none; text-align: right; }
-#ctxmenu .ctx-head { overflow-wrap: anywhere; }
+/* A cascading flyout is its own fixed panel, not a child of the scrolling root,
+   so a submenu is never clipped by the root's own overflow. */
+.ctx-submenu {
+  position: fixed;
+  z-index: 101;
+  min-width: min(190px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
+  border-radius: var(--r-lg);
+  padding: 5px;
+  font-size: var(--fs-xs);
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: none;
+}
+.ctx-submenu.show { display: block; }
+.ctx-submenu[data-ctx-side] { animation: floating-enter var(--motion-fast) var(--motion-enter); --surface-offset: -3px; }
+
+#ctxmenu .ctx-item,
+.ctx-submenu .ctx-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 34px; align-items: center; }
+#ctxmenu .ctx-has-value,
+.ctx-submenu .ctx-has-value { grid-template-columns: minmax(0, 1fr) minmax(0, 42%); }
+/* The chevron column is intrinsic: a parent row must never give up label width. */
+#ctxmenu .ctx-has-sub,
+.ctx-submenu .ctx-has-sub { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+#ctxmenu .ctx-has-value.ctx-has-sub,
+.ctx-submenu .ctx-has-value.ctx-has-sub { grid-template-columns: minmax(0, 1fr) minmax(0, 38%) auto; }
+#ctxmenu .lbl,
+.ctx-submenu .lbl { min-width: 0; white-space: normal; }
+#ctxmenu .ctx-label-text,
+.ctx-submenu .ctx-label-text { min-width: 0; overflow-wrap: anywhere; }
+#ctxmenu .ctx-value,
+.ctx-submenu .ctx-value { min-width: 0; max-width: none; text-align: right; }
+#ctxmenu .ctx-head,
+.ctx-submenu .ctx-head { overflow-wrap: anywhere; }
+/* "This row opens more": the shared chevron, turned to point along the cascade.
+   It is a state cue, so it also carries the open row's accent. */
+.ctx-arrow { display: inline-flex; align-items: center; justify-content: flex-end; color: var(--fg3); }
+.ctx-arrow .icon { transform: rotate(-90deg); }
+.ctx-item.on .ctx-arrow, .ctx-item.ctx-open .ctx-arrow { color: var(--accent); }
+.ctx-item.ctx-open { background: var(--bg3); }
+.ctx-item.ctx-disabled { opacity: .45; cursor: default; }
+.ctx-item.ctx-disabled:hover { background: transparent; }
+.ctx-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ctx-submenu .ctx-item { color: var(--fg); white-space: nowrap; cursor: pointer; padding: 7px 9px; border-radius: var(--r-md); }
+.ctx-submenu .ctx-item:hover:not(.ctx-disabled) { background: var(--bg3); }
+.ctx-submenu .ctx-item.on { background: var(--accentDim); }
+.ctx-submenu .ctx-item.on .lbl { color: var(--accent); }
+.ctx-submenu .ctx-item .mono { color: var(--accent); font-weight: 600; }
+.ctx-submenu .ctx-head { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .7px; color: var(--fg3); padding: 7px 9px 4px; }
+.ctx-submenu .ctx-sep { height: 1px; background: var(--line); margin: 5px 4px; }
 
 /* Animate only after measuring and placing a floating surface. Closing stays
    synchronous so focus and rapid repeated selections never wait on an effect. */
@@ -149,7 +194,7 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 }
 
 @media (max-width: 600px) {
-  #ctxmenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  #ctxmenu, .ctx-submenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
   #toast { width: calc(100% - 24px); max-height: 30dvh; }
   .act-detail { margin-left: 0; }
   .flow-inspector{width:100vw;height:100dvh;border:0;border-radius:0;max-height:none!important}

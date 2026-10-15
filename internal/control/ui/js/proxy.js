@@ -1,4 +1,4 @@
-import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
@@ -1248,7 +1248,7 @@ function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
 }
 function setInspectorActionState(disabled){
   mountFlowCopyPng($('#inspectCopyPng'),disabled?null:state.selId);
-  ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
+  ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions','#inspectCopyPngMore'].forEach(sel=>{
     const button=$(sel);if(!button)return;
     button.disabled=disabled;
     button.setAttribute('aria-disabled',disabled?'true':'false');
@@ -2078,33 +2078,171 @@ function rawExportItems(f,side){
   if(hasOriginal)items.push({label:'Export original raw '+label,act:()=>exportRawFlow(f,side,'original')});
   return items;
 }
-// flowGlobalSection — the flow-wide actions present in every history/inspector
-// menu regardless of which column was clicked (send, copy, AI, authz).
-function flowGlobalSection(f,head,side='both'){
-  const exportItems=side==='req'?rawExportItems(f,'req'):side==='res'?rawExportItems(f,'res'):[
-    ...rawExportItems(f,'req'),
-    {sep:true},
-    ...rawExportItems(f,'res'),
-  ];
-  const items=[
-    ...exportItems,
-    {sep:true},
-    {label:'Inspect session timeline',icon:'timeline',val:state.selected?.size>1&&state.selected.has(f.id)?`${state.selected.size} selected captures`:'selected capture',act:()=>openSessionInspector(sessionInspectionSelection(f.id))},
-    {label:'Auth timeline from this flow',icon:'timeline',val:'read-only',act:()=>openAuthTimeline(f.id)},
-    {label:'Send to Repeater',act:()=>sendToRepeater(f)},
-    {label:'Send to Intruder',act:()=>sendToIntruder(f)},
-    {label:'Copy URL',act:()=>copyURL(f)},
-    {label:'Copy as cURL',act:()=>copyCurl(f)},
-    {label:'Copy replay link · current session',act:()=>copyReplayLink(f,'current')},
-    {label:"Copy replay link · flow's session",act:()=>copyReplayLink(f,'flow')},
-  ];
+/* ---- categorised flow menus ----
+   A flow has roughly forty useful actions. They are grouped into seven or eight
+   cascading roots (see js/ctxmenu-model.js, the 7-item rule) so the menu reads as
+   a map of what can be done rather than a scrolling list of everything. */
 
-  items.push({sep:true},
-    ...(side==='req'?[]:side==='res'?[]:rawExportItems(f,'res')),
-    {label:'Scan this host',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
-    {label:'Authz test',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
-    {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)});
-  return {head:head||'REQUEST', items};
+// flowSendRoot — every tool a captured flow can be handed to.
+function flowSendRoot(f){
+  const ids=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
+  const children=[
+    {label:'Repeater',icon:'repeater',act:()=>sendToRepeater(f)},
+    {label:'Intruder',icon:'intruder',act:()=>sendToIntruder(f)},
+    {label:'Decoder',icon:'decode',act:()=>openDecoder('')},
+    {label:'Active Scanner',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host,(f.path||'').split('?')[0])},
+    {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)},
+  ];
+  if(ids.length)children.push({sep:true},{label:'Replay as identity',icon:'identity',children:ids.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
+  return {label:'Send to',icon:'arrow-up',children};
+}
+
+// flowCopyRoot — the clipboard and file formats. The fourteen code formats and
+// the four image variants each get their own flyout; URL and cURL stay one click
+// deep because they are what an operator reaches for most.
+function flowCopyRoot(f,side='both'){
+  const exportItems=side==='req'?rawExportItems(f,'req'):side==='res'?rawExportItems(f,'res'):[...rawExportItems(f,'req'),{sep:true},...rawExportItems(f,'res')];
+  const children=[
+    {label:'Code & text format',icon:'copy',children:COPY_AS_KINDS.map(k=>({label:k.label,val:k.key,act:()=>{copyAs(k.kind,[f],{redact:k.redact}).catch(e=>toastError('Copy failed',e));}}))},
+    {label:'Image (PNG)',icon:'image',children:flowPngMenuItems(f.id)},
+    {label:'Export raw to file',icon:'download',children:exportItems},
+    {label:'Replay link',icon:'link',children:[
+      {label:'Current session',val:'session=current',act:()=>copyReplayLink(f,'current')},
+      {label:"The flow's own session",val:'session=flow',act:()=>copyReplayLink(f,'flow')},
+    ]},
+    {sep:true},
+    {label:'URL',act:()=>copyURL(f)},
+    {label:'cURL',act:()=>copyCurl(f)},
+  ];
+  return {label:'Copy as',icon:'copy',children};
+}
+
+// flowEvidenceRoot — what this flow already proves, and how to attach it.
+function flowEvidenceRoot(f){
+  const ff=flowFindings(f.id);
+  const children=ff.map(x=>({label:x.title,icon:'finding',val:x.severity,act:()=>openFinding(x.id)}));
+  if(findingsEditable()){
+    if(children.length)children.push({sep:true});
+    children.push({label:'Attach to a finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
+  }
+  if(!children.length)children.push({label:'No linked findings',disabled:true});
+  return {label:'Evidence & findings',icon:'evidence',val:ff.length?'in '+ff.length:'',children};
+}
+
+// flowFilterRoot — narrow History, exclude noise, grow the scope.
+function flowFilterRoot(f){
+  const dom=registrableDomain(f.host);
+  const cls=f.status?Math.floor(f.status/100):0;
+  const children=[
+    {head:'FILTER',items:[
+      {label:'This host',val:f.host,on:state.filters.host===f.host,act:()=>setFilter('host',f.host)},
+      dom&&dom!==f.host?{label:'This domain (+subs)',val:dom,on:state.filters.host===dom,act:()=>setFilter('host',dom)}:null,
+      {label:'This path',val:f.path,act:()=>setFilter('search',f.path)},
+      {label:'This method',val:f.method,on:state.filters.method===f.method,act:()=>setFilter('method',f.method)},
+      cls?{label:'This status class',val:cls+'xx',on:state.filters.status===String(cls),act:()=>setFilter('status',String(cls))}:null,
+    ]},
+    {head:'EXCLUDE',items:[
+      {label:'This host',val:f.host,danger:true,act:()=>addExclude('host',f.host)},
+      {label:'This path',val:f.path,danger:true,act:()=>addExclude('path',f.path)},
+      {label:'This method',val:f.method,danger:true,act:()=>addExclude('method',f.method)},
+      f.status?{label:'This status',val:String(f.status),danger:true,act:()=>addExclude('status',String(f.status))}:null,
+    ]},
+    {head:'SCOPE',items:[
+      {label:'Add host to scope',icon:'scope',val:f.host,act:()=>addHostToScope(f.host)},
+      dom&&dom!==f.host?{label:'Add domain to scope',icon:'scope',val:'*.'+dom,act:()=>addHostToScope('*.'+dom)}:null,
+    ]},
+    anyFilter()?{items:[{label:'Clear all filters',icon:'close',act:clearAllFilters}]}:null,
+  ].filter(Boolean);
+  return {label:'Filter & scope',icon:'filter',children};
+}
+
+// flowTagRoot — filter by, remove, or add tags (to this flow or the selection).
+function flowTagRoot(f){
+  const targets=tagActionTargets(f.id);
+  const n=targets.length;
+  const own=(f.tags||[]);
+  const children=[];
+  own.forEach(t=>{
+    children.push({label:'Filter · '+t,icon:'tag',on:state.filters.tag===t,act:()=>filterByTag(t)});
+    children.push({label:'Remove · '+t,danger:true,val:n>1?n+' flows':'',act:()=>mutateFlowTags(targets,{remove:[t]})});
+  });
+  if(own.length)children.push({sep:true});
+  const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
+  children.push({label:selN?('Tag '+selN+' selected…'):'Tag…',icon:'tag',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
+  if(selN)children.push({label:'Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
+  return {label:'Tags',icon:'tag',val:own.length?own.join(' '):'',children};
+}
+
+// flowAnalyseRoot — the read-only analyses that start from one captured flow.
+function flowAnalyseRoot(f){
+  const multi=state.selected?.size>1&&state.selected.has(f.id);
+  return {label:'Analyse',icon:'timeline',children:[
+    {label:'Inspect session timeline',icon:'timeline',val:multi?`${state.selected.size} selected captures`:'selected capture',act:()=>openSessionInspector(sessionInspectionSelection(f.id))},
+    {label:'Auth timeline from this flow',icon:'timeline',val:'read-only',act:()=>openAuthTimeline(f.id)},
+    {label:'Authz differential matrix',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
+    {label:'Scan this host',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host,(f.path||'').split('?')[0])},
+  ]};
+}
+
+// flowDeleteRoot — destructive, so it is the last root and always confirms.
+function flowDeleteRoot(f){
+  return {label:'Delete',icon:'trash',danger:true,children:[
+    {label:'This flow',icon:'trash',val:'#'+f.id,danger:true,act:()=>deleteOneFlow(f)},
+    {label:'All flows from this host',icon:'trash',val:f.host,danger:true,act:deleteHost(f)},
+  ]};
+}
+
+async function deleteOneFlow(f){
+  const ok=await uiConfirm('Delete flow #'+f.id+'?','This permanently removes the capture and its stored bodies. It cannot be undone.','Delete','btn btn-danger');
+  if(!ok)return;
+  try{
+    const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:[f.id]})});
+    if(state.selId===f.id){state.selId=null;closeInspector();onAuthzSelectionChanged();}
+    state.selected.delete(f.id);updateSelBar();loadFlows();
+    toast('deleted '+(r.deleted!=null?r.deleted:1)+' flow');
+  }catch(e){toastError('Delete failed',e);}
+}
+
+// flowColumnRoot — the actions keyed to the column that was right-clicked, so
+// right-clicking a host offers host actions and a status offers status filters.
+function flowColumnRoot(f,field){
+  const dom=registrableDomain(f.host);
+  if(field==='host'||field==='scheme'||field==='id'){
+    const items=[
+      {label:'Filter this host',val:f.host,on:state.filters.host===f.host,act:()=>setFilter('host',f.host)},
+      {label:'Exclude this host',val:f.host,danger:true,act:()=>addExclude('host',f.host)},
+      {label:'Add host to scope',icon:'scope',val:f.host,act:()=>addHostToScope(f.host)},
+    ];
+    if(dom&&dom!==f.host){
+      items.push({label:'Filter domain',val:dom+' (+subs)',act:()=>setFilter('host',dom)});
+      items.push({label:'Add domain to scope',icon:'scope',val:'*.'+dom,act:()=>addHostToScope('*.'+dom)});
+    }
+    items.push({sep:true},{label:'Delete all from host',icon:'trash',val:f.host,danger:true,act:deleteHost(f)});
+    return {label:'Host',icon:'globe',val:f.host,children:items};
+  }
+  if(field==='status'){
+    const cls=f.status?Math.floor(f.status/100):0;
+    if(!cls)return {label:'Status',val:'no response yet',disabled:true};
+    return {label:'Status',icon:'info',val:String(f.status),children:[
+      {label:'Filter status class',val:cls+'xx',on:state.filters.status===String(cls),act:()=>setFilter('status',String(cls))},
+      {label:'Exclude this status',val:String(f.status),danger:true,act:()=>addExclude('status',String(f.status))},
+    ]};
+  }
+  if(field==='method'){
+    return {label:'Method',val:f.method,children:[
+      {label:'Filter method',val:f.method,on:state.filters.method===f.method,act:()=>setFilter('method',f.method)},
+      {label:'Exclude method',val:f.method,danger:true,act:()=>addExclude('method',f.method)},
+    ]};
+  }
+  if(field==='path'){
+    return {label:'Path',val:f.path,children:[
+      {label:'Filter path',val:f.path,act:()=>setFilter('search',f.path)},
+      {label:'Exclude path',val:f.path,danger:true,act:()=>addExclude('path',f.path)},
+      {label:'Copy path',icon:'copy',act:()=>copyText(f.path,'path copied')},
+    ]};
+  }
+  // mime/size/time columns have no column-specific action; the roots below cover them.
+  return null;
 }
 
 async function saveLoginMacroFromFlow(id){
@@ -2116,101 +2254,77 @@ async function saveLoginMacroFromFlow(id){
   }catch(e){toastError('Save login macro failed',e);}
 }
 
-// showCtx builds the history-row menu: a contextual top section keyed to the
-// clicked column (host / status / method / path) + the always-present global
-// flow actions. Right-clicking a host shows host/domain/scope/discover actions;
-// right-clicking a status shows status filters — not the other way around.
+// showCtx builds the history-row menu: the column that was clicked first, then
+// the flow-wide roots. Seven or eight roots, never a flat list of forty.
 export function showCtx(x,y,f,field){
   if(!f)return;
-  const cls=f.status?Math.floor(f.status/100):0;
-  const dom=registrableDomain(f.host);
-  const sections=[];
-
-  if(field==='host'||field==='scheme'||field==='id'){
-    const items=[
-      {label:'Filter this host',val:f.host,on:field==='host',act:()=>setFilter('host',f.host)},
-      {label:'Exclude this host',val:f.host,danger:true,act:()=>addExclude('host',f.host)},
-    ];
-    if(dom&&dom!==f.host){
-      items.push({label:'Filter domain',val:dom+' (+subs)',act:()=>setFilter('host',dom)});
-      items.push({label:'Add domain to scope',val:'*.'+dom,act:()=>addHostToScope('*.'+dom)});
-    }
-    items.push({label:'Add host to scope',val:f.host,act:()=>addHostToScope(f.host)});
-    items.push({sep:true});
-    items.push({label:'Delete all from host',icon:'trash',val:f.host,danger:true,act:deleteHost(f)});
-    sections.push({head:'HOST · '+f.host, items});
-  }else if(field==='status'){
-    const items=[];
-    if(cls){
-      items.push({label:'Filter status',val:cls+'xx',on:true,act:()=>setFilter('status',String(cls))});
-      items.push({label:'Exclude this status',val:String(f.status),danger:true,act:()=>addExclude('status',String(f.status))});
-    }else items.push({label:'No response yet',val:'pending'});
-    sections.push({head:'STATUS'+(f.status?' · '+f.status:''), items});
-  }else if(field==='method'){
-    sections.push({head:'METHOD · '+f.method, items:[
-      {label:'Filter method',val:f.method,on:true,act:()=>setFilter('method',f.method)},
-      {label:'Exclude method',val:f.method,danger:true,act:()=>addExclude('method',f.method)},
-    ]});
-  }else if(field==='path'){
-    sections.push({head:'PATH', items:[
-      {label:'Filter path',val:f.path,on:true,act:()=>setFilter('search',f.path)},
-      {label:'Exclude path',val:f.path,danger:true,act:()=>addExclude('path',f.path)},
-      {label:'Copy path',act:()=>copyText(f.path,'path copied')},
-    ]});
-  }
-  // mime/size/time columns have no column-specific filter — they fall through to
-  // the global section below.
-
-  sections.push(flowGlobalSection(f,'REQUEST','both'));
-  // TAGS: filter by / remove an existing tag, or add tags (to this flow, or the whole selection).
-  const tagTargets=tagActionTargets(f.id);
-  const tagN=tagTargets.length;
-  const tagItems=[];
-  (f.tags||[]).forEach(t=>{
-    tagItems.push({label:'Filter · '+t,icon:'tag',on:state.filters.tag===t,act:()=>filterByTag(t)});
-    tagItems.push({label:'Remove · '+t,danger:true,val:tagN>1?tagN+' flows':'',act:()=>mutateFlowTags(tagTargets,{remove:[t]})});
-  });
-  const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
-  tagItems.push({label:selN?('Tag '+selN+' selected…'):'Tag…',icon:'tag',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
-  if(selN)tagItems.push({label:'Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
-  sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
-  const ff=flowFindings(f.id);
-  const fitems=ff.map(x=>({label:x.title,icon:'finding',val:x.severity,act:()=>openFinding(x.id)}));
-  if(findingsEditable())fitems.push({label:'Add to finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
-  sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
-  if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
-  const sendAsIds=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
-  if(sendAsIds.length)sections.push({head:'SEND AS',items:sendAsIds.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
-  openMenu(x,y,sections);
+  const column=flowColumnRoot(f,field);
+  const items=[
+    column,
+    flowSendRoot(f),
+    flowCopyRoot(f,'both'),
+    flowEvidenceRoot(f),
+    flowFilterRoot(f),
+    flowTagRoot(f),
+    flowAnalyseRoot(f),
+    flowDeleteRoot(f),
+  ].filter(Boolean);
+  openMenu(x,y,[{head:(f.method||'')+' '+(f.host||'')+(f.path||''),items}]);
 }
 
+// showInspectorCtx is the request/response pane menu: the selection first (that
+// is why the operator right-clicked), then the pane's own copies, then the same
+// flow roots so no action is only reachable from the row.
 export function showInspectorCtx(x,y,side){
   const f=flowStore.byId.get(state.selId)||state.detail;
   if(!f)return;
   const curSide=side==='resp'?'res':side;
-  const sel=selectionWithin($(curSide==='req'?'#reqView':'#resView'));
+  const view=$(curSide==='req'?'#reqView':'#resView');
+  const sel=selectionWithin(view);
   const sections=[];
   if(sel){
     const short=sel.length>40?sel.slice(0,40)+'…':sel;
     const items=[
-      {label:'Copy',act:()=>copyText(sel,'copied')},
-      {label:'Decode / encode',val:short,act:()=>openDecoder(sel)},
-      {label:'Search in history',val:short,act:()=>setFilter('search',sel)},
+      {label:'Copy',icon:'copy',act:()=>copyText(sel,'copied')},
+      {label:'Encode / decode selection',icon:'codec',val:short,children:DEC_OPS.map(([op,label])=>({label,act:()=>copyDecoded(sel,op)}))},
+      {label:'Send selection to',icon:'arrow-up',children:[
+        {label:'History search filter',icon:'search',val:short,act:()=>setFilter('search',sel)},
+        {label:'Decoder',icon:'decode',act:()=>openDecoder(sel)},
+        {label:'Map search (body)',icon:'map',val:short,act:()=>focusMapSearch(sel,'body')},
+        looksLikeHost(sel)?{label:'Scope',icon:'scope',val:sel,act:()=>addHostToScope(sel)}:null,
+      ].filter(Boolean)},
     ];
-    if(looksLikeHost(sel))items.push({label:'Add to scope',val:sel,act:()=>addHostToScope(sel)});
-    items.push({label:'Search in Map (body)',val:short,act:()=>focusMapSearch(sel,'body')});
-    sections.push({head:'SELECTION', items});
+    sections.push({head:'SELECTION · '+short,items});
   }
-  const copyItems=[
-    {label:curSide==='req'?'Copy entire request':'Copy entire response',act:()=>copyFlowRaw(f,curSide)},
-    {label:curSide==='req'?'Copy request body':'Copy response body',act:()=>copyFlowBody(f,curSide)},
+  const pane=curSide==='req'?'request':'response';
+  const items=[
+    {label:'Copy this '+pane,icon:'copy',children:[
+      {label:'Entire '+pane,act:()=>copyFlowRaw(f,curSide)},
+      {label:'Headers only',act:()=>copyFlowHeaders(f,curSide)},
+      {label:'Body only',act:()=>copyFlowBody(f,curSide)},
+      {sep:true},
+      {label:'As a PNG image',icon:'image',act:()=>copyFlowPng(f.id,{side:curSide})},
+    ]},
+    flowSendRoot(f),
+    flowCopyRoot(f,curSide),
+    flowEvidenceRoot(f),
+    flowFilterRoot(f),
+    flowAnalyseRoot(f),
   ];
-  sections.push({head:'COPY', items:copyItems});
-  sections.push(flowGlobalSection(f, curSide==='req'?'REQUEST':'RESPONSE', curSide));
-  if(!sel)sections.push({items:[{label:'Open Decoder',act:()=>openDecoder('')}]});
-  const sendAsIds2=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
-  if(sendAsIds2.length)sections.push({head:'SEND AS',items:sendAsIds2.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
+  if(!sel)items.push({label:'Open Decoder',icon:'decode',act:()=>openDecoder('')});
+  sections.push({head:pane.toUpperCase(),items});
   openMenu(x,y,sections);
+}
+
+// copyFlowHeaders copies just the head of one side — the part that goes into a
+// report when the body is noise.
+async function copyFlowHeaders(f,side='req'){
+  try{
+    const raw=await api('/api/flows/'+f.id+'/raw?side='+side);
+    const text=String(raw==null?'':raw).replace(/\r\n/g,'\n');
+    const i=text.indexOf('\n\n');
+    copyText(i<0?text:text.slice(0,i),(side==='req'?'Request':'Response')+' headers copied');
+  }catch(e){toastError('Copy headers failed',e);}
 }
 function selectedInspectorFlow(){return flowStore.byId.get(state.selId)||state.detail;}
 const inspectSendRepeater=$('#inspectSendRepeater');
@@ -2230,30 +2344,59 @@ if(inspectMoreActions)inspectMoreActions.onclick=e=>{
   const r=inspectMoreActions.getBoundingClientRect();
   showCtx(r.left,r.bottom+2,f,'');
 };
-document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx({restoreFocus:false});});
+// A cascading flyout lives outside #ctxmenu, so outside-click dismissal has to
+// ask the engine which panels are open rather than test #ctxmenu alone.
+document.addEventListener('click',e=>{if(!ctxMenuContains(e.target))hideCtx({restoreFocus:false});});
 document.addEventListener('interceptor:session-open-flow',e=>{
   const id=Number(e.detail);
   if(Number.isSafeInteger(id)&&id>0)selectFlow(id);
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}closeInspector();}});
-// Suppress the browser's native context menu app-wide, but keep it where it's
-// genuinely useful: editable fields (paste/cut) and over a live text selection (copy).
-document.addEventListener('contextmenu',e=>{
-  const t=e.target,tag=(t.tagName||'').toLowerCase();
-  if(tag==='input'||tag==='textarea'||t.isContentEditable)return;
-  const sel=window.getSelection&&window.getSelection();
-  if(sel&&String(sel).length&&!sel.isCollapsed)return;
-  e.preventDefault();
-});
+// The native context menu is suppressed app-wide by core.js's universal
+// dispatcher, which also owns the text-field and selection menus. Proxy only
+// registers the actions it owns: the Decoder, the History search filter and the
+// roots of the fallback workspace menu.
+registerCtxDecoder(text=>openDecoder(text||''));
+registerCtxHistorySearch(text=>{if(text)setFilter('search',text);});
+registerWorkspaceCtxSection(()=>({head:'WORKSPACE',items:[
+  {label:'Command palette',icon:'search',val:'Ctrl/Cmd K',act:()=>import('./cmdk.js').then(m=>m.cmdkOpen()).catch(e=>toastError('Command palette failed',e))},
+  {label:'New Repeater tab',icon:'repeater',val:'Ctrl/Cmd T',act:()=>{document.querySelector('.tab[data-tab="tools"]')?.click();document.querySelector('#repTabs .rep-tab-add')?.click();}},
+  {label:'Open Decoder',icon:'decode',val:'Ctrl/Cmd J',act:()=>openDecoder('')},
+  anyFilter()?{label:'Clear History filters',icon:'close',act:clearAllFilters}:null,
+  {label:'Keyboard shortcuts',icon:'keyboard',val:'?',act:()=>openModal($('#shortcutsModal'))},
+]}));
 $('#rows').addEventListener('scroll',hideCtx,{passive:true});
 window.addEventListener('blur',hideCtx);
 // Request/response inspector panes get their own context menu (selection-aware).
-// stopPropagation keeps the app-wide handler from also firing, so the native
-// menu never double-shows over a selection.
+// Captured WebSocket frames render into #resView, so the frame menu is checked
+// first; preventDefault() is what tells the universal dispatcher to stand down.
 ['reqView','resView'].forEach(id=>{
   const el=$('#'+id);
-  if(el)el.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showInspectorCtx(e.clientX,e.clientY,id==='reqView'?'req':'res');});
+  if(!el)return;
+  el.addEventListener('contextmenu',e=>{
+    e.preventDefault();e.stopPropagation();
+    const frame=e.target instanceof Element?e.target.closest('.ws-frame'):null;
+    if(frame){showWsFrameCtx(e,frame);return;}
+    showInspectorCtx(e.clientX,e.clientY,id==='reqView'?'req':'res');
+  });
 });
+// showWsFrameCtx — the WebSocket frames table used to be a dead right-click.
+function showWsFrameCtx(e,frame){
+  const text=frame.dataset.replay!=null?frame.dataset.replay:(frame.querySelector('.ws-col-text')?.textContent||'');
+  const op=frame.querySelector('.ws-col-op')?.textContent||'';
+  const replayable=frame.classList.contains('ws-frame-replay');
+  openMenu(e.clientX,e.clientY,[{head:'WS FRAME · '+op,items:[
+    {label:'Load into WS replay editor',icon:'repeater',disabled:!replayable,act:()=>{const m=$('#wsMsg');if(m){m.value=text;m.focus();}}},
+    {label:'Copy payload',icon:'copy',children:[
+      {label:'Text',act:()=>copyText(text,'frame copied')},
+      {label:'Base64',act:()=>copyDecoded(text,'base64encode')},
+      {label:'Hex',act:()=>copyDecoded(text,'hexencode')},
+    ]},
+    {label:'Decode payload',icon:'codec',children:DEC_OPS.map(([dop,label])=>({label,act:()=>copyDecoded(text,dop)}))},
+    {label:'Open in Decoder',icon:'decode',act:()=>openDecoder(text)},
+    {label:'Filter History by opcode',icon:'filter',val:op,act:()=>setFilter('search',op)},
+  ]}]);
+}
 wireSelectionDecode($('#reqView'),$('#reqDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'req'}:null});
 wireSelectionDecode($('#resView'),$('#resDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'res'}:null});
 export function flowURL(f){return flowUrl(f);}
@@ -2312,6 +2455,13 @@ export function updateSelBar(){
     }
   });
   const send=$('#selSendTo');if(send)send.disabled=!enabled.selSendTo;
+  // A PNG is one flow's picture, so it needs one flow — not a verb over the set.
+  const png=$('#selCopyPng');
+  if(png){
+    const id=pngSelectionFlowId();
+    png.disabled=!id;
+    png.title=id?'Copy flow #'+id+' as a PNG image':'Select a flow first';
+  }
   updateFindPocBtn();
 }
 function compareWordDiff(a,b){
@@ -2643,6 +2793,42 @@ function copyAsSections(getFlows){
   if(one)one.onclick=()=>{const f=selectedInspectorFlow();if(!f)return;openMenu(0,0,copyAsSections(()=>[f]),one);};
   const many=$('#selCopyAs');
   if(many)many.onclick=()=>{if(!state.selected.size)return;openMenu(0,0,copyAsSections(selectedFlowRecords),many);};
+}
+
+// Copy as PNG: the default button copies both sides in the active theme; this
+// menu carries the variants (one side, side by side, a theme the document needs
+// regardless of how the UI is set).
+function pngCopySections(id){
+  return [{head:'COPY AS PNG · #'+id,items:[
+    ...flowPngMenuItems(id),
+    {sep:true},
+    {label:'Fixed theme',icon:'appearance',children:[
+      {label:'Light',val:'for a light document',act:()=>copyFlowPng(id,{theme:'light'})},
+      {label:'Dark',val:'for a dark document',act:()=>copyFlowPng(id,{theme:'dark'})},
+    ]},
+  ]}];
+}
+// pngSelectionFlowId is the flow a PNG copy applies to: the inspected flow when
+// it is part of the selection, otherwise the lowest selected id.
+function pngSelectionFlowId(){
+  if(state.selId&&state.selected.has(state.selId))return state.selId;
+  const ids=[...state.selected].map(Number).filter(n=>n>0).sort((a,b)=>a-b);
+  return ids[0]||0;
+}
+{
+  const more=$('#inspectCopyPngMore');
+  if(more)more.onclick=e=>{
+    if(e&&e.stopPropagation)e.stopPropagation();
+    const f=selectedInspectorFlow();if(!f)return;
+    openMenu(0,0,pngCopySections(f.id),more);
+  };
+  const sel=$('#selCopyPng');
+  if(sel)sel.onclick=e=>{
+    if(e&&e.stopPropagation)e.stopPropagation();
+    const id=pngSelectionFlowId();
+    if(!id){toast('select a flow first');return;}
+    openMenu(0,0,pngCopySections(id),sel);
+  };
 }
 
 // Single-key shortcuts for the focused History row (gated by keys.js: not in

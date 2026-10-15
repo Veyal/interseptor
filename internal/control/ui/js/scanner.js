@@ -1,4 +1,4 @@
-import { $, requireFindingsEditing, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
+import { $, requireFindingsEditing, findingsEditable, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon, openCtxMenu } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -824,6 +824,7 @@ export function renderScan(){
       if(scanUI.pane&&scanUI.pane.mode()==='stack')scanUI.pane.showDetail(row);
     };
     el.onclick=choose;wireRowKey(el);
+    el.oncontextmenu=e=>{e.preventDefault();choose();showScanIssueCtx(e,groups[Number(el.dataset.i)]);};
     el.addEventListener('keydown',e=>{
       if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
       e.preventDefault();
@@ -874,6 +875,36 @@ export function renderScanDetail(){
   });
   const pm=$('#scanPromote'); if(pm){pm.onclick=()=>promoteFinding(g);if(promoteFindingPending)setPromoteFindingState(pm,'pending');}
 }
+// showScanIssueCtx — the scanner issue list used to swallow right-click. Every
+// action here already exists as a button; the menu just makes them reachable
+// from the row. Suppress / false-positive and "edit the check that fired" are
+// deliberately absent: a scanner issue carries no check id and the backend has
+// no suppression store, so neither could be wired honestly.
+function showScanIssueCtx(e,g){
+  if(!g)return;
+  const first=g.items[0]||{};
+  const withFlow=g.items.filter(i=>i.flowId);
+  const target=withFlow[0]||null;
+  const evidence=g.items.map(i=>i.evidence).filter(Boolean).join('\n');
+  const host=(()=>{try{return new URL(first.target||'').hostname;}catch{return '';}})();
+  openCtxMenu(e.clientX,e.clientY,[{head:'ISSUE · '+(g.severity||'').toUpperCase(),items:[
+    {label:'Verify in Repeater',icon:'repeater',disabled:!target,act:()=>scanTargetAction('verify',target,null)},
+    {label:'Open affected flow',icon:'link',val:target?'#'+target.flowId:'',disabled:!target,act:()=>scanTargetAction('open',target,null)},
+    {label:'Attach as evidence',icon:'attach',disabled:!target,act:()=>scanTargetAction('attach',target,null)},
+    {label:'Promote to Finding',icon:'plus',disabled:!findingsEditable(),act:()=>promoteFinding(g)},
+    {label:'Copy',icon:'copy',children:[
+      {label:'Issue title',act:()=>copyText(g.title||'','title copied')},
+      {label:'Description',disabled:!first.detail,act:()=>copyText(first.detail||'','description copied')},
+      {label:'Evidence',disabled:!evidence,act:()=>copyText(evidence,'evidence copied')},
+      {label:'Remediation',disabled:!first.fix,act:()=>copyText(first.fix||'','remediation copied')},
+      {label:'Affected targets',act:()=>copyText(g.items.map(i=>i.target||'').filter(Boolean).join('\n'),'targets copied')},
+    ]},
+    {label:'Filter this severity',icon:'filter',disabled:!g.severity,act:()=>{scanUI.sevActive=new Set([String(g.severity).toLowerCase()]);renderScan();}},
+    {label:'Scan this host again',icon:'scanner',val:host,disabled:!host,act:()=>prefillScanner(host,'')},
+    {label:'Open the check editor',icon:'checks',act:openChecks},
+  ]}]);
+}
+
 // Per-target actions. Every one starts from the issue's own flow id.
 function scanTargetAction(act,issue,button){
   const target=verifyTarget(issue);if(!target)return;

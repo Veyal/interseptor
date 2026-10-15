@@ -276,6 +276,7 @@
       <button class="btn findings-write" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
       <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button class="btn" id="selCopyPng" aria-haspopup="menu" title="Copy the selected flow as a PNG image"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Copy as PNG</button>
             <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
       <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
@@ -296,6 +297,7 @@
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
           <span id="inspectCopyPng"></span>
+          <button class="btn btn-compact" id="inspectCopyPngMore" aria-label="Copy as PNG options: side, layout and theme" aria-haspopup="menu" title="Copy request only, response only, side by side, or in a fixed theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
           <button class="btn btn-compact" id="inspectCopyAs" aria-label="Copy selected flow as" aria-haspopup="menu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
           <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
 
@@ -348,7 +350,8 @@
           <div class="icpt-edtitle" id="heldTitle" data-split-focus></div>
           <div class="spacer"></div>
           <span id="heldModified" class="icpt-modified" hidden>MODIFIED</span>
-          <button class="btn" id="heldBeautifyBtn" title="Beautify JSON or HTML body">Beautify</button>
+          <div class="seg" id="heldViewSeg" role="group" aria-label="Held message view"><button type="button" class="on" id="heldViewRaw" data-held-view="raw" aria-pressed="true" title="Edit the exact bytes that will be forwarded">Raw</button><button type="button" id="heldViewPretty" data-held-view="pretty" aria-pressed="false" title="Read the message indented and highlighted — the bytes to forward are unchanged">Pretty</button></div>
+          <button class="btn" id="heldBeautifyBtn" title="Rewrite the bytes that will be forwarded, indenting the JSON or HTML body (marks the message MODIFIED)">Beautify</button>
           <button class="btn" id="heldResetBtn" title="Reset editor to original held bytes">Reset</button>
           <button type="button" class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body" aria-label="Show decoded held message" aria-pressed="false">Decoded</button>
         </div>
@@ -358,6 +361,7 @@
           <span class="icpt-ctx-note hint" id="heldScopeNote"></span>
         </div>
         <pre id="heldDecoded" class="icpt-raw u-m-0 u-prewrap" hidden></pre>
+        <pre id="heldPretty" class="icpt-raw u-m-0 u-prewrap" tabindex="0" role="document" aria-label="Held message, pretty view — read-only, the bytes to forward are unchanged" hidden></pre>
         <textarea class="icpt-raw u-hidden" id="heldRaw" spellcheck="false" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
         <div class="state-empty" id="heldEmpty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-intercept"/></svg></div>

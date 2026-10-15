@@ -5,6 +5,7 @@ import { wireRepeaterExtras } from './repeater.js';
 import { wireIntruderPreview } from './evidence-render.js';
 import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
+import { flowPngMenuItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -975,7 +976,7 @@ function wireRepeaterActions(){
   $('#repToIntruder').onclick=repToIntruder;
   $('#repAddFinding').onclick=repAddToFinding;
   $('#repCopyCurl').onclick=repCopyCurl;
-  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur});
+  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur,mountFlowCopyPng,flowPngMenuItems,saveFile});
   syncRepActions();
 }
 // parseRawRequest splits an edited raw HTTP request (CRLF or LF) into method,
@@ -1061,20 +1062,76 @@ async function repEncodeSel(el,op){
   }catch(e){toast(e.message);}
 }
 
+// repShowEncodeCtx — the request editors get the shared text-field menu (clipboard
+// bridge, encoders, inserts) plus the in-place encode of a selection, which only
+// Repeater can do because it owns the editor's undo and persistence.
 function repShowEncodeCtx(e,el){
-  const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
-  if(!s)return;
   e.preventDefault();
-  const short=s.length>28?s.slice(0,28)+'…':s;
-  const items=DEC_OPS.filter(([op])=>op!=='jwtdecode'&&op!=='smart')
-    .map(([op,label])=>({label,val:label,act:()=>repEncodeSel(el,op)}));
-  openCtxMenu(e.clientX,e.clientY,[{head:'ENCODE · '+short,items}]);
+  const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
+  const extra=s?[{head:'SELECTION · '+(s.length>28?s.slice(0,28)+'…':s),items:[
+    {label:'Transform in place',icon:'codec',children:DEC_OPS.filter(([op])=>op!=='jwtdecode'&&op!=='smart')
+      .map(([op,label])=>({label,act:()=>repEncodeSel(el,op)}))},
+    {label:'Mark as Intruder position',icon:'intruder',val:'§…§',act:()=>repMarkPosition(el)},
+  ]}]:[];
+  openTextFieldCtxMenu(e,el,{payloadMarker:true,sections:extra});
+}
+// repMarkPosition wraps the selection in § markers, the shape Intruder reads.
+function repMarkPosition(el){
+  const a=el.selectionStart,b=el.selectionEnd;
+  if(a===b){toast('select the value to mark first');return;}
+  el.value=el.value.slice(0,a)+'§'+el.value.slice(a,b)+'§'+el.value.slice(b);
+  el.selectionStart=a;el.selectionEnd=b+2;
+  repSaveEditor({operatorEdit:true});repRefreshHL();repPersistDebounced();
 }
 function repWireEncodeCtx(){
   ['#repUrl','#repHeaders','#repBody'].forEach(sel=>{
     const el=$(sel);if(!el)return;
     el.addEventListener('contextmenu',e=>repShowEncodeCtx(e,el));
   });
+  // Tab header menu: rename, duplicate, diff against another tab, close.
+  const bar=$('#repTabs');
+  if(bar)bar.addEventListener('contextmenu',e=>{
+    const tabEl=e.target instanceof Element?e.target.closest('.rep-tab[data-tid]'):null;
+    if(!tabEl)return;
+    e.preventDefault();
+    const tid=Number(tabEl.dataset.tid);
+    const t=repTabs.tabs.find(x=>x.tid===tid);
+    if(!t)return;
+    const others=repTabs.tabs.filter(x=>x.tid!==tid);
+    const png=t.resId?flowPngMenuItems(t.resId):[];
+    openCtxMenu(e.clientX,e.clientY,[{head:'TAB · '+(t.title||'Repeater'),items:[
+      {label:'Rename tab…',icon:'edit',act:()=>repRenameTab(t)},
+      {label:'Duplicate tab',icon:'copy',act:()=>repDuplicateTab(t)},
+      png.length?{label:'Copy exchange as PNG',icon:'image',children:png}:{label:'Copy exchange as PNG',icon:'image',disabled:true},
+      others.length?{label:'Diff against tab',icon:'diff',children:others.map(o=>({label:o.title||('tab '+o.tid),disabled:!o.resId||!t.resId,act:()=>repDiffTabs(t,o)}))}:null,
+      {sep:true},
+      {label:'Close other tabs',icon:'close',disabled:!others.length,danger:true,act:()=>{others.forEach(o=>repTabs.close(o.tid));}},
+      {label:'Close tab',icon:'close',danger:true,act:()=>repTabs.close(tid)},
+    ].filter(Boolean)}]);
+  });
+}
+// repRenameTab sets the tab's own label, which repTitle prefers over the URL.
+async function repRenameTab(t){
+  const name=await uiPrompt({title:'Rename Repeater tab',placeholder:'Tab name',value:t.label||''});
+  t.label=name==null?'':String(name).slice(0,60);
+  t.title=repTitle(t);
+  renderRepTabs();repPersist();
+}
+function repDuplicateTab(t){
+  repSaveEditor();
+  const copy=repTabs.create();
+  if(!copy)return;
+  copy.method=t.method;copy.url=t.url;copy.headers=t.headers;copy.body=t.body;
+  copy.label=t.label||'';
+  copy.title=repTitle(copy);
+  repTabs.active=copy.tid;renderRepTabs();repLoadEditor();repPersist();
+}
+async function repDiffTabs(a,b){
+  if(!a.resId||!b.resId){toast('both tabs need a sent response to diff','warn');return;}
+  try{
+    const {openFlowDiffPair}=await import('./flow-diff.js');
+    openFlowDiffPair(b.resId,a.resId);
+  }catch(e){toastError('Diff failed',e);}
 }
 $('#repSend').onclick=repSend;
 $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
@@ -1399,7 +1456,13 @@ export async function intrInit(){
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
   wireIntrSortHeaders();
   intrRender=wireIntruderPreview();
-  intrExtras=wireIntruderExtras({$,api,toast,toastError,openCtxMenu,getResults:()=>intrDisplayedResults,openResult:openIntrResult});
+  intrExtras=wireIntruderExtras({$,api,toast,toastError,openCtxMenu,flowPngMenuItems,copyPreviewPng,
+    getResults:()=>intrDisplayedResults,openResult:openIntrResult,
+    getRunId:()=>intrDisplayOwner==='history'&&intrDisplayedHistory?(intrDisplayedHistory.runId||''):intrLastRunId,
+    sendToRepeater,
+    runChartPngURL:(runId,kind)=>'/api/intruder/attacks/'+encodeURIComponent(runId)+'/render.png?kind='+encodeURIComponent(kind),
+    // Driving the existing segmented control keeps one owner of the filter state.
+    setResultFilter:key=>$('#intrResFilter')?.querySelector(`[data-f="${key}"]`)?.click()});
   resolveIntruderReady(hydration);
   return hydration;
 }

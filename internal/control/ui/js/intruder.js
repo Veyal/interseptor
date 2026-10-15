@@ -150,11 +150,12 @@ function mkButton(doc, id, text, icon, cls = 'btn xs') {
 }
 
 // wireIntruderExtras(deps) is called once from intrInit. deps: {$, api, toast,
-// toastError, openCtxMenu, getResults, openResult}. Returns
+// toastError, openCtxMenu, getResults, openResult, flowPngMenuItems,
+// copyPreviewPng, getRunId, runChartPngURL, sendToRepeater, setResultFilter}. Returns
 // {onRender, setStep, confirmLarge}.
 export function wireIntruderExtras(deps) {
   const doc = document;
-  const { $, api, toast, toastError, openCtxMenu, getResults, openResult } = deps;
+  const { $, api, toast, toastError, openCtxMenu, getResults, openResult, flowPngMenuItems, copyPreviewPng, getRunId, runChartPngURL, sendToRepeater, setResultFilter } = deps;
   const work = doc.querySelector('#panel-intruder .intr-work');
   const resultsPane = doc.querySelector('#panel-intruder .intr-results');
   const list = $('#intrResults');
@@ -302,6 +303,8 @@ export function wireIntruderExtras(deps) {
   attach.addEventListener('click', () => attachRow(active, attach));
   diff.addEventListener('click', () => diffRow(active));
 
+  // One categorised menu for a result row: the fourteen copy formats and the
+  // four PNG variants live in flyouts, so the root stays readable.
   list.addEventListener('contextmenu', async (e) => {
     const row = e.target.closest && e.target.closest('.intr-row');
     const id = rowFlow(row);
@@ -309,13 +312,28 @@ export function wireIntruderExtras(deps) {
     e.preventDefault();
     setActive(row);
     const { COPY_AS_KINDS, copyAs } = await import('./copyas.js');
+    const png = flowPngMenuItems ? flowPngMenuItems(id) : [];
+    const runId = getRunId ? String(getRunId() || '') : '';
+    const chart = (kind, label) => ({ label, act: () => copyPreviewPng(runChartPngURL(runId, kind), 'intruder-' + runId + '-' + kind) });
     openCtxMenu(e.clientX, e.clientY, [
-      { items: [
-        { label: 'Open flow', act: () => openResult(row) },
-        { label: 'Attach as evidence', act: () => attachRow(id, row) },
-        { label: 'Diff vs baseline', act: () => diffRow(id) },
-      ] },
-      { head: 'Copy request as', items: COPY_AS_KINDS.map((k) => ({ label: k.label, act: () => copyAs(k.kind, [{ id }]) })) },
+      { head: 'ATTEMPT · flow #' + id, items: [
+        { label: 'Open in inspector', icon: 'external', act: () => openResult(row) },
+        sendToRepeater ? { label: 'Send to Repeater', icon: 'repeater', act: () => sendToRepeater({ id }) } : null,
+        { label: 'Attach as evidence', icon: 'attach', act: () => attachRow(id, row) },
+        { label: 'Diff vs baseline', icon: 'diff', act: () => diffRow(id) },
+        { label: 'Copy attempt as', icon: 'copy', children: [
+          { head: 'REQUEST FORMAT', items: COPY_AS_KINDS.map((k) => ({ label: k.label, val: k.key, act: () => copyAs(k.kind, [{ id }]) })) },
+          png.length ? { head: 'IMAGE', items: png } : null,
+        ].filter(Boolean) },
+        runId && copyPreviewPng && runChartPngURL ? { label: 'Copy run chart as PNG', icon: 'image', children: [
+          chart('timeline', 'Timeline'), chart('distribution', 'Status distribution'), chart('race', 'Race window'), chart('strip', 'Payload strip'),
+        ] } : null,
+        setResultFilter ? { label: 'Filter results', icon: 'filter', children: [
+          { label: 'Interesting only', val: 'flagged · match · anomaly', act: () => setResultFilter('interesting') },
+          { label: 'Errors only', act: () => setResultFilter('error') },
+          { label: 'All results', act: () => setResultFilter('all') },
+        ] } : null,
+      ].filter(Boolean) },
     ], null);
   });
 

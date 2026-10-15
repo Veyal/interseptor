@@ -24,15 +24,22 @@ export class CopyImageError extends Error {
 
 const FINDING_IMAGE = /^\/api\/findings\/images\/[0-9a-f]{64}$/;
 const FLOW_PREVIEW = /^\/api\/flows\/\d+\/preview\.png$/;
+// The server-rendered evidence images: flow diff, authz matrix, waterfall,
+// finding chain and the Intruder run charts. All are GET, same origin, and the
+// renderer redacts credentials, so they are as safe to clipboard as a preview.
+const EVIDENCE_RENDER = /^\/api\/evidence-render$/;
+const RENDER_ROUTE = /^\/api\/render\/(authz\/[A-Za-z0-9_.:-]+(\.png)?|flow-diff\.png|flow-waterfall\.png|finding-chain\.png)$/;
+const INTRUDER_RENDER = /^\/api\/intruder\/attacks\/[A-Za-z0-9_.:-]+\/render\.png$/;
 
-// isCopyableImageURL: only the finding's own image routes on this origin.
+// isCopyableImageURL: only Interseptor's own image routes on this origin.
 export function isCopyableImageURL(url, origin) {
   if (typeof url !== 'string' || !url || url.startsWith('//')) return false;
   let u;
   try { u = new URL(url, origin || 'http://localhost'); } catch { return false; }
   if (origin && u.origin !== new URL(origin).origin) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !/^https?:/i.test(url)) return false;
-  return FINDING_IMAGE.test(u.pathname) || FLOW_PREVIEW.test(u.pathname);
+  const p = u.pathname;
+  return FINDING_IMAGE.test(p) || FLOW_PREVIEW.test(p) || EVIDENCE_RENDER.test(p) || RENDER_ROUTE.test(p) || INTRUDER_RENDER.test(p);
 }
 
 const startsWith = (b, sig, at = 0) => sig.every((v, i) => b[at + i] === v);
@@ -151,7 +158,7 @@ const MESSAGES = {
   fetch: 'Could not load the image to copy — reload Findings and try again',
   convert: 'Could not convert the image to PNG for the clipboard — download it instead',
   'too-large': 'Image is too large to copy — download it instead',
-  blocked: 'Only finding images can be copied',
+  blocked: "Only Interseptor's own images can be copied",
   failed: 'Copy image failed — download it instead',
 };
 export function copyFailureMessage(reason) { return MESSAGES[reason] || MESSAGES.failed; }

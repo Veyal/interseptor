@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, prettify, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope } from './core.js';
 import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -157,6 +157,62 @@ function setHeldModified(raw, original){
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
 }
 
+/* ---- Raw | Pretty (read-only) ----
+   Beautify rewrites the bytes that will be forwarded and marks the message
+   MODIFIED. Reviewing a held message must not require that, so Pretty is a
+   separate read-only presentation: it indents and highlights a copy of the
+   editor's current text and never writes back to #heldRaw. */
+let heldView='raw';
+function heldPrettyEl(){return $('#heldPretty');}
+// heldBeautified indents a held message's body. core.js's prettify() splits the
+// head from the body on CRLF, but a <textarea>'s API value normalizes CRLF to LF
+// (HTML spec), so the editor's text never matches it — this accepts both.
+function heldBeautified(raw){
+  const sep=/\r?\n\r?\n/.exec(raw);
+  if(!sep)return raw;
+  const head=raw.slice(0,sep.index).replace(/\r\n/g,'\n');
+  const body=raw.slice(sep.index+sep[0].length);
+  return body?head+'\n\n'+beautifyBody(body):raw;
+}
+// renderHeldPretty paints the current editor text, indented and highlighted. It
+// writes to its own <pre>, never back to #heldRaw: reading a held message must
+// not change the bytes that will be forwarded.
+function renderHeldPretty(){
+  const pre=heldPrettyEl(),ta=$('#heldRaw');
+  if(!pre||!ta)return;
+  const raw=ta.value||'';
+  pre.innerHTML=raw?highlightHTTP(heldBeautified(raw),true,contentTypeFromRaw(raw)):'<span class="u-fg3">Nothing held to show.</span>';
+}
+function syncHeldViewSeg(){
+  const seg=$('#heldViewSeg');if(!seg)return;
+  seg.querySelectorAll('[data-held-view]').forEach(b=>{
+    const on=b.dataset.heldView===heldView;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+  });
+}
+// setHeldView switches presentation only. The Decoded pane is a third, mutually
+// exclusive view, so entering Pretty leaves it the same way Raw does.
+function setHeldView(view,{focus=false}={}){
+  const pre=heldPrettyEl(),ta=$('#heldRaw'),dec=$('#heldDecoded');
+  heldView=view==='pretty'?'pretty':'raw';
+  if(dec&&dec.style.display&&dec.style.display!=='none'){
+    heldDecodeEpoch++;
+    dec.style.display='none';dec.hidden=true;setHeldDecodeState(false);
+  }
+  if(heldView==='pretty'){
+    renderHeldPretty();
+    if(pre){pre.hidden=false;pre.style.display='block';}
+    if(ta)ta.style.display='none';
+    if(focus&&pre)pre.focus({preventScroll:true});
+  }else{
+    if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}
+    if(ta){ta.style.display='block';if(focus)ta.focus({preventScroll:true});}
+  }
+  syncHeldViewSeg();
+}
+function resetHeldView(){heldView='raw';const pre=heldPrettyEl();if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}syncHeldViewSeg();}
+
 // Intercept must not be a dead end: "Repeater" copies the (edited) held request
 // into a new Repeater tab without forwarding or dropping it.
 function ensureHeldRepeaterButton(){
@@ -178,7 +234,7 @@ function syncHeldRepeaterButton(side){
 }
 function setHeldControlsDisabled(disabled){
   const dropping=selectionDropping();
-  ['#heldRaw','#forwardBtn','#forwardRepeaterBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldRepeaterBtn']
+  ['#heldRaw','#forwardBtn','#forwardRepeaterBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldViewRaw','#heldViewPretty','#heldRepeaterBtn']
     .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight||dropping;});
   const all=$('#forwardAllBtn');if(all)all.disabled=!!heldActionInFlight||forwardAllBusy||!heldItems().some(h=>!dropMarks.has(heldKey(h.side,h.id)));
 }
@@ -207,6 +263,7 @@ function showHeldLoading(h){
   heldLoadingKey=heldKey(h.side,h.id);
   clearHeldLoadMessage();
   const head=$('#heldEditor'),empty=$('#heldEmpty'),ta=$('#heldRaw'),dec=$('#heldDecoded');
+  resetHeldView();
   if(head)head.style.display='flex';
   setHeldChrome(true);
   if(empty)empty.style.display='none';
@@ -305,6 +362,7 @@ function showEditor(h){
     heldLoadingKey=null;
     if(head)head.style.display='none';
     setHeldChrome(false);
+    resetHeldView();
     if(ta){ta.style.display='none';ta.disabled=false;ta.removeAttribute('placeholder');}
     if(empty)empty.style.display='flex';
     const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
@@ -319,6 +377,7 @@ function showEditor(h){
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
   setHeldDecodeState(false);
   const original=heldOriginal(h);
+  resetHeldView();
   if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
   setHeldControlsDisabled(false);
   syncHeldRepeaterButton(h.side);
@@ -452,6 +511,7 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const sel=state.heldSel;if(!sel)return;
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
   if(!rawEl||!decEl)return;
+  if(heldView==='pretty')setHeldView('raw');
   if(decEl.style.display&&decEl.style.display!=='none'){
     heldDecodeEpoch++;
     decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';setHeldDecodeState(false);return;
@@ -482,10 +542,30 @@ $('#heldRaw').addEventListener('input',()=>{
 });
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
   const ta=$('#heldRaw');if(!ta)return;
-  ta.value=prettify(ta.value);ta.dispatchEvent(new Event('input'));ta.focus();
+  setHeldView('raw');
+  ta.value=heldBeautified(ta.value);ta.dispatchEvent(new Event('input'));ta.focus();
 });
+// Raw | Pretty: presentation only, so switching never touches the held bytes.
+{
+  const seg=$('#heldViewSeg');
+  if(seg){
+    seg.addEventListener('click',e=>{
+      const b=e.target.closest&&e.target.closest('[data-held-view]');
+      if(!b||b.disabled)return;
+      setHeldView(b.dataset.heldView,{focus:true});
+    });
+    seg.addEventListener('keydown',e=>{
+      if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+      e.preventDefault();
+      const next=e.key==='ArrowRight'?'pretty':'raw';
+      setHeldView(next);
+      seg.querySelector(`[data-held-view="${next}"]`)?.focus();
+    });
+  }
+}
 $('#heldResetBtn')&&($('#heldResetBtn').onclick=()=>{
   const sel=state.heldSel,ta=$('#heldRaw');if(!sel||!ta)return;
+  setHeldView('raw');
   const original=heldOriginalCache.get(heldKey(sel.side,sel.id));if(original==null)return;
   ta.value=original;ta.dispatchEvent(new Event('input'));ta.focus();
 });

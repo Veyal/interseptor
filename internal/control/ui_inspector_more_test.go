@@ -39,7 +39,7 @@ func TestUIInspectorMoreButtonSurvivesClickToClose(t *testing.T) {
 
 	// The listener this guards against must still be the reason the guard exists;
 	// if it is ever removed, this test should be revisited rather than silently pass.
-	closer := regexp.MustCompile(`document\.addEventListener\('click',\s*e=>\{if\(!ctx\.contains\(e\.target\)\)hideCtx`)
+	closer := regexp.MustCompile(`document\.addEventListener\('click',\s*e=>\{if\(!ctxMenuContains\(e\.target\)\)hideCtx`)
 	if !closer.MatchString(js) {
 		t.Error("the app-wide click-to-close listener changed shape; re-verify the More button guard")
 	}

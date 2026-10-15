@@ -40,9 +40,14 @@ func TestHistoryFlowCopyAsPNGWiring(t *testing.T) {
 			t.Fatalf("flowPreviewPngURL missing default %s", want)
 		}
 	}
-	// Accessible name identifies the flow.
-	if !strings.Contains(core, "'Copy flow #' + id + ' request and response as PNG'") {
-		t.Fatal("control aria-label must read: Copy flow #N request and response as PNG")
+	// Accessible name identifies the flow and which side was rendered.
+	if !strings.Contains(core, "'Copy flow #' + id + ' ' + what + ' as PNG'") {
+		t.Fatal("control aria-label must read: Copy flow #N <side> as PNG")
+	}
+	for _, want := range []string{`side === 'req' ? 'request'`, `side === 'res' ? 'response'`, "'request and response'"} {
+		if !strings.Contains(core, want) {
+			t.Fatalf("the accessible name must name the side it rendered: missing %s", want)
+		}
 	}
 	// Theme follows the active UI theme at click time.
 	if !strings.Contains(core, "data-copy-theme") || !strings.Contains(image, "export function activeFlowTheme(") {
