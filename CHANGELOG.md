@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-10-15
+
+> Minor release closing a batch of enhancement and fix issues. The web UI is reworked: the two
+> top bars become one 42px Flight Bar, the inspector is unified with structured Headers, JSON
+> tree, params, GraphQL and image sub-tabs, the central area becomes a tabbed multi-document
+> canvas with split views, right-click gets one cascading context-menu engine, copy-as-PNG
+> reaches every surface, and the Findings and Scanner lists are windowed. The MCP surface gains
+> profiles and a real OpenAPI 3.1 document; the passive scan runs in parallel and streams; the
+> report gains credential masking, native PDF, white-label, tracker and SARIF exports, retest,
+> and per-finding export; Repeater and Intruder gain replay options, disk-backed scale and
+> adaptive throttling; access-control testing gains object-identifier substitution; the store
+> flusher is batched and the TLS and body-GC locks unblocked; intercept filters gate responses
+> and held items stream as deltas; and the system proxy, test browser and modern-Android CA
+> support go cross-platform.
+
 ### Added
 
 - **Export one finding from its row.** The finding context menu gains "Export this finding", which downloads a report of just that finding (Markdown, HTML or JSON) through the report endpoint's ids selector, so an operator can hand over a single finding without the rest of the engagement ([#110](https://github.com/Veyal/interseptor/issues/110)).
