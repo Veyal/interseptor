@@ -291,8 +291,13 @@ func run() error {
 		}
 	}
 	// Capture policy: persist all traffic, or only in-scope (saves DB space).
+	// With no explicit choice, default to dropping out-of-scope bodies whenever an
+	// allow-list (include rules) is set — defining a target scope implies the
+	// operator does not want full out-of-scope traffic on disk (issue #108). The
+	// scope engine already has its persisted rules loaded via control.New.
 	hub.SetCaptureScopeOnly = prx.SetCaptureScopeOnly
-	if v, ok, _ := st.GetSetting("capture.scopeOnly"); ok && v == "1" {
+	scopeOnlyRaw, scopeOnlySet, _ := st.GetSetting("capture.scopeOnly")
+	if control.ResolveCaptureScopeOnly(scopeOnlyRaw, scopeOnlySet, sc.HasIncludes()) {
 		prx.SetCaptureScopeOnly(true)
 	}
 	// Browser background-traffic suppression: on by default; the persisted/API

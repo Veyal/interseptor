@@ -22,6 +22,27 @@ browser while an app still rejects it. For an authorized test, use a debuggable 
 security configuration, an emulator/rooted device with a system CA, or an approved instrumentation
 method. Interseptor does not defeat pinning itself.
 
+### Android 14+ and the read-only system trust store
+
+`adb remount` can no longer write `/system/etc/security/cacerts/` on Android 14+ and many Google APIs
+emulator images, because the Conscrypt trust store moved into a read-only APEX
+(`/apex/com.android.conscrypt/cacerts`). Two rooted options install a system CA without a writable
+`/system`:
+
+- **Rebootless tmpfs overlay** (CA mode `system-tmpfs`): Interseptor roots `adbd`, mirrors the
+  existing system certs plus its own onto a `tmpfs` mounted over the system trust store, then repeats
+  the overlay inside each zygote mount namespace so the APEX copy is covered too. It takes effect
+  immediately and lasts until the next reboot.
+- **Magisk / KernelSU module** (`GET /api/android/magisk-module.zip`): a flashable module that
+  reinstalls the CA as a system CA and reapplies the APEX overlay on every boot, for a persistent
+  rooted trust. Flash it in Magisk/KernelSU Manager and reboot.
+
+Both require root — a rooted phone or an emulator image with root. The classic `adb remount`
+system-CA path still works on older or userdebug images and is unchanged. The tmpfs command
+construction and the generated module are unit-tested inside Interseptor, but the on-device steps
+must be verified on your real Android 14+ hardware; neither path is a pinning bypass — an app that
+pins a specific certificate still rejects the CA.
+
 ## iOS
 
 For Simulator, select the target and use **Setup all** or install the CA and open the profile

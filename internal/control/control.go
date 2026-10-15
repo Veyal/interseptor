@@ -39,6 +39,7 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
 	"github.com/Veyal/interseptor/internal/sysproxy"
+	"github.com/Veyal/interseptor/internal/testbrowser"
 	"github.com/Veyal/interseptor/internal/tlsca"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
@@ -85,6 +86,11 @@ type Hub struct {
 	sysProxyDisable    func() error
 	sysProxyStatus     func() (bool, error)
 	sysProxySupported  func() bool
+	// launchTestBrowser starts an isolated Chrome/Chromium pointed at the proxy;
+	// testBrowserAvailable reports whether a browser could be found. Seams so the
+	// handler is testable without launching a real browser.
+	launchTestBrowser    func(proxy string) (testbrowser.LaunchResult, error)
+	testBrowserAvailable func() bool
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of known Chrome/Firefox
@@ -174,21 +180,23 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sc = scope.New()
 	}
 	h := &Hub{
-		st:                st,
-		eng:               eng,
-		ca:                ca,
-		rebind:            rebind,
-		sc:                sc,
-		snd:               sender.New(st, capture.New(st)),
-		mux:               http.NewServeMux(),
-		clients:           map[chan string]struct{}{},
-		iosTCPReachable:   ios.TCPReachable,
-		setSetting:        st.SetSetting,
-		sysProxyEnable:    sysproxy.Enable,
-		sysProxyDisable:   sysproxy.Disable,
-		sysProxyStatus:    sysproxy.Status,
-		sysProxySupported: sysproxy.Supported,
-		gcBodiesFn:        st.GCBodies,
+		st:                   st,
+		eng:                  eng,
+		ca:                   ca,
+		rebind:               rebind,
+		sc:                   sc,
+		snd:                  sender.New(st, capture.New(st)),
+		mux:                  http.NewServeMux(),
+		clients:              map[chan string]struct{}{},
+		iosTCPReachable:      ios.TCPReachable,
+		setSetting:           st.SetSetting,
+		sysProxyEnable:       sysproxy.Enable,
+		sysProxyDisable:      sysproxy.Disable,
+		sysProxyStatus:       sysproxy.Status,
+		sysProxySupported:    sysproxy.Supported,
+		launchTestBrowser:    testbrowser.Launch,
+		testBrowserAvailable: testbrowser.Available,
+		gcBodiesFn:           st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
@@ -1473,10 +1481,25 @@ func (h *Hub) currentControlAddr() string {
 	return "127.0.0.1:9966"
 }
 
+// ResolveCaptureScopeOnly decides whether out-of-scope response/request bodies
+// are dropped from capture. An explicit stored choice always wins. With no
+// stored choice the default is to drop them exactly when the operator has set an
+// allow-list (active include rules): defining a target scope signals they do not
+// want full out-of-scope bodies written to disk by surprise (issue #108). With
+// no include rules the default stays off, preserving capture-everything. Both
+// cmd startup and GET /api/settings use this so the behaviour, the proxy, and the
+// UI toggle agree.
+func ResolveCaptureScopeOnly(stored string, ok bool, hasIncludes bool) bool {
+	if ok {
+		return stored == "1"
+	}
+	return hasIncludes
+}
+
 func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
 	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
-	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
+	scopeOnly, scopeOnlySet, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
 	suppressTelemetryOn := !stOK || suppressTelemetry == "1"
 	suppressAndroid, andOK, _ := h.st.GetSetting("capture.suppressAndroidTelemetry")
@@ -1497,7 +1520,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
 		ControlAddr: h.currentControlAddr(), InterceptEnabled: h.eng != nil && h.eng.Enabled(),
 		UpstreamProxy: up, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
-		CaptureScopeOnly: scopeOnly == "1", SuppressBrowserTelemetry: suppressTelemetryOn,
+		CaptureScopeOnly: ResolveCaptureScopeOnly(scopeOnly, scopeOnlySet, h.sc.HasIncludes()), SuppressBrowserTelemetry: suppressTelemetryOn,
 		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
 		FindingsUIEditing: findingsUIEditing == "1",
 		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),

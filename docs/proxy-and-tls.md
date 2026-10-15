@@ -13,6 +13,35 @@ listener**, then use the workstation's LAN address as the device proxy.
 `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` disables all non-loopback listener changes. This is useful on a
 workstation that must never accept LAN traffic.
 
+## System proxy automation
+
+**Settings → Proxy & network** and the first-run **Setup** wizard can point the operating system's
+HTTP/HTTPS proxy at Interseptor and turn it back off again. It only ever acts on an explicit request
+— Interseptor never changes your system proxy on its own.
+
+| OS | Mechanism | Notes |
+| --- | --- | --- |
+| **macOS** | `networksetup` web + secure-web proxy on every active network service | Unchanged behaviour. |
+| **Windows** | The per-user WinINet registry values `ProxyServer` and `ProxyEnable` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, then a WinINet refresh so running apps pick up the change | The operator's previous proxy is saved and restored when you turn it off. |
+| **Linux (GNOME)** | `gsettings org.gnome.system.proxy` manual HTTP/HTTPS mode | The previous proxy mode is restored on disable. |
+
+On a non-GNOME Linux desktop (KDE, a headless host, or anything without `gsettings`), automatic
+configuration reports as unsupported and the control is hidden; set the proxy manually, or export
+`http_proxy` and `https_proxy=http://127.0.0.1:8080` for CLI tools. Automatic configuration changes
+only the HTTP/HTTPS proxy, never the bypass list. The Windows and Linux paths are built and
+unit-tested on every platform but are exercised end to end only on their own OS.
+
+## Test browser
+
+**Launch test browser** in the first-run **Setup** wizard starts your installed Chrome/Chromium in an
+isolated profile already pointed at the proxy — the same idea as Burp's embedded browser. Personal
+history, cookies, and extensions stay in your real profile and never pollute captured traffic. The
+browser is discovered exactly as the PDF report export discovers it (`INTERSEPTOR_CHROME`, then
+`PATH`, then the usual install locations); with none installed the action reports an honest error
+naming what it looked for. The test browser runs with `--ignore-certificate-errors` so HTTPS targets
+load through the MITM without the throwaway profile having to trust the Interseptor CA — the proxy
+itself can still verify the real origin (Origin certificate verification, below).
+
 ## Proxy listener exposure
 
 Proxy listeners do not require authentication by default — not on loopback, and not on a LAN or
@@ -150,6 +179,23 @@ sent to target origins; Interseptor uses them only on the upstream-proxy hop.
 If an upstream returns `407`, Interseptor reports an upstream authentication failure without passing
 the upstream's authentication challenge to the browser. This avoids a misleading second credential
 prompt.
+
+## Upstream TLS fingerprint (ClientHello)
+
+Interseptor dials origins with Go's standard `crypto/tls`, so its TLS ClientHello carries Go's
+fingerprint. Some anti-bot WAFs (Cloudflare, Akamai) fingerprint the ClientHello (JA3/JA4) and may
+challenge or block a connection that does not look like a mainstream browser.
+
+Mimicking a Chrome or Firefox ClientHello needs a third-party TLS stack — such as
+[uTLS](https://github.com/refraction-networking/utls) — which would be a **new production dependency**
+and is **not bundled**. It is deferred deliberately: adding a dependency is a project decision, and
+uTLS does not drop cleanly into the current upstream transport, which negotiates HTTP/2 by ALPN
+through Go's `http.Transport`/`DialTLSContext`. A uTLS `UConn` shapes the handshake but hands back a
+connection `http.Transport` will not speak HTTP/2 over, so the HTTP/2 leg would have to be wired
+explicitly (an `http2.Transport` with a custom dial) rather than inherited — a real change to the
+forwarding path, not a drop-in. If you need ClientHello mimicry today, chain Interseptor through an
+upstream proxy that performs it (see [Upstream proxies](#upstream-proxies)). The full assessment is in
+[issue #108](https://github.com/Veyal/interseptor/issues/108).
 
 ## Safe network checklist
 

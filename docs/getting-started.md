@@ -56,8 +56,10 @@ tracks the latest release.)
 
 1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
    Open that URL in your browser — or start with `--open` to launch it automatically.
-2. **Send traffic through it.** Point your browser/HTTP client (or the OS proxy via **Settings →
-   System proxy** on macOS) at `127.0.0.1:8080`.
+2. **Send traffic through it.** Point your browser/HTTP client at `127.0.0.1:8080`, or let
+   Interseptor set the OS proxy for you (macOS, Windows, and GNOME Linux) — the first-run **Setup**
+   wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at
+   the proxy. See [System proxy automation](proxy-and-tls.md#system-proxy-automation).
 3. **For HTTPS, trust the CA** (see below) — then HTTPS flows are decrypted and editable.
 4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
    the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.

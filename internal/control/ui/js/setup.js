@@ -123,6 +123,7 @@ function renderStep() {
         <button class="btn" id="setupCopyAddr">Copy</button>
       </div>
        <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
+       <button class="btn u-mb-3" id="setupTestBrowser" hidden>Launch test browser</button>
       <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
       <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
@@ -160,6 +161,22 @@ function renderStep() {
         }
       }
     };
+    const testBrowserButton=$('#setupTestBrowser');
+    if(testBrowserButton){
+      api('/api/test-browser')
+        .then(st=>{ if(step===0&&testBrowserButton.isConnected) testBrowserButton.hidden=!st?.available; })
+        .catch(()=>{});
+      testBrowserButton.onclick=async()=>{
+        if(setupActionBusy)return;
+        const label=testBrowserButton.textContent;
+        setSetupActionBusy(testBrowserButton,true,'Launching…');
+        try{
+          const res=await api('/api/test-browser/launch',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+          toast(res?.message||'test browser launched in an isolated profile');
+        }catch(e){ toastError('Could not launch test browser',e); }
+        finally{ setSetupActionBusy(testBrowserButton,false,label); }
+      };
+    }
     setupReadiness();
   } else if (step === 1) {
     const os = osHint();
@@ -227,7 +244,9 @@ function renderStep() {
         <input id="setupTargetInput" class="btn u-bg3 u-mono u-flex-1" aria-label="Authorised target" aria-describedby="setupTargetMsg" placeholder="*.example.com" spellcheck="false" value="${escAttr(setupLastScopeHost)}">
         <button class="btn" id="setupTargetSave">Set target and enable scope</button>
       </div>
-      <div id="setupTargetMsg" class="hint u-mt-2" role="status" aria-live="polite"></div>`;
+      <div id="setupTargetMsg" class="hint u-mt-2" role="status" aria-live="polite"></div>
+      <label class="icpt-chk u-flex u-gap-2 u-mt-3 u-cursor u-fg2"><input type="checkbox" id="setupDropScope" checked> Drop out-of-scope bodies — don't write traffic outside scope to disk</label>
+      <p class="hint u-m-0 u-mt-1">Recommended once a target is set, so background traffic isn't stored. Change it later in Settings.</p>`;
     $('#setupTargetSave').onclick = () => saveSetupTarget();
   } else {
     b.innerHTML = `<p class="u-m-0 u-mb-3">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
@@ -247,6 +266,8 @@ function renderStep() {
 async function saveSetupTarget() {
   if (setupActionBusy) return;
   const target = ($('#setupTargetInput')?.value || '').trim();
+  const dropScopeEl = $('#setupDropScope');
+  const dropScope = dropScopeEl ? !!dropScopeEl.checked : null;
   const msg = $('#setupTargetMsg');
   const say = (text, role) => { if (msg) { msg.setAttribute('role', role); msg.textContent = text; } };
   if (!target || /\s/.test(target)) { say('Enter one host or wildcard, for example *.example.com.', 'alert'); return; }
@@ -265,6 +286,11 @@ async function saveSetupTarget() {
     const scope = await api('/api/scope');
     const covered = (scope.rules || []).some(r => r.action === 'include' && r.enabled !== false && r.host === target);
     if (!covered) await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host: target, enabled: true }) });
+    // Persist the operator's out-of-scope-body choice so capture matches scope.
+    if (dropScope !== null) {
+      try { await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ captureScopeOnly: dropScope }) }); }
+      catch (e) { toastError('Could not update out-of-scope capture', e); }
+    }
     projectState.refresh({ reason: 'setup.target' });
     if (step !== actionStep || !button.isConnected) return;
     say('Target ' + target + ' saved and scope is on.', 'status');

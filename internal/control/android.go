@@ -199,8 +199,8 @@ func (h *androidAPI) postAndroidInstallCA(w http.ResponseWriter, r *http.Request
 	if mode == "auto" {
 		mode = android.EnrichDevice(dev).SuggestedCAMode
 	}
-	if mode != "user" && mode != "system" {
-		httpErr(w, http.StatusBadRequest, "mode must be user, system, or auto")
+	if mode != "user" && mode != "system" && mode != "system-tmpfs" {
+		httpErr(w, http.StatusBadRequest, "mode must be user, system, system-tmpfs, or auto")
 		return
 	}
 	cert := h.ca.CertPEM()
@@ -218,11 +218,36 @@ func (h *androidAPI) postAndroidInstallCA(w http.ResponseWriter, r *http.Request
 			return
 		}
 		msg = "System CA installed — reboot the device so all apps pick up the new trust store"
+	case "system-tmpfs":
+		if err := android.InstallSystemCATmpfs(dev, cert); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		msg = "System CA trusted rebootlessly via a tmpfs overlay (Android 14+ APEX included) — it lasts until the next reboot. Flash the Magisk/KernelSU module from Download module to make it permanent."
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "serial": dev.Serial, "mode": mode,
 		"needsUserAction": mode == "user", "message": msg,
 	})
+}
+
+// getAndroidMagiskModule returns a flashable Magisk/KernelSU module zip that
+// trusts the Interseptor CA as a system CA on every boot (Android 14+ APEX
+// overlay included). It is off the forwarding path — a plain control download.
+func (h *androidAPI) getAndroidMagiskModule(w http.ResponseWriter, r *http.Request) {
+	if h.ca == nil {
+		httpErr(w, http.StatusNotFound, "no CA")
+		return
+	}
+	zipBytes, err := android.GenerateMagiskModule(h.ca.CertPEM())
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-ca-magisk.zip"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(zipBytes)
 }
 
 func (h *androidAPI) postAndroidSetup(w http.ResponseWriter, r *http.Request) {
