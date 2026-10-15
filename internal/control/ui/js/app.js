@@ -782,7 +782,7 @@ async function bootFirstRunUI(){
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
-/* ---- engagement strip, connection chip and project state ---- */
+/* ---- Flight Bar engagement state, connection chip and project state ---- */
 projectState.attach({fetchJson:path=>api(path)});
 function goSettingsSection(sec){
   const tab=document.querySelector('.tab[data-tab="settings"]');
@@ -804,7 +804,7 @@ initCtxbar({
   openSettings:goSettingsSection,
   openProject:()=>{if(projectScopedUIReady)openProjectModal();},
   activateTab:activateTabByName,
-  // The History "In scope only" chip stays the owner of the filter; the strip mirrors it.
+  // The History "In scope only" chip stays the owner of the filter; the bar mirrors it.
   toggleScopeFilter:()=>$('#scopeToggle')?.click(),
   scopeFilterOn:()=>!!state.inScopeOnly,
   openEngagement:()=>{const open=getHook('openEngagementSheet');if(!open)return false;open();return true;},

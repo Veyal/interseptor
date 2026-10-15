@@ -202,7 +202,7 @@ func TestUIA11yPointerCoarseRaisesTargetsInEveryInteractiveSheet(t *testing.T) {
 
 func TestUIA11yStickyBarsDoNotObscureFocus(t *testing.T) {
 	app := readUIAsset(t, "app.css")
-	requireUIRegex(t, app, `--sticky-top:\s*calc\(var\(--topbar-h\)\s*\+\s*var\(--ctxbar-h\)\)`)
+	requireUIRegex(t, app, `--sticky-top:\s*var\(--topbar-h\)`)
 	requireUIRegex(t, app, `scroll-padding-top:\s*var\(--sticky-top\)`)
 }
 
@@ -353,7 +353,7 @@ func TestUIA11ySingleKeyRegistrationsNeverConflictAndAreGated(t *testing.T) {
 
 func TestUIA11yPreservedShellIDsAndTabs(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"tabs", "crumb", "mobileToolSelect", "sseStatus", "proxyAddr", "controlAddr", "deviceProxyChip", "cmdkBtn", "setNav", "ctxbar", "dock", "main"} {
+	for _, id := range []string{"tabs", "crumb", "mobileToolSelect", "sseStatus", "proxyAddr", "controlAddr", "deviceProxyChip", "cmdkBtn", "setNav", "ctxRing", "dock", "main"} {
 		if !strings.Contains(index, `id="`+id+`"`) && !strings.Contains(readUIAsset(t, "js/findings.js"), id) {
 			t.Errorf("preserved id #%s is gone", id)
 		}
@@ -388,7 +388,7 @@ func TestUIA11yLegacyModalsStayRegisteredAndReachable(t *testing.T) {
 
 func TestUIA11yLockedSurfaceCarriesNoEngagementData(t *testing.T) {
 	login := readUIAsset(t, "login.html")
-	for _, leak := range []string{"ctxbar", "ctxTarget", "projBadge", "connChip", "id=\"dock\"", "findReadinessBoard", "/api/project/readiness", "/api/findings", "/api/flows"} {
+	for _, leak := range []string{"ctxbar", "ctxRing", "ctxTarget", "projBadge", "connChip", "id=\"dock\"", "findReadinessBoard", "/api/project/readiness", "/api/findings", "/api/flows"} {
 		if strings.Contains(login, leak) {
 			t.Errorf("login.html (the locked state) references %q", leak)
 		}

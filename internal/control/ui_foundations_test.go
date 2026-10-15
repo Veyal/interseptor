@@ -72,8 +72,7 @@ func TestUIFoundationLayoutTokens(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	vars := parseThemeBlock(t, css, ":root{")
 	want := map[string]string{
-		"--ctxbar-h":         "48px",
-		"--topbar-h":         "48px",
+		"--topbar-h":         "42px",
 		"--drawer-w":         "420px",
 		"--drawer-min":       "320px",
 		"--drawer-max":       "640px",
@@ -86,7 +85,7 @@ func TestUIFoundationLayoutTokens(t *testing.T) {
 		"--safe-b":           "env(safe-area-inset-bottom,0px)",
 		"--safe-l":           "env(safe-area-inset-left,0px)",
 		"--safe-r":           "env(safe-area-inset-right,0px)",
-		"--sticky-top":       "calc(var(--topbar-h) + var(--ctxbar-h))",
+		"--sticky-top":       "var(--topbar-h)",
 		"--z-sticky":         "10",
 		"--z-sash":           "15",
 		"--z-dock":           "20",

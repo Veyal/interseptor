@@ -1857,7 +1857,7 @@ function syncScopeToggle(on){
   st.innerHTML=icon('scope')+' In scope only';
 }
 {const edit=$('#scopeEdit');if(edit)edit.onclick=()=>{const open=getShellApi().openSettings;if(open)open('scope');};}
-// One-time tip: the project-wide scope switch lives in the Engagement strip now.
+// One-time tip: the project-wide scope switch lives in the Flight Bar now.
 // Seen-state is a per-viewer convenience, so every storage touch is guarded.
 {
   const KEY='interseptor.coach.scopeSwitch';
@@ -1866,7 +1866,7 @@ function syncScopeToggle(on){
   if(!seen&&anchor&&anchor.parentNode){
     const tip=document.createElement('span');
     tip.id='scopeCoach';tip.className='coach-tip hint';tip.setAttribute('role','note');
-    tip.appendChild(document.createTextNode('The scope switch moved to the Scope chip in the strip above. '));
+    tip.appendChild(document.createTextNode('The scope switch moved to the Scope chip in the bar above. '));
     const ok=document.createElement('button');
     ok.type='button';ok.className='btn xs';ok.textContent='Got it';
     ok.onclick=()=>{try{localStorage.setItem(KEY,'1');}catch(e){}tip.remove();$('#scopeToggle')?.focus();};

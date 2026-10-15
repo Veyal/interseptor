@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Review fixes from the WCAG 2.2 AA audit of the shell, strip, sheets, palette,
+// Review fixes from the WCAG 2.2 AA audit of the shell, top bar, sheets, palette,
 // readiness meter and toasts.
 
 func TestUIToastSitsAboveTheModalStack(t *testing.T) {
@@ -54,31 +54,34 @@ func TestUIPaletteTriggerAndComboboxState(t *testing.T) {
 	requireUIContains(t, btn, `aria-keyshortcuts="Control+K Meta+K"`)
 }
 
-func TestUIStripLabelsStartWithVisibleText(t *testing.T) {
+func TestUIFlightBarLabelsStartWithVisibleText(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/ctxbar.js"))
 	requireUIContains(t, src,
 		"'Scope ' + m.text + '. ' + m.label", "'Target ' + s.brief.target", "'Target Set target.", "'Evidence ' + t + '. Open Findings.'", "'Next ' + s.nextAction.label")
 	index := readUIAsset(t, "index.html")
 	requireUIContains(t, index, `<span class="ctx-key">Evidence</span>`)
 	if strings.Contains(index, `<span class="ctx-key">Evid</span>`) {
-		t.Error("the strip must spell out Evidence")
+		t.Error("the readiness popover must spell out Evidence")
 	}
 }
 
-func TestUIBlockerPopoverFollowsItsTrigger(t *testing.T) {
+func TestUIReadinessPopoverFollowsItsTrigger(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	trigger := strings.Index(index, `id="ctxBlockers"`)
-	pop := strings.Index(index, `id="ctxBlockerPop"`)
-	next := strings.Index(index, `id="ctxNext"`)
+	trigger := strings.Index(index, `id="ctxRing"`)
+	pop := strings.Index(index, `id="ctxRingPop"`)
+	next := strings.Index(index, `id="connChip"`)
 	if !(trigger > 0 && trigger < pop && pop < next) {
-		t.Errorf("#ctxBlockerPop must sit directly after #ctxBlockers (trigger %d, pop %d, next %d)", trigger, pop, next)
+		t.Errorf("#ctxRingPop must sit directly after #ctxRing (trigger %d, pop %d, next control %d)", trigger, pop, next)
 	}
 }
 
-func TestUIStripFocusRingFitsAndNoShorthandFocusRing(t *testing.T) {
+func TestUIFlightBarFocusRingFitsAndNoShorthandFocusRing(t *testing.T) {
 	shell := readUIAsset(t, "shell.css")
-	if !regexp.MustCompile(`#ctxbar\{[^}]*padding:var\(--sp-2\) max`).MatchString(shell) {
-		t.Error("#ctxbar needs vertical padding so the focus ring is not clipped by overflow-x:auto")
+	// The bar scrolls sideways when a window is narrower than the phone tier, which
+	// clips vertically; its height tokens leave room for a control and its focus ring
+	// (TestUIFlightBarHeightTokens), and the ring is drawn inside that room.
+	if !regexp.MustCompile(`#bar\{[^}]*overflow-x:auto;overflow-y:hidden`).MatchString(shell) {
+		t.Error("#bar must scroll sideways instead of clipping when the window is narrower than the phone tier")
 	}
 	for _, name := range []string{"app.css", "shell.css", "mobile.css", "findings.css", "panel-proxy.css", "panel-scan.css", "settings.css", "report.css", "surfaces.css", "flow.css", "primitives.css"} {
 		css := readUIAsset(t, name)

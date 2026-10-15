@@ -280,8 +280,8 @@ func TestUIIconsFixPreviouslyWrongMetaphors(t *testing.T) {
 			t.Errorf("dock button %s should use %s", dock, id)
 		}
 	}
-	// Context bar chips.
-	for el, id := range map[string]string{"ctxProject": "i-folder", "ctxScope": "i-scope", "ctxTarget": "i-target", "ctxEvidence": "i-evidence", "ctxMore": "i-info"} {
+	// Flight Bar pills and readiness popover rows.
+	for el, id := range map[string]string{"ctxProject": "i-folder", "ctxScope": "i-scope", "ctxTarget": "i-target", "ctxEvidence": "i-evidence"} {
 		if !regexp.MustCompile(`id="` + el + `"[^>]*><svg class="icon"[^>]*><use href="#` + id + `"/>`).MatchString(index) {
 			t.Errorf("context chip %s should use %s", el, id)
 		}

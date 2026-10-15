@@ -1,22 +1,24 @@
-// ctxbar.js — the Engagement Strip under the topbar: project, scope, target,
-// active identity, evidence counts, report readiness, blockers and the next
-// action. It renders projectState and never decides readiness itself. It
-// imports only pure modules, so the view-model rules are covered under node and
-// the DOM wiring takes everything else through initCtxbar(deps).
+// ctxbar.js — the engagement half of the Flight Bar: the project and scope pills,
+// the active identity, and the readiness ring whose popover holds the Next
+// action, the target, the evidence counts and the report blockers. It renders
+// projectState and never decides readiness itself. It imports only pure modules,
+// so the view-model rules (ctxbar-model.js) are covered under node and the DOM
+// wiring takes everything else through initCtxbar(deps).
 //
 // deps: {openSettings(section), openProject(), activateTab(tab), toggleScopeFilter(),
-//        scopeFilterOn(), openEngagement(), openSheet(opts), copyText?, hasOpenModal(),
+//        scopeFilterOn(), openEngagement(), refreshSelect?(select), hasOpenModal(),
 //        loadIdentity(), saveIdentity(name), toast(msg, sev)}
 
 import {
-  projectState, scopeChipModel, evidenceSummary, readinessValuetext, identityHue, identityInitials,
-  createBlockerAnnouncer, blockersByFinding, shouldShowReadinessSignals,
+  projectState, scopeChipModel, evidenceSummary, identityHue, identityInitials,
+  createBlockerAnnouncer, shouldShowReadinessSignals,
 } from './project-state.js';
+import { ringModel, meterModel, blockerChecklist, compactIntercept, POPOVER_ROW_CAP } from './ctxbar-model.js';
 import { getShellApi, isReportOpen, onReportOpenChange } from './shell-hooks.js';
 
-const SEGMENT_CAP = 10;
-const POPOVER_ROW_CAP = 50;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const POPOVER_WIDTH = 380;
+const POPOVER_GUTTER = 8;
 
 let deps = {};
 let popOpen = false;
@@ -39,10 +41,6 @@ function iconNode(name) {
   svg.appendChild(use);
   return svg;
 }
-function setUse(svg, name) {
-  const use = svg && svg.querySelector('use');
-  if (use) use.setAttribute('href', '#i-' + name);
-}
 const setText = (id, value) => { const n = $(id); if (n && n.textContent !== value) n.textContent = value; };
 
 function renderScope(s) {
@@ -59,14 +57,14 @@ function renderScope(s) {
 }
 
 function renderTarget(s) {
-  const chip = $('ctxTarget');
-  if (!chip) return;
+  const row = $('ctxTarget');
+  if (!row) return;
   const has = s.brief.ok;
   setText('ctxTargetText', s.loaded ? (has ? s.brief.target.split('\n')[0] : 'Set target') : '…');
-  chip.dataset.empty = s.loaded && !has ? 'true' : 'false';
-  chip.dataset.stale = s.stale.brief ? 'true' : 'false';
-  chip.setAttribute('aria-label', s.loaded ? (has ? 'Target ' + s.brief.target + '. Open engagement details.' : 'Target Set target. No target is set; open engagement details.') : 'Target: loading');
-  chip.title = s.stale.brief ? 'Could not refresh the engagement brief' : (has ? s.brief.target : 'Set the authorised target');
+  row.dataset.empty = s.loaded && !has ? 'true' : 'false';
+  row.dataset.stale = s.stale.brief ? 'true' : 'false';
+  row.setAttribute('aria-label', s.loaded ? (has ? 'Target ' + s.brief.target + '. Open engagement details.' : 'Target Set target. No target is set; open engagement details.') : 'Target: loading');
+  row.title = s.stale.brief ? 'Could not refresh the engagement brief' : (has ? s.brief.target : 'Set the authorised target');
 }
 
 function renderIdentity(s) {
@@ -92,67 +90,63 @@ function renderIdentity(s) {
 }
 
 function renderEvidence(s) {
-  const e = $('ctxEvidence');
-  if (!e) return;
+  const row = $('ctxEvidence');
+  if (!row) return;
   const t = evidenceSummary(s.evidence);
   setText('ctxEvidenceText', s.loaded ? t : '…');
-  e.setAttribute('aria-label', s.loaded ? 'Evidence ' + t + '. Open Findings.' : 'Evidence loading');
-  e.dataset.stale = s.stale.evidence ? 'true' : 'false';
-  e.title = s.stale.evidence ? 'Flow and websocket counts could not be refreshed' : 'Evidence held for this project';
+  row.setAttribute('aria-label', s.loaded ? 'Evidence ' + t + '. Open Findings.' : 'Evidence loading');
+  row.dataset.stale = s.stale.evidence ? 'true' : 'false';
+  row.title = s.stale.evidence ? 'Flow and websocket counts could not be refreshed' : 'Evidence held for this project';
 }
 
-function renderReady(s) {
+// The popover header meter: role=meter with its value text and one segment per
+// finding (capped). The ring on the bar is a purely visual twin of it.
+function renderMeter(s) {
   const meter = $('ctxMeter'), segs = $('ctxSegs');
   if (!meter || !segs) return;
-  const total = s.findings.total, ready = s.findings.ready;
-  const valuetext = readinessValuetext(s.findings, s.blockers);
-  meter.setAttribute('aria-valuemax', String(Math.max(total, 1)));
-  meter.setAttribute('aria-valuenow', String(Math.min(ready, Math.max(total, 1))));
-  meter.setAttribute('aria-valuetext', valuetext);
-  meter.hidden = total === 0;
-  const n = Math.min(total, SEGMENT_CAP);
-  const filled = total ? Math.round((ready / total) * n) : 0;
-  const sig = n + ':' + filled;
+  const m = meterModel(s);
+  meter.setAttribute('aria-valuemax', String(m.max));
+  meter.setAttribute('aria-valuenow', String(m.now));
+  meter.setAttribute('aria-valuetext', m.valuetext);
+  meter.hidden = m.hidden;
+  const sig = m.segments.n + ':' + m.segments.filled;
   if (segs.dataset.sig !== sig) {
     segs.dataset.sig = sig;
     segs.textContent = '';
-    for (let i = 0; i < n; i++) segs.appendChild(el('span', i < filled ? 'ctx-seg is-pass' : 'ctx-seg is-gap'));
+    for (let i = 0; i < m.segments.n; i++) segs.appendChild(el('span', i < m.segments.filled ? 'ctx-seg is-pass' : 'ctx-seg is-gap'));
   }
-  setText('ctxReadyText', s.loaded ? (total ? ready + '/' + total : 'No findings') : '…');
-  setUse($('ctxReadyIcon'), total && ready === total ? 'status-done' : 'readiness');
-  const wrap = $('ctxReady');
-  if (wrap) {
-    // Ready n/m is report-time information like the blockers chip, so it
-    // follows the same signal. Leaving one readiness surface visible while the
-    // other two hide reads as a bug, not as restraint.
-    wrap.hidden = !shouldShowReadinessSignals(isReportOpen(), s.blockers.length, s.loaded).chip;
-    wrap.dataset.stale = s.stale.findings ? 'true' : 'false';
-    wrap.title = s.stale.findings ? 'Could not refresh findings' : valuetext;
-  }
+  setText('ctxReadyText', s.loaded ? m.valuetext : '…');
 }
 
-function renderBlockers(s) {
-  const chip = $('ctxBlockers');
-  if (!chip) return;
-  const n = s.blockers.length;
-  const show = shouldShowReadinessSignals(isReportOpen(), n, s.loaded).chip;
-  chip.hidden = !show;
-  if (!show && popOpen) closeBlockerPopover();
-  const label = !s.loaded ? '…' : n ? n + (n === 1 ? ' blocker' : ' blockers') : 'No blockers';
-  setText('ctxBlockersText', label);
-  setUse($('ctxBlockersIcon'), n ? 'stop' : 'status-done');
-  chip.dataset.count = String(n);
-  chip.setAttribute('aria-label', s.loaded ? label + '. Show what blocks the report.' : 'Blockers: loading');
-  if (announcer && s.loaded && show) announcer.update(n);
+// The ring is always on the bar; what it says depends on whether Report work is
+// on screen. Readiness (the fraction, the arc, the blocker count) is report-time
+// information, so outside Report the ring only flags missing project setup.
+function renderRing(s) {
+  const ring = $('ctxRing');
+  if (!ring) return;
+  const m = ringModel(s, { reportOpen: isReportOpen() });
+  ring.dataset.state = m.state;
+  ring.dataset.mark = m.mark;
+  ring.dataset.report = m.reportTime ? 'true' : 'false';
+  ring.dataset.stale = m.reportTime && s.stale.findings ? 'true' : 'false';
+  ring.setAttribute('aria-label', m.label);
+  ring.title = m.title;
+  const arc = $('ctxRingArc');
+  if (arc) arc.setAttribute('stroke-dasharray', m.pct + ' 100');
+  const text = $('ctxRingText'), badge = $('ctxRingBadge');
+  if (text) { text.textContent = m.text; text.hidden = !m.text; }
+  if (badge) { badge.textContent = m.badge; badge.hidden = !m.badge; }
+  renderMeter(s);
+  if (announcer && s.loaded && m.reportTime) announcer.update(s.blockers.length);
   if (popOpen) fillBlockerList();
 }
 
 function renderNext(s) {
-  const chip = $('ctxNext');
-  if (!chip) return;
+  const row = $('ctxNext');
+  if (!row) return;
   setText('ctxNextText', s.loaded ? s.nextAction.label : '…');
-  chip.dataset.kind = s.nextAction.kind;
-  chip.setAttribute('aria-label', s.loaded ? 'Next ' + s.nextAction.label + '. Do the next action.' : 'Next loading');
+  row.dataset.kind = s.nextAction.kind;
+  row.setAttribute('aria-label', s.loaded ? 'Next ' + s.nextAction.label + '. Do the next action.' : 'Next loading');
 }
 
 function renderRailBadge(s) {
@@ -172,11 +166,11 @@ function renderRailBadge(s) {
 }
 
 export function renderCtxbar(s = projectState.get()) {
-  const bar = $('ctxbar');
-  if (!bar) return;
-  bar.setAttribute('aria-busy', s.loaded ? 'false' : 'true');
+  if (!$('ctxRing')) return;
+  const group = $('fbEngage');
+  if (group) group.setAttribute('aria-busy', s.loaded ? 'false' : 'true');
   renderScope(s); renderTarget(s); renderIdentity(s); renderEvidence(s);
-  renderReady(s); renderBlockers(s); renderNext(s); renderRailBadge(s);
+  renderNext(s); renderRing(s); renderRailBadge(s);
 }
 
 export function setCtxProject(name) {
@@ -185,7 +179,7 @@ export function setCtxProject(name) {
   if (b) b.setAttribute('aria-label', 'Project: ' + (name || 'unknown') + '. Switch or create a project.');
 }
 
-/* ---- blockers popover ---- */
+/* ---- readiness popover: the blocker checklist ---- */
 function projectRow(b) {
   const li = el('li', 'ctx-pop-row');
   li.appendChild(iconNode('alert'));
@@ -193,7 +187,7 @@ function projectRow(b) {
   const fix = el('button', 'btn xs', 'Fix');
   fix.type = 'button';
   fix.setAttribute('aria-label', 'Fix: ' + b.label);
-  fix.addEventListener('click', () => { closeBlockerPopover(); if (deps.openSettings) deps.openSettings('scope'); });
+  fix.addEventListener('click', () => { closeReadinessPopover({ restoreFocus: true }); if (deps.openSettings) deps.openSettings('scope'); });
   li.appendChild(fix);
   return li;
 }
@@ -205,57 +199,69 @@ function findingRow(row) {
   for (const g of row.gaps) {
     const a = el('a', 'ctx-gap', g.label);
     a.href = g.href;
-    a.addEventListener('click', closeBlockerPopover);
+    a.addEventListener('click', () => closeReadinessPopover({ restoreFocus: true }));
     body.append(' ', a);
   }
   li.appendChild(body);
   const fix = el('a', 'btn xs', 'Fix');
   fix.href = row.gaps[0].href;
   fix.setAttribute('aria-label', 'Fix F-' + row.id + ': ' + row.gaps[0].label);
-  fix.addEventListener('click', closeBlockerPopover);
+  fix.addEventListener('click', () => closeReadinessPopover({ restoreFocus: true }));
   li.appendChild(fix);
   return li;
 }
+// The list is rebuilt only when its content changed: the store refreshes every
+// couple of seconds under live traffic, and rebuilding an unchanged list would
+// drop keyboard focus from the Fix link someone is on.
 function fillBlockerList() {
   const list = $('ctxBlockerList');
   if (!list) return;
-  const s = projectState.get();
+  const model = blockerChecklist(projectState.get(), POPOVER_ROW_CAP);
+  const sig = JSON.stringify(model);
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig;
+  // A changed list replaces the row someone may be on; hand focus to the first
+  // control left (or Close) instead of dropping it to the page.
+  const hadFocus = list.contains(document.activeElement);
   list.textContent = '';
-  const project = s.blockers.filter((b) => b.scope === 'project');
-  const findings = blockersByFinding(s.findings.items);
-  if (!project.length && !findings.length) {
-    list.appendChild(el('li', 'ctx-pop-empty', s.stale.findings ? 'Could not refresh findings. Showing the last known state.' : 'Nothing blocks the report.'));
-    return;
+  if (model.empty) list.appendChild(el('li', 'ctx-pop-empty', model.emptyText));
+  else {
+    model.project.forEach((b) => list.appendChild(projectRow(b)));
+    model.findings.forEach((r) => list.appendChild(findingRow(r)));
+    if (model.more) list.appendChild(el('li', 'ctx-pop-empty', model.moreText));
   }
-  project.forEach((b) => list.appendChild(projectRow(b)));
-  findings.slice(0, POPOVER_ROW_CAP).forEach((r) => list.appendChild(findingRow(r)));
-  if (findings.length > POPOVER_ROW_CAP) list.appendChild(el('li', 'ctx-pop-empty', findings.length - POPOVER_ROW_CAP + ' more findings. Open Findings to see all.'));
+  if (hadFocus) {
+    const next = list.querySelector('a[href],button') || $('ctxRingClose');
+    if (next) next.focus({ preventScroll: true });
+  }
 }
+// The popover hangs from the ring: its right edge lines up with the ring's, kept
+// inside the viewport. On a phone the stylesheet pins it to both side gutters.
 function placePopover() {
-  const pop = $('ctxBlockerPop'), chip = $('ctxBlockers');
-  if (!pop || !chip) return;
-  const r = chip.getBoundingClientRect();
-  const left = Math.max(8, Math.min(r.left, window.innerWidth - 360));
-  pop.style.setProperty('--pop-left', Math.round(left) + 'px');
+  const pop = $('ctxRingPop'), ring = $('ctxRing');
+  if (!pop || !ring) return;
+  const width = Math.min(POPOVER_WIDTH, window.innerWidth - POPOVER_GUTTER * 2);
+  const right = Math.min(Math.max(POPOVER_GUTTER, window.innerWidth - ring.getBoundingClientRect().right), window.innerWidth - width - POPOVER_GUTTER);
+  pop.style.setProperty('--pop-right', Math.round(Math.max(POPOVER_GUTTER, right)) + 'px');
 }
-export function openBlockerPopover() {
-  const pop = $('ctxBlockerPop'), chip = $('ctxBlockers');
-  if (!pop || !chip || popOpen) return;
+export function openReadinessPopover() {
+  const pop = $('ctxRingPop'), ring = $('ctxRing');
+  if (!pop || !ring || popOpen) return;
   popOpen = true;
   fillBlockerList();
   placePopover();
   pop.hidden = false;
-  chip.setAttribute('aria-expanded', 'true');
+  ring.setAttribute('aria-expanded', 'true');
   const first = pop.querySelector('a[href],button');
   if (first) first.focus({ preventScroll: true });
 }
-export function closeBlockerPopover({ restoreFocus = false } = {}) {
-  const pop = $('ctxBlockerPop'), chip = $('ctxBlockers');
+export function closeReadinessPopover({ restoreFocus = false } = {}) {
+  const pop = $('ctxRingPop'), ring = $('ctxRing');
   if (!pop || !popOpen) return;
   popOpen = false;
   pop.hidden = true;
-  if (chip) chip.setAttribute('aria-expanded', 'false');
-  if (restoreFocus && chip) chip.focus({ preventScroll: true });
+  if (ring) ring.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && ring) ring.focus({ preventScroll: true });
 }
 
 /* ---- actions ---- */
@@ -292,84 +298,84 @@ function onIdentityChange() {
   if (deps.saveIdentity) deps.saveIdentity(sel.value);
   if (deps.toast) deps.toast(sel.value ? 'Sending as ' + sel.value + ' by default' : 'Default identity cleared');
 }
-
-/* ---- phone sheet: everything the one-row strip hides ---- */
-function sheetRow(key, valueNode) {
-  const row = el('div', 'ctx-sheet-row');
-  row.appendChild(el('span', 'ctx-sheet-key', key));
-  row.appendChild(valueNode);
-  return row;
-}
-function sheetButton(text, onClick) {
-  const b = el('button', 'btn', text);
-  b.type = 'button';
-  b.addEventListener('click', onClick);
-  return b;
-}
-function openDetailsSheet() {
-  if (!deps.openSheet) return;
-  const s = projectState.get();
-  const m = scopeChipModel(s, { filterOn: deps.scopeFilterOn ? deps.scopeFilterOn() : false });
-  const content = (body) => {
-    const wrap = el('div', 'ctx-sheet');
-    wrap.appendChild(sheetRow('Scope', el('span', 'ctx-sheet-val', s.loaded ? m.text : 'Loading')));
-    wrap.appendChild(sheetRow('Target', el('span', 'ctx-sheet-val', s.brief.ok ? s.brief.target : 'Not set')));
-    if (s.identities.length) wrap.appendChild(sheetRow('As', el('span', 'ctx-sheet-val', s.activeIdentity || 'No identity')));
-    wrap.appendChild(sheetRow('Evidence', el('span', 'ctx-sheet-val', evidenceSummary(s.evidence))));
-    wrap.appendChild(sheetRow('Ready', el('span', 'ctx-sheet-val', readinessValuetext(s.findings, s.blockers))));
-    wrap.appendChild(sheetRow('Next', el('span', 'ctx-sheet-val', s.nextAction.label)));
-    const actions = el('div', 'ctx-sheet-actions');
-    actions.appendChild(sheetButton('Do next action', () => { sheetApi.close(); runNext(); }));
-    actions.appendChild(sheetButton('Scope settings', () => { sheetApi.close(); if (deps.openSettings) deps.openSettings('scope'); }));
-    wrap.appendChild(actions);
-    body.appendChild(wrap);
+// app.js writes the intercept status into #icptStat (and toggles its display). On
+// narrow tiers the stylesheet keeps that element for assistive technology only and
+// shows this short twin instead ("REQ · 2 held"), which this keeps in step.
+function watchIntercept() {
+  const stat = $('icptStat'), compact = $('icptCompact');
+  if (!stat || !compact || typeof MutationObserver !== 'function') return;
+  const sync = () => {
+    const full = getComputedStyle(stat).display === 'none' ? '' : stat.textContent.trim();
+    const text = compactIntercept(full);
+    // app.js rewrites the status every second; only touch the DOM when something changed.
+    if (compact.textContent !== text) compact.textContent = text;
+    if (compact.title !== full) compact.title = full;
+    if (compact.hidden === !!text) compact.hidden = !text;
   };
-  const sheetApi = deps.openSheet({ id: 'engagementSheet', title: 'Engagement', detents: ['half', 'full'], content });
+  new MutationObserver(sync).observe(stat, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+  sync();
 }
 
-// initCtxbar wires the strip once. Safe to call when the markup is missing.
+// A popover row that leaves for another surface closes the popover first and parks
+// focus on the ring, which stays on screen: a dialog the row opens takes focus from
+// there and gives it back on close, and a tab or section change leaves focus on the
+// ring instead of on a control that has just been hidden.
+const leaving = (fn) => () => { closeReadinessPopover({ restoreFocus: true }); fn(); };
+
+// initCtxbar wires the bar once. Safe to call when the markup is missing.
 export function initCtxbar(d = {}) {
   deps = d;
-  const bar = $('ctxbar');
-  if (!bar) return;
+  if (!$('ctxRing')) return;
   const live = $('ctxLive');
   announcer = createBlockerAnnouncer({ emit: (msg) => { if (live) live.textContent = msg; } });
-  const scope = $('ctxScope');
-  scope.addEventListener('click', onScopeClick);
-  $('ctxTarget').addEventListener('click', openEngagement);
+  $('ctxScope').addEventListener('click', onScopeClick);
   $('ctxProject').addEventListener('click', () => { if (deps.openProject) deps.openProject(); });
-  $('ctxEvidence').addEventListener('click', () => { if (deps.activateTab) deps.activateTab('findings'); });
-  $('ctxNext').addEventListener('click', runNext);
-  $('ctxMore').addEventListener('click', openDetailsSheet);
-  $('ctxBlockers').addEventListener('click', () => (popOpen ? closeBlockerPopover({ restoreFocus: true }) : openBlockerPopover()));
-  $('ctxBlockerClose').addEventListener('click', () => closeBlockerPopover({ restoreFocus: true }));
-  $('ctxBlockerOpen').addEventListener('click', () => { closeBlockerPopover(); if (deps.activateTab) deps.activateTab('findings'); });
   $('ctxIdentity').addEventListener('change', onIdentityChange);
+  $('ctxTarget').addEventListener('click', leaving(openEngagement));
+  $('ctxEvidence').addEventListener('click', leaving(() => { if (deps.activateTab) deps.activateTab('findings'); }));
+  $('ctxNext').addEventListener('click', leaving(runNext));
+  $('ctxScopeSettings').addEventListener('click', leaving(() => { if (deps.openSettings) deps.openSettings('scope'); }));
+  $('ctxBlockerOpen').addEventListener('click', leaving(() => { if (deps.activateTab) deps.activateTab('findings'); }));
+  $('ctxRing').addEventListener('click', () => (popOpen ? closeReadinessPopover({ restoreFocus: true }) : openReadinessPopover()));
+  $('ctxRingClose').addEventListener('click', () => closeReadinessPopover({ restoreFocus: true }));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !popOpen) return;
     if (deps.hasOpenModal && deps.hasOpenModal()) return;
     e.preventDefault();
-    closeBlockerPopover({ restoreFocus: true });
+    // Focus returns to the ring only from the popover, the ring or the bare page; from
+    // any other control the popover just closes and focus stays where it is.
+    const at = document.activeElement;
+    closeReadinessPopover({ restoreFocus: !at || at === document.body || $('ctxRingPop').contains(at) || at === $('ctxRing') });
   });
   document.addEventListener('click', (e) => {
-    const pop = $('ctxBlockerPop');
-    if (popOpen && pop && !pop.contains(e.target) && !$('ctxBlockers').contains(e.target)) closeBlockerPopover();
+    const pop = $('ctxRingPop');
+    if (popOpen && pop && !pop.contains(e.target) && !$('ctxRing').contains(e.target)) closeReadinessPopover();
   });
-  $('ctxBlockerPop').addEventListener('focusout', (e) => {
-    const pop = $('ctxBlockerPop');
-    if (popOpen && e.relatedTarget && !pop.contains(e.relatedTarget) && e.relatedTarget !== $('ctxBlockers')) closeBlockerPopover();
-  });
+  // Tabbing out of either end closes the popover. A null relatedTarget (a click on
+  // plain text, a hidden control) leaves it open; the outside-click handler covers clicks.
+  const closeOnFocusLeaving = (e) => {
+    const to = e.relatedTarget;
+    if (popOpen && to && !$('ctxRingPop').contains(to) && to !== $('ctxRing')) closeReadinessPopover();
+  };
+  $('ctxRingPop').addEventListener('focusout', closeOnFocusLeaving);
+  $('ctxRing').addEventListener('focusout', closeOnFocusLeaving);
   window.addEventListener('resize', () => { if (popOpen) placePopover(); });
+  watchIntercept();
   onReportOpenChange(() => renderCtxbar(projectState.get()));
   let restored = false;
   projectState.subscribe((s) => {
-    // The saved default identity applies once, after the first successful load.
+    // The saved default identity applies once, after a load that lists it (or at once
+    // when nothing is saved). The flag is set before the call: setting the identity
+    // notifies synchronously, re-entering this callback.
     if (!restored && s.loaded) {
-      restored = true;
       const saved = deps.loadIdentity ? deps.loadIdentity() : '';
-      if (saved) projectState.setActiveIdentity(saved);
+      if (!saved || s.identities.some((i) => i.name === saved)) {
+        restored = true;
+        if (saved) projectState.setActiveIdentity(saved);
+      }
     }
-    renderCtxbar(s);
+    // Render the store's current state, not this snapshot: the call above replaced it.
+    renderCtxbar(projectState.get());
   });
   renderCtxbar(projectState.get());
 }

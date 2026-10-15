@@ -3,12 +3,13 @@ package control
 import (
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// WP2 (UI overhaul shell): the Engagement Strip, Connection popover, project
-// state store, palette extraction and the shell extension points. The UI has no
+// WP2 (UI overhaul shell): the Flight Bar's engagement controls, Connection
+// popover, project state store, palette extraction and the shell extension points. The UI has no
 // build step, so pure logic runs under node and DOM-shaped behaviour is pinned
 // statically against the embedded assets.
 
@@ -34,7 +35,7 @@ func TestUIShellPureLogicUnderNode(t *testing.T) {
 
 // The pure modules must stay loadable under node, so none may import core.js.
 func TestUIShellPureModulesDoNotImportCore(t *testing.T) {
-	for _, name := range []string{"js/project-state.js", "js/ctxbar.js", "js/connection.js", "js/shell-hooks.js"} {
+	for _, name := range []string{"js/project-state.js", "js/ctxbar.js", "js/ctxbar-model.js", "js/connection.js", "js/shell-hooks.js"} {
 		if regexp.MustCompile(`(?m)^import .* from './core\.js'`).MatchString(readUIAsset(t, name)) {
 			t.Errorf("%s statically imports core.js; take dependencies through init functions", name)
 		}
@@ -42,7 +43,7 @@ func TestUIShellPureModulesDoNotImportCore(t *testing.T) {
 }
 
 func TestUIShellModulesNeverWriteInlineStyleOrUnsafeHTML(t *testing.T) {
-	for _, name := range []string{"js/project-state.js", "js/ctxbar.js", "js/connection.js", "js/shell-hooks.js"} {
+	for _, name := range []string{"js/project-state.js", "js/ctxbar.js", "js/ctxbar-model.js", "js/connection.js", "js/shell-hooks.js"} {
 		src := executableJS(readUIAsset(t, name))
 		if strings.Contains(src, `style="`) || strings.Contains(src, "style='") || strings.Contains(src, "cssText") {
 			t.Errorf("%s writes inline style markup; use classes and custom properties", name)
@@ -73,24 +74,31 @@ func TestUIShellPreservesRequiredIDs(t *testing.T) {
 	}
 }
 
-func TestUIShellEngagementStripSemantics(t *testing.T) {
+func TestUIShellFlightBarSemantics(t *testing.T) {
 	shell := shellRegion(t)
-	requireUIContains(t, shell,
-		`id="ctxbar" role="region" aria-label="Engagement"`,
-		// Scope chip: real button with switch semantics.
+	bar := flightBarMarkup(t)
+	requireUIContains(t, bar,
+		// The engagement controls are a named group inside the bar, busy until the project state loads.
+		`id="fbEngage" class="fb-engage" role="group" aria-label="Engagement" aria-busy="true"`,
+		// Scope pill: real button with switch semantics.
 		`id="ctxScope" class="ctx-chip ctx-scope" role="switch" aria-checked="false"`,
-		// Readiness meter: role, range and value text.
+		// Readiness ring: a real button that opens a non-modal dialog.
+		`id="ctxRing" class="ctx-ring" aria-haspopup="dialog" aria-expanded="false" aria-controls="ctxRingPop"`,
+		`id="ctxRingPop" class="ctx-pop" role="dialog" aria-modal="false" aria-labelledby="ctxRingTitle" hidden`,
+		// Readiness meter: role, range and value text, now in the popover header.
 		`id="ctxMeter" class="ctx-meter" role="meter"`, `aria-valuemin="0"`, `aria-valuemax="1"`, `aria-valuenow="0"`, `aria-valuetext="No findings yet"`,
-		// Blockers popover trigger and non-modal popover.
-		`id="ctxBlockers" class="ctx-chip ctx-blockers" aria-haspopup="dialog" aria-expanded="false" aria-controls="ctxBlockerPop"`,
-		`id="ctxBlockerPop" class="ctx-pop" role="dialog" aria-modal="false" aria-labelledby="ctxBlockerTitle" hidden`,
 		`id="ctxIdentity"`, `id="ctxIdentityWrap" class="ctx-identity" hidden`,
 		`id="ctxTarget"`, `id="ctxEvidence"`, `id="ctxNext"`,
 	)
-	// Every chip is a real <button>.
-	for _, id := range []string{"ctxProject", "ctxScope", "ctxTarget", "ctxEvidence", "ctxBlockers", "ctxNext", "ctxMore"} {
-		if !regexp.MustCompile(`<button type="button" id="` + id + `"`).MatchString(shell) {
+	// Every control the bar and its popovers carry is a real <button type=button>.
+	for _, id := range []string{"ctxProject", "ctxScope", "ctxRing", "ctxRingClose", "ctxNext", "ctxTarget", "ctxEvidence", "ctxScopeSettings", "connChip"} {
+		if !regexp.MustCompile(`<button type="button"[^>]*\sid="` + id + `"`).MatchString(bar) {
 			t.Errorf("#%s must be a <button type=button>", id)
+		}
+	}
+	for _, id := range []string{"cmdkBtn", "themeToggle"} {
+		if !regexp.MustCompile(`<button id="` + id + `"`).MatchString(bar) {
+			t.Errorf("#%s must be a <button>", id)
 		}
 	}
 	// One polite live region for the blocker count only.
@@ -99,12 +107,11 @@ func TestUIShellEngagementStripSemantics(t *testing.T) {
 	}
 	requireUIContains(t, shell, `id="ctxLive" class="u-sr" role="status" aria-live="polite"`)
 	// No project data in static markup: locked/unauthenticated pages never carry it.
-	strip := shell[strings.Index(shell, `id="ctxbar"`):]
-	if strings.Contains(strip, "example.com") {
-		t.Error("the strip markup must not embed a hostname")
+	if strings.Contains(section(t, shell, `<header id="bar"`, ""), "example.com") {
+		t.Error("the bar markup (and everything after it in the shell) must not embed a hostname")
 	}
 	if strings.Contains(shell, `aria-live="polite" title="Proxy listener"`) || strings.Contains(shell, `class="row u-gap-2" title="Proxy listener"`) {
-		t.Error("the topbar must no longer carry the listener addresses")
+		t.Error("the bar must no longer carry the listener addresses")
 	}
 }
 
@@ -149,7 +156,7 @@ func TestUIShellScopeToggleReusesExistingFilter(t *testing.T) {
 	requireUIContains(t, app, "toggleScopeFilter:()=>$('#scopeToggle')?.click()", "scopeFilterOn:()=>!!state.inScopeOnly")
 	ctx := executableJS(readUIAsset(t, "js/ctxbar.js"))
 	if strings.Contains(ctx, "'/api/scope'") || strings.Contains(ctx, "method: 'POST'") || strings.Contains(ctx, "method: 'PUT'") {
-		t.Error("the strip must not mutate scope rules; it mirrors the History in-scope filter")
+		t.Error("the scope pill must not mutate scope rules; it mirrors the History in-scope filter")
 	}
 	requireUIContains(t, ctx, "e.shiftKey", "aria-disabled")
 }
@@ -227,10 +234,11 @@ func TestUIShellStylesheetHasPhoneAndNarrowRules(t *testing.T) {
 	css := readUIAsset(t, "shell.css")
 	body := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(css, "")
 	for _, rule := range []string{
-		"@media (max-width:900px){\n  .ctx-evidence{display:none}",
+		"@media (max-width:1100px){\n  #bar .brand,.ctx-scope .ctx-key,.ctx-identity .ctx-key{display:none}",
+		"@media (max-width:900px){",
 		"@media (max-width:720px){",
-		".ctx-more{display:inline-flex}",
-		"@media (max-width:480px){\n  .ctx-target .ctx-text{display:none}",
+		"@media (max-width:480px){\n  #themeToggle,#cmdkBtn .cmdk-label-more{display:none}",
+		"@media (max-width:360px){",
 		"@media (pointer:coarse){",
 		"@media (forced-colors:active){",
 	} {
@@ -239,16 +247,22 @@ func TestUIShellStylesheetHasPhoneAndNarrowRules(t *testing.T) {
 		}
 	}
 	phone := mediaBlock(t, body, "@media (max-width:720px)")
-	for _, hidden := range []string{".ctx-project", ".ctx-identity", ".ctx-next"} {
+	for _, hidden := range []string{".ctx-project", ".ctx-identity"} {
 		if !strings.Contains(phone, hidden) {
-			t.Errorf("the 720px strip must collapse %s into the details sheet", hidden)
+			t.Errorf("the 720px bar must collapse %s (the dock and the palette cover it)", hidden)
 		}
 	}
-	// Side gutters of at least 16px, and nothing wider than a 375px phone.
-	requireUIContains(t, body, "padding:var(--sp-2) max(var(--sp-4),var(--safe-r)) var(--sp-2) max(var(--sp-4),var(--safe-l))")
-	for _, m := range regexp.MustCompile(`min-width\s*:\s*(\d+)px`).FindAllStringSubmatch(body, -1) {
-		if m[1] != "44" && m[1] != "0" {
-			t.Errorf("shell.css sets min-width:%spx; nothing may be wider than the 375px target", m[1])
+	// Side gutters of at least 16px on desktop and 8px on the phone tier (both clear of
+	// the safe-area insets), and nothing wider than a 375px phone.
+	requireUIContains(t, body, "padding:var(--safe-t) max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l))")
+	requireUIContains(t, phone, "#bar{padding-left:max(var(--sp-2),var(--safe-l));padding-right:max(var(--sp-2),var(--safe-r))}")
+	for _, m := range regexp.MustCompile(`min-width\s*:\s*([\d.]+)(px|rem)`).FindAllStringSubmatch(body, -1) {
+		px, _ := strconv.ParseFloat(m[1], 64)
+		if m[2] == "rem" {
+			px *= 16
+		}
+		if px > 375 {
+			t.Errorf("shell.css sets min-width:%s%s; nothing may be wider than the 375px target", m[1], m[2])
 		}
 	}
 	// Chips keep a focus ring and the 24px minimum target.
@@ -265,11 +279,11 @@ func TestUIShellStylesheetAnimatesNothingButCompositorProperties(t *testing.T) {
 		}
 	}
 	if strings.Contains(body, "@keyframes") {
-		t.Error("shell.css must not add keyframes; the strip conveys state without motion")
+		t.Error("shell.css must not add keyframes; the Flight Bar conveys state without motion")
 	}
 }
 
-func TestUIShellStripIsGatedUntilHydrated(t *testing.T) {
+func TestUIShellFlightBarIsGatedUntilHydrated(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	// The store only fetches through refreshProjectState, which needs hydration.
 	if strings.Count(app, "projectState.refresh(") != 1 {
@@ -282,16 +296,37 @@ func TestUIShellStripIsGatedUntilHydrated(t *testing.T) {
 	}
 }
 
-func TestUIShellBlockerPopoverContract(t *testing.T) {
+func TestUIShellReadinessPopoverContract(t *testing.T) {
 	ctx := executableJS(readUIAsset(t, "js/ctxbar.js"))
 	requireUIContains(t, ctx,
 		"e.key !== 'Escape' || !popOpen", "deps.hasOpenModal && deps.hasOpenModal()",
-		"closeBlockerPopover({ restoreFocus: true })", "chip.setAttribute('aria-expanded'",
-		"const POPOVER_ROW_CAP = 50", "aria-valuetext", "readinessValuetext(",
-		"createBlockerAnnouncer(", "aria-busy",
+		"closeReadinessPopover({ restoreFocus: true })", "ring.setAttribute('aria-expanded'",
+		"aria-valuetext", "createBlockerAnnouncer(", "aria-busy",
+		"blockerChecklist(", "meterModel(", "ringModel(",
 	)
+	// The ring's DOM wiring: its state, shape, name, tooltip and arc come from the model.
+	requireUIContains(t, ctx,
+		"ring.dataset.state = m.state;", "ring.dataset.mark = m.mark;", "ring.setAttribute('aria-label', m.label);", "ring.title = m.title;",
+		"arc.setAttribute('stroke-dasharray', m.pct + ' 100')",
+	)
+	// Dismissal: an outside click, focus leaving either end, and a resize re-placing it.
+	requireUIContains(t, ctx,
+		"!pop.contains(e.target) && !$('ctxRing').contains(e.target)) closeReadinessPopover();",
+		"$('ctxRingPop').addEventListener('focusout', closeOnFocusLeaving);", "$('ctxRing').addEventListener('focusout', closeOnFocusLeaving);",
+		"window.addEventListener('resize', () => { if (popOpen) placePopover(); });",
+	)
+	// Focus: rows that leave for another surface park it on the ring (never on a hidden
+	// control), Escape only pulls it from the popover, the ring or the bare page, and a
+	// rebuilt list hands it to the first control left.
+	requireUIContains(t, ctx,
+		"const leaving = (fn) => () => { closeReadinessPopover({ restoreFocus: true }); fn(); };",
+		"restoreFocus: !at || at === document.body ||",
+		"const hadFocus = list.contains(document.activeElement);", "$('ctxRingClose')",
+	)
+	model := executableJS(readUIAsset(t, "js/ctxbar-model.js"))
+	requireUIContains(t, model, "export const POPOVER_ROW_CAP = 50", "readinessValuetext(")
 	if strings.Contains(ctx, "aria-modal', 'true'") {
-		t.Error("the blockers popover is non-modal")
+		t.Error("the readiness popover is non-modal")
 	}
 }
 

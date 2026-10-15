@@ -188,16 +188,37 @@ resets them with an empty value.
 ### Evidence workbench shell
 
 The chrome answers "am I in scope, what evidence do I hold, what blocks my report?" before any
-panel does. `ctxbar.js` renders the Engagement Strip (`#ctxbar`, under the topbar) from
-`project-state.js`, a small store with `get`, `subscribe` and a debounced `refresh`. The store
+panel does, in one bar: the **Flight Bar** (`#bar`, a `<header>` 42px tall at the default density).
+Left to right it holds the brand, the project and scope pills, the centred Ctrl/Cmd+K omnibar
+(`#cmdkBtn`), the intercept status, the active identity, the readiness ring, the live connection chip
+and the theme toggle. It replaced a 48px topbar plus a 49px Engagement Strip (97px of chrome), so
+the History list gains 55px (544px to 599px at 1440x900, 364px to 419px at 1280x720). `ctxbar.js`
+renders it from `project-state.js`, a small store with `get`, `subscribe` and a debounced
+`refresh`. The store
 reads `GET /api/project/readiness` (falling back to per-endpoint reads), marks a failed segment
 stale on its own, and limits `flow.new` to one refresh per two seconds. The client renders the
-server's readiness verdicts and never recomputes pass or fail. `connection.js` holds the Connection
-popover (listener addresses, device proxy, live-update state) and the five-second offline banner.
-`cmdk.js` (with `cmdk-logic.js` and `cmdk-actions.js`) is the command palette: fuzzy ranking from
-`keys.js`, `>`/`f:`/`#`/`@`/`?` prefix modes, and an action for every legacy dialog id so replaced
-dialogs stay reachable. `keyboard.js` owns the shared key registry, chord continuations and the
-"Single-key shortcuts" switch.
+server's readiness verdicts and never recomputes pass or fail.
+
+The readiness ring (`#ctxRing`, a real button with `aria-haspopup` and `aria-expanded`) opens a
+non-modal popover that holds what the strip used to show permanently: the Next action, the
+target, the evidence counts and the report blocker checklist (project blockers first, then one row
+per blocked finding with a Fix link). The popover closes on Escape or Close (focus returns to the
+ring), on an outside click and when focus tabs out of it; a row that leaves for another surface
+parks focus on the ring, which the surface it opens then takes. Readiness stays report-time information: the ring shows the ready fraction, its
+arc and the blocker count only while the Report view is open (`shell-hooks.js` publishes that
+signal), and otherwise flags only missing project setup, with a "!" shape rather than colour alone.
+The pure rules (ring state and accessible name, popover meter, checklist) are in `ctxbar-model.js`
+and tested under node. The bar adds no motion. Narrow windows shorten it in tiers instead of
+clipping it: 1100px drops the brand text, 900px shortens the pills and the intercept status
+(`#icptStat` stays for assistive technology, a short `#icptCompact` twin shows `REQ · 2 held`),
+drops the shortcut hint and the identity avatar and turns a connected live chip into a dot, 720px
+hands the project pill and the identity to the dock's More sheet and the palette (`@`), 480px does
+the same for the theme toggle, and 360px drops the logo mark; the omnibar, scope pill, ring and
+live chip are never removed, and a window narrower than that scrolls the bar sideways. `connection.js` holds the Connection popover (listener addresses, device proxy,
+live-update state) and the five-second offline banner. `cmdk.js` (with `cmdk-logic.js` and
+`cmdk-actions.js`) is the command palette: fuzzy ranking from `keys.js`, `>`/`f:`/`#`/`@`/`?` prefix
+modes, and an action for every legacy dialog id so replaced dialogs stay reachable. `keyboard.js`
+owns the shared key registry, chord continuations and the "Single-key shortcuts" switch.
 
 `flowdrawer.js` is the one flow inspector — a docked `complementary` region above 1100px, an overlay
 with core's focus trap below — fed by the pure `flowbody.js`. Every panel opens a flow through core's
@@ -242,10 +263,11 @@ Stylesheets load in a fixed order: `app.css` (tokens and legacy components), `su
 Theme and density are root attributes set by a pre-paint script so there is no layout shift:
 `data-theme` is `dark`, `light` or `hc` (high contrast; `forced-colors` maps borders, focus and
 selection to system colours) and `data-density` is `compact`, `default` or `comfortable`
-(`pointer:coarse` forces 44px rows and targets). Layout tokens include `--ctxbar-h`, `--topbar-h`,
-`--bottomnav-h` and `--sticky-top`, which feeds `scroll-padding-top` so focus is never hidden under
-the sticky bars. Only `transform` and `opacity` animate, and the global reduced-motion block turns
-every animation and transition off. Single-letter shortcuts (`e`, `d`, `x`, `y` then a letter, `/`)
+(`pointer:coarse` forces 44px rows and targets). Layout tokens include `--topbar-h` (the Flight Bar:
+42px, 36px compact, 50px comfortable, 54px on touch), `--bottomnav-h` and `--sticky-top`, which feeds
+`scroll-padding-top` so focus is never hidden under the sticky bar. Only `transform` and `opacity`
+animate, and the global reduced-motion block turns every animation and transition off.
+Single-letter shortcuts (`e`, `d`, `x`, `y` then a letter, `/`)
 fire only outside editable controls and open dialogs and can be switched off in Settings; each has
 a visible button. Pure logic (diff, fuzzy scorer, chord resolver, copy-as, blocker derivation,
 selection model) is tested with `node --test` under `internal/control/ui/_js-tests` (not

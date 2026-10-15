@@ -86,7 +86,7 @@ with a dash) is a different silhouette from `status-done` (octagon with a tick).
   `arrow-down`, `external`, `fit`, `parallel`, `filter`, `tag`, `note`,
   `columns`, `panel-right`, `panel-bottom`, `chevron`, `more`, `tools`,
   `decode`, `codec`, `folder-open`, `archive`, `clipboard`, `flask`, `clock`,
-  `keyboard`, `rocket`, `sun`, `moon`, `appearance`, `intent`, `storage`, `bell`,
+  `keyboard`, `rocket`, `sun`, `moon`, `appearance`, `intent`, `storage`,
   `cluster`, `timeline`, `list`, `grid`, `image` (framed picture, rendered evidence images).
 
 One meaning, one icon: ids are semantic (what the icon *means*), never aliases

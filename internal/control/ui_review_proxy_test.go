@@ -70,7 +70,7 @@ func TestUIProxyEditScopeAndCoachTip(t *testing.T) {
 		"open('scope')",
 		"interseptor.coach.scopeSwitch",
 		"tip.id='scopeCoach'",
-		"The scope switch moved to the Scope chip in the strip above.",
+		"The scope switch moved to the Scope chip in the bar above.",
 	)
 	// storage can throw: the tip must render and dismiss without it
 	if n := strings.Count(proxy[strings.Index(proxy, "interseptor.coach.scopeSwitch"):], "try{"); n < 2 {

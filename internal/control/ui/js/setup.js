@@ -222,7 +222,7 @@ function renderStep() {
     };
   } else if (step === 3) {
     b.innerHTML = `<p class="u-m-0 u-mb-2">Set the authorised target and turn scope on, so findings and the readiness meter know what you are allowed to test.</p>
-      <p class="hint u-m-0 u-mb-3">This saves the target in the engagement brief and adds an include rule if none covers it yet. Add the rest of the brief later from the Engagement strip.</p>
+      <p class="hint u-m-0 u-mb-3">This saves the target in the engagement brief and adds an include rule if none covers it yet. Add the rest of the brief later from the Target row of the readiness ring in the top bar.</p>
       <div class="row u-gap-2">
         <input id="setupTargetInput" class="btn u-bg3 u-mono u-flex-1" aria-label="Authorised target" aria-describedby="setupTargetMsg" placeholder="*.example.com" spellcheck="false" value="${escAttr(setupLastScopeHost)}">
         <button class="btn" id="setupTargetSave">Set target and enable scope</button>

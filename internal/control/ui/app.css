@@ -65,15 +65,15 @@
   --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
   --row-h:30px; --toolbar-h:44px; --hit-min:32px; --cell-pad-x:6px; --row-more-w:28px;
   --nav-rail-w:204px; --side-panel-w:280px; --rail-w-collapsed:56px;
-  --topbar-h:48px; --ctxbar-h:48px;
+  --topbar-h:42px;
   --drawer-w:420px; --drawer-min:320px; --drawer-max:640px;
   --bottomnav-h:56px; --sheet-peek:72px; --sheet-half:50dvh;
   --split-gutter:8px;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
   --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
-  /* Fixed chrome (topbar + engagement strip) that can cover a focused control;
+  /* Fixed chrome (the Flight Bar, one bar) that can cover a focused control;
      applied as scroll-padding-top so focus is never obscured (WCAG 2.4.11). */
-  --sticky-top:calc(var(--topbar-h) + var(--ctxbar-h));
+  --sticky-top:var(--topbar-h);
   /* Z-index scale for new code; older magic numbers migrate opportunistically. */
   --z-sticky:10; --z-sash:15; --z-dock:20; --z-strip:25; --z-drawer:30;
   --z-popover:40; --z-sheet:60; --z-modal:70; --z-cmdk:75; --z-toast:100000;
