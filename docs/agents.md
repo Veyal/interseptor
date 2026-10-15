@@ -1179,7 +1179,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/findings/deleted` | List recoverable deleted findings |
 | GET | `/api/findings/images/{hash}` | Serve a content-addressed finding image by sha256 hash |
 | GET | `/api/findings/readiness` | Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by... |
-| GET | `/api/findings/report` | Curated findings as Markdown/HTML/PDF/JSON/SARIF (?format=html\|pdf\|json\|sarif; ?tag=; ?groupBy=tag... |
+| GET | `/api/findings/report` | Curated findings as Markdown/HTML/PDF/JSON/SARIF (?format=html\|pdf\|json\|sarif; ?ids=12,41 exports only those... |
 | GET | `/api/findings/tags` | List tags in use on findings with counts (and optional colors from tag_meta) |
 | DELETE | `/api/findings/{id}` | Permanently delete a finding |
 | GET | `/api/findings/{id}` | Get one canonical finding with typed blocks, proof/provenance, PoC flows, tags, structured readiness, and... |

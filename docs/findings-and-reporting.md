@@ -385,6 +385,18 @@ bound. Collaboration imports preflight table-only attachments before publishing 
 raw HTTP is capped at 64 KiB per side after decoding, with compressed decoder windows and memory
 bounded before bytes are read.
 
+### Export a subset or a single finding
+
+By default the report covers every finding in the status set (`open`, `verified`, `fixed`). To
+deliver only part of an engagement, pass `?ids=` a comma-separated list of finding ids:
+`GET /api/findings/report?ids=41` exports one finding, and `?ids=12,41,53` exports those three. The
+selection works in every format (Markdown, HTML, PDF, JSON and SARIF) and keeps the report's own
+order regardless of the order the ids are listed. A malformed id is a `400` and a selection that
+matches no finding is a `404`, so a mistyped id never falls back to exporting the whole project. When
+`mode=final`, the readiness gate applies to the selected findings only. `?ids=` composes with
+`?tag=`, `?statuses=`, `?maskHeaders=1` and the rest. To hand a single finding to an external tracker
+in that system's own shape instead, use `GET /api/finding-export/{id}`.
+
 Exports can contain credentials, session material, and personal data from captured traffic. Review
 and secure them as sensitive engagement artifacts. Follow the
 [engagement close-out checklist](engagement-closeout.md) for final delivery and cleanup.

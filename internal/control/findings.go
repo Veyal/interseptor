@@ -203,6 +203,21 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fs = filterReportFindings(fs, q.Get("statuses"))
+	// ?ids=12,41 exports only those findings (a single id exports one), keeping the
+	// report's own order. A malformed id is a 400; ids that match nothing is a 404,
+	// so a typo does not quietly fall back to exporting the whole engagement.
+	if raw := strings.TrimSpace(q.Get("ids")); raw != "" {
+		want, err := parseIDSet(raw)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, "ids must be a comma-separated list of finding ids")
+			return
+		}
+		fs = selectFindingsByID(fs, want)
+		if len(fs) == 0 {
+			httpErr(w, http.StatusNotFound, "no finding matched the requested ids")
+			return
+		}
+	}
 	mode := q.Get("mode")
 	if mode == "" {
 		mode = "draft"
@@ -341,6 +356,35 @@ func (h *findingsAPI) reportContext() report.Context {
 		c.Interception = i
 	}
 	return c
+}
+
+// parseIDSet parses a comma-separated list of positive finding ids. An empty or
+// non-numeric element is an error so a typo cannot be read as "everything".
+func parseIDSet(raw string) (map[int64]bool, error) {
+	parts := splitCSV(raw)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no ids")
+	}
+	want := make(map[int64]bool, len(parts))
+	for _, p := range parts {
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("bad id %q", p)
+		}
+		want[id] = true
+	}
+	return want, nil
+}
+
+// selectFindingsByID keeps the findings whose id is in want, in their existing order.
+func selectFindingsByID(fs []store.Finding, want map[int64]bool) []store.Finding {
+	out := make([]store.Finding, 0, len(want))
+	for _, f := range fs {
+		if want[f.ID] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func filterReportFindings(fs []store.Finding, raw string) []store.Finding {
