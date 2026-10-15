@@ -318,8 +318,14 @@ matter; `oob`, `auth_identities`, and `login_macro` matter only if you use those
   (final report not ready, conflict), `413` (too large), `503` (busy).
 - `GET /api/events` is a Server-Sent Events stream. It sends `event: hello`, then `data:` lines of JSON
   objects with a `type` such as `flow.new`, `findings.update`, `scope.update`, `scanner.update`,
-  `intruder.update`, `activity`, `human.input`, and `collrun`. A running passive scan adds
-  `scan.progress` (a `scan` object with `scanned`, `total`, `issues`, `skipped`, `done`, `cancelled`)
+  `intruder.update`, `activity`, `human.input`, and `collrun`. Request/response interception streams
+  per-item deltas rather than the whole hold queue: `intercept.held` (`{seq, side, item}`) and
+  `intercept.released` (`{seq, side, id, reason}`, `reason` being `forwarded` or `dropped`), with a
+  full `intercept.state` snapshot (`{seq, intercept}`) sent to each new connection right after `hello`
+  and an `intercept.update` snapshot on a bulk change (intercept toggled, queue drained). Every delta
+  and snapshot carries a monotonic `seq`; a consumer applies a delta only when its `seq` is one past
+  the last it holds and re-reads `GET /api/intercept` (which also returns `seq`) on a gap. A running
+  passive scan adds `scan.progress` (a `scan` object with `scanned`, `total`, `issues`, `skipped`, `done`, `cancelled`)
   and `scan.issue` (one issue as the scan finds it, with `saved: false` because it has not been
   reconciled into the store yet). The `scanner.update` that follows a finished scan marks the
   persisted set, which `GET /api/scanner/issues` then returns with ids.

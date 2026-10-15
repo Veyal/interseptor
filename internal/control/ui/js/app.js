@@ -5,7 +5,7 @@
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
-import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
+import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
@@ -419,6 +419,12 @@ function dispatchSseMessage(m){
     else if(m.type==='activity')onActivity(m.item);
     else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
+    // intercept.state is the full snapshot a newly connected client receives (and
+    // the baseline the deltas reconcile against); it is applied exactly like an update.
+    else if(m.type==='intercept.state'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
+    // Per-item deltas: apply in place, falling back to a full refreshIntercept
+    // snapshot on a detected gap (a dropped or out-of-order frame).
+    else if(m.type==='intercept.held'||m.type==='intercept.released'){applyInterceptDelta(m,refreshIntercept);renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)scheduleWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}

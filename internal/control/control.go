@@ -212,7 +212,10 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.applySessionFromStore()
 	h.routes()
 	if eng != nil {
-		eng.SetNotifier(h.broadcastIntercept)
+		// Per-item delta notifier: a hold/release becomes a small intercept.held /
+		// intercept.released SSE event instead of re-broadcasting the whole queue on
+		// every change (the O(N^2) fix). A bulk reset still re-sends the snapshot.
+		eng.SetChangeNotifier(h.onInterceptChange)
 		if rules, err := st.ListRules(); err == nil {
 			_ = eng.SetRules(rules)
 		}
@@ -333,6 +336,11 @@ type heldJSON struct {
 }
 
 type interceptJSON struct {
+	// Seq is the intercept engine's generation for this snapshot. The UI stores
+	// it and applies a later intercept.held/intercept.released delta only when the
+	// delta's seq is exactly one greater; a gap triggers a fresh snapshot. It makes
+	// the lossy SSE delta stream self-correcting.
+	Seq             int64      `json:"seq"`
 	Enabled         bool       `json:"enabled"`
 	Queue           []heldJSON `json:"queue"`
 	ResponseEnabled bool       `json:"responseEnabled"`
@@ -1204,15 +1212,19 @@ func (h *Hub) interceptStateWithRaw(includeRaw bool) interceptJSON {
 	if h.eng == nil {
 		return out
 	}
-	out.Enabled = h.eng.Enabled()
-	for _, held := range h.eng.Queue() {
+	// One atomic snapshot so the queue contents and Seq cannot drift apart under a
+	// concurrent hold/forward (what a delta client reconciles against).
+	s := h.eng.Snapshot()
+	out.Seq = s.Seq
+	out.Enabled = s.Enabled
+	for _, held := range s.Queue {
 		out.Queue = append(out.Queue, heldFromRequest(held, includeRaw))
 	}
-	out.ResponseEnabled = h.eng.ResponseEnabled()
-	for _, held := range h.eng.ResponseQueue() {
+	out.ResponseEnabled = s.ResponseEnabled
+	for _, held := range s.ResponseQueue {
 		out.ResponseQueue = append(out.ResponseQueue, heldFromResponse(held, includeRaw))
 	}
-	out.FilterEnabled, out.FilterTarget, out.FilterPattern = h.eng.InterceptFilter()
+	out.FilterEnabled, out.FilterTarget, out.FilterPattern = s.FilterEnabled, s.FilterTarget, s.FilterPattern
 	return out
 }
 

@@ -1,9 +1,10 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope, wireRowKey } from './core.js';
 import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
 import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
 import { on as busOn, EVENTS } from './bus.js';
@@ -27,6 +28,12 @@ let forwardAllBusy=false;
 const icptCtx={scope:null,identity:'',pane:null};
 let interceptStateEpoch=0;
 let interceptSummaryEpoch=0;
+// Generation of the hold queue the client currently mirrors (see intercept-delta.js).
+// SEQ_UNKNOWN until the first authoritative snapshot, and again after a detected
+// gap until the resnapshot rebases it. interceptResnapshotPending dedupes the
+// on-demand snapshot fetch so a burst of dropped deltas triggers only one.
+let interceptSeq=SEQ_UNKNOWN;
+let interceptResnapshotPending=false;
 // Toggle mutations can change the held queues and are kept on their own lane.
 // Filter persistence is deliberately separate: the filter endpoint does not
 // emit an intercept.update event, and a stalled request must never make the
@@ -91,6 +98,17 @@ function commitInterceptState(next,filterAuthoritative){
   if(filterAuthoritative)acknowledgedFilterConfig=currentFilterConfig(next||{});
   const merged=mergeIncomingInterceptState(next);
   state.intercept=merged;interceptStateEpoch++;interceptSummaryEpoch++;
+  // Any authoritative full snapshot (replaceInterceptState) rebases the delta
+  // generation; a local optimistic edit (replaceLocalInterceptState) must not.
+  if(filterAuthoritative)noteSnapshotSeq(merged);
+}
+// noteSnapshotSeq rebases the delta generation whenever an authoritative full
+// snapshot is applied (SSE intercept.state/intercept.update, a toggle/filter
+// response, or the REST resync). An older server that omits seq leaves the
+// client on SEQ_UNKNOWN, which keeps it on the full-render path.
+function noteSnapshotSeq(snapshot){
+  const s=snapshotSeq(snapshot);
+  if(s!==SEQ_UNKNOWN){interceptSeq=s;interceptResnapshotPending=false;}
 }
 export function replaceInterceptState(next){commitInterceptState(next,true);}
 function replaceLocalInterceptState(next){commitInterceptState(next,false);}
@@ -283,6 +301,33 @@ function showHeldLoadError(h,error){
   showHeldLoadState(h,'Unable to load held message: '+(error?.message||'request failed'),true);
 }
 
+// heldRowMarkup is the single source of a hold-queue row's markup, shared by the
+// full render and the incremental delta path so the two never drift. h carries a
+// `side` ('req'|'resp') on top of the stored heldJSON fields.
+function heldRowMarkup(h){
+  return `<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}${dropMarks.has(heldKey(h.side,h.id))?' is-dropping':''}" data-id="${h.id}" data-side="${h.side}" aria-selected="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
+    <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
+    ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
+    <span class="u">${esc(h.host)}${esc(h.path)}</span>${dropMarks.has(heldKey(h.side,h.id))?'<span class="icpt-dropping-tag">Dropping</span>':''}</div>`;
+}
+// syncInterceptBanner reflects the current total into the danger banner, the
+// nav badge and the queue-total chip. Shared so a single delta updates them in
+// O(1) without a full list rebuild.
+function syncInterceptBanner(){
+  const ic=state.intercept||{};
+  const total=(ic.queue||[]).length+(ic.responseQueue||[]).length;
+  const danger=$('#interceptWarning');
+  const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
+  document.documentElement.classList.toggle('intercept-danger',interceptDanger);
+  if(danger){
+    danger.style.display=interceptDanger?'block':'none';
+    danger.textContent=total
+      ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you Forward or Drop. Off after restart (session-only).`
+      :'INTERCEPT ACTIVE — matching traffic will be held until you Forward or Drop. Off after restart (session-only).';
+  }
+  const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
+  const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
+}
 export function renderIntercept(){
   const ic=state.intercept||{};
   autoFwd.sync(!!ic.enabled);
@@ -312,23 +357,10 @@ export function renderIntercept(){
   knownHeldKeys=nextHeldKeys;
   heldKeysReady=true;
   const total=items.length;
-  const danger=$('#interceptWarning');
-  const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
-  document.documentElement.classList.toggle('intercept-danger',interceptDanger);
-  if(danger){
-    danger.style.display=interceptDanger?'block':'none';
-    danger.textContent=total
-      ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you Forward or Drop. Off after restart (session-only).`
-      :'INTERCEPT ACTIVE — matching traffic will be held until you Forward or Drop. Off after restart (session-only).';
-  }
-  const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
-  const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
+  syncInterceptBanner();
   const list=$('#heldList');
   if(!total){list.innerHTML='';list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
-  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}${dropMarks.has(heldKey(h.side,h.id))?' is-dropping':''}" data-id="${h.id}" data-side="${h.side}" aria-selected="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
-    <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
-    ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
-    <span class="u">${esc(h.host)}${esc(h.path)}</span>${dropMarks.has(heldKey(h.side,h.id))?'<span class="icpt-dropping-tag">Dropping</span>':''}</div>`).join('');
+  list.innerHTML=items.map(heldRowMarkup).join('');
   // The hold queue is a single-select list: one listbox, one Tab stop, arrows
   // move the selection because selecting *is* what shows the item in the editor.
   wireListbox(list,list.querySelectorAll('.icpt-item'),{
@@ -429,6 +461,90 @@ export async function selectHeld(id,side,opts={}){
   }
   heldLoadingKey=null;
   showEditor({...h,side,raw});
+}
+
+// ---- per-item delta application (intercept.held / intercept.released) ----
+// A delta mutates one queue and advances the generation; #heldList is updated in
+// place (add or remove one row) rather than rebuilt. The incremental path defers
+// to the full renderIntercept for the transitions it does not own — an
+// empty<->non-empty flip, removing the selected row, or an action in flight — and
+// a gap or unknown baseline triggers exactly one snapshot refresh so a dropped or
+// out-of-order frame can never leave the queue wrong.
+export function applyInterceptDelta(message,resnapshot){
+  const kind=deltaType(message);
+  if(!kind)return;
+  const delta={type:kind,side:message.side==='resp'?'resp':'req',id:message.id,item:message.item,seq:message.seq};
+  const res=applyDelta(state.intercept||{},interceptSeq,delta);
+  if(res.status==='duplicate')return;
+  if(res.status==='gap'){
+    interceptSeq=SEQ_UNKNOWN; // stop applying deltas until a snapshot rebases us
+    if(!interceptResnapshotPending&&typeof resnapshot==='function'){
+      interceptResnapshotPending=true;
+      Promise.resolve(resnapshot()).catch(()=>{}).finally(()=>{interceptResnapshotPending=false;});
+    }
+    return;
+  }
+  state.intercept=res.state;
+  interceptSeq=res.seq;
+  renderHeldDelta(kind,delta.side,delta.id,delta.item);
+}
+function renderHeldDelta(kind,side,id,item){
+  const list=$('#heldList');
+  if(!list)return;
+  if(heldActionInFlight||forwardAllBusy){renderIntercept();return;}
+  const total=(state.intercept.queue||[]).length+(state.intercept.responseQueue||[]).length;
+  if(kind==='held'){
+    if(total<=1){renderIntercept();return;}   // empty -> non-empty: full render selects + opens the editor
+    addHeldRow(side,item);
+  }else{
+    if(total===0){renderIntercept();return;}  // non-empty -> empty: full render clears + hides the editor
+    if(state.heldSel&&state.heldSel.id===id&&state.heldSel.side===side){renderIntercept();return;} // selected row removed
+    removeHeldRow(side,id);
+  }
+}
+function heldRowEl(h){
+  const tmp=document.createElement('div');
+  tmp.innerHTML=heldRowMarkup(h);
+  return tmp.firstElementChild;
+}
+// wireHeldRow gives one incrementally-added row the same listbox semantics
+// wireListbox gives a rendered row: an option in the roving tab order with click
+// and Enter/Space activation. Arrow traversal across rows is refreshed by the
+// next full render (every Forward/Drop reconcile triggers one).
+function wireHeldRow(el){
+  el.setAttribute('role','option');
+  if(!el.hasAttribute('aria-selected'))el.setAttribute('aria-selected','false');
+  el.tabIndex=-1;
+  const go=()=>selectHeld(Number(el.dataset.id),el.dataset.side);
+  el.onclick=go;
+  wireRowKey(el,go);
+}
+function heldSelectionPredicate(el){return !!state.heldSel&&Number(el.dataset.id)===state.heldSel.id&&el.dataset.side===state.heldSel.side;}
+function addHeldRow(side,item){
+  const list=$('#heldList');if(!list)return;
+  const h={...item,side};
+  if(list.querySelector(`.icpt-item[data-id="${h.id}"][data-side="${side}"]`)){syncInterceptBanner();return;}
+  const el=heldRowEl(h);
+  wireHeldRow(el);
+  // Requests sort before responses: a new request goes before the first response
+  // row (insertBefore(null) appends), a new response at the very end.
+  if(side==='req')list.insertBefore(el,list.querySelector('.icpt-item[data-side="resp"]'));
+  else list.appendChild(el);
+  knownHeldKeys.add(heldKey(side,h.id));
+  setListboxSelection($$('#heldList .icpt-item'),heldSelectionPredicate);
+  if(allowHeldSignal())animateOnce(el,[
+    {opacity:.45,transform:'translateX(-4px)',backgroundColor:'var(--accentDim)'},
+    {opacity:1,transform:'translateX(0)',backgroundColor:'transparent'},
+  ],{duration:MOTION.base,easing:MOTION.enter});
+  syncInterceptBanner();
+}
+function removeHeldRow(side,id){
+  const list=$('#heldList');if(!list)return;
+  knownHeldKeys.delete(heldKey(side,id));
+  const el=list.querySelector(`.icpt-item[data-id="${id}"][data-side="${side}"]`);
+  if(el)el.remove();
+  setListboxSelection($$('#heldList .icpt-item'),heldSelectionPredicate);
+  syncInterceptBanner();
 }
 $('#respInterceptToggle').onclick=async()=>{
   try{await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}

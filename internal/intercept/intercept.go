@@ -65,15 +65,79 @@ const RuleScanLimit = ruleScanLimit
 
 var skippedBodyRuleLog sync.Map
 
+// ChangeKind identifies what happened to a hold queue, for the typed change
+// notifier. A consumer that cannot apply a per-item delta (a bulk reset, or a
+// detected gap in Seq) re-reads Snapshot instead.
+type ChangeKind int
+
+const (
+	// ChangeReset means the queues changed in bulk (intercept toggled on or off,
+	// draining everything held). A consumer must re-snapshot rather than try to
+	// apply a per-item delta.
+	ChangeReset ChangeKind = iota
+	// ChangeHeld means one request or response entered a hold queue.
+	ChangeHeld
+	// ChangeReleased means one held item left a queue, forwarded or dropped.
+	ChangeReleased
+)
+
+// Release reasons reported on a ChangeReleased.
+const (
+	ReleaseForwarded = "forwarded"
+	ReleaseDropped   = "dropped"
+)
+
+// Side values on a Change (and in the delta SSE events the control layer emits).
+const (
+	SideRequest  = "req"
+	SideResponse = "resp"
+)
+
+// Change is one hold-queue mutation delivered to the typed notifier registered
+// with SetChangeNotifier. Seq is the engine's generation counter *after* the
+// change; it increases by exactly one per change across both queues, so a
+// consumer that receives a non-contiguous Seq knows a delta was dropped or
+// delivered out of order and must re-snapshot. Notifiers run outside the engine
+// lock and may be invoked concurrently, so Seq — not delivery order — is the
+// authority on sequencing.
+type Change struct {
+	Kind     ChangeKind
+	Seq      int64
+	Side     string       // SideRequest | SideResponse (empty for ChangeReset)
+	ID       int64        // affected item id (0 for ChangeReset)
+	Reason   string       // ReleaseForwarded | ReleaseDropped (ChangeReleased only)
+	Request  Held         // populated for a request ChangeHeld
+	Response HeldResponse // populated for a response ChangeHeld
+}
+
+// Snapshot is an atomic point-in-time view of the hold queues and toggles,
+// tagged with the generation Seq that identifies it. A delta consumer rebases on
+// a Snapshot when it detects a dropped or out-of-order Change.
+type Snapshot struct {
+	Seq             int64
+	Enabled         bool
+	ResponseEnabled bool
+	Queue           []Held
+	ResponseQueue   []HeldResponse
+	FilterEnabled   bool
+	FilterTarget    string
+	FilterPattern   string
+}
+
 // Engine owns the hold queue and the compiled rule set.
 type Engine struct {
-	mu      sync.Mutex
-	enabled bool
-	nextID  int64
-	queue   map[int64]*heldItem
-	order   []int64
-	rules   []compiledRule
-	notify  func()
+	mu           sync.Mutex
+	enabled      bool
+	nextID       int64
+	queue        map[int64]*heldItem
+	order        []int64
+	rules        []compiledRule
+	notify       func()
+	changeNotify func(Change)
+	// seq is a monotonic generation counter bumped once per queue change (hold,
+	// release, or bulk reset), across both the request and response queues. It
+	// lets a UI mirror reconcile the lossy delta stream against Snapshot.
+	seq int64
 
 	// optional intercept filter: when set, only requests matching the regex on
 	// the chosen field are held; everything else is forwarded without holding.
@@ -113,12 +177,14 @@ func (e *Engine) SetEnabled(on bool) {
 		e.queue = map[int64]*heldItem{}
 		e.order = nil
 	}
+	e.seq++
+	seq := e.seq
 	e.mu.Unlock()
 
 	for _, item := range drained {
 		item.done <- Decision{Request: item.req}
 	}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReset, Seq: seq})
 }
 
 // SetInterceptFilter configures the conditional-intercept filter. When enabled
@@ -182,20 +248,65 @@ func matchField(target string, re *regexp.Regexp, flow *store.Flow, raw []byte) 
 	return re.MatchString(s)
 }
 
-// SetNotifier registers a callback invoked whenever the queue changes.
+// SetNotifier registers a coarse "something changed" callback invoked whenever
+// the queue changes. It stays supported for callers that only need a nudge.
 func (e *Engine) SetNotifier(fn func()) {
 	e.mu.Lock()
 	e.notify = fn
 	e.mu.Unlock()
 }
 
-func (e *Engine) fireNotify() {
+// SetChangeNotifier registers a typed callback invoked with a Change describing
+// each hold-queue mutation. It is additive to SetNotifier: both fire on every
+// change, outside the engine lock, so a caller can keep the coarse notifier,
+// adopt the per-item delta stream, or use both.
+func (e *Engine) SetChangeNotifier(fn func(Change)) {
 	e.mu.Lock()
-	fn := e.notify
+	e.changeNotify = fn
 	e.mu.Unlock()
-	if fn != nil {
-		fn()
+}
+
+// emit fires both notifiers for one change, outside the lock: the no-arg
+// notifier keeps its "something changed" contract and the typed notifier
+// receives the delta. Call it only after the queue mutation is applied and the
+// lock released, so forwarding never blocks on notifier work.
+func (e *Engine) emit(c Change) {
+	e.mu.Lock()
+	noArg := e.notify
+	typed := e.changeNotify
+	e.mu.Unlock()
+	if noArg != nil {
+		noArg()
 	}
+	if typed != nil {
+		typed(c)
+	}
+}
+
+// Snapshot returns the current intercept state under a single lock so the queue
+// contents and Seq are mutually consistent — the baseline a delta consumer
+// rebases on.
+func (e *Engine) Snapshot() Snapshot {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	s := Snapshot{
+		Seq:             e.seq,
+		Enabled:         e.enabled,
+		ResponseEnabled: e.respEnabled,
+		FilterEnabled:   e.matchEnabled,
+		FilterTarget:    e.matchTarget,
+		FilterPattern:   e.matchPattern,
+	}
+	if s.FilterTarget == "" {
+		s.FilterTarget = "any"
+	}
+	for _, id := range e.order {
+		s.Queue = append(s.Queue, e.queue[id].held)
+	}
+	for _, id := range e.respOrder {
+		s.ResponseQueue = append(s.ResponseQueue, e.respQueue[id].held)
+	}
+	return s
 }
 
 // Hold submits a request to the gate. If intercept is off it returns immediately
@@ -226,16 +337,19 @@ func (e *Engine) HoldContext(ctx context.Context, flow *store.Flow, req *http.Re
 	}
 	e.queue[id] = item
 	e.order = append(e.order, id)
+	e.seq++
+	seq := e.seq
+	held := item.held
 	e.mu.Unlock()
 
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeHeld, Seq: seq, Side: SideRequest, ID: id, Request: held})
 	select {
 	case d := <-item.done:
 		d.Held = true
 		return d
 	case <-ctx.Done():
-		if e.remove(id) {
-			e.fireNotify()
+		if seq, ok := e.removeReq(id); ok {
+			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseDropped})
 			return Decision{Drop: true, Held: true}
 		}
 		d := <-item.done
@@ -275,11 +389,12 @@ func (e *Engine) Forward(id int64, editedRaw []byte) error {
 		req = nr
 	}
 
-	if !e.remove(id) {
+	seq, ok := e.removeReq(id)
+	if !ok {
 		return ErrNotHeld // resolved concurrently
 	}
 	item.done <- Decision{Request: req, Edited: edited}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseForwarded})
 	return nil
 }
 
@@ -291,19 +406,23 @@ func (e *Engine) Drop(id int64) error {
 	if !ok {
 		return ErrNotHeld
 	}
-	if !e.remove(id) {
+	seq, ok := e.removeReq(id)
+	if !ok {
 		return ErrNotHeld
 	}
 	item.done <- Decision{Drop: true}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseDropped})
 	return nil
 }
 
-func (e *Engine) remove(id int64) bool {
+// removeReq deletes a held request and bumps the generation. It returns the new
+// Seq and whether the item was present (false when it was resolved concurrently
+// — e.g. a drain or a client cancel racing a Forward/Drop).
+func (e *Engine) removeReq(id int64) (int64, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, ok := e.queue[id]; !ok {
-		return false
+		return 0, false
 	}
 	delete(e.queue, id)
 	for i, v := range e.order {
@@ -312,7 +431,8 @@ func (e *Engine) remove(id int64) bool {
 			break
 		}
 	}
-	return true
+	e.seq++
+	return e.seq, true
 }
 
 // SetRules compiles and installs the rule set, rejecting invalid regexes.

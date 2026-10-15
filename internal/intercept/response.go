@@ -72,11 +72,13 @@ func (e *Engine) SetResponseEnabled(on bool) {
 		e.respQueue = map[int64]*respItem{}
 		e.respOrder = nil
 	}
+	e.seq++
+	seq := e.seq
 	e.mu.Unlock()
 	for _, item := range drained {
 		item.done <- ResponseDecision{Raw: item.raw}
 	}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReset, Seq: seq})
 }
 
 // HoldResponse blocks (when response interception is on) until the UI forwards
@@ -107,14 +109,17 @@ func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw 
 	item := &respItem{held: HeldResponse{ID: id, Flow: flow, Raw: raw}, raw: raw, done: make(chan ResponseDecision, 1)}
 	e.respQueue[id] = item
 	e.respOrder = append(e.respOrder, id)
+	e.seq++
+	seq := e.seq
+	held := item.held
 	e.mu.Unlock()
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeHeld, Seq: seq, Side: SideResponse, ID: id, Response: held})
 	select {
 	case d := <-item.done:
 		return d
 	case <-ctx.Done():
-		if e.removeResp(id) {
-			e.fireNotify()
+		if seq, ok := e.removeResp(id); ok {
+			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseDropped})
 			return ResponseDecision{Drop: true}
 		}
 		return <-item.done
@@ -134,11 +139,12 @@ func (e *Engine) ForwardResponse(id int64, editedRaw []byte) error {
 	if edited {
 		raw = editedRaw
 	}
-	if !e.removeResp(id) {
+	seq, ok := e.removeResp(id)
+	if !ok {
 		return ErrNotHeld
 	}
 	item.done <- ResponseDecision{Edited: edited, Raw: raw}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseForwarded})
 	return nil
 }
 
@@ -150,19 +156,22 @@ func (e *Engine) DropResponse(id int64) error {
 	if !ok {
 		return ErrNotHeld
 	}
-	if !e.removeResp(id) {
+	seq, ok := e.removeResp(id)
+	if !ok {
 		return ErrNotHeld
 	}
 	item.done <- ResponseDecision{Drop: true}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseDropped})
 	return nil
 }
 
-func (e *Engine) removeResp(id int64) bool {
+// removeResp deletes a held response and bumps the generation, returning the new
+// Seq and whether the item was present.
+func (e *Engine) removeResp(id int64) (int64, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, ok := e.respQueue[id]; !ok {
-		return false
+		return 0, false
 	}
 	delete(e.respQueue, id)
 	for i, v := range e.respOrder {
@@ -171,7 +180,8 @@ func (e *Engine) removeResp(id int64) bool {
 			break
 		}
 	}
-	return true
+	e.seq++
+	return e.seq, true
 }
 
 // ResponseQueue returns a snapshot of held responses in arrival order.

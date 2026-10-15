@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -48,11 +49,34 @@ func (h *Hub) WSFramed(flowID int64) {
 	h.wsMu.Unlock()
 }
 
-// broadcastIntercept pushes the current intercept state (toggle + hold queue).
-// It is registered as the intercept engine's change notifier and may be invoked
-// concurrently.
+// broadcastIntercept pushes the full intercept snapshot (toggles + both hold
+// queues + Seq) as intercept.update. It is the bulk/reset path: the per-item
+// hold and release changes go out as small deltas (see onInterceptChange).
 func (h *Hub) broadcastIntercept() {
 	h.broadcast(map[string]any{"type": "intercept.update", "intercept": h.interceptStateSummary()})
+}
+
+// onInterceptChange is the intercept engine's typed change notifier. A per-item
+// hold or release becomes a small delta carrying only the affected item and the
+// generation Seq the client reconciles against; a bulk reset (intercept toggled,
+// queue drained) re-sends the whole snapshot. This replaces re-transmitting the
+// entire hold queue on every event. It may be invoked concurrently and never
+// blocks forwarding (the engine fires it outside its lock).
+func (h *Hub) onInterceptChange(c intercept.Change) {
+	switch c.Kind {
+	case intercept.ChangeHeld:
+		var item heldJSON
+		if c.Side == intercept.SideResponse {
+			item = heldFromResponse(c.Response, false)
+		} else {
+			item = heldFromRequest(c.Request, false)
+		}
+		h.broadcast(map[string]any{"type": "intercept.held", "seq": c.Seq, "side": c.Side, "item": item})
+	case intercept.ChangeReleased:
+		h.broadcast(map[string]any{"type": "intercept.released", "seq": c.Seq, "side": c.Side, "id": c.ID, "reason": c.Reason})
+	default: // intercept.ChangeReset
+		h.broadcastIntercept()
+	}
 }
 
 // broadcast marshals v and fans it out to every connected SSE client, dropping
@@ -104,6 +128,15 @@ func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	fmt.Fprint(w, "event: hello\ndata: {}\n\n")
+	// Give a newly connected client the current intercept snapshot (with its Seq)
+	// as the first frame, so a late joiner is correct from the stream alone and has
+	// the baseline the per-item deltas reconcile against — rather than depending on
+	// a separate REST fetch to arrive first.
+	if h.eng != nil {
+		if b, err := json.Marshal(map[string]any{"type": "intercept.state", "intercept": h.interceptStateSummary()}); err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", b)
+		}
+	}
 	flusher.Flush()
 
 	ctx := r.Context()

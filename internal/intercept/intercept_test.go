@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -396,6 +397,172 @@ func TestNotifierFires(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	if n.Load() < 2 {
 		t.Fatalf("expected notifier to fire on hold and resolve, got %d", n.Load())
+	}
+}
+
+// changeLog collects Change events from the typed notifier in a thread-safe way;
+// the notifier may fire concurrently.
+type changeLog struct {
+	mu sync.Mutex
+	c  []Change
+}
+
+func (l *changeLog) record() func(Change) {
+	return func(c Change) {
+		l.mu.Lock()
+		l.c = append(l.c, c)
+		l.mu.Unlock()
+	}
+}
+
+func (l *changeLog) snapshot() []Change {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]Change(nil), l.c...)
+}
+
+func (l *changeLog) waitFor(t *testing.T, kind ChangeKind, id int64) Change {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		for _, c := range l.snapshot() {
+			if c.Kind == kind && c.ID == id {
+				return c
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("change (kind=%d id=%d) never reported; have %+v", kind, id, l.snapshot())
+	return Change{}
+}
+
+// The typed notifier must report a held request and its release with the right
+// id, side and reason, and the generation must advance by one per change.
+func TestChangeNotifierReportsHeldAndReleasedWithID(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	var log changeLog
+	e.SetChangeNotifier(log.record())
+
+	req := newReq(t, "GET", "https://example.com/p", "")
+	go func() { e.Hold(&store.Flow{Host: "example.com", Path: "/p", Method: "GET"}, req, []byte("GET /p HTTP/1.1\r\nHost: example.com\r\n\r\n")) }()
+	waitQueue(t, e, 1)
+	id := e.Queue()[0].ID
+
+	held := log.waitFor(t, ChangeHeld, id)
+	if held.Side != SideRequest {
+		t.Fatalf("held side = %q, want %q", held.Side, SideRequest)
+	}
+	if held.Request.ID != id || held.Request.Flow == nil || held.Request.Flow.Path != "/p" {
+		t.Fatalf("held change missing the affected item: %+v", held)
+	}
+	if held.Seq != e.Snapshot().Seq {
+		t.Fatalf("held Seq %d != snapshot Seq %d", held.Seq, e.Snapshot().Seq)
+	}
+
+	if err := e.Forward(id, nil); err != nil {
+		t.Fatalf("Forward: %v", err)
+	}
+	rel := log.waitFor(t, ChangeReleased, id)
+	if rel.Reason != ReleaseForwarded || rel.Side != SideRequest {
+		t.Fatalf("release change = %+v, want forwarded/req", rel)
+	}
+	if rel.Seq != held.Seq+1 {
+		t.Fatalf("release Seq %d must be held Seq %d + 1", rel.Seq, held.Seq)
+	}
+}
+
+// Dropping must report ReleaseDropped (not forwarded) with the id.
+func TestChangeNotifierReportsDropReason(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	var log changeLog
+	e.SetChangeNotifier(log.record())
+	req := newReq(t, "GET", "https://example.com/p", "")
+	go func() { e.Hold(&store.Flow{}, req, nil) }()
+	waitQueue(t, e, 1)
+	id := e.Queue()[0].ID
+	if err := e.Drop(id); err != nil {
+		t.Fatalf("Drop: %v", err)
+	}
+	rel := log.waitFor(t, ChangeReleased, id)
+	if rel.Reason != ReleaseDropped {
+		t.Fatalf("drop reason = %q, want %q", rel.Reason, ReleaseDropped)
+	}
+}
+
+// A bulk toggle is a ChangeReset, not a stream of per-item releases: a consumer
+// must re-snapshot rather than try to mirror a drain item by item.
+func TestChangeNotifierResetOnToggleDrains(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	req := newReq(t, "GET", "https://example.com/p", "")
+	go func() { e.Hold(&store.Flow{}, req, nil) }()
+	waitQueue(t, e, 1)
+
+	var log changeLog
+	e.SetChangeNotifier(log.record())
+	e.SetEnabled(false) // drains the queue
+	// Give the drained Hold goroutine and the emit time to run.
+	time.Sleep(20 * time.Millisecond)
+	got := log.snapshot()
+	if len(got) != 1 || got[0].Kind != ChangeReset {
+		t.Fatalf("toggle-drain must emit exactly one ChangeReset, got %+v", got)
+	}
+	if len(e.Snapshot().Queue) != 0 {
+		t.Fatal("queue should be empty after disabling")
+	}
+}
+
+// The response side reports held/released with SideResponse and the id.
+func TestResponseChangeNotifierReportsSideAndID(t *testing.T) {
+	e := New()
+	e.SetResponseEnabled(true)
+	var log changeLog
+	e.SetChangeNotifier(log.record())
+	go func() { e.HoldResponse(&store.Flow{Host: "example.com"}, []byte("HTTP/1.1 200 OK\r\n\r\n")) }()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && len(e.ResponseQueue()) == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(e.ResponseQueue()) != 1 {
+		t.Fatal("response never held")
+	}
+	id := e.ResponseQueue()[0].ID
+	held := log.waitFor(t, ChangeHeld, id)
+	if held.Side != SideResponse || held.Response.ID != id {
+		t.Fatalf("response held change = %+v, want resp/id %d", held, id)
+	}
+	if err := e.DropResponse(id); err != nil {
+		t.Fatalf("DropResponse: %v", err)
+	}
+	rel := log.waitFor(t, ChangeReleased, id)
+	if rel.Side != SideResponse || rel.Reason != ReleaseDropped {
+		t.Fatalf("response drop change = %+v", rel)
+	}
+}
+
+// A late subscriber (one that reads Snapshot after changes happened) still sees
+// the correct queue and a Seq that matches the number of changes.
+func TestSnapshotIsAtomicAndCarriesSeq(t *testing.T) {
+	e := New()
+	e.SetEnabled(true) // seq 1
+	r1 := newReq(t, "GET", "https://example.com/a", "")
+	r2 := newReq(t, "GET", "https://example.com/b", "")
+	go func() { e.Hold(&store.Flow{Host: "example.com", Path: "/a"}, r1, nil) }() // seq 2
+	waitQueue(t, e, 1)
+	go func() { e.Hold(&store.Flow{Host: "example.com", Path: "/b"}, r2, nil) }() // seq 3
+	waitQueue(t, e, 2)
+
+	s := e.Snapshot()
+	if s.Seq != 3 {
+		t.Fatalf("Seq = %d, want 3 (enable + 2 holds)", s.Seq)
+	}
+	if len(s.Queue) != 2 || s.Queue[0].Flow.Path != "/a" || s.Queue[1].Flow.Path != "/b" {
+		t.Fatalf("snapshot queue not in arrival order: %+v", s.Queue)
+	}
+	if !s.Enabled {
+		t.Fatal("snapshot must report enabled")
 	}
 }
 
