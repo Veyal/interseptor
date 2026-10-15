@@ -22,7 +22,17 @@ import (
 )
 
 // maxRequests bounds a single attack so a huge payload list cannot run away.
-const maxRequests = 2000
+// Results stream to disk in chunks (resultLog), so this is no longer limited by
+// how many results fit in memory.
+const maxRequests = 20000
+
+// resultChunkSize is how many results fill one on-disk chunk; liveHeadCap is how
+// many of the earliest results State() returns while a run is still in flight
+// (the rest are read on demand via Results / the results API).
+const (
+	resultChunkSize = 1000
+	liveHeadCap     = 2000
+)
 
 const maxDispatchDelayMs = int64(1<<63-1) / int64(time.Millisecond)
 
@@ -33,18 +43,28 @@ var ErrClosed = errors.New("intruder engine is closed")
 
 // Spec describes an attack.
 type Spec struct {
-	Target       string     // scheme://host[:port]
-	Template     string     // raw request with §…§ fuzz points
-	AttackType   string     // "sniper" | "pitchfork" | "repeat" (alias: "null")
-	Payloads     [][]string // sniper: one list; pitchfork: one list per position
-	Repeat       int        // repeat/null mode: send the template this many times (no payloads)
-	Threads      int        // max concurrent in-flight requests (default 1)
-	DelayMs      int        // delay between dispatching each request (throttling); 0 = none
-	GrepMatch    string     // flag a result if its response matches this regex (or contains this literal)
-	GrepExtract  string     // extract group 1 of this regex from each response into the result
-	ProcessRules []string   // payload transforms applied in order: "urlencode" | "base64" | "prefix:X" | "suffix:X" | "upper" | "lower"
-	ExtraFlags   int64      // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
-	Barrier      bool       `json:"barrier,omitempty"` // repeat mode, Threads>1: launch the first Threads requests together
+	Target     string     // scheme://host[:port]
+	Template   string     // raw request with §…§ fuzz points
+	AttackType string     // "sniper" | "pitchfork" | "repeat" (alias: "null")
+	Payloads   [][]string // sniper: one list; pitchfork: one list per position
+	Repeat     int        // repeat/null mode: send the template this many times (no payloads)
+	Threads    int        // max concurrent in-flight requests (default 1)
+	DelayMs    int        // delay between dispatching each request (throttling); 0 = none
+	// MaxBackoffMs caps a single adaptive pause when the target returns 429/503
+	// with Retry-After / RateLimit-Reset. 0 uses the default cap. Negative
+	// disables adaptive backoff.
+	MaxBackoffMs int
+	GrepMatch    string // flag a result if its response matches this regex (or contains this literal)
+	GrepExtract  string // extract group 1 of this regex from each response into the result
+	// MatchRules / ExtractRules add further match and extract rules beyond the
+	// single GrepMatch/GrepExtract (which stay rule 0). Each match rule is a
+	// regex, or a literal substring when it is not a valid regex; each extract
+	// rule captures group 1. A result records a per-rule hit vector and capture.
+	MatchRules   []string
+	ExtractRules []string
+	ProcessRules []string // payload transforms applied in order: "urlencode" | "base64" | "prefix:X" | "suffix:X" | "upper" | "lower"
+	ExtraFlags   int64    // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
+	Barrier      bool     `json:"barrier,omitempty"` // repeat mode, Threads>1: launch the first Threads requests together
 }
 
 // Result is one attack request's outcome.
@@ -58,9 +78,15 @@ type Result struct {
 	FlowID    int64  `json:"flowId"`
 	Flagged   bool   `json:"flagged"`
 	Anomaly   bool   `json:"anomaly"`   // true when length deviates significantly from the typical length
-	Matched   bool   `json:"matched"`   // grep-match hit in the response
-	Extracted string `json:"extracted"` // grep-extract capture from the response
+	Matched   bool   `json:"matched"`   // any grep-match rule hit in the response
+	Extracted string `json:"extracted"` // first non-empty grep-extract capture from the response
 	Binary    bool   `json:"binary"`    // true when the body is binary/undecodable and grep did not apply
+
+	// Matches / Extracts carry the per-rule results when more than one match or
+	// extract rule is configured (aligned to the run's rule order). Omitted for
+	// old single-rule consumers.
+	Matches  []bool   `json:"matches,omitempty"`
+	Extracts []string `json:"extracts,omitempty"`
 
 	// Recording fields (additive; zero values are omitted for old consumers).
 	Seq       int               `json:"seq,omitempty"`       // dispatch order, 1-based
@@ -97,7 +123,7 @@ type Engine struct {
 
 	mu      sync.Mutex
 	running bool
-	results []Result
+	log     *resultLog // disk-backed chunked result store for the current/last run
 	total   int
 	done    int
 	errMsg  string
@@ -113,6 +139,8 @@ type Engine struct {
 	barrier                   bool
 	spec                      SpecSummary
 	sink                      func(RunRecord)
+
+	pauseUntil time.Time // adaptive 429/503 backoff: dispatch is held until this time
 }
 
 // headerVal returns the first value for a case-insensitive header key.
@@ -167,6 +195,59 @@ func processPayload(pl string, rules []string) string {
 	return pl
 }
 
+// grepRule is one compiled match rule: a regex, or a literal substring when the
+// pattern is not a valid regex (mirrors the legacy single-rule fallback).
+type grepRule struct {
+	re  *regexp.Regexp
+	lit string
+}
+
+func (g grepRule) match(body string) bool {
+	if g.re != nil {
+		return g.re.MatchString(body)
+	}
+	return g.lit != "" && strings.Contains(body, g.lit)
+}
+
+// prependNonEmpty puts a legacy single value ahead of the rule list, dropping it
+// when empty so an unset GrepMatch/GrepExtract adds no rule.
+func prependNonEmpty(first string, rest []string) []string {
+	if first == "" {
+		return rest
+	}
+	return append([]string{first}, rest...)
+}
+
+func compileMatchRules(pats []string) []grepRule {
+	var out []grepRule
+	for _, p := range pats {
+		if p == "" {
+			continue
+		}
+		if re, err := regexp.Compile(p); err == nil {
+			out = append(out, grepRule{re: re})
+		} else {
+			out = append(out, grepRule{lit: p})
+		}
+	}
+	return out
+}
+
+// compileExtractRules compiles each extract pattern; an invalid regex is skipped
+// (extraction needs a capture group, so there is no literal fallback).
+func compileExtractRules(pats []string) []*regexp.Regexp {
+	var out []*regexp.Regexp
+	for _, p := range pats {
+		if p == "" {
+			continue
+		}
+		if re, err := regexp.Compile(p); err == nil {
+			out = append(out, re)
+		}
+	}
+	return out
+}
+
 // SetNotifier registers a callback fired as the attack progresses.
 func (e *Engine) SetNotifier(fn func()) {
 	e.mu.Lock()
@@ -190,8 +271,32 @@ func (e *Engine) State() State {
 	out := State{Running: e.running, Total: e.total, Done: e.done, Error: e.errMsg, Capped: e.capped,
 		RunID: e.runID, StartedTs: e.startedTs, Attack: e.attack, Threads: e.threads,
 		DelayMs: e.delayMs, Repeat: e.repeat, TargetHost: e.targetHost, Barrier: e.barrier}
-	out.Results = append(out.Results, e.results...)
+	if e.log != nil {
+		// While running, return only the bounded live head (flags are derived at
+		// finish); once finished, return the full, flagged result set. Large runs
+		// stream the remainder through Results / the results API.
+		if e.running {
+			out.Results = e.log.snapshotHead()
+		} else {
+			out.Results = e.log.all()
+		}
+	}
 	return out
+}
+
+// Results returns a window [offset, offset+limit) of the current/last run's
+// results (flags applied once the run has finished), streamed from the disk log
+// so a caller can page through a large run without loading it all. A
+// non-positive limit returns everything from offset. The second value is the
+// total result count.
+func (e *Engine) Results(offset, limit int) ([]Result, int) {
+	e.mu.Lock()
+	log := e.log
+	e.mu.Unlock()
+	if log == nil {
+		return nil, 0
+	}
+	return log.readRange(offset, limit), log.count()
 }
 
 // Close permanently stops the engine, cancels an active attack, and waits for
@@ -201,11 +306,13 @@ func (e *Engine) Close() {
 	e.closed = true
 	cancel := e.cancel
 	done := e.doneCh
+	log := e.log
 	e.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	<-done
+	log.cleanup()
 }
 
 // Stop cancels an active attack run without closing the engine permanently.
@@ -306,11 +413,13 @@ func (e *Engine) Start(spec Spec) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.running = true
-	e.results = nil
+	e.log.cleanup() // remove the previous run's on-disk chunks
+	e.log = newRunLog(resultChunkSize, liveHeadCap)
 	e.total = len(jobs)
 	e.done = 0
 	e.errMsg = ""
 	e.capped = capped
+	e.pauseUntil = time.Time{}
 	e.runID = newRunID()
 	e.startedTs = time.Now().UnixMilli()
 	e.attack = spec.AttackType
@@ -325,6 +434,7 @@ func (e *Engine) Start(spec Spec) error {
 	method, path := endpointOf(spec.Template)
 	e.spec = SpecSummary{Attack: e.attack, Target: e.targetHost, Threads: e.threads, DelayMs: spec.DelayMs,
 		Method: method, Path: path, Repeat: e.repeat, Barrier: e.barrier, GrepMatch: spec.GrepMatch, GrepExtract: spec.GrepExtract,
+		MatchRules: append([]string(nil), spec.MatchRules...), ExtractRules: append([]string(nil), spec.ExtractRules...),
 		ProcessRules: append([]string(nil), spec.ProcessRules...)}
 	e.doneCh = make(chan struct{})
 	e.cancel = cancel
@@ -458,6 +568,7 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	base := strings.TrimRight(spec.Target, "/")
 	threads := clampThreads(spec.Threads) // bounded so a race test can't exhaust sockets/goroutines
 	runStart := time.Now()                // monotonic origin for StartUs/EndUs
+	backoff := backoffCap(spec.MaxBackoffMs)
 	e.mu.Lock()
 	useBarrier := e.barrier
 	e.mu.Unlock()
@@ -472,18 +583,10 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	}
 
 	// Compile grep patterns once (literal Contains fallback if not a valid regex).
-	var grepM, grepX *regexp.Regexp
-	var grepMLit string
-	if spec.GrepMatch != "" {
-		if re, err := regexp.Compile(spec.GrepMatch); err == nil {
-			grepM = re
-		} else {
-			grepMLit = spec.GrepMatch
-		}
-	}
-	if spec.GrepExtract != "" {
-		grepX, _ = regexp.Compile(spec.GrepExtract)
-	}
+	// Rule 0 is the legacy single GrepMatch/GrepExtract; MatchRules/ExtractRules
+	// follow.
+	matchRules := compileMatchRules(prependNonEmpty(spec.GrepMatch, spec.MatchRules))
+	extractRules := compileExtractRules(prependNonEmpty(spec.GrepExtract, spec.ExtractRules))
 	// doGrep inspects the response body for grep-match and grep-extract patterns.
 	// resHeaders provides the response's Content-Encoding and Content-Type so the
 	// body can be decompressed before matching. If decompression fails, the raw
@@ -491,7 +594,7 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	// a binary payload (image, audio, video, …) grep is skipped and res.Binary is
 	// set so the caller can surface a warning to the user.
 	doGrep := func(res *Result, hash string, resHeaders map[string][]string) {
-		if (grepM == nil && grepMLit == "" && grepX == nil) || e.body == nil || hash == "" {
+		if (len(matchRules) == 0 && len(extractRules) == 0) || e.body == nil || hash == "" {
 			return
 		}
 		raw, err := e.body(hash)
@@ -518,14 +621,22 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 		}
 
 		body := string(bodyBytes)
-		if grepM != nil {
-			res.Matched = grepM.MatchString(body)
-		} else if grepMLit != "" {
-			res.Matched = strings.Contains(body, grepMLit)
+		if len(matchRules) > 0 {
+			res.Matches = make([]bool, len(matchRules))
+			for i, g := range matchRules {
+				res.Matches[i] = g.match(body)
+				res.Matched = res.Matched || res.Matches[i]
+			}
 		}
-		if grepX != nil {
-			if m := grepX.FindStringSubmatch(body); len(m) >= 2 {
-				res.Extracted = m[1]
+		if len(extractRules) > 0 {
+			res.Extracts = make([]string, len(extractRules))
+			for i, re := range extractRules {
+				if m := re.FindStringSubmatch(body); len(m) >= 2 {
+					res.Extracts[i] = m[1]
+					if res.Extracted == "" {
+						res.Extracted = m[1]
+					}
+				}
 			}
 		}
 	}
@@ -553,6 +664,13 @@ dispatch:
 		select {
 		case slot = <-slots:
 		case <-ctx.Done():
+			break dispatch
+		}
+		// Adaptive pacing: once a worker slot is free, hold off launching while a
+		// 429/503 backoff is active (checked here, after the slot handoff, so a
+		// pause set by the just-finished request is already visible).
+		if !e.waitBackoff(ctx) {
+			slots <- slot
 			break dispatch
 		}
 		wg.Add(1)
@@ -602,6 +720,7 @@ dispatch:
 				res.FlowID = flow.ID
 				res.BodyHash = flow.ResBodyHash
 				res.RLHeaders = rlHeaders(flow.ResHeaders)
+				e.noteRateLimit(res.Status, flow.ResHeaders, backoff)
 				if res.Error == "" {
 					doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
 				}
@@ -611,7 +730,7 @@ dispatch:
 	}
 	wg.Wait()
 
-	e.flagAnomalies()
+	e.log.finalize() // derive anomaly thresholds so reads can flag results
 	e.mu.Lock()
 	if bar != nil && bar.failed() {
 		e.barrier = false // honest: the barrier did not release with every worker parked
@@ -626,93 +745,6 @@ dispatch:
 	cancel()
 	e.fireNotify()
 	e.emitRunRecord()
-}
-
-// flagAnomalies marks results whose status differs from the most common status,
-// or whose response length deviates significantly from the median length.
-// It also flags results whose grep-match outcome differs from the majority.
-//
-// Length anomaly threshold: a result is anomalous when its length differs from
-// the median by more than max(50 bytes, 20% of the median). This is conservative
-// enough to ignore minor variation (e.g. CSRF-token noise) while catching the
-// meaningful size shifts that indicate a different code path.
-func (e *Engine) flagAnomalies() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	// Collect valid (successfully-sent) results only. Parse/transport failures
-	// (Status 0) must not skew the modal status or median length.
-	type valid struct {
-		idx     int
-		st      int
-		length  int64
-		matched bool
-	}
-	var valids []valid
-	for i, r := range e.results {
-		if r.Status > 0 && r.Error == "" {
-			valids = append(valids, valid{i, r.Status, r.Length, r.Matched})
-		}
-	}
-	if len(valids) == 0 {
-		return
-	}
-
-	// --- modal status ---
-	statusCounts := map[int]int{}
-	for _, v := range valids {
-		statusCounts[v.st]++
-	}
-	modeStatus, best := 0, -1
-	for st, c := range statusCounts {
-		if c > best {
-			best, modeStatus = c, st
-		}
-	}
-
-	// --- median response length ---
-	lengths := make([]int64, len(valids))
-	for i, v := range valids {
-		lengths[i] = v.length
-	}
-	medianLen := median(lengths)
-
-	// Tolerance: flag when deviation > max(50 bytes, 20% of median).
-	// This avoids flagging tiny uniform responses (e.g. all-zero length).
-	tolerance := medianLen / 5 // 20%
-	if tolerance < 50 {
-		tolerance = 50
-	}
-
-	// --- grep-match majority ---
-	// Only consider this signal when grep was actually configured (i.e. at
-	// least one result has Matched=true; otherwise it was not used).
-	matchedCount := 0
-	for _, v := range valids {
-		if v.matched {
-			matchedCount++
-		}
-	}
-	// Majority verdict: if more than half matched, a non-match is unusual; vice versa.
-	majorityMatched := matchedCount*2 > len(valids)
-	grepSignalActive := matchedCount > 0 && matchedCount < len(valids)
-
-	for _, v := range valids {
-		statusAnomaly := v.st != modeStatus || v.st >= 500
-		diff := v.length - medianLen
-		if diff < 0 {
-			diff = -diff
-		}
-		lengthAnomaly := diff > tolerance
-		grepAnomaly := grepSignalActive && (v.matched != majorityMatched)
-
-		if lengthAnomaly {
-			e.results[v.idx].Anomaly = true
-		}
-		if statusAnomaly || lengthAnomaly || grepAnomaly {
-			e.results[v.idx].Flagged = true
-		}
-	}
 }
 
 // median returns the median of a slice of int64 values without modifying the
@@ -754,9 +786,9 @@ func substitute(template string, payloads []string) string {
 }
 
 func (e *Engine) appendResult(res Result) {
+	e.log.append(res)
 	e.mu.Lock()
-	e.results = append(e.results, res)
-	e.done = len(e.results)
+	e.done = e.log.count()
 	e.mu.Unlock()
 	e.fireNotify()
 }

@@ -294,6 +294,48 @@ and 4xx/5xx rows appear under **Show problems only** and **Rerun failed**.
 
 REST and MCP reach the same runner. See [API and MCP](api-and-mcp.md#collections-api-and-mcp).
 
+## Access control matrix
+
+Access-control (authorization) testing runs on one differential engine, fed from
+either source:
+
+- **Collection identity matrix** (`POST /api/collmatrix/run`) replays the chosen
+  collection requests as every saved identity plus anonymous.
+- **History flow matrix** (`POST /api/collmatrix/flow-run`) replays selected
+  captured history flows the same way. Both produce the same matrix shape,
+  classification, evidence and renderer, so the History and Collections
+  surfaces no longer diverge.
+
+Each cell is classified `success`, `auth_failure`, `authz_failure`,
+`validation_failure`, `other`, `error`, `blocked` or `not_run`, and compared to
+the baseline identity. A lower-privileged identity that gets the same successful
+response as the baseline is flagged — as a **candidate to confirm, not a finding**
+(the matrix carries a hypothesis line that says to reproduce before reporting).
+
+### Object-identifier substitution (BOLA / IDOR)
+
+The classic broken-object-level-authorization test swaps one identity's object id
+for another's. Set `objectParam` to the request variable that carries the object
+id (reference it in the request as `{{userId}}` in the URL, query, or body) and
+`objectIds` to the id each identity legitimately owns:
+
+```json
+{
+  "collectionUid": "c_1",
+  "objectParam": "userId",
+  "objectIds": {"admin": "1", "userA": "101", "userB": "102"}
+}
+```
+
+The matrix then permutes every identity across every owner's object id: it runs
+each request once per owner (with `objectParam` pinned to that owner's id) as
+every identity. A row is one request against one owner's object; the owner's own
+cell is the legitimate baseline for that row, and any other identity that still
+gets a `success` is flagged as a candidate horizontal privilege escalation.
+`objectParam` without `objectIds` (or vice versa) runs the ordinary matrix. The
+captured-flow matrix does not substitute object ids (it has no request template);
+use the collection matrix for object-id permutation.
+
 ## CLI and CI
 
 ```text

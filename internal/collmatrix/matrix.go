@@ -50,9 +50,17 @@ type MatrixRequest struct {
 	Identities []string `json:"identities,omitempty"`
 	// Baseline is the identity the others are compared with. Default: the
 	// first non-anonymous identity.
-	Baseline    string            `json:"baseline,omitempty"`
-	NoScripts   bool              `json:"noScripts,omitempty"`
-	ScopePolicy string            `json:"scopePolicy,omitempty"` // default block
+	Baseline    string `json:"baseline,omitempty"`
+	NoScripts   bool   `json:"noScripts,omitempty"`
+	ScopePolicy string `json:"scopePolicy,omitempty"` // default block
+	// ObjectParam + ObjectIDs drive object-identifier substitution (BOLA/IDOR):
+	// ObjectParam is the request variable to substitute (e.g. "userId", used as
+	// {{userId}} in the item's URL/query/body) and ObjectIDs maps an identity to
+	// the object id it legitimately owns. When both are set the matrix permutes
+	// every identity across every owner's object id — the standard access-control
+	// differential test. A cross-access success is a candidate, not a finding.
+	ObjectParam string            `json:"objectParam,omitempty"`
+	ObjectIDs   map[string]string `json:"objectIds,omitempty"`
 	Local       map[string]string `json:"-"`
 	Source      collexec.Source   `json:"-"`
 	AI          bool              `json:"-"`
@@ -75,13 +83,17 @@ type Cell struct {
 	bodyHash       string
 }
 
-// Row is one request across every identity.
+// Row is one request across every identity. In object-identifier mode a row is
+// one request against one owner's object id; Owner names that identity and
+// ObjectID is the substituted value.
 type Row struct {
-	ItemUID string `json:"itemUid"`
-	Name    string `json:"name"`
-	Method  string `json:"method,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Cells   []Cell `json:"cells"` // same order as Matrix.Identities
+	ItemUID  string `json:"itemUid"`
+	Name     string `json:"name"`
+	Method   string `json:"method,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Owner    string `json:"owner,omitempty"`    // object-owner identity (object-id mode)
+	ObjectID string `json:"objectId,omitempty"` // substituted object id for this row
+	Cells    []Cell `json:"cells"`              // same order as Matrix.Identities
 }
 
 // Summary counts the matrix.
@@ -106,7 +118,8 @@ type Matrix struct {
 	FinishedMs    int64             `json:"finishedMs"`
 	Baseline      string            `json:"baseline"`
 	Identities    []string          `json:"identities"`
-	Expect        map[string]string `json:"expect,omitempty"` // identity -> allow|deny (resolved)
+	ObjectParam   string            `json:"objectParam,omitempty"` // set in object-identifier mode
+	Expect        map[string]string `json:"expect,omitempty"`      // identity -> allow|deny (resolved)
 	Rows          []Row             `json:"rows"`
 	Summary       Summary           `json:"summary"`
 	Runs          map[string]string `json:"runs,omitempty"` // identity -> run uid
@@ -230,45 +243,109 @@ func (s *Service) RunMatrix(ctx context.Context, req MatrixRequest) (*Matrix, er
 	if err != nil {
 		return nil, err
 	}
+	scen := s.scenarios(req, run)
 	m := &Matrix{
 		ID: newID(), CollectionUID: req.CollectionUID, EnvUID: req.EnvUID, StartedMs: s.d.Now().UnixMilli(),
 		Baseline: pickBaseline(run, req.Baseline), Skipped: skipped, Runs: map[string]string{}, Expect: map[string]string{},
 	}
+	if objectMode(scen) {
+		m.ObjectParam = req.ObjectParam
+	}
 	for _, id := range run {
 		m.Identities = append(m.Identities, id.Name)
 	}
-	reports := make([]*collrun.Report, len(run))
+	// reports[identity][scenario]
+	reports := make([][]*collrun.Report, len(run))
+	total := len(run) * len(scen)
+	doneN := 0
+run:
 	for i, id := range run {
-		if ctx.Err() != nil {
-			m.Partial = true
-			break
-		}
-		rep, rerr := s.runAs(ctx, req, id, known)
-		if rerr != nil {
-			return nil, rerr
-		}
-		reports[i] = rep
-		m.Runs[id.Name] = rep.RunUID
-		if m.Collection == "" {
-			m.Collection = s.scrub(rep.CollectionName)
-		}
-		if rep.Status != collrun.StatusDone && rep.Status != collrun.StatusStopped {
-			m.Warnings = append(m.Warnings, s.scrub(fmt.Sprintf("%s: run ended %s %s", id.Name, rep.Status, rep.StopReason)))
-			if rep.Status == collrun.StatusAborted {
+		reports[i] = make([]*collrun.Report, len(scen))
+		for si, sc := range scen {
+			if ctx.Err() != nil {
 				m.Partial = true
+				break run
+			}
+			rep, rerr := s.runAs(ctx, req, id, known, sc.local)
+			if rerr != nil {
+				return nil, rerr
+			}
+			reports[i][si] = rep
+			key := id.Name
+			if len(scen) > 1 {
+				key = id.Name + " @ " + sc.owner
+			}
+			m.Runs[key] = rep.RunUID
+			if m.Collection == "" {
+				m.Collection = s.scrub(rep.CollectionName)
+			}
+			if rep.Status != collrun.StatusDone && rep.Status != collrun.StatusStopped {
+				m.Warnings = append(m.Warnings, s.scrub(fmt.Sprintf("%s: run ended %s %s", id.Name, rep.Status, rep.StopReason)))
+				if rep.Status == collrun.StatusAborted {
+					m.Partial = true
+				}
+			}
+			doneN++
+			if req.OnProgress != nil {
+				req.OnProgress(id.Name, doneN, total)
 			}
 		}
-		if req.OnProgress != nil {
-			req.OnProgress(id.Name, i+1, len(run))
-		}
 	}
-	s.assemble(m, run, reports)
+	s.assemble(m, run, scen, reports)
 	m.FinishedMs = s.d.Now().UnixMilli()
 	s.remember(m)
 	return m, nil
 }
 
-func (s *Service) runAs(ctx context.Context, req MatrixRequest, id Identity, known []Identity) (*collrun.Report, error) {
+// scenario is one run configuration. In normal mode there is a single scenario
+// with no owner; in object-identifier mode there is one per object owner, each
+// pinning ObjectParam to that owner's id via a local variable.
+type scenario struct {
+	owner    string
+	objectID string
+	local    map[string]string
+}
+
+func objectMode(scen []scenario) bool { return len(scen) > 0 && scen[0].owner != "" }
+
+// scenarios builds the run scenarios. Object-identifier mode activates only when
+// ObjectParam and at least one runnable identity's object id are given.
+func (s *Service) scenarios(req MatrixRequest, run []Identity) []scenario {
+	if strings.TrimSpace(req.ObjectParam) == "" || len(req.ObjectIDs) == 0 {
+		return []scenario{{local: req.Local}}
+	}
+	var out []scenario
+	for _, id := range run {
+		v, ok := lookupObjectID(req.ObjectIDs, id.Name)
+		if !ok {
+			continue
+		}
+		local := map[string]string{}
+		for k, vv := range req.Local {
+			local[k] = vv
+		}
+		local[req.ObjectParam] = v
+		out = append(out, scenario{owner: id.Name, objectID: v, local: local})
+	}
+	if len(out) == 0 {
+		return []scenario{{local: req.Local}}
+	}
+	return out
+}
+
+func lookupObjectID(ids map[string]string, name string) (string, bool) {
+	if v, ok := ids[name]; ok {
+		return v, true
+	}
+	for k, v := range ids {
+		if strings.EqualFold(k, name) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+func (s *Service) runAs(ctx context.Context, req MatrixRequest, id Identity, known []Identity, local map[string]string) (*collrun.Report, error) {
 	pol := req.ScopePolicy
 	if pol == "" {
 		pol = store.ScopePolicyBlock
@@ -282,44 +359,67 @@ func (s *Service) runAs(ctx context.Context, req MatrixRequest, id Identity, kno
 		CollectionUID: req.CollectionUID, FolderUID: req.FolderUID, ItemUIDs: req.ItemUIDs, EnvUID: req.EnvUID,
 		Iterations: 1, Persist: collrun.PersistDiscard, Bail: collrun.BailNone,
 		NoScripts: req.NoScripts, FailOnQuarantine: !req.NoScripts, ScopePolicy: pol,
-		Source: src, AI: req.AI, Identity: id.Name, Local: req.Local,
+		Source: src, AI: req.AI, Identity: id.Name, Local: local,
 	})
 }
 
-// assemble folds the per-identity reports into rows and cells, then derives
-// sameness, flags and the summary.
-func (s *Service) assemble(m *Matrix, run []Identity, reports []*collrun.Report) {
-	type key = string
-	rowIdx := map[key]int{}
-	for ci, rep := range reports {
-		if rep == nil {
-			continue
-		}
-		for _, it := range rep.Items {
-			if it.Iteration != 0 {
+// assemble folds the per-identity, per-scenario reports into rows and cells,
+// then derives sameness, flags and the summary. In object-identifier mode each
+// (request, owner) pair is its own row; otherwise there is one row per request.
+func (s *Service) assemble(m *Matrix, run []Identity, scen []scenario, reports [][]*collrun.Report) {
+	object := objectMode(scen)
+	rowIdx := map[string]int{}
+	for ci := range run {
+		for si, rep := range reports[ci] {
+			if rep == nil {
 				continue
 			}
-			ri, ok := rowIdx[it.ItemUID]
-			if !ok {
-				if len(m.Rows) >= MaxRows {
-					m.Warnings = append(m.Warnings, fmt.Sprintf("more than %d requests; extra rows dropped", MaxRows))
+			sc := scen[si]
+			for _, it := range rep.Items {
+				if it.Iteration != 0 {
 					continue
 				}
-				ri = len(m.Rows)
-				rowIdx[it.ItemUID] = ri
-				cells := make([]Cell, len(run))
-				for i := range cells {
-					cells[i] = Cell{Class: ClassNotRun}
+				key := it.ItemUID
+				if object {
+					key = it.ItemUID + "\x00" + sc.owner
 				}
-				m.Rows = append(m.Rows, Row{ItemUID: it.ItemUID, Name: s.scrub(it.Name), Method: it.Method, URL: s.scrub(it.URL), Cells: cells})
+				ri, ok := rowIdx[key]
+				if !ok {
+					if len(m.Rows) >= MaxRows {
+						m.Warnings = append(m.Warnings, fmt.Sprintf("more than %d requests; extra rows dropped", MaxRows))
+						continue
+					}
+					ri = len(m.Rows)
+					rowIdx[key] = ri
+					cells := make([]Cell, len(run))
+					for i := range cells {
+						cells[i] = Cell{Class: ClassNotRun}
+					}
+					row := Row{ItemUID: it.ItemUID, Name: s.scrub(it.Name), Method: it.Method, URL: s.scrub(it.URL), Cells: cells}
+					if sc.owner != "" {
+						row.Owner = sc.owner
+						row.ObjectID = s.scrub(sc.objectID)
+						row.Name = fmt.Sprintf("%s — %s's object", row.Name, sc.owner)
+					}
+					m.Rows = append(m.Rows, row)
+				}
+				if m.Rows[ri].URL == "" {
+					m.Rows[ri].URL = s.scrub(it.URL)
+				}
+				m.Rows[ri].Cells[ci] = s.cellOf(it, !run[ci].Anonymous)
 			}
-			if m.Rows[ri].URL == "" {
-				m.Rows[ri].URL = s.scrub(it.URL)
-			}
-			m.Rows[ri].Cells[ci] = s.cellOf(it, !run[ci].Anonymous)
 		}
 	}
+	s.finalize(m, run)
+}
+
+// finalize derives per-cell sameness, flags, the summary and hypotheses from the
+// assembled rows. It is the one differential core shared by the collection
+// identity matrix and the captured-flow (history) matrix, and it covers both the
+// expectation-based and the object-identifier flagging modes.
+func (s *Service) finalize(m *Matrix, run []Identity) {
 	base := indexOf(m.Identities, m.Baseline)
+	object := false
 	for _, id := range run {
 		m.Expect[id.Name] = expectation(id, id.Name == m.Baseline)
 		if m.Expect[id.Name] == "" {
@@ -328,6 +428,11 @@ func (s *Service) assemble(m *Matrix, run []Identity, reports []*collrun.Report)
 	}
 	for ri := range m.Rows {
 		row := &m.Rows[ri]
+		ownerIdx := -1
+		if row.Owner != "" {
+			ownerIdx = indexOf(m.Identities, row.Owner)
+			object = true
+		}
 		for ci := range row.Cells {
 			c := &row.Cells[ci]
 			if base >= 0 && ci != base {
@@ -335,13 +440,24 @@ func (s *Service) assemble(m *Matrix, run []Identity, reports []*collrun.Report)
 			} else if ci == base {
 				c.SameAsBaseline = c.Class != ClassNotRun
 			}
-			if ci != base {
+			switch {
+			case ownerIdx >= 0:
+				// Object-id mode: any identity other than the object's owner that
+				// gets a successful response has reached another identity's object.
+				if ci != ownerIdx && c.Class == ClassSuccess {
+					c.Flag = FlagViolation
+					c.Reason = "candidate cross-object access"
+				}
+			case ci != base:
 				c.Flag = flagFor(m.Expect[run[ci].Name], *c)
 			}
 		}
 	}
 	m.Summary = summarize(m)
-	if m.Summary.Violations > 0 {
+	switch {
+	case object && m.Summary.Violations > 0:
+		m.Hypotheses = append(m.Hypotheses, "Hypothesis: an identity received a successful response to another identity's object id — a candidate object-level authorization bypass (BOLA/IDOR, horizontal privilege escalation). This is a candidate to confirm, not a finding; reproduce before reporting.")
+	case m.Summary.Violations > 0:
 		m.Hypotheses = append(m.Hypotheses, "Hypothesis: an identity expected to be denied received a successful response. This may be broken access control or missing authentication. Reproduce before reporting.")
 	}
 	if m.Summary.UnexpectedDenials > 0 {

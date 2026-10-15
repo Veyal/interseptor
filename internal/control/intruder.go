@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,8 +22,11 @@ type intruderStartJSON struct {
 	DelayMs      int        `json:"delayMs"`
 	GrepMatch    string     `json:"grepMatch"`
 	GrepExtract  string     `json:"grepExtract"`
+	MatchRules   []string   `json:"matchRules"`
+	ExtractRules []string   `json:"extractRules"`
 	ProcessRules []string   `json:"processRules"`
 	Barrier      bool       `json:"barrier"`
+	MaxBackoffMs int        `json:"maxBackoffMs"`
 }
 
 func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
@@ -48,9 +52,12 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 		DelayMs:      in.DelayMs,
 		GrepMatch:    in.GrepMatch,
 		GrepExtract:  in.GrepExtract,
+		MatchRules:   in.MatchRules,
+		ExtractRules: in.ExtractRules,
 		ProcessRules: in.ProcessRules,
 		ExtraFlags:   aiSourceFlag(r),
 		Barrier:      in.Barrier,
+		MaxBackoffMs: in.MaxBackoffMs,
 	})
 	if err != nil {
 		if errors.Is(err, intruder.ErrClosed) {
@@ -65,6 +72,40 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 
 func (h *toolsAPI) intruderState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.intr.State())
+}
+
+// intruderResults streams a window of the current/last run's results from the
+// disk-backed result log, so a client can page through a large run instead of
+// pulling every result from /state at once.
+func (h *toolsAPI) intruderResults(w http.ResponseWriter, r *http.Request) {
+	if h.intr == nil {
+		httpErr(w, http.StatusServiceUnavailable, "intruder engine unavailable")
+		return
+	}
+	q := r.URL.Query()
+	offset := 0
+	if raw := strings.TrimSpace(q.Get("offset")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			httpErr(w, http.StatusBadRequest, "offset must be a non-negative integer")
+			return
+		}
+		offset = n
+	}
+	limit := 500 // default page size
+	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 5000 {
+			httpErr(w, http.StatusBadRequest, "limit must be between 1 and 5000")
+			return
+		}
+		limit = n
+	}
+	results, total := h.intr.Results(offset, limit)
+	if results == nil {
+		results = []intruder.Result{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results, "total": total, "offset": offset, "limit": limit})
 }
 
 func (h *toolsAPI) intruderStop(w http.ResponseWriter, r *http.Request) {

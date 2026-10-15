@@ -9,8 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Repeater replay options reach the send API.** `POST /api/repeater/send` now accepts `followRedirects` (with a `maxRedirects` hop limit), `verifyTls`, a `serverName` SNI/verification override, `http2`, and `timeoutMs`. Every option is off by default, so a bare send keeps the historical behaviour byte for byte -- no redirects, no TLS verification, HTTP/1.1 -- and only an explicit flag changes the wire request. `http2` offers ALPN `h2` on HTTPS origins and the recorded flow's HTTP version follows what was negotiated ([#106](https://github.com/Veyal/interseptor/issues/106)).
+- **A lossless Repeater params API.** `POST /api/repeater/params/parse` splits a URL's query string and an optional `x-www-form-urlencoded` body into ordered `{key, value}` fields, and `POST /api/repeater/params/build` rebuilds them; both preserve field order and duplicate keys so a params drawer can round-trip a request without losing or reordering anything ([#106](https://github.com/Veyal/interseptor/issues/106)).
+- **Intruder takes more than one match and extract rule per run.** `matchRules` and `extractRules` add rules beyond the single `grepMatch`/`grepExtract`; each result carries a per-rule hit vector and per-rule captures, with the legacy single fields still feeding rule 0 ([#106](https://github.com/Veyal/interseptor/issues/106)).
+- **Intruder paces itself against 429/503 rate limits.** A `Retry-After`, `RateLimit-Reset` or `X-RateLimit-Reset` on a 429 or 503 response pauses the dispatcher before the next request, capped by `maxBackoffMs`, so a run stops burning a target's tokens the moment it is told to slow down ([#106](https://github.com/Veyal/interseptor/issues/106)).
+- **Object-identifier substitution for BOLA/IDOR testing.** The access-control matrix accepts `objectParam` (a request variable such as `{{userId}}`) and `objectIds` (the id each identity owns), then permutes every identity across every owner's object id -- the standard horizontal-access differential. A non-owner that still succeeds on another identity's object is marked a candidate to confirm, never a confirmed finding ([#107](https://github.com/Veyal/interseptor/issues/107)).
+- **One access-control engine for History and Collections.** `POST /api/collmatrix/flow-run` replays selected captured history flows under each identity and builds the same matrix -- same classification, differential, evidence contract and renderer -- as the collection identity matrix, so the two overlapping surfaces share one engine ([#107](https://github.com/Veyal/interseptor/issues/107)).
+
 ### Changed
 
+- **The Intruder runner streams results to disk instead of an in-memory cap.** Results are written in chunks to a per-run disk log and read back on demand through `GET /api/intruder/results` (offset/limit), raising a run's capacity from the old 2,000 in-memory ceiling to 20,000 while keeping the hot send path memory-bounded. `/api/intruder/state` returns a bounded live head while a run is in flight and the full flagged set once it finishes ([#106](https://github.com/Veyal/interseptor/issues/106)).
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.13.1` release.
 
 ## [2.13.1] - 2026-10-14

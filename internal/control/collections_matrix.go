@@ -1,7 +1,10 @@
 package control
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/Veyal/interseptor/internal/collmatrix"
 	"github.com/Veyal/interseptor/internal/store"
@@ -66,6 +69,67 @@ func (f storeFlows) FlowBody(id int64, maxBytes int64) (collmatrix.FlowBody, err
 	return collmatrix.FlowBody{Status: fl.Status, Headers: hs, Body: body, Mime: fl.Mime}, nil
 }
 
+// flowMatrixReplayer backs collmatrix's captured-flow (history) matrix: it
+// replays a captured flow under an identity over the shared sender, reusing the
+// authz modal's identity-header swap and own-listener guard, so the history
+// access-control surface runs through the one collmatrix engine.
+type flowMatrixReplayer struct{ h *Hub }
+
+func (f flowMatrixReplayer) Targets(flowIDs []int64) ([]collmatrix.FlowTarget, error) {
+	var out []collmatrix.FlowTarget
+	seen := map[int64]bool{}
+	for _, id := range flowIDs {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		fl, err := f.h.st.GetFlow(id)
+		if err != nil || fl == nil || f.h.isOwnListener(fl) {
+			continue // skip missing flows and our own listener
+		}
+		path := fl.Path
+		if path == "" {
+			path = "/"
+		}
+		out = append(out, collmatrix.FlowTarget{
+			FlowID: fl.ID, Method: fl.Method, Host: fl.Host, Path: path,
+			Name: strings.TrimSpace(fl.Method + " " + fl.Host + path),
+		})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no replayable flows among the given ids")
+	}
+	return out, nil
+}
+
+func (f flowMatrixReplayer) Replay(_ context.Context, tg collmatrix.FlowTarget, id collmatrix.Identity) collmatrix.ReplayResult {
+	fl, err := f.h.st.GetFlow(tg.FlowID)
+	if err != nil || fl == nil {
+		return collmatrix.ReplayResult{Error: "flow not found"}
+	}
+	rr := (&authzAPI{f.h}).authzReplayBody(fl, toControlIdentity(id), nil)
+	loc := ""
+	if v := rr.resHeaders["Location"]; len(v) > 0 {
+		loc = v[0]
+	}
+	return collmatrix.ReplayResult{
+		Status: rr.Status, Size: rr.Length, BodyHash: rr.BodyHash, FlowID: rr.FlowID, Error: rr.Error, Location: loc,
+	}
+}
+
+// toControlIdentity renders a collmatrix identity's credential headers as the
+// authz modal's "Key: Value" line form (anonymous -> empty, which strips auth).
+func toControlIdentity(id collmatrix.Identity) identity {
+	var b strings.Builder
+	for i, h := range id.Headers {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(h.Name + ": " + h.Value)
+	}
+	return identity{Name: id.Name, Headers: b.String()}
+}
+
 // collMatrixCallers maps a request to the caller identity: AI/MCP sources get
 // the scope policy block and no secrets; only a UI session may opt in.
 func collMatrixCallers() collmatrix.Callers {
@@ -86,6 +150,7 @@ func (c *collectionsAPI) registerMatrix() {
 		Flows:      storeFlows{c.h.st},
 		Bodies:     storeFlows{c.h.st},
 		Evidence:   c.h.st,
+		FlowReplay: flowMatrixReplayer{c.h},
 	})
 	for _, r := range svc.Routes(collMatrixCallers()) {
 		c.h.mux.HandleFunc(r.Method+" "+r.Path, r.Handler)

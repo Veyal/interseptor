@@ -54,6 +54,10 @@ type Deps struct {
 	Flows      FlowReader
 	Bodies     BodyReader
 	Evidence   EvidenceSink // optional; needed for attach routes
+	// FlowReplay backs the captured-flow (history) matrix. Optional: without it
+	// the flow-run route returns 503. The control layer provides it over the
+	// sender; this package never sends traffic itself.
+	FlowReplay FlowReplayer
 	// Scrub is the one secret scrubber; every string that leaves the package
 	// passes through it. A nil Scrub is replaced by the backend's.
 	Scrub func(string) string

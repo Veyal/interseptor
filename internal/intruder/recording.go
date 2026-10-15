@@ -27,6 +27,8 @@ type SpecSummary struct {
 	Path         string   `json:"path,omitempty"`   // request path only; query values are never kept
 	GrepMatch    string   `json:"grepMatch,omitempty"`
 	GrepExtract  string   `json:"grepExtract,omitempty"`
+	MatchRules   []string `json:"matchRules,omitempty"`
+	ExtractRules []string `json:"extractRules,omitempty"`
 	ProcessRules []string `json:"processRules,omitempty"`
 }
 

@@ -525,6 +525,9 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 	}
 
 	flow.Status = resp.StatusCode
+	if resp.Proto != "" {
+		flow.HTTPVersion = resp.Proto // e.g. HTTP/1.1, or HTTP/2.0 when the SendOptions HTTP2 path negotiated h2
+	}
 	flow.ResHeaders = resp.Header.Clone()
 	flow.Mime = resp.Header.Get("Content-Type")
 	flow.DurationMs = time.Since(start).Milliseconds()

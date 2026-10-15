@@ -1058,7 +1058,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (284)
+### REST routes (288)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1119,6 +1119,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/collmatrix/attach-run` | Attach the flows of a stored collection run (or selected items) to a finding. |
 | GET | `/api/collmatrix/coverage` | OpenAPI coverage of a collection: which spec operations stored runs exercised. |
 | POST | `/api/collmatrix/diff-example` | Diff a saved response example of an item against a captured response flow. |
+| POST | `/api/collmatrix/flow-run` | Replay captured history flows under each identity (and anonymous) and return the same access differential as... |
 | POST | `/api/collmatrix/handoff` | Build an Intruder attack from a collection item. |
 | POST | `/api/collmatrix/run` | Run requests as each identity (and anonymous) and return the access differential. |
 | GET | `/api/collmatrix/timing` | Timing breakdown of a stored run. |
@@ -1222,8 +1223,9 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/intruder/attacks/{id}` | One finished Intruder run record (state with per-request seq/worker/startUs/endUs/bodyHash/rlHeaders, plus... |
 | GET | `/api/intruder/attacks/{id}/render` | Alias of /api/intruder/attacks/{id}/render.png (used by the MCP render_intruder_preview tool); same query... |
 | GET | `/api/intruder/attacks/{id}/render.png` | Evidence PNG of a finished run (?kind=timeline\|distribution\|race\|strip default timeline, width=0\|640..1600... |
+| GET | `/api/intruder/results` | Page through the current/last attack's results from the disk-backed result log. |
 | POST | `/api/intruder/start` | Start a Sniper/Battering/Pitchfork/Cluster attack. |
-| GET | `/api/intruder/state` | Current attack progress + results |
+| GET | `/api/intruder/state` | Current attack progress + results. |
 | POST | `/api/intruder/stop` | Stop an active Intruder attack |
 | POST | `/api/ios/install-ca` | Install CA on booted iOS Simulator via simctl. |
 | POST | `/api/ios/open-profile` | Open profile install URL in simulator Safari. |
@@ -1282,6 +1284,8 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/render/flow-diff.png` | Flow-vs-flow diff PNG (?a=&b= flow ids, width=, includeBody=1 for redacted body lines, format=json)... |
 | GET | `/api/render/flow-waterfall.png` | Flow timing waterfall PNG (?ids=1,2,3 max 50, width=, format=json); only total duration is recorded |
 | GET | `/api/repeater/history` | Repeater send history |
+| POST | `/api/repeater/params/build` | Rebuild a URL and form body from ordered {key,value} fields (inverse of params/parse). |
+| POST | `/api/repeater/params/parse` | Split a URL's query string and an optional x-www-form-urlencoded body into ordered {key,value} fields... |
 | POST | `/api/repeater/send` | Send a request from Repeater. |
 | GET | `/api/rules` | List match-&-replace rules |
 | POST | `/api/rules` | Create a rule. |

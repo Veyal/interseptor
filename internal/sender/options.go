@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
+	"golang.org/x/net/http2"
 )
 
 // RawHeader is one header line exactly as it should appear on the wire.
@@ -45,12 +46,16 @@ type SendOptions struct {
 	MaxRedirects    int           // 0 = 10 when FollowRedirects
 	VerifyTLS       bool          // default false: origin certs are not verified
 	ServerName      string        // SNI / verification name override
-	ClientCertPEM   []byte        // optional mTLS client certificate chain
-	ClientKeyPEM    []byte
-	ProxyURL        string            // overrides the global upstream proxy
-	NoProxy         bool              // ignore the global upstream proxy
-	DNSOverride     map[string]string // lowercase host -> IP literal
-	Guard           *IPGuard          // dial-time destination vetting
+	// HTTP2 offers ALPN "h2" to the origin so an HTTPS send negotiates HTTP/2
+	// when the server supports it (plain HTTP and the raw-headers wire path stay
+	// HTTP/1.1). Default false keeps the historical HTTP/1.1-only behaviour.
+	HTTP2         bool
+	ClientCertPEM []byte // optional mTLS client certificate chain
+	ClientKeyPEM  []byte
+	ProxyURL      string            // overrides the global upstream proxy
+	NoProxy       bool              // ignore the global upstream proxy
+	DNSOverride   map[string]string // lowercase host -> IP literal
+	Guard         *IPGuard          // dial-time destination vetting
 	// RawHeaders, when non-empty, are written verbatim in order (duplicates
 	// kept, no canonicalisation) over HTTP/1.1. Session headers and the token
 	// macro are not injected: the caller owns the exact wire request. Not
@@ -182,8 +187,8 @@ func (o *SendOptions) cacheKey() string {
 	}
 	sort.Strings(dns)
 	cert := sha256.Sum256(append(append([]byte{}, o.ClientCertPEM...), o.ClientKeyPEM...))
-	return fmt.Sprintf("v%t|sn=%s|c=%x|p=%s|np=%t|dns=%v|g=%s",
-		o.VerifyTLS, o.ServerName, cert[:8], o.ProxyURL, o.NoProxy, dns, o.Guard.fingerprint())
+	return fmt.Sprintf("v%t|h2=%t|sn=%s|c=%x|p=%s|np=%t|dns=%v|g=%s",
+		o.VerifyTLS, o.HTTP2, o.ServerName, cert[:8], o.ProxyURL, o.NoProxy, dns, o.Guard.fingerprint())
 }
 
 // clientFor returns the cached client for the transport-affecting parts of o.
@@ -254,6 +259,9 @@ func (s *Sender) tlsConfigFor(o *SendOptions, host string) (*tls.Config, error) 
 	if o.ServerName != "" {
 		cfg.ServerName = o.ServerName
 	}
+	if o.HTTP2 {
+		cfg.NextProtos = []string{"h2", "http/1.1"}
+	}
 	if len(o.ClientCertPEM) > 0 || len(o.ClientKeyPEM) > 0 {
 		cert, err := tls.X509KeyPair(o.ClientCertPEM, o.ClientKeyPEM)
 		if err != nil {
@@ -282,7 +290,7 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 			return s.dialVia(up, ctx, n, a)
 		})
 	}
-	return &http.Transport{
+	tr := &http.Transport{
 		Proxy: func(req *http.Request) (*url.URL, error) {
 			up := s.effectiveUpstream(o)
 			if up == nil || senderSOCKSUpstream(up) {
@@ -325,7 +333,16 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 		MaxIdleConns:        64,
 		MaxIdleConnsPerHost: 16,
 		IdleConnTimeout:     90 * time.Second,
-	}, nil
+	}
+	if o.HTTP2 {
+		// Register the HTTP/2 upgrade so a "h2"-negotiated DialTLSContext conn is
+		// handed to the h2 transport. ALPN "h2" is offered in tlsConfigFor; a
+		// server without h2 falls back to HTTP/1.1 on the same transport.
+		if err := http2.ConfigureTransport(tr); err != nil {
+			return nil, err
+		}
+	}
+	return tr, nil
 }
 
 // --- raw header wire path ---------------------------------------------------

@@ -132,16 +132,12 @@ func TestAnomalySingleResultNoCrash(t *testing.T) {
 	}
 }
 
-// TestAnomalyZeroResultsNoCrash ensures flagAnomalies handles an empty result
-// set without panicking (e.g. all jobs failed to parse before sending).
+// TestAnomalyZeroResultsNoCrash ensures flagging handles an empty result set
+// without panicking (e.g. all jobs failed to parse before sending).
 func TestAnomalyZeroResultsNoCrash(t *testing.T) {
-	e := newEngine(t)
-	// Call flagAnomalies directly on an engine with no results.
-	e.mu.Lock()
-	e.results = nil
-	e.mu.Unlock()
 	// Must not panic.
-	e.flagAnomalies()
+	flagResults(nil)
+	flagResults([]Result{})
 }
 
 // TestAnomalyStatusAndLengthBothFlagRespectively verifies that a 500 (status
@@ -247,24 +243,23 @@ func TestMedianHelper(t *testing.T) {
 	}
 }
 
-// TestAnomalyGrepMajoritySignal verifies that flagAnomalies flags the result
-// whose grep-match outcome is in the minority. This is tested via direct engine
-// manipulation because wiring a store+bodyReader is covered by TestGrepAndPayloadProcessing.
+// TestAnomalyGrepMajoritySignal verifies that flagging marks the result whose
+// grep-match outcome is in the minority. Exercised on the pure flagResults
+// helper (the run path derives the same thresholds from the disk log).
 func TestAnomalyGrepMajoritySignal(t *testing.T) {
-	e := &Engine{}
 	// 4 matched, 1 not-matched → the non-matching result is the minority → flagged.
-	e.results = []Result{
+	rs := []Result{
 		{ID: 1, Status: 200, Length: 10, Matched: true},
 		{ID: 2, Status: 200, Length: 10, Matched: true},
 		{ID: 3, Status: 200, Length: 10, Matched: true},
 		{ID: 4, Status: 200, Length: 10, Matched: true},
 		{ID: 5, Status: 200, Length: 10, Matched: false}, // minority
 	}
-	e.flagAnomalies()
+	flagResults(rs)
 
-	for _, r := range e.results {
+	for _, r := range rs {
 		if r.ID == 5 && !r.Flagged {
-			t.Errorf("result 5 (minority grep) should be Flagged after flagAnomalies")
+			t.Errorf("result 5 (minority grep) should be Flagged after flagging")
 		}
 		if r.ID != 5 && r.Flagged {
 			t.Errorf("result %d (majority grep) unexpectedly Flagged", r.ID)
@@ -275,14 +270,13 @@ func TestAnomalyGrepMajoritySignal(t *testing.T) {
 // TestAnomalyGrepAllMatchNoneExtraFlagged verifies that when ALL results match
 // (no minority) the grep signal does not produce false flags.
 func TestAnomalyGrepAllMatchNoneExtraFlagged(t *testing.T) {
-	e := &Engine{}
-	e.results = []Result{
+	rs := []Result{
 		{ID: 1, Status: 200, Length: 10, Matched: true},
 		{ID: 2, Status: 200, Length: 10, Matched: true},
 		{ID: 3, Status: 200, Length: 10, Matched: true},
 	}
-	e.flagAnomalies()
-	for _, r := range e.results {
+	flagResults(rs)
+	for _, r := range rs {
 		if r.Flagged {
 			t.Errorf("all-match set: result %d unexpectedly Flagged", r.ID)
 		}

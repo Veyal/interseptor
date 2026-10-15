@@ -50,7 +50,8 @@ func (c Callers) source(r *http.Request) collexec.Source {
 // Routes returns the REST routes of the package.
 func (s *Service) Routes(c Callers) []Route {
 	return []Route{
-		{"POST", "/api/collmatrix/run", "Run requests as each identity (and anonymous) and return the access differential. Body: {collectionUid, folderUid?, itemUids?, envUid?, identities?, baseline?, noScripts?}. Scope policy block; script writes discarded", s.hRun(c)},
+		{"POST", "/api/collmatrix/run", "Run requests as each identity (and anonymous) and return the access differential. Body: {collectionUid, folderUid?, itemUids?, envUid?, identities?, baseline?, noScripts?, objectParam?, objectIds?}. objectParam + objectIds (identity->object id) permute every identity across each other's object ids for BOLA/IDOR testing; a cross-access success is a candidate to confirm, not a finding. Scope policy block; script writes discarded", s.hRun(c)},
+		{"POST", "/api/collmatrix/flow-run", "Replay captured history flows under each identity (and anonymous) and return the same access differential as the collection matrix, from the one engine. Body: {flowIds, identities?, baseline?}. Differences are candidates to confirm, never confirmed findings", s.hFlowRun},
 		{"GET", "/api/collmatrix/{id}", "Return a matrix returned by an earlier run (the last 20 are kept in memory)", s.hGet},
 		{"GET", "/api/collmatrix/{id}/render.png", "Render a matrix with the authz-matrix evidence renderer. Query: width, dark=1", s.hRender},
 		{"POST", "/api/collmatrix/{id}/attach", "Attach a matrix's flows to a finding as typed evidence. Body: {findingId, onlyFlagged?}", s.hAttachMatrix},
@@ -81,7 +82,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errNotFound):
 		code = http.StatusNotFound
-	case errors.Is(err, errNoRuns), errors.Is(err, errNoSink):
+	case errors.Is(err, errNoRuns), errors.Is(err, errNoSink), errors.Is(err, errNoReplayer):
 		code = http.StatusServiceUnavailable
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusRequestTimeout
@@ -113,6 +114,19 @@ func (s *Service) hRun(c Callers) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"matrix": m, "timing": TimingDifferential(m), "timingNote": TimingNote})
 	}
+}
+
+func (s *Service) hFlowRun(w http.ResponseWriter, r *http.Request) {
+	var req FlowMatrixRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	m, err := s.RunFlowMatrix(r.Context(), s.d.FlowReplay, req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"matrix": m})
 }
 
 func (s *Service) hGet(w http.ResponseWriter, r *http.Request) {
