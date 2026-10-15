@@ -54,7 +54,7 @@ func (s *Store) PutAndAttachImageRef(findingID int64, mime string, data []byte, 
 	// record and must remain available.
 	digest := sha256.Sum256(data)
 	preexisting := s.BodyExists(hex.EncodeToString(digest[:]))
-	hash, n, resolvedMIME, err := s.putImageBytes(mime, data)
+	hash, n, resolvedMIME, err := s.putImageBytesUnderBodyLock(mime, data)
 	if err != nil {
 		return "", 0, err
 	}
@@ -72,7 +72,18 @@ func (s *Store) PutAndAttachImageRef(findingID int64, mime string, data []byte, 
 	return hash, n, nil
 }
 
+// putImageBytes stores image bytes with no lock held.
 func (s *Store) putImageBytes(mime string, data []byte) (string, int64, string, error) {
+	return s.putImageBytesWith(mime, data, false)
+}
+
+// putImageBytesUnderBodyLock is putImageBytes for a caller that already holds
+// bodyMu across the whole upload-to-attachment window.
+func (s *Store) putImageBytesUnderBodyLock(mime string, data []byte) (string, int64, string, error) {
+	return s.putImageBytesWith(mime, data, true)
+}
+
+func (s *Store) putImageBytesWith(mime string, data []byte, bodyLockHeld bool) (string, int64, string, error) {
 	if len(data) == 0 {
 		return "", 0, "", fmt.Errorf("empty image")
 	}
@@ -89,7 +100,11 @@ func (s *Store) putImageBytes(mime string, data []byte) (string, int64, string, 
 	} else if detected != mime {
 		return "", 0, "", fmt.Errorf("image MIME mismatch: declared %s, detected %s", mime, detected)
 	}
-	w, err := s.NewBodyWriter()
+	newWriter := s.NewBodyWriter
+	if bodyLockHeld {
+		newWriter = s.newBodyWriterUnderBodyLock
+	}
+	w, err := newWriter()
 	if err != nil {
 		return "", 0, "", err
 	}

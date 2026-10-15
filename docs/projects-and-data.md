@@ -117,6 +117,12 @@ flow, a finding screenshot, or another record. **Reclaim space** garbage-collect
 body files. A finding that references a deleted flow preserves a missing-evidence marker, but the
 request/response cannot be reconstructed; archive required PoC evidence before pruning.
 
+**Reclaim space** runs alongside live traffic. On a large engagement it spends seconds walking the
+body directory, and capture continues throughout: a body written during the pass is kept, including
+one whose bytes match a file the pass had already listed as unreferenced. Run it while proxying if
+you need to; it no longer pauses capture for the length of the walk. One pass runs at a time, so a
+second **Reclaim space** waits for the first.
+
 ## Backup and collaboration
 
 For handoff, prefer a full project archive when exact bodies and report evidence must survive. Use

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"database/sql"
 	"sort"
 	"strings"
 )
@@ -101,16 +100,30 @@ func (s *Store) writeFlowTags(flowID int64, tags []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.flowTxs.Add(1)
 	defer tx.Rollback()
-	if err := requireFlowForTags(tx, flowID); err != nil {
+	out, err := writeFlowTagsExec(tx, flowID, tags)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// writeFlowTagsExec unions tags onto an existing flow and returns the row's
+// full tag set. The caller owns the transaction boundary.
+func writeFlowTagsExec(ex flowExec, flowID int64, tags []string) ([]string, error) {
+	if err := requireFlowForTags(ex, flowID); err != nil {
 		return nil, err
 	}
 	for _, t := range NormalizeTags(tags) {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
+		if _, err := ex.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
 			return nil, err
 		}
 	}
-	rows, err := tx.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
+	rows, err := ex.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +141,6 @@ func (s *Store) writeFlowTags(flowID int64, tags []string) ([]string, error) {
 		return nil, err
 	}
 	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -167,9 +177,9 @@ func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
 	return tx.Commit()
 }
 
-func requireFlowForTags(tx *sql.Tx, flowID int64) error {
+func requireFlowForTags(ex flowExec, flowID int64) error {
 	var exists int
-	return tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
+	return ex.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
 }
 
 // RemoveFlowTag detaches a single tag from a flow.

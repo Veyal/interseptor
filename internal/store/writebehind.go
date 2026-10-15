@@ -16,17 +16,37 @@ import (
 
 const flowBufCap = 4096
 
+// flowBatchMax bounds how many queued writes share one SQLite transaction. The
+// batch is the point — one commit for the chunk instead of one per write — and
+// the bound keeps both the write-lock hold time and the blast radius of a
+// transaction that cannot commit finite when a burst has filled the buffer.
+const flowBatchMax = 512
+
 // flowDrainTimeout bounds how long Close waits for the queue to empty.
 // flowApplyDelayNS slows the flusher so tests can enqueue while a write is
-// in progress. Both are zero-cost in production (delay is 0).
+// in progress. flowBatchFault makes the batch transaction fail so tests can
+// exercise the per-write fallback. All three are zero-cost in production (the
+// delay is 0 and no fault is injected).
 var (
 	flowDrainTimeout = 5 * time.Second
 	flowApplyDelayNS atomic.Int64
+	flowBatchFault   atomic.Int32
+)
+
+const (
+	faultFlowBatchBegin  int32 = 1
+	faultFlowBatchCommit int32 = 2
 )
 
 var (
 	errFlowsClosed      = errors.New("flow capture closed")
 	errFlowDrainTimeout = errors.New("flow write-behind drain timed out")
+	// errFlowOpSkipped marks a queued write the flusher deliberately discards:
+	// an update for a row that was never inserted, or a tag write for a flow
+	// that is gone. Both are detected before anything is written, so the chunk
+	// carries on; the error is logged rather than surfaced as a persistence
+	// failure or treated as a reason to replay.
+	errFlowOpSkipped = errors.New("flow write skipped")
 )
 
 type flowOpKind uint8
@@ -322,6 +342,151 @@ func (s *Store) drainOnce() error {
 		return nil
 	}
 	var first error
+	done := 0
+	for done < len(batch) {
+		if s.flowGiveUp.Load() {
+			break
+		}
+		end := done + flowBatchMax
+		if end > len(batch) {
+			end = len(batch)
+		}
+		if err := s.applyFlowBatch(batch[done:end]); err != nil && first == nil {
+			first = err
+			log.Printf("store: persist flow: %v", err)
+		}
+		done = end
+	}
+	if done < len(batch) {
+		s.abandonOps(batch[done:])
+	}
+	s.flowMu.Lock()
+	s.flowInFlight = false
+	s.flowMu.Unlock()
+	return first
+}
+
+// applyFlowBatch applies one chunk of queued writes in a single SQLite
+// transaction.
+//
+// Failure policy: commit the chunk whole, or replay it write by write. The
+// chunk is applied optimistically with no per-write savepoint, because one
+// queued write is several statements (row, full-text entry, tags) and a write
+// that failed halfway would otherwise leave a flow row with no index entry. So
+// the first error abandons the whole transaction — which commits nothing — and
+// the chunk is replayed one write per transaction, the pre-batching path: every
+// good write still lands, the bad one fails alone, nothing is half-applied, and
+// the flusher carries on. A chunk that hits an error pays one wasted pass; the
+// alternative, a savepoint around every write, cost twice the write time on
+// every chunk whether or not anything failed (measured on an M4: 46µs against
+// 23µs per write), because SQLite keeps a sub-journal while a savepoint is open.
+//
+// The same replay covers a transaction that cannot be opened or cannot commit.
+//
+// Body ownership and pending-id bookkeeping are released only once the chunk is
+// committed, so body GC can never see a body as unowned while the row that
+// references it is still uncommitted.
+func (s *Store) applyFlowBatch(batch []flowOp) error {
+	if s.applyFlowBatchTx(batch) {
+		s.completeOps(batch)
+		return nil
+	}
+	return s.applyFlowOpsOneByOne(batch)
+}
+
+// applyFlowBatchTx reports whether the whole chunk committed. A false return
+// means the transaction wrote nothing, so the caller may replay the chunk
+// without risking a duplicate row.
+func (s *Store) applyFlowBatchTx(batch []flowOp) bool {
+	if flowBatchFault.Load() == faultFlowBatchBegin {
+		return false
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		log.Printf("store: flow batch begin: %v", err)
+		return false
+	}
+	s.flowTxs.Add(1)
+	defer tx.Rollback()
+	for _, op := range batch {
+		if s.flowIsVoid(op.id) {
+			continue // the insert this write belongs to was dropped
+		}
+		if err := s.applyFlowOpTx(tx, op); err != nil {
+			if errors.Is(err, errFlowOpSkipped) {
+				continue
+			}
+			log.Printf("store: flow batch write %d, replaying chunk one write at a time: %v", op.id, err)
+			return false
+		}
+	}
+	if flowBatchFault.Load() == faultFlowBatchCommit {
+		return false
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("store: flow batch commit: %v", err)
+		return false
+	}
+	return true
+}
+
+// applyFlowOpTx applies one queued write inside the caller's transaction.
+func (s *Store) applyFlowOpTx(ex flowExec, op flowOp) error {
+	switch op.kind {
+	case flowOpInsert:
+		return s.insertFlowExec(ex, op.flow)
+	case flowOpUpdate:
+		if err := writeFlowUpdateExec(ex, op.flow); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("store: flow update %d skipped, row was not inserted", op.id)
+				return errFlowOpSkipped
+			}
+			return err
+		}
+		return nil
+	case flowOpAddTags:
+		if _, err := writeFlowTagsExec(ex, op.id, op.tags); err != nil {
+			// ErrNoRows can only come from the "does this flow still exist?"
+			// check, which runs before any tag is written, so the transaction is
+			// untouched and the write is simply dropped. Anything else may have
+			// written part of the tag set, so it fails the chunk into the replay.
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("store: flow tags %d skipped, row is gone", op.id)
+				return errFlowOpSkipped
+			}
+			return err
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// insertFlowExec writes one queued flow. EnqueueInsertFlow always assigns the
+// id before queueing; an id it did not set is allocated here so the function is
+// total.
+func (s *Store) insertFlowExec(ex flowExec, f *Flow) error {
+	if f == nil {
+		return nil
+	}
+	id := f.ID
+	if id == 0 {
+		id = s.allocFlowID()
+	} else {
+		s.noteFlowID(id)
+	}
+	if err := insertFlowRowExec(ex, f, nil, id); err != nil {
+		return err
+	}
+	f.ID = id
+	return nil
+}
+
+// applyFlowOpsOneByOne is the fallback for a batch transaction that wrote
+// nothing: each queued write gets its own transaction, as it did before
+// batching.
+func (s *Store) applyFlowOpsOneByOne(batch []flowOp) error {
+	var first error
 	for i, op := range batch {
 		if s.flowGiveUp.Load() {
 			s.abandonOps(batch[i:])
@@ -333,9 +498,6 @@ func (s *Store) drainOnce() error {
 		}
 		s.completeOp(op)
 	}
-	s.flowMu.Lock()
-	s.flowInFlight = false
-	s.flowMu.Unlock()
 	return first
 }
 
@@ -422,6 +584,37 @@ func (s *Store) completeOp(op flowOp) {
 		delete(s.flowVoid, op.id)
 	}
 	s.flowMu.Unlock()
+}
+
+// completeOps retires a whole committed chunk: the pending-id bookkeeping for
+// every write under one lock, then the body ownership those writes held. Both
+// run after the commit, so a reader that sees an id as no longer queued finds
+// its row, and body GC never sees a body as unowned before the row referencing
+// it is durable.
+func (s *Store) completeOps(batch []flowOp) {
+	s.flowMu.Lock()
+	for _, op := range batch {
+		s.finishFlowPendingLocked(op.id)
+		if _, ok := s.flowPendingN[op.id]; !ok {
+			delete(s.flowVoid, op.id)
+		}
+	}
+	s.flowMu.Unlock()
+	// One bodyMu acquisition for the whole chunk. Capture takes that same lock
+	// for every finalized body, so releasing per write made the flusher queue
+	// behind the proxy up to flowBatchMax times per chunk — which is what
+	// actually limited capture throughput once the commits were batched.
+	s.bodyMu.Lock()
+	for _, op := range batch {
+		if op.flow == nil {
+			continue
+		}
+		s.releasePendingBody(op.flow.ReqBodyHash)
+		s.releasePendingBody(op.flow.ResBodyHash)
+		s.releasePendingBody(op.flow.OriginalReqBodyHash)
+		s.releasePendingBody(op.flow.OriginalResBodyHash)
+	}
+	s.bodyMu.Unlock()
 }
 
 func (s *Store) abandonPending() int {

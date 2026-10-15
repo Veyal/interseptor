@@ -205,15 +205,106 @@ func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 // directory), queries flows + finding image hashes, and removes any file whose
 // hash is not among them.
 //
-// GCBodies returns the number of files removed and the total bytes freed.
-// It is safe to call while the store is in use: it never removes a file that
-// is still referenced, and it never touches files outside bodiesDir or files
-// whose names do not match the content-hash scheme (e.g. ".tmp-*" partials).
+// GCBodies returns the number of files removed and the total bytes freed. It is
+// safe to call while the store is in use: it never removes a file that is still
+// referenced, and it never touches files outside bodiesDir or files whose names
+// do not match the content-hash scheme (e.g. ".tmp-*" partials).
+//
+// bodyMu is held only for a map copy and for each individual unlink, never
+// across the filesystem walk. On a large engagement that walk takes seconds,
+// and the proxy's body capture takes the same lock on every Finalize, so
+// holding it across the walk froze capture for the whole pass. Three things
+// keep the shorter hold safe:
+//
+//   - The owned-body snapshot is taken BEFORE the database is queried. A body
+//     is published (released from pendingBodies) only after the flow row
+//     referencing it has committed, so a hash the snapshot misses had its row
+//     committed before the snapshot — and therefore before the query that
+//     follows sees the database.
+//   - Every hash a writer takes ownership of while the pass runs is recorded,
+//     so a body published mid-walk is spared even though neither the snapshot
+//     nor the query could have seen it. That includes the awkward case of a
+//     capture deduplicating onto a file the walk has already listed.
+//   - The decision to delete and the unlink itself happen under one lock hold.
+//     A Finalize racing that unlink either already owns the hash, and the file
+//     is spared, or finds the file gone and writes it again from its temp file.
+//
+// A body finalized outside the flow-publication handshake — a HAR import, a
+// finding screenshot — is claimed by a pass that is already running, but it
+// takes no lasting ownership, so a pass that STARTS between its Finalize and
+// the row that references it still sees an orphan. That is why those callers
+// write their referencing row promptly, and why PutAndAttachImageRef holds
+// bodyMu across both.
 func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
-	s.bodyMu.Lock()
-	defer s.bodyMu.Unlock()
+	// One pass at a time: the pass installs a marker collecting every body
+	// claimed while it runs, and that marker needs a single owner.
+	s.bodyGCMu.Lock()
+	defer s.bodyGCMu.Unlock()
 
-	// 1. Collect every hash referenced by at least one flow.
+	// 1. Snapshot the bodies writers own now, and start recording the ones they
+	// claim from here on. Both under bodyMu, briefly.
+	referenced := s.beginBodyGC()
+	defer s.endBodyGC()
+
+	// 2. Query the database for referenced hashes, with no lock held.
+	stored, err := s.referencedBodyHashes()
+	if err != nil {
+		return 0, 0, err
+	}
+	for h := range stored {
+		referenced[h] = struct{}{}
+	}
+
+	// 3. Walk bodiesDir, with no lock held, listing what looks unreferenced.
+	// Body files live at bodiesDir/<2-hex>/<2-hex>/<64-hex-hash>. Only files
+	// whose name is exactly the 64-char sha256 hex string are candidates —
+	// ".tmp-*" partials and anything else are left alone.
+	const sha256HexLen = 64
+	type orphan struct {
+		path string
+		hash string
+		size int64
+	}
+	var orphans []orphan
+	err = filepath.WalkDir(s.bodiesDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			// Skip entries we can't stat rather than aborting the whole GC.
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if len(name) != sha256HexLen || !isHex(name) {
+			return nil
+		}
+		if _, kept := referenced[name]; kept {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil // best-effort; skip if we can't stat
+		}
+		orphans = append(orphans, orphan{path: path, hash: name, size: info.Size()})
+		return nil
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("store.GCBodies: walk: %w", err)
+	}
+
+	// 4. Remove them, re-checking ownership under the lock one file at a time.
+	for _, o := range orphans {
+		if s.removeUnownedBody(o.path, o.hash) {
+			removedFiles++
+			freedBytes += o.size
+		}
+	}
+	return removedFiles, freedBytes, nil
+}
+
+// referencedBodyHashes returns every content hash a flow row or a finding image
+// block references — the database half of GCBodies' reference set.
+func (s *Store) referencedBodyHashes() (map[string]struct{}, error) {
 	referenced := make(map[string]struct{})
 	rows, err := s.db.Query(
 		`SELECT h FROM (
@@ -226,76 +317,86 @@ func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
 			SELECT original_res_body_hash AS h FROM flows WHERE original_res_body_hash != ''
 		)`)
 	if err != nil {
-		return 0, 0, fmt.Errorf("store.GCBodies: query refs: %w", err)
+		return nil, fmt.Errorf("store.GCBodies: query refs: %w", err)
 	}
 	for rows.Next() {
 		var h string
 		if err := rows.Scan(&h); err != nil {
 			rows.Close()
-			return 0, 0, fmt.Errorf("store.GCBodies: scan ref: %w", err)
+			return nil, fmt.Errorf("store.GCBodies: scan ref: %w", err)
 		}
 		if h != "" {
 			referenced[h] = struct{}{}
 		}
 	}
 	if err := rows.Close(); err != nil {
-		return 0, 0, fmt.Errorf("store.GCBodies: close rows: %w", err)
+		return nil, fmt.Errorf("store.GCBodies: close rows: %w", err)
 	}
 	// Finding screenshot/evidence images live in the same bodiesDir; keep them
 	// alive even when no flow references the hash.
 	imgRefs, err := s.FindingImageHashes()
 	if err != nil {
-		return 0, 0, fmt.Errorf("store.GCBodies: finding image refs: %w", err)
+		return nil, fmt.Errorf("store.GCBodies: finding image refs: %w", err)
 	}
 	for h := range imgRefs {
 		referenced[h] = struct{}{}
 	}
+	return referenced, nil
+}
+
+// beginBodyGC snapshots the hashes writers currently own and starts recording
+// every hash claimed until endBodyGC. Taking the snapshot before the database
+// query is what makes a lock-free walk safe — see GCBodies.
+func (s *Store) beginBodyGC() map[string]struct{} {
+	s.bodyMu.Lock()
+	defer s.bodyMu.Unlock()
+	referenced := make(map[string]struct{}, len(s.pendingBodies)+len(s.mergeBodies))
 	for h := range s.pendingBodies {
 		referenced[h] = struct{}{}
 	}
 	for h := range s.mergeBodies {
 		referenced[h] = struct{}{}
 	}
+	s.bodyGCClaimed = map[string]struct{}{}
+	return referenced
+}
 
-	// 2. Walk bodiesDir and remove any content-hash file that is not referenced.
-	// Body files live at bodiesDir/<2-hex>/<2-hex>/<64-hex-hash>.
-	// We only remove files at depth-2 subdirectories whose name is exactly
-	// the 64-char sha256 hex string — skipping ".tmp-*" partials and anything
-	// else that doesn't match.
-	const sha256HexLen = 64
-	err = filepath.WalkDir(s.bodiesDir, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// Skip entries we can't stat rather than aborting the whole GC.
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		name := d.Name()
-		// Only operate on files whose name is a full sha256 hex string.
-		if len(name) != sha256HexLen || !isHex(name) {
-			return nil
-		}
-		if _, kept := referenced[name]; kept {
-			return nil
-		}
-		// Unreferenced — measure size then remove.
-		info, err := d.Info()
-		if err != nil {
-			return nil // best-effort; skip if we can't stat
-		}
-		sz := info.Size()
-		if err := os.Remove(path); err != nil {
-			return nil // best-effort; don't abort walk on permission errors
-		}
-		removedFiles++
-		freedBytes += sz
-		return nil
-	})
-	if err != nil {
-		return removedFiles, freedBytes, fmt.Errorf("store.GCBodies: walk: %w", err)
+func (s *Store) endBodyGC() {
+	s.bodyMu.Lock()
+	s.bodyGCClaimed = nil
+	s.bodyMu.Unlock()
+}
+
+// removeUnownedBody unlinks one orphan under bodyMu, after a last check that no
+// writer has claimed its hash since the walk listed it. It reports whether the
+// file was removed.
+func (s *Store) removeUnownedBody(path, hash string) bool {
+	s.bodyMu.Lock()
+	defer s.bodyMu.Unlock()
+	if s.bodyOwnedLocked(hash) {
+		return false
 	}
-	return removedFiles, freedBytes, nil
+	// Best-effort: a permission error must not abort the pass.
+	return os.Remove(path) == nil
+}
+
+// bodyOwnedLocked reports whether a writer owns hash right now, or claimed it
+// at any point during the running GC pass. Callers hold bodyMu.
+func (s *Store) bodyOwnedLocked(hash string) bool {
+	if s.pendingBodies[hash] > 0 || s.mergeBodies[hash] > 0 {
+		return true
+	}
+	_, claimed := s.bodyGCClaimed[hash]
+	return claimed
+}
+
+// noteBodyGCClaimLocked records a hash a writer has just taken ownership of, so
+// a GC pass already walking cannot reclaim it. The map is nil, and this a
+// no-op, whenever no pass is running. Callers hold bodyMu.
+func (s *Store) noteBodyGCClaimLocked(hash string) {
+	if hash != "" && s.bodyGCClaimed != nil {
+		s.bodyGCClaimed[hash] = struct{}{}
+	}
 }
 
 // isHex reports whether s consists entirely of lowercase or uppercase hex digits.

@@ -20,26 +20,40 @@ type BodyWriter struct {
 	h                  hash.Hash
 	n                  int64
 	pendingPublication bool
-	pendingHash        string
+	// lockHeld marks a writer whose caller already holds bodyMu and keeps
+	// holding it until the hash is referenced. Finalize must not take the lock
+	// again — Go mutexes are not reentrant.
+	lockHeld    bool
+	pendingHash string
 }
 
 // NewBodyWriter starts a new body capture.
 func (s *Store) NewBodyWriter() (*BodyWriter, error) {
-	return s.newBodyWriter(false)
+	return s.newBodyWriter(false, false)
 }
 
 // NewFlowBodyWriter starts a capture whose finalized blob is protected from
 // body GC until InsertFlow or UpdateFlow publishes the returned hash.
 func (s *Store) NewFlowBodyWriter() (*BodyWriter, error) {
-	return s.newBodyWriter(true)
+	return s.newBodyWriter(true, false)
 }
 
-func (s *Store) newBodyWriter(pendingPublication bool) (*BodyWriter, error) {
+// newBodyWriterUnderBodyLock starts a capture for a caller that already holds
+// bodyMu across the whole finalize-to-reference window.
+func (s *Store) newBodyWriterUnderBodyLock() (*BodyWriter, error) {
+	return s.newBodyWriter(false, true)
+}
+
+func (s *Store) newBodyWriter(pendingPublication, lockHeld bool) (*BodyWriter, error) {
 	tmp, err := os.CreateTemp(s.bodiesDir, ".tmp-*")
 	if err != nil {
 		return nil, err
 	}
-	return &BodyWriter{s: s, tmp: tmp, h: sha256.New(), pendingPublication: pendingPublication}, nil
+	return &BodyWriter{
+		s: s, tmp: tmp, h: sha256.New(),
+		pendingPublication: pendingPublication,
+		lockHeld:           lockHeld,
+	}, nil
 }
 
 // Write implements io.Writer.
@@ -53,7 +67,10 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 // Finalize commits the body and returns its sha256 hex hash and byte length.
 // If a body with the same hash already exists it is deduplicated.
 func (w *BodyWriter) Finalize() (string, int64, error) {
-	if w.pendingPublication {
+	// bodyMu makes "this blob is on disk" and "a writer has claimed its hash"
+	// one step as far as a body GC pass is concerned. A caller that already
+	// holds the lock for a wider window says so with lockHeld.
+	if !w.lockHeld {
 		w.s.bodyMu.Lock()
 		defer w.s.bodyMu.Unlock()
 	}
@@ -71,6 +88,10 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 	if err := w.protectPending(sum); err != nil {
 		return "", 0, err
 	}
+	// Recorded with bodyMu held, by us or by the caller, so a GC pass that is
+	// already walking cannot reclaim this blob — including when the rename
+	// below deduplicates onto a file the walk has already listed.
+	w.s.noteBodyGCClaimLocked(sum)
 	finalized := false
 	defer func() {
 		if w.pendingPublication && !finalized {
@@ -144,6 +165,7 @@ func (s *Store) protectMergeBodies(hashes []string) func() {
 	}
 	for _, sum := range hashes {
 		s.mergeBodies[sum]++
+		s.noteBodyGCClaimLocked(sum)
 	}
 	s.bodyMu.Unlock()
 	return func() {
@@ -163,12 +185,15 @@ func (s *Store) protectMergeBodies(hashes []string) func() {
 func (w *BodyWriter) Abort() {
 	w.tmp.Close()
 	os.Remove(w.tmp.Name())
-	if w.pendingHash != "" {
-		w.s.bodyMu.Lock()
-		w.s.releasePendingBody(w.pendingHash)
-		w.s.bodyMu.Unlock()
-		w.pendingHash = ""
+	if w.pendingHash == "" {
+		return
 	}
+	if !w.lockHeld {
+		w.s.bodyMu.Lock()
+		defer w.s.bodyMu.Unlock()
+	}
+	w.s.releasePendingBody(w.pendingHash)
+	w.pendingHash = ""
 }
 
 func (s *Store) bodyPath(sum string) string {

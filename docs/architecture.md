@@ -77,6 +77,84 @@ independently tested.
 | `internal/control` | REST + SSE API, security guard, serves the embedded web UI |
 | `cmd/interseptor` | Config, wiring, lifecycle (both listeners, runtime rebind, graceful shutdown) |
 
+## Capture write path
+
+Capture is best-effort and off the forwarding path. Three parts of the store exist to keep it that
+way under burst traffic.
+
+**Flow metadata is written behind a queue.** The proxy enqueues a flow's insert at request time and
+its update at response time and never waits on SQLite. One flusher goroutine drains that buffer in
+FIFO order, so a flow's insert always lands before its update. The buffer holds 4,096 queued writes;
+past that the oldest is dropped and counted, which is reported as dropped flows rather than slowing
+the proxy down.
+
+The flusher applies the buffer in chunks of 512 writes, one SQLite transaction per chunk, instead of
+one transaction per write. Its failure policy is **commit the chunk whole, or replay it write by
+write**: a single queued write is several statements (the row, its full-text index entry, its tags),
+so the first error abandons the whole transaction — which has committed nothing — and the chunk is
+replayed one write per transaction. Every good write still lands, the bad one fails alone, nothing is
+left half-applied, and the flusher keeps going. The alternative, a savepoint around every write, cost
+roughly twice as much on every chunk whether or not anything failed, because SQLite keeps a
+sub-journal while a savepoint is open.
+
+A queued flow keeps ownership of its captured bodies until its chunk has committed. Body garbage
+collection can therefore never see a body as unreferenced while the row that points at it is still
+uncommitted. That ownership is released for the whole chunk under one hold of the body lock, not once
+per write: the proxy takes that same lock for every finalized body, and once the commits were batched
+it was lock contention with capture — not SQLite — that decided how fast the flusher could drain.
+
+**Body garbage collection does not hold the capture lock.** `GCBodies` walks the content-addressed
+body directory, which takes seconds once an engagement has tens of thousands of blobs. It takes the
+body lock only to copy the set of bodies writers currently own, and then again for each individual
+unlink — never across the walk or the database query, both of which the proxy's `Finalize` would
+otherwise queue behind. Three things make the shorter hold safe:
+
+- The owned-body snapshot is taken **before** the database is queried. A body is released only after
+  the flow row referencing it has committed, so a hash the snapshot misses had its row committed
+  before the snapshot, and therefore before the query.
+- Every hash a writer claims while the pass runs is recorded, so a body published mid-walk survives —
+  including the awkward case of a capture deduplicating onto a file the walk has already listed.
+- The decision to delete and the unlink happen under one lock hold, so a `Finalize` racing that
+  unlink either already owns the hash, and the file is spared, or finds the file gone and writes it
+  again from its temp file.
+
+A body finalized outside that ownership handshake — a HAR import, a finding screenshot — is claimed
+by a pass already running, but takes no lasting ownership, so a pass that *starts* between its write
+and the row that references it still sees an orphan. That is why those callers write their
+referencing row promptly.
+
+**Page cache.** Every pooled connection is opened with a 32 MiB page cache (four connections, so at
+most 128 MiB) because the default 2 MiB evicted pages inside a single scan. `mmap_size` and
+`temp_store`, which were also proposed, are deliberately not set: neither beat the cache bump on any
+measured query, memory-mapping made the History sorts slightly slower and distinctly worse alongside
+a large page cache, and a memory temp store had nothing left to move once the flusher stopped opening
+a savepoint per write. See [Benchmarks](benchmarks.md#sqlite-pragmas).
+
+## Leaf certificate keys
+
+`internal/tlsca` mints a per-host leaf certificate on the first handshake to each host and caches it.
+Minting runs with no lock held, so handshakes to different hosts mint in parallel; requests for the
+same host collapse onto one mint, so a page opening ten parallel connections to a new host costs one
+keygen and one signature rather than ten.
+
+**Every leaf gets its own private key.** Sharing one leaf key across every minted certificate is
+common proxy practice and was the obvious thing to try here, and it is deliberately not done:
+
+- It is not where the cost was. An ECDSA P-256 keygen is about 8µs of an 84µs mint; the signature
+  and parse are the rest. What made concurrent handshakes slow was minting under an exclusive mutex,
+  and releasing that lock moved a parallel sweep of fresh hosts from 84µs to 18µs per certificate.
+  A shared key would shave about a tenth off a cost that is no longer on anyone's critical path.
+- What it would give up is small but real, and free to keep. With per-host keys, a key recovered from
+  one intercepted connection authorises impersonating that one host. With a shared key it authorises
+  impersonating every host this proxy has ever served. Neither is worse than losing `ca.key`, which
+  sits on disk in the same directory and can mint anything — but a tool whose job is holding other
+  people's TLS should not widen that blast radius to save 8µs.
+- The practice it would copy exists to avoid a keygen per connection in runtimes where a keygen is
+  expensive. Here it is cheaper than the signature that has to happen per host anyway.
+
+Certificates stay distinct per host regardless — their own serial, subject and SAN — which is what
+the cache keys on and what a device certificate viewer shows.
+
 ## Web UI
 
 The web UI lives in `internal/control/ui/` (embedded via `//go:embed`): an `index.html` shell,
