@@ -23,16 +23,29 @@ func HTMLFromMarkdown(md string, findings []store.Finding) string {
 }
 
 func projectHTMLFromMD(md, lintNotice string) string {
+	return projectHTMLDoc(md, lintNotice, store.ReportBranding{})
+}
+
+// projectHTMLDoc assembles the one HTML report document. Every HTML and PDF
+// export goes through here, so the two cannot differ.
+func projectHTMLDoc(md, lintNotice string, brand store.ReportBranding) string {
 	body := markdownToHTML(md)
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	b.WriteString("<title>Interseptor — Engagement Report</title>\n")
+	b.WriteString("<title>" + htmlEsc(brandingTitle(brand)) + "</title>\n")
 	b.WriteString("<style>")
 	b.WriteString(reportHTMLCSS)
+	logos := brandingLogos(brand)
+	if logos != "" {
+		// Only a branded report carries the brand rules, so an unbranded export
+		// is byte-identical to the one Interseptor produced before white-label.
+		b.WriteString(reportBrandCSS)
+	}
 	b.WriteString("</style>\n</head>\n<body>\n")
 	b.WriteString(lintNotice)
+	b.WriteString(logos)
 	b.WriteString("<article class=\"md\">\n")
 	b.WriteString(body)
 	b.WriteString("\n</article>\n</body>\n</html>")
@@ -249,7 +262,13 @@ func inlineMD(s string) string {
 		j += i + 1
 		s = s[:i] + "<code>" + s[i+1:j] + "</code>" + s[j+1:]
 	}
-	if strings.HasPrefix(s, "_") && strings.HasSuffix(s, "_") && strings.Count(s, "_") == 2 {
+	// Whole-line emphasis. The inner text may contain underscores of its own:
+	// every evidence provenance line the report emits looks like
+	// "_Evidence: role=action, source=captured_flow._", and requiring exactly two
+	// underscores left those delimiters visible in the delivered report. Follow
+	// Markdown instead and only require that neither delimiter is padded.
+	if len(s) > 2 && strings.HasPrefix(s, "_") && strings.HasSuffix(s, "_") &&
+		!strings.ContainsAny(s[1:2], " \t") && !strings.ContainsAny(s[len(s)-2:len(s)-1], " \t") {
 		s = "<em>" + s[1:len(s)-1] + "</em>"
 	}
 	return s

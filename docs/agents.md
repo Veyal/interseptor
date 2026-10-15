@@ -1058,7 +1058,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (288)
+### REST routes (292)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1142,6 +1142,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/export/har` | Export history as HAR (optional ?inScope=1) |
 | GET | `/api/export/project` | Export a portable project (flows + rules + scope + settings) |
 | POST | `/api/finding-cvss` | Evaluate a CVSS v4.0 vector without changing a finding. |
+| GET | `/api/finding-export/{id}` | One finding shaped for an external system: ?format=hackerone\|bugcrowd\|jira\|sarif (required), ?mode=final... |
 | GET | `/api/finding-quality/{id}` | Final report-quality gate for one finding; same issues as the project-wide readiness entry |
 | GET | `/api/finding-revisions/{id}` | List immutable revision metadata; ?before= for pagination |
 | GET | `/api/finding-revisions/{id}/{revisionId}` | Historical snapshot and field-level diff |
@@ -1152,7 +1153,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/findings/deleted` | List recoverable deleted findings |
 | GET | `/api/findings/images/{hash}` | Serve a content-addressed finding image by sha256 hash |
 | GET | `/api/findings/readiness` | Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by... |
-| GET | `/api/findings/report` | Curated findings as Markdown/HTML/JSON (?format=html\|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=... |
+| GET | `/api/findings/report` | Curated findings as Markdown/HTML/PDF/JSON/SARIF (?format=html\|pdf\|json\|sarif; ?tag=; ?groupBy=tag... |
 | GET | `/api/findings/tags` | List tags in use on findings with counts (and optional colors from tag_meta) |
 | DELETE | `/api/findings/{id}` | Permanently delete a finding |
 | GET | `/api/findings/{id}` | Get one canonical finding with typed blocks, proof/provenance, PoC flows, tags, structured readiness, and... |
@@ -1164,6 +1165,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/findings/{id}/images` | Validate, store, and atomically attach screenshot evidence. |
 | POST | `/api/findings/{id}/images/{hash}/classify` | Reviewer relabel of an attached image without re-upload. |
 | POST | `/api/findings/{id}/normalize-targets` | Apply reviewer-approved path templates to a finding's targets; body {approve:[suggestion indexes], dryRun?}... |
+| POST | `/api/findings/{id}/retest` | Replay a finding's attached evidence and report what the application does now. |
 | GET | `/api/flow-searches` | List project-scoped saved flow searches without source |
 | POST | `/api/flow-searches` | Compile and save a project-scoped Starlark flow search. |
 | POST | `/api/flow-searches/test` | Compile a Starlark flow search without saving. |
@@ -1287,6 +1289,8 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/repeater/params/build` | Rebuild a URL and form body from ordered {key,value} fields (inverse of params/parse). |
 | POST | `/api/repeater/params/parse` | Split a URL's query string and an optional x-www-form-urlencoded body into ordered {key,value} fields... |
 | POST | `/api/repeater/send` | Send a request from Repeater. |
+| GET | `/api/report-branding` | White-label report settings: {version, reportTitle, companyName, clientName, companyLogo, clientLogo... |
+| PUT | `/api/report-branding` | Replace the white-label report settings. |
 | GET | `/api/rules` | List match-&-replace rules |
 | POST | `/api/rules` | Create a rule. |
 | DELETE | `/api/rules/{id}` | Delete a rule |

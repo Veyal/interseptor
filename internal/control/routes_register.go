@@ -145,6 +145,7 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("POST /api/finding-targets/preview", fd.previewFindingTargets)
 	h.mux.HandleFunc("POST /api/findings/{id}/normalize-targets", fd.normalizeFindingTargets)
 	h.mux.HandleFunc("GET /api/finding-quality/{id}", fd.findingQuality)
+	h.mux.HandleFunc("GET /api/finding-export/{id}", fd.exportFinding)
 	h.mux.HandleFunc("GET /api/findings/{id}", fd.getFinding)
 	h.mux.HandleFunc("PATCH /api/findings/{id}", fd.updateFinding)
 	h.mux.HandleFunc("DELETE /api/findings/{id}", fd.deleteFinding)
@@ -153,6 +154,7 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("POST /api/findings/{id}/images", fd.attachFindingImage)
 	h.mux.HandleFunc("POST /api/findings/{id}/images/{hash}/classify", fd.classifyFindingImage)
 	h.mux.HandleFunc("POST /api/findings/{id}/flow-preview", fd.attachFindingFlowPreview)
+	h.mux.HandleFunc("POST /api/findings/{id}/retest", fd.retestFinding)
 }
 
 func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
@@ -210,6 +212,8 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("PUT /api/interception-setup", proj.putInterceptionSetup)
 	h.mux.HandleFunc("GET /api/engagement-brief", proj.getEngagementBrief)
 	h.mux.HandleFunc("PUT /api/engagement-brief", proj.putEngagementBrief)
+	h.mux.HandleFunc("GET /api/report-branding", proj.getReportBranding)
+	h.mux.HandleFunc("PUT /api/report-branding", proj.putReportBranding)
 	h.mux.HandleFunc("GET /api/project/readiness", proj.getProjectReadiness)
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", proj.putNotes)

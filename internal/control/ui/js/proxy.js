@@ -2806,6 +2806,11 @@ function pngCopySections(id){
       {label:'Light',val:'for a light document',act:()=>copyFlowPng(id,{theme:'light'})},
       {label:'Dark',val:'for a dark document',act:()=>copyFlowPng(id,{theme:'dark'})},
     ]},
+    {label:'Mask credentials',val:'hide Authorization and Cookie values',icon:'lock',children:[
+      {label:'Both stacked, masked',act:()=>copyFlowPng(id,{mask:1})},
+      {label:'Request, masked',act:()=>copyFlowPng(id,{side:'req',mask:1})},
+      {label:'Response, masked',act:()=>copyFlowPng(id,{side:'res',mask:1})},
+    ]},
   ]}];
 }
 // pngSelectionFlowId is the flow a PNG copy applies to: the inspected flow when

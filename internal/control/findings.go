@@ -14,6 +14,7 @@ import (
 
 	"github.com/Veyal/interseptor/internal/report"
 	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 // maxFindingBodyBytes is the maximum byte size of both the canonical block body
@@ -191,10 +192,11 @@ func (h *findingsAPI) listFindingTags(w http.ResponseWriter, r *http.Request) {
 func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
-	if format != "" && format != "md" && format != "markdown" && format != "html" && format != "json" {
-		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
+	if !reportFormats[format] {
+		httpErr(w, http.StatusBadRequest, reportFormatError)
 		return
 	}
+	maskHeaders := boolParam(q.Get("maskHeaders"))
 	fs, err := h.st.ListFindings("", "", q.Get("tag"))
 	if err != nil {
 		httpInternalErr(w, err)
@@ -234,6 +236,14 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	if includeBodies {
 		h.enrichFindingReportBodies(fs)
 	}
+	// Credential masking is opt-in: without it the export carries evidence
+	// exactly as captured. It runs after body enrichment so it sees the
+	// reconstructed raw messages, and before rendering so every format
+	// (Markdown, HTML, PDF, JSON, adapters) sees the same masked evidence.
+	if maskHeaders {
+		fs = report.MaskSensitiveHeaders(fs)
+		w.Header().Set("X-Interseptor-Report-Masked", "1")
+	}
 	tagOrder := splitCSV(q.Get("tagOrder"))
 	audit := ""
 	if q.Get("audit") == "1" {
@@ -245,25 +255,72 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		}
 		audit = report.AuditTrail(fs, revisions)
 	}
-	rctx := h.reportContext()
+	rr := reportRender{
+		findings: fs, issues: issues, groupByTag: groupByTag,
+		tagOrder: tagOrder, omitTags: omitTags,
+		ctx: h.reportContext(), brand: h.reportBranding(), audit: audit,
+	}
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
 		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
-			"engagementBriefVersion": rctx.Brief.Version, "interceptionSetupVersion": rctx.Interception.Version})
+			"engagementBriefVersion": rr.ctx.Brief.Version, "interceptionSetupVersion": rr.ctx.Interception.Version,
+			"reportBrandingVersion": rr.brand.Version})
 	case "html":
-		h.enrichFindingReportImages(fs)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
-		w.Write([]byte(report.HTMLFromMarkdown(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx)+audit, fs)))
+		w.Write([]byte(h.reportHTML(rr)))
+	case "pdf":
+		h.writeReportPDF(w, r, h.reportHTML(rr))
+	case "sarif":
+		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.sarif"`)
+		writeSARIF(w, report.SARIF(fs, version.String()))
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
-		w.Write([]byte(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx) + audit))
+		w.Write([]byte(rr.markdown()))
 	default:
-		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
+		httpErr(w, http.StatusBadRequest, reportFormatError)
 	}
+}
+
+// reportRender carries everything one export needs. Markdown, HTML and PDF all
+// read it, so the three cannot describe different reports.
+type reportRender struct {
+	findings   []store.Finding
+	issues     []store.Issue
+	groupByTag bool
+	tagOrder   []string
+	omitTags   []string
+	ctx        report.Context
+	brand      store.ReportBranding
+	audit      string
+}
+
+// markdown is the one place the report Markdown is assembled. Branding is
+// applied last so the cover sits above the engagement context.
+func (rr reportRender) markdown() string {
+	md := report.WithContext(renderReportMarkdown(rr.findings, rr.issues, rr.groupByTag, rr.tagOrder, rr.omitTags), rr.ctx) + rr.audit
+	return report.WithBranding(md, rr.brand)
+}
+
+// reportHTML is the one place the HTML report document is assembled, so the
+// HTML download and the PDF print are the same bytes by construction: the PDF
+// is that document printed, never a second rendering of the findings.
+func (h *findingsAPI) reportHTML(rr reportRender) string {
+	h.enrichFindingReportImages(rr.findings)
+	return report.HTMLDocument(rr.markdown(), rr.findings, rr.brand)
+}
+
+// reportBranding reads the white-label settings. A lookup failure degrades to an
+// unbranded report rather than failing the export, like reportContext.
+func (h *findingsAPI) reportBranding() store.ReportBranding {
+	b, err := h.st.GetReportBranding()
+	if err != nil {
+		return store.ReportBranding{}
+	}
+	return b
 }
 
 func renderReportMarkdown(fs []store.Finding, issues []store.Issue, groupByTag bool, tagOrder, omitTags []string) string {

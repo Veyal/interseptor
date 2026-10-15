@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/preview"
+	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -23,7 +24,10 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	opts := previewOptsFromQuery(r)
-	pngBytes, err := h.renderFlowPreview(f, opts)
+	// Masking is for a preview copied into a ticket or chat; the attach-as-evidence
+	// path below never masks, so a finding keeps its credentials verbatim.
+	mask := preview.ParseBool(r.URL.Query().Get("maskHeaders"), false)
+	pngBytes, err := h.renderFlowPreview(f, opts, mask)
 	if err != nil {
 		writePreviewError(w, err)
 		return
@@ -81,7 +85,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		pretty = *in.Pretty
 	}
 	opts.Pretty = preview.Bool(pretty)
-	pngBytes, err := h.renderFlowPreview(f, opts)
+	pngBytes, err := h.renderFlowPreview(f, opts, false)
 	if err != nil {
 		writePreviewError(w, err)
 		return
@@ -118,7 +122,7 @@ func previewOptsFromQuery(r *http.Request) preview.Options {
 	}
 }
 
-func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, error) {
+func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options, maskHeaders bool) ([]byte, error) {
 	var req, res []byte
 	side := opts.Side
 	if side == "" {
@@ -140,6 +144,16 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 	}
 	if opts.Title == "" {
 		opts.Title = flowPreviewTitle(f)
+	}
+	if maskHeaders {
+		// Mask credential header values only; the request/status line, other
+		// headers and the body are rendered as captured.
+		if req != nil {
+			req = []byte(redact.CredentialHeaders(string(req)))
+		}
+		if res != nil {
+			res = []byte(redact.CredentialHeaders(string(res)))
+		}
 	}
 	return preview.Render(req, res, opts)
 }

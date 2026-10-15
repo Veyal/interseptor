@@ -1073,7 +1073,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (288)
+### REST routes (292)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1157,6 +1157,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/export/har` | Export history as HAR (optional ?inScope=1) |
 | GET | `/api/export/project` | Export a portable project (flows + rules + scope + settings) |
 | POST | `/api/finding-cvss` | Evaluate a CVSS v4.0 vector without changing a finding. |
+| GET | `/api/finding-export/{id}` | One finding shaped for an external system: ?format=hackerone\|bugcrowd\|jira\|sarif (required), ?mode=final... |
 | GET | `/api/finding-quality/{id}` | Final report-quality gate for one finding; same issues as the project-wide readiness entry |
 | GET | `/api/finding-revisions/{id}` | List immutable revision metadata; ?before= for pagination |
 | GET | `/api/finding-revisions/{id}/{revisionId}` | Historical snapshot and field-level diff |
@@ -1167,7 +1168,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/findings/deleted` | List recoverable deleted findings |
 | GET | `/api/findings/images/{hash}` | Serve a content-addressed finding image by sha256 hash |
 | GET | `/api/findings/readiness` | Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by... |
-| GET | `/api/findings/report` | Curated findings as Markdown/HTML/JSON (?format=html\|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=... |
+| GET | `/api/findings/report` | Curated findings as Markdown/HTML/PDF/JSON/SARIF (?format=html\|pdf\|json\|sarif; ?tag=; ?groupBy=tag... |
 | GET | `/api/findings/tags` | List tags in use on findings with counts (and optional colors from tag_meta) |
 | DELETE | `/api/findings/{id}` | Permanently delete a finding |
 | GET | `/api/findings/{id}` | Get one canonical finding with typed blocks, proof/provenance, PoC flows, tags, structured readiness, and... |
@@ -1179,6 +1180,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/findings/{id}/images` | Validate, store, and atomically attach screenshot evidence. |
 | POST | `/api/findings/{id}/images/{hash}/classify` | Reviewer relabel of an attached image without re-upload. |
 | POST | `/api/findings/{id}/normalize-targets` | Apply reviewer-approved path templates to a finding's targets; body {approve:[suggestion indexes], dryRun?}... |
+| POST | `/api/findings/{id}/retest` | Replay a finding's attached evidence and report what the application does now. |
 | GET | `/api/flow-searches` | List project-scoped saved flow searches without source |
 | POST | `/api/flow-searches` | Compile and save a project-scoped Starlark flow search. |
 | POST | `/api/flow-searches/test` | Compile a Starlark flow search without saving. |
@@ -1302,6 +1304,8 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/repeater/params/build` | Rebuild a URL and form body from ordered {key,value} fields (inverse of params/parse). |
 | POST | `/api/repeater/params/parse` | Split a URL's query string and an optional x-www-form-urlencoded body into ordered {key,value} fields... |
 | POST | `/api/repeater/send` | Send a request from Repeater. |
+| GET | `/api/report-branding` | White-label report settings: {version, reportTitle, companyName, clientName, companyLogo, clientLogo... |
+| PUT | `/api/report-branding` | Replace the white-label report settings. |
 | GET | `/api/rules` | List match-&-replace rules |
 | POST | `/api/rules` | Create a rule. |
 | DELETE | `/api/rules/{id}` | Delete a rule |
@@ -1400,6 +1404,8 @@ record completeness and declared review state; they do not independently prove a
 
 Continue with [readiness](#capability-based-report-readiness),
 [multiple targets](#multiple-affected-targets), [screenshot provenance](#screenshot-provenance),
+[PDF export](#pdf-export), [tracker adapters](#issue-tracker-and-bug-bounty-adapters),
+[white-label metadata](#white-label-metadata), [retest](#retest-a-finding),
 or [revision recovery](#revision-history-and-recovery).
 
 ## Canonical finding envelope
@@ -1497,10 +1503,10 @@ visual-only target can be supported by declared browser or device captures. Repl
 removes all targets; omitted fields are retained by PATCH. Old scalar targets appear as one target
 without losing their original text. Legacy primary-target edits preserve the other targets.
 
-Markdown, self-contained HTML, JSON reports, and full project archives preserve every target.
-**PDF uses the existing print-to-PDF workflow from the HTML report**; there is no direct PDF API
-format. Full archive merges remap evidence references and retain missing references as missing.
-The portable project-settings JSON is not a full findings backup; use the full project archive.
+Markdown, self-contained HTML, PDF, JSON reports, and full project archives preserve every target.
+PDF is the HTML report printed by a headless Chrome; see [PDF export](#pdf-export). Full archive
+merges remap evidence references and retain missing references as missing. The portable
+project-settings JSON is not a full findings backup; use the full project archive.
 
 Environment values are `production`, `staging`, `development`, `testing`, and `local`; legacy `prod`
 is retained. Aliases `dev`, `stage`, and `stg` resolve to `development`, `staging`, and `staging`.
@@ -1761,6 +1767,152 @@ bounded before bytes are read.
 Exports can contain credentials, session material, and personal data from captured traffic. Review
 and secure them as sensitive engagement artifacts. Follow the
 [engagement close-out checklist](https://veyal.github.io/interseptor/engagement-closeout/) for final delivery and cleanup.
+
+### Mask credential headers
+
+`?maskHeaders=1` on `GET /api/findings/report` and `GET /api/finding-export/{id}` replaces the value
+of every credential header in attached raw evidence with the same length-and-digest placeholder the
+rest of Interseptor uses: `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`,
+`X-API-Key`, `X-Auth-Token`, `X-Access-Token`, `X-CSRF-Token` and `X-XSRF-Token`. It applies to
+every format — Markdown, HTML, PDF, JSON and the tracker adapters — and a masked response carries
+`X-Interseptor-Report-Masked: 1`.
+
+It is off by default. Without it an export carries evidence exactly as captured, which is what a
+report is for. Masking is an export-time pass: the stored finding is never rewritten, so a later
+unmasked export is unchanged.
+
+Only the header block of a raw message is rewritten. The request line, every other header and the
+whole body stay as captured, because rewriting a body would damage the proof the finding rests on.
+A credential that appears in a body, a URL, or finding prose is **not** masked here; the secret-lint
+notice at the top of the HTML report reports those instead.
+
+The placeholder keeps the value's byte length and a 12-character SHA-256 prefix, so a reader can
+still tell whether two requests carried the same credential. That digest is a correlation handle,
+not a safe publication: a short or low-entropy credential could be confirmed by guessing against it.
+Treat a masked export as sanitised for a client deliverable, not as anonymised for an untrusted
+audience.
+
+### PDF export
+
+`?format=pdf` prints the self-contained HTML report with a headless Chrome and returns
+`application/pdf`. It is the HTML document printed, not a second rendering, so the two cannot drift.
+The same readiness gate, tag grouping, branding and masking options apply.
+
+Chrome is an optional external dependency, like `adb` or `cloudflared`. Interseptor looks for it in
+this order:
+
+1. `INTERSEPTOR_CHROME`, if set. A path that is not an executable file fails with that path named —
+   it never falls back, because an operator who pointed at a browser should be told it was not used.
+2. `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, `chrome`,
+   `microsoft-edge`, `msedge` on `PATH`.
+3. The usual install locations for the platform (`/Applications/Google Chrome.app/…` on macOS,
+   `/usr/bin/google-chrome` and friends on Linux, the Program Files paths on Windows).
+
+With no browser the request returns **503** naming `INTERSEPTOR_CHROME` and the binaries it looked
+for. A browser that fails returns **500** with the tail of what the browser printed. There is no
+fallback to another format and no partially written file: a report that silently arrives as HTML, or
+arrives truncated, is worse than one that did not arrive.
+
+The print runs in a throwaway profile inside a temporary directory, with background networking,
+component updates, sync, metrics and crash reporting switched off, so exporting a report does not
+touch the operator's own Chrome profile or phone home. Chrome's default page header and footer are
+suppressed — they would print the local temporary path into the deliverable. The sandbox stays on;
+set `INTERSEPTOR_CHROME_NO_SANDBOX=1` only where it cannot start, such as a container running as
+root.
+
+Interseptor waits for the PDF, not for the browser to exit. Chrome writes the file in about a second
+and then keeps running — on macOS its updater and background services outlive the print — so the
+export polls for a complete PDF (`%PDF-` header, `%%EOF` trailer, a size that has stopped changing),
+reads it, and then terminates the browser and every process it started.
+
+`internal/pdfexport` is the only part of Interseptor that runs a browser. `internal/report` stays a
+pure transform, and `go test ./...` never starts one; `INTERSEPTOR_PDF_LIVE_TEST=1` opts into the one
+test that does.
+
+### Issue-tracker and bug-bounty adapters
+
+`GET /api/finding-export/{id}?format=hackerone|bugcrowd|jira|sarif` returns one finding shaped for
+that system, and `GET /api/findings/report?format=sarif` returns the whole project as a SARIF 2.1.0
+log. `format` is required on the per-finding endpoint: a one-click export should not land in the
+wrong shape because a parameter was forgotten. A `false_positive` finding returns 409.
+
+Each narrative is rendered by the same function that writes the engagement report, so the evidence
+roles, proof statements and provenance labels — including "generated evidence render from recorded
+data; not browser proof" — travel with the ticket. `?mode=final` applies the same readiness gate as
+a final report, and `?maskHeaders=1` masks credential headers.
+
+A field with no honest equivalent is left out rather than guessed, because a wrong identifier files
+the report against the wrong thing:
+
+| Target | Carried | Omitted, and why |
+|---|---|---|
+| HackerOne | `title`, `vulnerability_information`, `impact`, `severity_rating` | `weakness_id` (HackerOne's own numeric id for a CWE — the CWE itself is stated in the narrative), `structured_scope_id` (the programme's asset id), a CVSS vector (HackerOne's severity object takes v3.1; Interseptor records v4.0, so the v4 vector and score are stated in the narrative where they cannot be read as a v3 score) |
+| Bugcrowd | `title`, `description`, `bug_url`, `extra_info`, `severity` as P1–P5 (Critical=1 … Info=5) | `vrt_id` (Bugcrowd's own taxonomy, not derivable from a CWE, and a wrong VRT id changes triage and payout) |
+| Jira | `fields.summary`, `fields.description`, `fields.issuetype` (`Bug`), `fields.priority` (Highest…Lowest), `fields.labels` | `fields.project` — add `{"project":{"key":"ABC"}}` before posting — plus reporter, assignee, components and custom fields. `issuetype` and the default priority scheme are assumptions; rewrite them for an instance with its own scheme. Post to `/rest/api/2/issue`: `description` is Markdown, and Jira Cloud's v3 endpoint expects Atlassian Document Format, which Interseptor does not generate |
+| SARIF 2.1.0 | one run, one rule and one result per finding, `locations` per affected target, `partialFingerprints`, and the finding's evidence with its role, kind, source classification and proof statement in `properties` | `result.kind` — SARIF's kind describes a check's outcome (pass/fail/review), Interseptor's status describes where a reviewed finding sits in a workflow; they are different questions, so status is reported in `properties` instead. Raw captured bytes: a SARIF log is an index of findings, not an evidence bundle |
+
+SARIF severity maps to the three usable levels (Critical/High → `error`, Medium → `warning`,
+Low/Info → `note`), with the exact severity, the CVSS vector and the calculated score in
+`properties`. A CWE travels as `properties.cwe` and an `external/cwe/cwe-NNN` tag. A target that is
+not an absolute URI becomes a location message rather than an `artifactLocation.uri`, because a load
+balancer or a device path is not a URI. False positives are excluded, as they are from the report
+body.
+
+### White-label metadata
+
+`GET`/`PUT /api/report-branding` holds the project's report identity: `reportTitle`, `companyName`,
+`clientName`, `companyLogo`, `clientLogo`, `engagementName`, `assessmentStart`, `assessmentEnd`,
+`leadAssessor`, `contact`, `classification`, and a `coverPage` of operator-authored Markdown. Like
+the engagement brief, the version increments only when content changes, and a JSON export cites it
+as `reportBrandingVersion`.
+
+Every field is optional. Unset, the export is byte-identical to the one Interseptor produced before
+white-label existed — including the `Interseptor — Engagement Report` title and no brand stylesheet.
+Set, `reportTitle` replaces the title in every format, and the cover block sits directly beneath it,
+above the engagement context. `coverPage` replaces the generated cover; the generated one states the
+parties, engagement, assessment period, lead assessor, contact and classification, and renders only
+the fields that are set.
+
+Logos must be `data:` image URIs (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, 512 KiB
+each). A remote URL is refused: a delivered report must fetch nothing, and an image that loads from
+the network is also a read receipt. SVG is refused because it is a document format that can carry
+script. Logos appear in the HTML and PDF renders; a Markdown export omits them rather than carrying
+hundreds of kilobytes of base64 in a line nobody can read. Assessment dates are ISO `YYYY-MM-DD` and
+are rendered as stored, because a date in a client deliverable must not be ambiguous; a half-open
+window is written as half-open rather than filled in.
+
+## Retest a finding
+
+`POST /api/findings/{id}/retest` replays the finding's attached evidence and reports what the
+application does now. Body: `{flowIds?, session?, allowUnsafeMethods?, attach?}`. By default it
+replays every retained attached flow, oldest first and at most ten, exactly as captured
+(`session: "flow"`); `session: "current"` applies the active session headers.
+
+A non-idempotent request is **skipped** unless `allowUnsafeMethods` is set. Re-sending the `POST`
+that created an order, or the `DELETE` that removed a record, is not a retest — it is a second
+attack — and the response says which flows were skipped and how to override it.
+
+The result is an observation, never a verdict about remediation:
+
+| `observation` | Meaning |
+|---|---|
+| `unchanged` | Every replayed request returned the same status and an identical response body as the recorded evidence. The observed behaviour has not changed. This is a replay result, not a fresh verification of the claimed impact. |
+| `changed` | At least one status or response body differs. The response states exactly what differed and that a differing response is **not** proof of remediation: it may reflect a different session, a changed precondition, a rate limit, or an unrelated deployment. |
+| `inconclusive` | Something could not be replayed — a purged flow, a missing request body, an unreachable target, a skipped method. Nothing is established about the current behaviour. |
+
+Each flow result carries the `recorded` and `observed` status, body size and body hash side by side,
+so a reviewer judges the comparison instead of trusting a verdict. A body-hash difference is
+reported as a byte-level difference, not a behavioural one: a timestamp in a response changes the
+hash too.
+
+A retest never changes the finding's status, and it never edits the evidence it replayed. Each
+replay is attached as a new `retest` evidence block carrying the new flow, with `sourceFlowId`
+pointing at the evidence it replayed, which appends a finding revision. An earlier retest's own flow
+stays attached as evidence but is excluded from the next retest's default set, so repeated retests
+do not compound into more traffic at the target; naming it in `flowIds` still replays it. Revisions are immutable, and
+a retest is a later observation rather than a correction of the earlier one. Pass `attach: false` to
+observe without recording. Closing a finding stays a reviewer's decision, taken against the attached
+retest flow and the `retest` pass condition the finding already states.
 
 
 ## Review, final export, and capability claims

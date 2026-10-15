@@ -2409,8 +2409,8 @@ export function copyPreviewPng(src, name) {
 export function copyFlowPng(id, opts) {
   const o = opts || {};
   const side = o.side || 'both';
-  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, theme: o.theme || activeFlowTheme(document.documentElement) }),
-    'flow-' + id + '-' + side + '-preview');
+  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, mask: o.mask, theme: o.theme || activeFlowTheme(document.documentElement) }),
+    'flow-' + id + '-' + side + (o.mask ? '-masked' : '') + '-preview');
 }
 // flowPngMenuItems are the "Copy as PNG" rows every flow menu shares, so the
 // Proxy row menu, the inspector menu and the Repeater menu offer the same three.

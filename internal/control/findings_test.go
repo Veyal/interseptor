@@ -726,7 +726,8 @@ func TestFindingsReportRejectsUnsupportedFormat(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/api/findings/report?format=pdf")
+	// pdf and sarif are supported now; docx is not.
+	resp, err := http.Get(ts.URL + "/api/findings/report?format=docx")
 	if err != nil {
 		t.Fatal(err)
 	}

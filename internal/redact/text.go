@@ -34,7 +34,9 @@ func Text(s string) string {
 }
 
 var (
-	headerLine = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-api-key|x-auth-token|x-access-token|x-csrf-token|x-xsrf-token)\b(\s*[:=]\s*)([^\r\n]+)`)
+	// headerLine covers the same header names as CredentialHeaders, built from
+	// the one list in http.go so free text and raw messages stay in step.
+	headerLine = regexp.MustCompile(`(?i)\b(` + strings.Join(CredentialHeaderNames, "|") + `)\b(\s*[:=]\s*)([^\r\n]+)`)
 	authScheme = regexp.MustCompile(`(?i)\b(bearer|basic|digest|negotiate)(\s+)([A-Za-z0-9._~+/=:-]{6,})`)
 	jwtAny     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*`)
 	// keyedLong matches any key name that merely contains a secret word, so

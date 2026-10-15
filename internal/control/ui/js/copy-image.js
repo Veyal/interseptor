@@ -180,8 +180,10 @@ export function flowPreviewPngURL(id, opts) {
   const layout = pick(o.layout, ['vertical', 'horizontal'], 'vertical');
   const theme = pick(o.theme, ['light', 'dark'], 'light');
   const pretty = o.pretty === 0 || o.pretty === false || o.pretty === '0' ? 0 : 1;
+  const mask = o.mask === 1 || o.mask === true || o.mask === '1' ? 1 : 0;
   const n = Number(id);
-  return `/api/flows/${Number.isSafeInteger(n) && n > 0 ? n : 0}/preview.png?side=${side}&pretty=${pretty}&layout=${layout}&theme=${theme}`;
+  const base = `/api/flows/${Number.isSafeInteger(n) && n > 0 ? n : 0}/preview.png?side=${side}&pretty=${pretty}&layout=${layout}&theme=${theme}`;
+  return mask ? base + '&maskHeaders=1' : base;
 }
 
 // copyImageFileName: a safe .png download name from a caption.

@@ -23,3 +23,13 @@ test('insecure message names cause and remedy briefly', () => {
   assert.match(m, /serve the UI over HTTPS/);
   assert.ok(m.length <= 120);
 });
+
+test('flowPreviewPngURL appends maskHeaders only when asked', () => {
+  const base = flowPreviewPngURL(42, { side: 'req' });
+  assert.ok(!base.includes('maskHeaders'), 'no mask by default');
+  const masked = flowPreviewPngURL(42, { side: 'req', mask: 1 });
+  assert.ok(masked.includes('maskHeaders=1'), 'mask when requested');
+  assert.strictEqual(flowPreviewPngURL(42, { side: 'req', mask: true }), masked);
+  assert.strictEqual(flowPreviewPngURL(42, { side: 'req', mask: '1' }), masked);
+  assert.ok(!flowPreviewPngURL(42, { side: 'req', mask: 0 }).includes('maskHeaders'), 'mask:0 is off');
+});

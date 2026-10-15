@@ -31,15 +31,38 @@ The goal is a **report-ready project**, not just a pile of History rows.
 - [ ] Attach evidence flows and record concrete verification steps
 - [ ] Confirm Critical/High with a human read of the PoC
 
-## 4. Export & handoff
+## 4. Retest before you write it up
 
-- [ ] Export **Findings report** (Markdown / self-contained HTML / JSON) with PoC bodies as needed;
-  enable **Group by tag** (omits `out-of-scope` by default) for multi-scope write-ups
+- [ ] Retest the findings you are claiming (`POST /api/findings/{id}/retest`) and read the
+  observation, not a verdict: `unchanged`, `changed` or `inconclusive`. A differing response is not
+  proof of remediation, and the retest never moves the finding's status
+- [ ] Leave non-idempotent requests skipped unless you mean to re-send them (`allowUnsafeMethods`)
+- [ ] Keep the attached `retest` evidence block: it is a new revision, and the original evidence
+  stays as it was
+
+## 5. Export & handoff
+
+- [ ] Set **report branding** (`PUT /api/report-branding`) if the deliverable is client-facing:
+  report title, company and client names and logos, assessment dates, lead assessor, classification,
+  and a cover page. Unset leaves the default Interseptor report unchanged
+- [ ] Export **Findings report** (Markdown / self-contained HTML / PDF / JSON / SARIF) with PoC
+  bodies as needed; enable **Group by tag** (omits `out-of-scope` by default) for multi-scope
+  write-ups
+- [ ] Decide on **credential masking** (`?maskHeaders=1`). Off by default, which is right for an
+  internal evidence pack; on for a client deliverable, which replaces `Authorization`, `Cookie`,
+  `Set-Cookie` and `Proxy-Authorization` values in attached raw evidence with a length and digest.
+  It does not touch bodies, URLs or prose — read the secret-lint notice at the top of the HTML
+  report for those
+- [ ] For PDF, confirm a headless Chrome is available (`INTERSEPTOR_CHROME` to point at one). A
+  missing browser is a 503 naming it, never a silent fall back to HTML
+- [ ] File into a tracker or platform from `GET /api/finding-export/{id}?format=…`
+  (HackerOne / Bugcrowd / Jira / SARIF). Add the identifiers only you hold — a Jira project key, for
+  example — before posting
 - [ ] Export **full project** zip if the client needs a portable archive
 - [ ] Copy deep links (`/#finding-N`, `/#flow-N`) into notes / ticket system
 - [ ] Install any custom checks you want to reuse as a **rule pack** for next time
 
-## 5. Hygiene
+## 6. Hygiene
 
 - [ ] Retention policy set if the project will sit idle (`Settings → Project & data`)
 - [ ] API keys still valid for remote/Tailscale follow-up
