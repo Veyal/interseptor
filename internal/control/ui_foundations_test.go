@@ -19,7 +19,7 @@ var foundationStylesheets = []string{
 	"app.css", "surfaces.css", "findings.css",
 	"workbench.css", "primitives.css", "shell.css", "flow.css",
 	"panel-proxy.css", "panel-tools.css", "panel-scan.css", "panel-misc.css",
-	"settings.css", "report.css", "mobile.css",
+	"settings.css", "report.css", "canvas.css", "mobile.css",
 }
 
 // newFoundationStylesheets are the scaffolded files that later packages fill.

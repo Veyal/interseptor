@@ -20,7 +20,6 @@ import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
-import { transitionView } from './motion.js';
 import { projectStorageReady, loadMapModule } from './project.js';
 import { initUiHints } from './hints.js';
 import { openFlowDiff } from './flow-diff.js';
@@ -30,6 +29,7 @@ import { initConnection, setConnectionStatus } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
+import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -75,32 +75,55 @@ function updateCrumb(t){
 let projectScopedUIReady=false;
 $$('.tab').forEach(tab=>{tab.disabled=true;});
 {const button=$('#cmdkBtn');if(button)button.disabled=true;}
+// activateTab routes a rail click to the canvas: it opens (or focuses) that
+// tool's document in the focused pane. The canvas owns panel placement, the
+// `.panel.active` visibility flag, the rail/doc-tab focus reflection and the
+// entrance motion; the shell keeps the navigation side effects (below).
 function activateTab(t){
   if(!projectScopedUIReady)return;
-  const prev=$('.panel.active');
-  if(prev&&prev.dataset.panel==='notes')flushNotesSave();
-  const tabs=$$('.tab'), current=tabs.find(x=>x.classList.contains('active'));
-  const currentIndex=tabs.indexOf(current), nextIndex=tabs.indexOf(t);
-  const changing=!!current&&current!==t;
-  if(changing)document.documentElement.dataset.motionDirection=nextIndex<currentIndex?'back':'forward';
-  const update=()=>{
-    tabs.forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');x.tabIndex=-1;});
-    t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
-    $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
-    try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
-    updateCrumb(t);
-    emitTabChange(t.dataset.tab,prev?prev.dataset.panel:'');
-    if(t.dataset.tab==='proxy')renderRows();
-    if(t.dataset.tab==='activity'){clearActSeen();loadActivity();}
-    if(t.dataset.tab==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
-    if(t.dataset.tab==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
-    if(t.dataset.tab==='findings')loadFindings();
-    if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
-    if(t.dataset.tab==='notes')loadNotes();
-  };
-  const transition=changing?transitionView(update):(update(),null);
-  if(transition)transition.finished.catch(()=>{}).finally(()=>{delete document.documentElement.dataset.motionDirection;});
-  else delete document.documentElement.dataset.motionDirection;
+  if(!t)return;
+  canvasOpenDoc(t.dataset.tab);
+}
+// isPanelVisible is the canvas-era gate: a panel is "visible" when it is mounted
+// in a visible pane (one in a single layout, up to two when split), which the
+// canvas marks with `.panel.active`. Live-event work gates on this so a panel
+// sharing a split keeps rendering while a panel in no visible pane still pauses.
+function isPanelVisible(name){const p=document.querySelector('.panel[data-panel="'+name+'"]');return !!p&&p.classList.contains('active');}
+// loadPanelData refetches a tool's data when its document is shown or focused —
+// the canvas calls it for the focused pane (onCanvasFocusChange) and for a second
+// pane that becomes visible in a split (onCanvasDocShown).
+function loadPanelData(name){
+  if(name==='proxy')renderRows();
+  else if(name==='activity'){clearActSeen();loadActivity();}
+  else if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
+  else if(name==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
+  else if(name==='findings')loadFindings();
+  else if(name==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
+  else if(name==='notes')loadNotes();
+}
+function updateCrumbByName(name){const t=document.querySelector('.tab[data-tab="'+name+'"]');if(t)updateCrumb(t);}
+// onCanvasFocusChange runs the shell-side navigation effects whenever the focused
+// document changes (and on an explicit re-open of the same one, mirroring the old
+// re-click-reloads behaviour): flush a leaving Notes draft, remember the tab,
+// update the breadcrumb, emit the tabchange event collections/settings-health/
+// report-preflight/dock listen for, and refetch the panel's data.
+function onCanvasFocusChange(name,prev){
+  if(prev==='notes'&&name!=='notes')flushNotesSave();
+  try{localStorage.setItem('tab',name);}catch(e){} // remember the focused tab across refresh
+  updateCrumbByName(name);
+  emitTabChange(name,prev||'');
+  loadPanelData(name);
+}
+function onCanvasDocShown(name){loadPanelData(name);}
+// resolveSavedTab mirrors restoreTab's legacy redirects so the canvas seeds its
+// first document with the same tab restoreTab will focus (no stray extra tab).
+function resolveSavedTab(){
+  let id='';try{id=localStorage.getItem('tab')||'';}catch(e){}
+  if(id==='scanner'){try{if(localStorage.getItem('scanSub')==='findings')id='findings';}catch(e){}}
+  if(id==='api')id='settings';
+  if(id==='discover')id='map';
+  const known=['proxy','intercept','repeater','intruder','collections','scanner','map','findings','notes','activity','settings'];
+  return known.includes(id)?id:'proxy';
 }
 function goToNotes(){
   const tab=document.querySelector('.tab[data-tab="notes"]');
@@ -229,7 +252,7 @@ function scheduleMapRefresh(){
   if(mapRefreshT)return;
   mapRefreshT=setTimeout(()=>{
     mapRefreshT=null;
-    if(!document.querySelector('.tab[data-tab="map"]')?.classList.contains('active')) return;
+    if(!isPanelVisible('map')) return;
     // On a busy proxy the SSE stream fires constantly; don't re-fetch + re-render
     // the (potentially huge) map unless new flows actually arrived since the last
     // load. Newest id + count is a cheap "did anything change" signal.
@@ -289,12 +312,12 @@ function resyncAfterStaleReconnect(){
   loadSettings();
   loadProject();
   refreshProjectState('resync');
-  if(document.querySelector('.tab[data-tab="intruder"]')?.classList.contains('active'))scheduleIntr();
-  if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
-  if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
-  if(document.querySelector('.tab[data-tab="notes"]')?.classList.contains('active'))loadNotes();
-  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))loadActivity();
-  if(document.querySelector('.tab[data-tab="map"]')?.classList.contains('active'))loadMapModule().then(m=>m.loadEndpoints());
+  if(isPanelVisible('intruder'))scheduleIntr();
+  if(isPanelVisible('scanner'))loadIssues();
+  if(isPanelVisible('findings'))loadFindings();
+  if(isPanelVisible('notes'))loadNotes();
+  if(isPanelVisible('activity'))loadActivity();
+  if(isPanelVisible('map'))loadMapModule().then(m=>m.loadEndpoints());
 
   refreshIntercept().then(()=>renderIcptStat());
   loadHumanInput();
@@ -414,10 +437,10 @@ function dispatchSseMessage(m){
   {
     const handler=SSE_HANDLERS[m.type];
     if(handler){handler.run(m);return;}
-    if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
+    if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!isPanelVisible('map'))setNavDot('mapBadge',true);}
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
-    else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
+    else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(isPanelVisible('activity'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     // intercept.state is the full snapshot a newly connected client receives (and
     // the baseline the deltas reconcile against); it is applied exactly like an update.
@@ -520,7 +543,10 @@ configureCommandPalette({
 
 /* ---- global keyboard shortcuts ---- */
 function selectedFlow(){return state.selId?state.flows.find(x=>x.id===state.selId):null;}
-function activePanel(){const p=document.querySelector('.panel.active');return p?p.dataset.panel:'';}
+// The "active panel" for shortcuts is the FOCUSED pane's panel (`.is-focused`),
+// which in a single layout is the only visible one; fall back to any visible
+// panel before the canvas has marked focus.
+function activePanel(){const p=document.querySelector('.panel.is-focused')||document.querySelector('.panel.active');return p?p.dataset.panel:'';}
 function hasAnyModifier(e){return !!(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey);}
 function exactModifiers(e,{mod=false,shift=false,alt=false}={}){
   return !!(e.ctrlKey||e.metaKey)===mod&&!!e.shiftKey===shift&&!!e.altKey===alt;
@@ -716,6 +742,10 @@ function completeProjectScopedUIHydration(statuses){
     const panel=document.querySelector(`.panel[data-panel="${name}"]`);if(!panel)return;
     panel.setAttribute('aria-busy','false');panel.removeAttribute('inert');
   });
+  // Build the multi-document canvas now that project-scoped UI is live: it moves
+  // the tool panels into the restored (or default) pane layout and takes over the
+  // `.panel.active` visibility flag. restoreTab() then focuses the saved tab.
+  initCanvas({initialPanel:resolveSavedTab(),onFocusedChange:onCanvasFocusChange,onDocShown:onCanvasDocShown,defaultPanel:'proxy'});
   const status=$('#workspaceHydrationStatus');
   if(status){
     status.setAttribute('role','status');status.setAttribute('aria-live','polite');

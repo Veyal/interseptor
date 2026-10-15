@@ -20,7 +20,7 @@ func TestUICaptureHistorySourceFiltersAndReturnReconcile(t *testing.T) {
 		"flowMatchesFilters",
 		"flowSortValue",
 	)
-	if !strings.Contains(app, "t.dataset.tab==='proxy'") || !strings.Contains(app, "renderRows()") {
+	if !strings.Contains(app, "name==='proxy'") || !strings.Contains(app, "renderRows()") {
 		t.Fatal("returning to Proxy must reconcile rows from in-memory live state")
 	}
 }

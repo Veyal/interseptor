@@ -1,0 +1,83 @@
+/* canvas.css — the multi-document workbench canvas (#103): the open-document
+   tab strip (#docStrip/#docTabs), the one or two document panes (#canvas) and
+   the sash that resizes a split. Loaded after the panel sheets and before
+   mobile.css so the phone model still wins the cascade. Only transform and
+   opacity may animate here; the focus entrance is a JS one-shot (motion.js),
+   so this sheet declares no transition or @keyframes and the global
+   reduced-motion block has nothing to cover. Breakpoints follow workbench.css:
+   the split is desktop-only and collapses to one pane at 720px. */
+
+:root{--doctabs-h:34px;--canvas-split:50%;--canvas-sash:6px}
+:root[data-density="compact"]{--doctabs-h:30px}
+:root[data-density="comfortable"]{--doctabs-h:40px}
+
+/* The strip and the pane area fill #main (position:relative); the strip owns the
+   top band and the canvas everything below it. */
+#docStrip{position:absolute;top:0;left:0;right:0;height:var(--doctabs-h);display:flex;align-items:stretch;gap:var(--sp-1);padding:0 var(--sp-1);background:var(--bg1);border-bottom:1px solid var(--line);min-width:0;z-index:var(--z-strip)}
+#canvas{position:absolute;left:0;right:0;bottom:0;top:var(--doctabs-h);display:flex;flex-direction:row;min-width:0;min-height:0}
+#canvas[data-layout="split-tb"]{flex-direction:column}
+
+/* ---- document tabs ---- */
+.doc-tabs{display:flex;align-items:stretch;gap:2px;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;flex:1 1 auto}
+.doc-tabs::-webkit-scrollbar{height:6px}
+.doc-tab{display:inline-flex;align-items:center;gap:var(--sp-1);flex:0 0 auto;max-width:24ch;min-height:calc(var(--doctabs-h) - 6px);margin:3px 0;padding:0 2px 0 var(--sp-2);border:1px solid transparent;border-radius:var(--r-md);background:transparent;color:var(--fg2);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer;white-space:nowrap}
+.doc-tab:hover{background:var(--bg3);color:var(--fg)}
+.doc-tab>.icon{flex:none;width:14px;height:14px}
+.doc-tab-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.doc-tab[aria-selected="true"]{background:var(--bg);color:var(--fg);border-color:var(--line2)}
+.doc-tab[data-shown="true"]:not([aria-selected="true"]){border-color:var(--line);background:var(--bg2);color:var(--fg)}
+.doc-tab:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+
+/* The close control is a real button; its sprite glyph is decorative. Keyboard
+   users may also press Delete/Backspace on the focused tab to close it. */
+.doc-tab-close{display:inline-flex;align-items:center;justify-content:center;flex:none;width:18px;height:18px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--fg3);cursor:pointer}
+.doc-tab-close>.icon{width:12px;height:12px}
+.doc-tab-close:hover{background:var(--bg2);color:var(--fg)}
+.doc-tab-close:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-1px}
+
+/* ---- split controls ---- */
+.doc-strip-actions{display:flex;align-items:center;gap:2px;flex:none}
+.doc-split-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:calc(var(--doctabs-h) - 6px);margin:3px 0;border:1px solid transparent;border-radius:var(--r-md);background:transparent;color:var(--fg2);cursor:pointer}
+.doc-split-btn>.icon{width:16px;height:16px}
+.doc-split-btn:hover{background:var(--bg3);color:var(--fg)}
+.doc-split-btn[aria-pressed="true"]{background:var(--bg);color:var(--accent);border-color:var(--line2)}
+.doc-split-btn:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.doc-split-btn[hidden]{display:none}
+
+/* ---- panes ---- */
+.canvas-pane{position:relative;min-width:0;min-height:0;overflow:hidden}
+#canvas[data-layout="single"] .canvas-pane[data-pane="0"]{flex:1 1 0}
+#canvas[data-layout="single"] .canvas-pane[data-pane="1"],#canvas[data-layout="single"] .canvas-sash{display:none}
+#canvas[data-layout^="split"] .canvas-pane[data-pane="0"]{flex:0 0 var(--canvas-split)}
+#canvas[data-layout^="split"] .canvas-pane[data-pane="1"]{flex:1 1 0}
+/* A focus ring on the focused pane only while split, where two panels are visible. */
+#canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:inset 0 0 0 2px var(--focus-ring)}
+
+/* ---- sash ---- */
+.canvas-sash{flex:0 0 var(--canvas-sash);align-self:stretch;background:var(--line);cursor:col-resize;touch-action:none;z-index:var(--z-sash)}
+#canvas[data-layout="split-tb"] .canvas-sash{cursor:row-resize}
+.canvas-sash:hover{background:var(--accent)}
+.canvas-sash:focus-visible{background:var(--accent);outline:2px solid var(--focus-ring);outline-offset:-2px}
+.canvas-sash[hidden]{display:none}
+
+/* ---- pool parks hidden panels ---- */
+.canvas-pool{display:none}
+
+/* ---- phone: single pane only; the dock switches the focused document ---- */
+@media (max-width:720px){
+  .doc-strip-actions{display:none}
+  #canvas[data-layout^="split"]{flex-direction:column}
+  #canvas[data-layout^="split"] .canvas-pane[data-pane="0"]{flex:1 1 0}
+  #canvas[data-layout^="split"] .canvas-pane[data-pane="1"],#canvas[data-layout^="split"] .canvas-sash{display:none}
+  #canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:none}
+}
+@media (pointer:coarse){
+  .doc-tab,.doc-split-btn{min-height:40px}
+  .doc-tab-close{width:32px;height:32px}
+  .canvas-sash{--canvas-sash:12px}
+}
+@media (forced-colors:active){
+  .doc-tab[aria-selected="true"]{border-color:Highlight}
+  .canvas-sash{background:CanvasText}
+  #canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:inset 0 0 0 2px Highlight}
+}

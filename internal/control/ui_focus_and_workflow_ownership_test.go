@@ -79,8 +79,10 @@ func TestUISSEHeavyPanelUpdatesAreVisibilityGated(t *testing.T) {
 		"onPanelUpdate('intruder',scheduleIntr,'intrBadge')",
 		"'scanner.update':{contract:'panel-gated nudge'",
 		"onPanelUpdate('scanner',loadIssues,'scanBadge')",
-		"if(t.dataset.tab==='intruder'){clearNavDot('intrBadge');scheduleIntr();}",
-		"if(t.dataset.tab==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}",
+		// Showing/focusing these documents does the heavy refetch (loadPanelData);
+		// the SSE nudges above stay panel-gated via onPanelUpdate.
+		"if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}",
+		"if(name==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}",
 	)
 	if strings.Contains(app, "else if(m.type==='intruder.update')scheduleIntr()") || strings.Contains(app, "else if(m.type==='scanner.update')loadIssues()") {
 		t.Fatal("scanner and Intruder SSE nudges must not do heavy work off-panel")

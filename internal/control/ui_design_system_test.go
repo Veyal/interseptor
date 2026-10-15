@@ -652,8 +652,10 @@ func TestUIMotionTokensExist(t *testing.T) {
 			t.Errorf("motion token %s = %q, want %q", name, vars[name], expected)
 		}
 	}
-	if !strings.Contains(readUIAsset(t, "js/app.js"), "./motion.js") {
-		t.Error("app.js does not use the shared motion helper")
+	// The shared motion helper (transitionView) drives the canvas's panel
+	// entrance now that canvas.js owns panel placement and focus.
+	if !strings.Contains(readUIAsset(t, "js/canvas.js"), "./motion.js") {
+		t.Error("canvas.js does not use the shared motion helper")
 	}
 }
 

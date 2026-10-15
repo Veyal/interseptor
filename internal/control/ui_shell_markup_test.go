@@ -121,10 +121,11 @@ func TestUISSENudgesAreDebouncedAndPanelGated(t *testing.T) {
 			t.Errorf("SSE handler contract missing %q", want)
 		}
 	}
-	// Panel activation refetches, so a gated nudge cannot leave the panel stale.
+	// Showing or focusing a document refetches (loadPanelData), so a gated nudge
+	// cannot leave the panel stale once it is visible again.
 	for _, tab := range []string{"findings", "notes"} {
-		if !strings.Contains(app, "if(t.dataset.tab==='"+tab+"')load") {
-			t.Errorf("activating the %s tab must refetch", tab)
+		if !strings.Contains(app, "if(name==='"+tab+"')load") {
+			t.Errorf("showing the %s document must refetch", tab)
 		}
 	}
 	script := repeaterRenderJS(t, readUIAsset(t, "js/app.js"), "function debounce(fn,ms)") + `

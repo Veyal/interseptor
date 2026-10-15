@@ -86,8 +86,10 @@ func TestUISSEResyncRefetchesEveryStore(t *testing.T) {
 			t.Errorf("stale-reconnect resync must refetch via %q", refetch)
 		}
 	}
+	// Each heavy panel refetches on resync only when it is visible in a canvas
+	// pane (one in a single layout, up to two when split).
 	for _, panel := range []string{"intruder", "scanner", "findings", "notes", "activity", "map"} {
-		if !strings.Contains(body, `data-tab="`+panel+`"`) {
+		if !strings.Contains(body, `isPanelVisible('`+panel+`')`) {
 			t.Errorf("stale-reconnect resync skips the %s panel", panel)
 		}
 	}

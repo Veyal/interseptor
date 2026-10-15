@@ -38,7 +38,9 @@ const paletteOpen = () => document.getElementById('cmdk')?.style.display === 'fl
 
 export function activeScopes() {
   const scopes = ['global'];
-  const panel = document.querySelector('.panel.active');
+  // The focused pane's panel owns panel-scoped shortcuts; in a split two panels
+  // are `.active`, so prefer `.is-focused` and fall back to any visible one.
+  const panel = document.querySelector('.panel.is-focused') || document.querySelector('.panel.active');
   if (panel && panel.dataset.panel) scopes.push(panel.dataset.panel);
   const active = document.activeElement;
   if (active && active.closest && active.closest('#flowDrawer')) scopes.push('drawer');

@@ -232,7 +232,28 @@ continues. `evidence-attach.js` and `evidence-tray.js`
 attach, order and undo evidence through the existing finding endpoints, and `readiness-meter.js`
 draws a finding's server-reported stage as `role=meter`. `report-preflight.js` is the Findings
 Report sub-view with gated export. `checklist.js` is the first-run checklist, derived from real
-state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (BottomSheet),
+state.
+
+The central workspace is a **multi-document canvas** (`canvas.js`, pure state in `canvas-model.js`,
+styles in `canvas.css`) rather than a singleton `.panel.active`. A strip of open-document tabs
+(`#docTabs`, a `role="tablist"` with a roving tab stop, `aria-selected` tracking focus, and a close
+affordance plus `Delete`/`Backspace`) sits above one or two panes (`#canvas`). Opening a tool — from
+the rail's `activateTab`, the command palette, a deep link or a Send-to flow — opens or focuses that
+tool's document; the canvas moves the singleton tool panels between the visible pane(s) and a hidden
+`#canvasPool`, so the panels keep their global state and the existing `openFlow`/`closeFlow` and
+list-rendering code is unchanged. **Split left/right and top/bottom** (`#splitLrBtn`/`#splitTbBtn`,
+a keyboard-operable `role="separator"` sash reusing `layout-math.js`) show two documents at once;
+the split is desktop-only and collapses to a single pane at 720px, where the dock switches the
+focused document. The decisive invariant is that `.panel.active` now means *mounted in a visible
+pane* — one in a single layout, up to two when split — so **panel-gated SSE stays correct with two
+panels visible**: a Proxy panel sharing the screen keeps rendering `flow.new` (its store is updated
+before the gate, so only the live DOM patch is gated), while a panel in no visible pane still pauses
+and badges. The shell gates live and resync work on panel visibility (`isPanelVisible`), keyboard
+shortcuts and the entrance motion target the focused panel (`.is-focused`), and `emitTabChange` fires
+on every focus change so `collections.js`, `settings-health.js`, `report-preflight.js` and `dock.js`
+stay in step. The layout (open documents, split orientation, ratio) persists per project. Each
+document maps 1:1 to a tool panel for now; per-instance documents (two Repeater tabs) and the
+multi-monitor `BroadcastChannel` popout inspector are deferred. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (BottomSheet),
 `statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js`,
 `finder.js`, the `bus.js` event bus, and `core.js`'s `createListView` — the one windowed-list
 renderer with container-level event delegation (built on the pure `virtual-list-model.js` windowing
@@ -258,7 +279,8 @@ Deliberate differences from the overhaul spec, recorded so they are not mistaken
 Stylesheets load in a fixed order: `app.css` (tokens and legacy components), `surfaces.css`,
 `findings.css`, `workbench.css` (documents the 1100/900/720/480px breakpoints), `primitives.css`,
 `shell.css`, `flow.css`, `panel-proxy.css`, `panel-tools.css`, `panel-scan.css`, `panel-misc.css`,
-`settings.css`, `report.css`, and `mobile.css` last so the phone model wins the cascade.
+`settings.css`, `report.css`, `canvas.css` (the document-tab strip, panes and split sash), and
+`mobile.css` last so the phone model wins the cascade.
 
 Theme and density are root attributes set by a pre-paint script so there is no layout shift:
 `data-theme` is `dark`, `light` or `hc` (high contrast; `forced-colors` maps borders, focus and

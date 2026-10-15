@@ -165,7 +165,9 @@ func TestUIShellAppExposesExtensionPointsAndKeepsOriginalSSEEvents(t *testing.T)
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	requireUIContains(t, app,
 		"export { registerCommand, registerSseHandler }",
-		"emitTabChange(t.dataset.tab,prev?prev.dataset.panel:'')",
+		// The canvas emits the tabchange on every focus change (new tab + previous
+		// panel) through the shell's onCanvasFocusChange handler.
+		"emitTabChange(name,prev||'')",
 		"runSseHooks(m)", "dispatchSseMessage(m)", "loadOptionalModules(path=>import(path))",
 		"function refreshProjectState(reason){if(projectScopedUIReady)projectState.refresh({reason});}",
 		"projectState.attach({fetchJson:path=>api(path)})",

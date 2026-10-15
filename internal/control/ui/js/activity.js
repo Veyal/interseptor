@@ -168,7 +168,11 @@ export function onActivity(it){
   if(activityPendingEvents.length>ACT_MAX)activityPendingEvents.length=ACT_MAX;
   state.activity.unshift(it);
   if(state.activity.length>ACT_MAX)state.activity.length=ACT_MAX;
-  const onTab=document.querySelector('.tab[data-tab="activity"]').classList.contains('active');
+  // Visible == mounted in a canvas pane (one in a single layout, up to two when
+  // split), which the canvas marks with `.panel.active`. Gate live rendering on
+  // visibility so Activity keeps updating while it shares a split, and still
+  // badges when it is in no visible pane.
+  const onTab=!!document.querySelector('#panel-activity')?.classList.contains('active');
   if(onTab&&shouldDeferRender($('#actFeed')?.scrollTop))setActivityPill(actDeferredNew+1);
   else if(onTab)renderActivity();
   else{state.actUnseen++;const b=$('#actBadge');if(b){b.style.display='inline-block';b.textContent=state.actUnseen;}}

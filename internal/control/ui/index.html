@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="/css/evidence-render.css">
 <link rel="stylesheet" href="/css/collections.css">
 <link rel="stylesheet" href="/css/collections-matrix.css">
+<link rel="stylesheet" href="/canvas.css">
 <link rel="stylesheet" href="/mobile.css">
 <!-- Modulepreload hints flatten the HTTP/1.1 import waterfall: the root modules
      every boot path needs (core, the event bus, and the first-wave panels app.js
@@ -237,6 +238,22 @@
 </div>
 
 <main id="main" tabindex="-1" aria-label="Workspace">
+  <!-- Multi-document workbench canvas (#103): the open-document tab strip and the
+       one/two document panes. canvas.js moves the tool panels below into the
+       visible pane(s) at boot and parks the rest in #canvasPool. -->
+  <div id="docStrip" class="doc-strip">
+    <div id="docTabs" class="doc-tabs" role="tablist" aria-label="Open documents"></div>
+    <div class="doc-strip-actions">
+      <button type="button" id="splitLrBtn" class="doc-split-btn" aria-pressed="false" aria-label="Split view left and right" title="Split left / right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg></button>
+      <button type="button" id="splitTbBtn" class="doc-split-btn" aria-pressed="false" aria-label="Split view top and bottom" title="Split top / bottom"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg></button>
+    </div>
+  </div>
+  <div id="canvas" class="canvas" data-layout="single">
+    <div class="canvas-pane" data-pane="0"></div>
+    <div id="canvasSash" class="canvas-sash" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize split panes" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
+    <div class="canvas-pane" data-pane="1"></div>
+    <div id="canvasPool" class="canvas-pool" hidden></div>
+  </div>
   <!-- PROXY -->
   <!-- region:proxy -->
   <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
