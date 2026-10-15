@@ -31,6 +31,71 @@ arguments (types, required fields, accepted variants) inline, so an agent can re
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
+### Tool profiles
+
+The whole tool surface is about 100 KB of JSON Schema. An eager-loading MCP client puts every schema
+into every prompt before the operator has said anything, so an agent that only replays requests and
+files findings still pays for the mobile, codec, collection and vault tools. A **profile** is a named
+subset.
+
+| Profile | `tools/list` size | What it serves |
+|---|---|---|
+| `full` | the whole surface | Everything. The default, unchanged from releases before profiles existed. |
+| `web-pentest` (alias `web`) | about a third of `full` | Scope, flows, Repeater, Intruder, passive scan, authz identities, OOB, findings. |
+| `reporting` (alias `report`) | under a fifth of `full` | The report pass over findings that already exist: readiness, target cleanup, CVSS, evidence rendering, export. |
+| `mobile` | under a tenth of `full` | Device interception setup: Android, iOS, CA install, SSL-pinning detection. |
+
+`GET /api/mcp` lists the profiles with the live tool count for each, so the numbers come from the
+running build rather than this page. `tools/list` on a connection is the authoritative list.
+
+Select one with the `INTERSEPTOR_MCP_PROFILE` environment variable for stdio, or `?profile=` on the
+HTTP endpoint:
+
+```jsonc
+{
+  "mcpServers": {
+    "interseptor": {
+      "command": "interseptor",
+      "args": ["mcp"],
+      "env": { "INTERSEPTOR_MCP_PROFILE": "web-pentest" }
+    }
+  }
+}
+```
+
+```bash
+curl -s -X POST 'http://127.0.0.1:9966/mcp?profile=web' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+An explicit `?profile=` wins over the environment variable, which wins over `full`. An unrecognised
+name is a `400`, never a silent fall back to a different surface. The HTTP transport is stateless, so
+send `?profile=` on every request; drop it and that request gets the environment's profile. A tool
+outside the active profile is refused with a message naming the profile and how to widen it —
+`tools/list` has to be the truth about what the connection serves. `initialize` and
+`GET /api/mcp/capabilities` report the active profile and its size.
+
+Two things shrink in a reduced profile beyond the tool count. The connect instructions drop the
+workflow sections whose tools the profile does not serve, so the guidance never tells an agent to
+call something it cannot. And `create_finding` / `update_finding` carry a pointer to the
+finding-writing contract instead of repeating all 9 KB of it, because `initialize` already sent it
+once — the contract itself is unchanged and still arrives in full.
+
+Profiles do not change what Interseptor can do, only what one connection advertises. Nothing is
+removed from `full`.
+
+### Live intercept over MCP is deprecated
+
+`forward_request`, `drop_request`, `forward_response` and `drop_response` hold a real browser socket
+open until something answers. An agent round trip is seconds; a browser's read timeout is not, so
+pages stall or error while the model thinks. Those four tools stay in `full` for a human-supervised
+hold, with the deprecation stated in each tool's description, and are left out of every curated
+profile. Agent-driven work belongs on the replay tools, which cannot stall live traffic:
+`send_request` to re-issue one request, `start_intruder` to vary it. The interception toggles
+(`set_intercept`, `set_response_intercept`) carry the same warning, because switching interception on
+is what starts the hold queue filling.
+
 The MCP `initialize` result includes the running `apiVersion`, a stable `schemaVersion`, and a
 `schemaHash` computed from the live tool registry. Clients that explicitly send `schemaVersion` or
 `schemaHash` during initialization receive a reconnect diagnostic when their contract is stale;
@@ -47,6 +112,34 @@ For a task-oriented walkthrough (recon → auth → scan → record findings), s
 The full REST surface is documented at runtime: `GET /api/reference` (or the **Settings → API & MCP**
 section) — including the request/response body shape for every mutating route, not just its method
 and path. Live updates stream over Server-Sent Events at `GET /api/events`. Highlights:
+`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
+`/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
+
+### OpenAPI
+
+`GET /openapi.json` is an OpenAPI 3.1 document, generated from the same route catalog
+`GET /api/reference` serves, so it cannot drift from the running build. Every route is there with its
+real method, path, templated path parameters, tag and a unique `operationId`, which is what an SDK
+generator needs:
+
+```bash
+curl -s http://127.0.0.1:9966/openapi.json > interseptor.json
+# then run your generator of choice over interseptor.json
+```
+
+How far the declarations go, so you are not surprised by a generated client: request and response
+bodies are declared permissively (an untyped JSON object), and query parameters are not declared at
+all. The catalog holds those as prose, and each operation's `description` is that prose verbatim —
+it lists the accepted body fields and query parameters. So you get one correctly routed method per
+operation and read the description for the payload. Routes that return an image, Markdown or an
+event stream declare no response schema rather than claiming JSON.
+
+This URL used to return a bespoke route index (`kind: "interseptor-route-index"`). Its `routes`
+array survives as the `x-interseptor-routes` extension; the removed top-level `kind`, `baseURL` and
+`description` keys have no replacement in this document — `GET /api/reference` serves the same data
+in the old shape.
+
+Highlights of the REST surface:
 `/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 

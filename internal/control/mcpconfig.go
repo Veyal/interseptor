@@ -3,6 +3,7 @@ package control
 import (
 	"fmt"
 
+	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/version"
 )
 
@@ -60,5 +61,13 @@ func mcpDescriptorForRequest(host string) map[string]any {
 		"url":  base + "/mcp",
 		"note": "Same tools as stdio. Loopback-only. If you created API keys, add Authorization: Bearer <key> to your MCP client headers.",
 	}
+	// Profiles let an eager-loading client load a subset of the tool schemas
+	// instead of all of them. Advertised here so Settings and an agent reading
+	// GET /api/mcp both see the names and sizes without guessing.
+	out["profiles"] = mcp.ProfileCatalog()
+	out["profileNote"] = fmt.Sprintf(
+		"Optional: scope the tool surface with %s=<name> for stdio, or %s/mcp?profile=<name> for Streamable HTTP. "+
+			"Default is full (every tool). Send ?profile= on every request — the HTTP transport is stateless.",
+		mcp.ProfileEnvVar, base)
 	return out
 }

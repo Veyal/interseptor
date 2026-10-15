@@ -134,7 +134,9 @@ func (h *checksAPI) deleteCheck(w http.ResponseWriter, r *http.Request) {
 
 // testCheck compiles source and runs it against a flow (the given id, else the
 // most recent flow), returning findings or the compile/runtime error — never 500
-// for a bad check, so callers can show the error inline.
+// for a bad check, so callers can show the error inline. Every response carries
+// `logs`, the check's bounded print() output: without it a check that returns
+// an empty list gives the author nothing to go on.
 func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
@@ -143,9 +145,9 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
-	c, err := checkscript.Compile("test", in.Source)
+	c, logs, err := checkscript.CompileWithLogs("test", in.Source)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusOK, map[string]any{"error": err.Error(), "logs": checkLogs(logs)})
 		return
 	}
 	var f *store.Flow
@@ -165,7 +167,11 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if f == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"findings": []store.Issue{}, "note": "no captured flow to test against yet"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"findings": []store.Issue{},
+			"logs":     checkLogs(logs),
+			"note":     "no captured flow to test against yet",
+		})
 		return
 	}
 	checkFlow, err := h.flowForCheck(f)
@@ -173,15 +179,26 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
 		return
 	}
-	issues, rerr := c.Run(checkFlow)
+	issues, runLogs, rerr := c.RunWithLogs(checkFlow)
+	// Compile-time output first, then the run's: that is the order they happened.
+	logs = append(logs, runLogs...)
 	if rerr != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"error": rerr.Error()})
+		writeJSON(w, http.StatusOK, map[string]any{"error": rerr.Error(), "logs": checkLogs(logs), "flowId": f.ID})
 		return
 	}
 	if issues == nil {
 		issues = []store.Issue{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "flowId": f.ID})
+	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "logs": checkLogs(logs), "flowId": f.ID})
+}
+
+// checkLogs normalises captured print() output for JSON: an empty log is [],
+// never null, so a client can render it without a nil check.
+func checkLogs(logs []string) []string {
+	if logs == nil {
+		return []string{}
+	}
+	return logs
 }
 
 func (h *checksAPI) flowForCheck(f *store.Flow) (checkscript.Flow, error) {

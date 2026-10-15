@@ -142,6 +142,19 @@ Two transports expose the same tools:
 `interseptor mcp` reads `INTERSEPTOR_CONTROL_URL` (default `http://127.0.0.1:9966`); set it to drive an
 instance on another port. Start Interseptor **before** connecting the client.
 
+Both transports serve the whole tool surface by default. If your client loads every tool schema into
+every prompt, pick a smaller profile: set `INTERSEPTOR_MCP_PROFILE` to `web-pentest`, `reporting` or
+`mobile` for stdio, or add `?profile=web` to the HTTP endpoint. Nothing is removed from the default
+`full` profile; a profile only narrows what one connection advertises, and a tool outside it is
+refused with a message saying how to widen it. `GET /api/mcp` lists the profiles and their live
+sizes; [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/) explains the selection rules.
+
+The live intercept hold tools (`forward_request`, `drop_request`, `forward_response`,
+`drop_response`) are deprecated over MCP: a held packet keeps a browser socket open until you
+answer, and your round trip outlasts the browser's timeout. They stay in `full` for a
+human-supervised hold and are out of every curated profile. Use `send_request` and `start_intruder`
+instead.
+
 ### Claude Code
 
 ```bash
@@ -277,7 +290,10 @@ A `read` scope key can view but not mutate and cannot use `/mcp`. Keep keys out 
 
 Everything MCP does is also a REST route under `http://127.0.0.1:9966/api/`. Use REST when your client
 has no MCP support. Every route is listed in the [generated reference](#reference-generated) and at
-runtime by `GET /api/reference`; `GET /openapi.json` is the OpenAPI form.
+runtime by `GET /api/reference`. `GET /openapi.json` is an OpenAPI 3.1 document generated from the
+same catalog, for SDK generators: every route with its method, path, path parameters and a unique
+operation id. Bodies are declared permissively and query parameters are not declared — read each
+operation's description for those, as [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/) explains.
 
 The examples use the default control address `http://127.0.0.1:9966`; use the address you were given if it
 differs. Send `X-Interseptor-Source: ai` on **every** request, reads included, and
@@ -317,7 +333,11 @@ matter; `oob`, `auth_identities`, and `login_macro` matter only if you use those
   (final report not ready, conflict), `413` (too large), `503` (busy).
 - `GET /api/events` is a Server-Sent Events stream. It sends `event: hello`, then `data:` lines of JSON
   objects with a `type` such as `flow.new`, `findings.update`, `scope.update`, `scanner.update`,
-  `intruder.update`, `activity`, `human.input`, and `collrun`.
+  `intruder.update`, `activity`, `human.input`, and `collrun`. A running passive scan adds
+  `scan.progress` (a `scan` object with `scanned`, `total`, `issues`, `skipped`, `done`, `cancelled`)
+  and `scan.issue` (one issue as the scan finds it, with `saved: false` because it has not been
+  reconciled into the store yet). The `scanner.update` that follows a finished scan marks the
+  persisted set, which `GET /api/scanner/issues` then returns with ids.
 
 ### Most-used endpoints
 
@@ -744,6 +764,12 @@ needs raw values. The recorded run itself is raw, like the flow store.
 `run_scanner` is passive: it sends nothing. Treat `list_issues` entries as leads. Confirm each with a
 baseline and a changed request before filing. Never file a scanner hit as `verified`.
 
+The scan runs one goroutine per CPU over the captured flows, and its results are in flow order
+whatever order the workers finish in, so two runs over the same history return the same list. It
+streams `scan.progress` and `scan.issue` over `GET /api/events` while it works. A scan blocks the
+request that started it; `POST /api/scanner/cancel` stops every running scan, which answers the run
+request with `409` and persists nothing — a cancelled scan leaves the stored issues as they were.
+
 ### Authorization and identities
 
 Save identities with `add_authz_identity` or `promote_flow_to_authz`. Run `authz_run` (one `flowId` or
@@ -959,7 +985,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `set_ws_frame_note` | `id`, `frameId` | Annotate one WebSocket frame of a flow (see list_ws_frames for frame ids) with what it proves. |
 | `start_intruder` | `target`, `template` | Fuzz a request. |
 | `tag_flow` | `id`, `tags` | Attach short tags to a flow for triage/grouping (e.g. |
-| `test_check` | `source` | Compile+run a Starlark check against a flow WITHOUT saving (returns findings or the error). |
+| `test_check` | `source` | Compile+run a Starlark check against a flow WITHOUT saving. |
 | `test_codec` | none | Compile+match/decode a message codec against a flow WITHOUT saving. |
 | `test_login_macro` | none | Dry-run the login macro — returns login response status and headers it would capture (does not apply... |
 | `untag_flow` | `id`, `tags` | Remove tags from a flow without replacing the rest. |
@@ -1073,7 +1099,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (292)
+### REST routes (293)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1319,6 +1345,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/runner/runs/{uid}/persist` | Answer a persist=ask prompt. |
 | POST | `/api/runner/runs/{uid}/resume` | Continue a paused run |
 | GET | `/api/runs/{uid}` | Per-request results of one run |
+| POST | `/api/scanner/cancel` | Stop every running passive scan and return {cancelled:N}, the number stopped. |
 | DELETE | `/api/scanner/issues` | Clear passive scanner issues only; curated Findings are unchanged |
 | GET | `/api/scanner/issues` | List scanner findings |
 | GET | `/api/scanner/report` | Download scanner findings as a Markdown report |
@@ -1369,7 +1396,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/mcp` | Streamable-HTTP MCP transport — SSE stream for server-initiated messages |
 | OPTIONS | `/mcp` | CORS preflight for the Streamable-HTTP MCP transport |
 | POST | `/mcp` | Streamable-HTTP MCP transport (JSON-RPC; for remote/hosted agents) |
-| GET | `/openapi.json` | REST route discovery index (method/path/summary; not a full OpenAPI client-generation contract) |
+| GET | `/openapi.json` | OpenAPI 3.1 document for this REST surface, generated from the route catalog: every route with its method... |
 | GET | `/replay/{id}` | Side-effect-free replay confirmation page (?session=current\|flow) that POSTs to /api/flows/{id}/replay only... |
 <!-- docscheck:end reference -->
 
@@ -2056,6 +2083,71 @@ arguments (types, required fields, accepted variants) inline, so an agent can re
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
+### Tool profiles
+
+The whole tool surface is about 100 KB of JSON Schema. An eager-loading MCP client puts every schema
+into every prompt before the operator has said anything, so an agent that only replays requests and
+files findings still pays for the mobile, codec, collection and vault tools. A **profile** is a named
+subset.
+
+| Profile | `tools/list` size | What it serves |
+|---|---|---|
+| `full` | the whole surface | Everything. The default, unchanged from releases before profiles existed. |
+| `web-pentest` (alias `web`) | about a third of `full` | Scope, flows, Repeater, Intruder, passive scan, authz identities, OOB, findings. |
+| `reporting` (alias `report`) | under a fifth of `full` | The report pass over findings that already exist: readiness, target cleanup, CVSS, evidence rendering, export. |
+| `mobile` | under a tenth of `full` | Device interception setup: Android, iOS, CA install, SSL-pinning detection. |
+
+`GET /api/mcp` lists the profiles with the live tool count for each, so the numbers come from the
+running build rather than this page. `tools/list` on a connection is the authoritative list.
+
+Select one with the `INTERSEPTOR_MCP_PROFILE` environment variable for stdio, or `?profile=` on the
+HTTP endpoint:
+
+```jsonc
+{
+  "mcpServers": {
+    "interseptor": {
+      "command": "interseptor",
+      "args": ["mcp"],
+      "env": { "INTERSEPTOR_MCP_PROFILE": "web-pentest" }
+    }
+  }
+}
+```
+
+```bash
+curl -s -X POST 'http://127.0.0.1:9966/mcp?profile=web' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+An explicit `?profile=` wins over the environment variable, which wins over `full`. An unrecognised
+name is a `400`, never a silent fall back to a different surface. The HTTP transport is stateless, so
+send `?profile=` on every request; drop it and that request gets the environment's profile. A tool
+outside the active profile is refused with a message naming the profile and how to widen it —
+`tools/list` has to be the truth about what the connection serves. `initialize` and
+`GET /api/mcp/capabilities` report the active profile and its size.
+
+Two things shrink in a reduced profile beyond the tool count. The connect instructions drop the
+workflow sections whose tools the profile does not serve, so the guidance never tells an agent to
+call something it cannot. And `create_finding` / `update_finding` carry a pointer to the
+finding-writing contract instead of repeating all 9 KB of it, because `initialize` already sent it
+once — the contract itself is unchanged and still arrives in full.
+
+Profiles do not change what Interseptor can do, only what one connection advertises. Nothing is
+removed from `full`.
+
+### Live intercept over MCP is deprecated
+
+`forward_request`, `drop_request`, `forward_response` and `drop_response` hold a real browser socket
+open until something answers. An agent round trip is seconds; a browser's read timeout is not, so
+pages stall or error while the model thinks. Those four tools stay in `full` for a human-supervised
+hold, with the deprecation stated in each tool's description, and are left out of every curated
+profile. Agent-driven work belongs on the replay tools, which cannot stall live traffic:
+`send_request` to re-issue one request, `start_intruder` to vary it. The interception toggles
+(`set_intercept`, `set_response_intercept`) carry the same warning, because switching interception on
+is what starts the hold queue filling.
+
 The MCP `initialize` result includes the running `apiVersion`, a stable `schemaVersion`, and a
 `schemaHash` computed from the live tool registry. Clients that explicitly send `schemaVersion` or
 `schemaHash` during initialization receive a reconnect diagnostic when their contract is stale;
@@ -2072,6 +2164,34 @@ For a task-oriented walkthrough (recon → auth → scan → record findings), s
 The full REST surface is documented at runtime: `GET /api/reference` (or the **Settings → API & MCP**
 section) — including the request/response body shape for every mutating route, not just its method
 and path. Live updates stream over Server-Sent Events at `GET /api/events`. Highlights:
+`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
+`/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
+
+### OpenAPI
+
+`GET /openapi.json` is an OpenAPI 3.1 document, generated from the same route catalog
+`GET /api/reference` serves, so it cannot drift from the running build. Every route is there with its
+real method, path, templated path parameters, tag and a unique `operationId`, which is what an SDK
+generator needs:
+
+```bash
+curl -s http://127.0.0.1:9966/openapi.json > interseptor.json
+# then run your generator of choice over interseptor.json
+```
+
+How far the declarations go, so you are not surprised by a generated client: request and response
+bodies are declared permissively (an untyped JSON object), and query parameters are not declared at
+all. The catalog holds those as prose, and each operation's `description` is that prose verbatim —
+it lists the accepted body fields and query parameters. So you get one correctly routed method per
+operation and read the description for the payload. Routes that return an image, Markdown or an
+event stream declare no response schema rather than claiming JSON.
+
+This URL used to return a bespoke route index (`kind: "interseptor-route-index"`). Its `routes`
+array survives as the `x-interseptor-routes` extension; the removed top-level `kind`, `baseURL` and
+`description` keys have no replacement in this document — `GET /api/reference` serves the same data
+in the old shape.
+
+Highlights of the REST surface:
 `/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 
@@ -2330,6 +2450,12 @@ Source: https://veyal.github.io/interseptor/mcp-cookbook/
 `POST http://127.0.0.1:9966/mcp`. Interseptor provides deterministic tools and evidence. Your agent
 provides model reasoning and sequencing.*
 
+*If your client loads every tool schema into every prompt, narrow the surface first:
+`INTERSEPTOR_MCP_PROFILE=web-pentest` (or `?profile=web` over HTTP) serves what these recipes use, at
+about a third of the full schema size. Recipe 4 wants `reporting`; Recipe 5's device setup wants
+`mobile`. `full` stays the default and serves everything. See
+[API and MCP](https://veyal.github.io/interseptor/api-and-mcp/) for how to select one, and `GET /api/mcp` for what each serves.*
+
 ## Recipe 1 — Map an API from captured traffic
 
 **Goal:** Triage what landed in History and pick endpoints worth attacking.
@@ -2377,7 +2503,9 @@ captured flows, no separate Discover tab.
 5. set_session if sends need auth; run_login_macro after a 401
 ```
 
-**Safety:** passive scanning does not send requests. For deliberate testing, use the lower-level
+**Safety:** passive scanning does not send requests. The scan runs across every CPU and streams
+`scan.progress` and `scan.issue` over `GET /api/events`; `POST /api/scanner/cancel` stops it and
+persists nothing. For deliberate testing, use the lower-level
 send and verification tools only on targets you are authorized to test and stay within scope.
 
 ## Recipe 4 — Close out findings (engagement end)

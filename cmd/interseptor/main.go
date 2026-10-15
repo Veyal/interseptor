@@ -130,7 +130,7 @@ func main() {
 		if base == "" {
 			base = "http://" + resolveControlAddr(nil, "")
 		}
-		srv := mcp.New(base)
+		srv := mcp.NewProfile(base, mcp.ProfileFromEnv())
 		if socket := mcp.ActivitySocketPath(base); socket != "" {
 			srv.SetActivityReporter(mcp.ActivitySocketReporter(socket))
 		}

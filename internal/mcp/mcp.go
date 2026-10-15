@@ -42,6 +42,7 @@ type Server struct {
 	cl            *http.Client
 	tools         map[string]tool
 	order         []string
+	profile       Profile // which subset of tools this connection serves
 	authMu        sync.RWMutex
 	authorization string
 	report        func(Activity) // called after each tool call; surfaces AI actions in the UI
@@ -104,12 +105,21 @@ func firstLine(s string, n int) string {
 }
 
 // New builds an MCP server that talks to the control API at baseURL
-// (e.g. http://127.0.0.1:9966).
-func New(baseURL string) *Server {
+// (e.g. http://127.0.0.1:9966). It serves the full tool surface; documentation
+// generation and diagnostics rely on that, so the default must stay `full`.
+func New(baseURL string) *Server { return NewProfile(baseURL, ProfileFull) }
+
+// NewProfile builds an MCP server that serves only the tools in p. Every tool
+// is still registered — ToolMeta and ToolNames on a full server see them all —
+// but tools/list, the schema hash, the connect instructions and tools/call are
+// all scoped to the profile. An unknown profile is a programming error; parse
+// it with ParseProfile at the edge.
+func NewProfile(baseURL string, p Profile) *Server {
 	s := &Server{
-		base:  strings.TrimRight(baseURL, "/"),
-		cl:    &http.Client{Timeout: 60 * time.Second},
-		tools: map[string]tool{},
+		base:    strings.TrimRight(baseURL, "/"),
+		cl:      &http.Client{Timeout: 60 * time.Second},
+		tools:   map[string]tool{},
+		profile: p,
 	}
 	s.registerTools()
 	return s
@@ -179,18 +189,8 @@ func (s *Server) handleLine(line []byte, out io.Writer) {
 // mcpInstructions is the guidance surfaced to an AI agent on connect: the
 // pentest workflow, plus a pointer to report bugs/gaps in Interseptor itself.
 func mcpInstructions() string {
-	return "Interseptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\n" +
-		"GUIDE: the complete agent guide (hard rules, workflow, finding-writing contract, REST and MCP reference) is plain text at " + version.LLMSFullURL + " (index: " + version.LLMSURL + "). Read it when you are unsure how to write a finding or call a tool, and follow it so every agent produces the same output.\n\n" +
-		"SETUP: check_readiness (structured JSON blockers: OOB, scope, auth identities, login macro) → fix blockers → scope_from_url → ca_info + route traffic through proxy. Re-run check_readiness if list_flows/scans come back empty.\n\n" +
-		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
-		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
-		"SCAN: run_scanner (passive) → inspect list_issues and relevant flows → use send_request, start_intruder, authz_run, cross_host_token_replay, and oob_* deliberately for confirmation and blind callbacks.\n\n" +
-		"RECORD: write findings point-first — create_finding with claim/risk/target fields and a three-part proof of concept → attach captured requests with add_finding_poc → add a real browser/device screenshot when it visually proves the claim, or use render_flow_preview for a clearly labeled HTTP preview. The proof of concept is always Differential proof, in this order: baseline (what the application normally does), action (what we changed to trigger the issue), result (what the response changed to and the impact). Say each part in plain language in the proof field. When a finding lists more than one affected target, repeat that proof for each affected target you tested and link it with that target's flow_ids or image_hashes. A target you did not test may be listed without its own proof; do not invent a request to fill it. Give every flow/image a proof statement and provenance. Be brief: one short sentence per field, no background, hedging or restated title (see HOUSE STYLE). Never file a wall of prose or paste raw HTTP into detail/evidence.\n\n" +
-		findingFormatGuide + "\n\n" +
-		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
-		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
-		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings in the canonical claim/risk/target/reproduction/evidence/fix/retest/review envelope. Attach captured flows and proof annotations; prioritize a real screenshot when available, otherwise use a labeled flow preview when it improves reviewability. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
-		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
+	sections := instructionSections()
+	return strings.Join(sections, "")
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -230,9 +230,10 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 			"apiVersion":      version.String(),
 			"schemaVersion":   schemaVersion,
 			"schemaHash":      serverSchemaHash,
+			"profile":         string(s.profile),
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "interseptor", "version": version.String()},
-			"instructions":    mcpInstructions(),
+			"instructions":    instructionsFor(s.profile, s.visibleSet()),
 		}, nil
 	case "tools/list":
 		return map[string]any{"tools": s.toolList()}, nil
@@ -282,6 +283,15 @@ func (s *Server) Capabilities() map[string]any {
 		"protocolVersion": protocolVersion,
 		"schemaVersion":   schemaVersion,
 		"schemaHash":      s.SchemaHash(),
+		// profile scopes schemaHash and the tool count: a client holding a
+		// different profile's cache has a different hash and must reconnect.
+		"profile":  string(s.profile),
+		"profiles": ProfileNames(),
+		"tools": map[string]any{
+			"count":    len(s.visibleOrder()),
+			"registry": len(s.order),
+			"catalog":  ProfileCatalog(),
+		},
 		// documentation points agents at the generated llms.txt/llms-full.txt guide.
 		"documentation": version.Docs(),
 		"finding": map[string]any{
@@ -321,13 +331,21 @@ func schemaPropertyNames(schema map[string]any) []string {
 	return keys
 }
 
+// toolList is the tools/list payload for the active profile. A reduced profile
+// also condenses descriptions that repeat the finding-writing contract already
+// carried once by the initialize instructions.
 func (s *Server) toolList() []map[string]any {
-	out := make([]map[string]any, 0, len(s.order))
-	for _, name := range s.order {
+	names := s.visibleOrder()
+	out := make([]map[string]any, 0, len(names))
+	for _, name := range names {
 		t := s.tools[name]
+		desc := t.description
+		if s.profile != ProfileFull {
+			desc = condenseDescription(desc)
+		}
 		out = append(out, map[string]any{
 			"name":        name,
-			"description": t.description,
+			"description": desc,
 			"inputSchema": t.schema,
 		})
 	}
@@ -358,6 +376,11 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 	t, ok := s.tools[name]
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
+	}
+	// tools/list has to be the truth about the surface: a profile that
+	// advertises 30 tools must not quietly run the other 103.
+	if s.profile != ProfileFull && !s.visibleSet()[name] {
+		return "", profileRefusal(name, s.profile)
 	}
 	if args == nil {
 		args = map[string]any{}
@@ -931,13 +954,16 @@ func (s *Server) add(name, desc string, schema map[string]any, call func(map[str
 	s.order = append(s.order, name)
 }
 
-// ToolNames returns the registered tool names in registration order, so the UI
-// descriptor / docs can be checked against the actual toolset (no silent drift).
+// ToolNames returns the tool names this server serves, in registration order,
+// so the UI descriptor / docs can be checked against the actual toolset (no
+// silent drift). On a full server — what New returns — that is every tool.
 func (s *Server) ToolNames() []string {
-	return append([]string(nil), s.order...)
+	return append([]string(nil), s.visibleOrder()...)
 }
 
-// ToolMeta returns the description and JSON Schema for a registered tool.
+// ToolMeta returns the description and JSON Schema for a registered tool. It
+// reads the whole registry, not the active profile, so documentation
+// generation and diagnostics see every tool whatever profile is being served.
 func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok bool) {
 	t, ok := s.tools[name]
 	if !ok {
@@ -2246,7 +2272,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/checks") })
 
 	s.add("test_check",
-		"Compile+run a Starlark check against a flow WITHOUT saving (returns findings or the error). Iterate, then save_check. Omit flowId for the latest flow. Shape: def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]. flow has method/scheme/host/port/path/status/mime, req_body/res_body, req_header(n)/res_header(n), query_param(n); builtin re_search(pat,text).",
+		"Compile+run a Starlark check against a flow WITHOUT saving. Returns findings, the error if it failed, and logs \u2014 the check's captured print() output, which is how you debug a check that returns an empty list. Iterate, then save_check. Omit flowId for the latest flow. Shape: def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]. flow has method/scheme/host/port/path/status/mime, req_body/res_body, req_header(n)/res_header(n), query_param(n), query_params (name \u2192 list of decoded values) and cookies (name \u2192 value); builtin re_search(pat,text).",
 		obj(map[string]any{
 			"source": p("string", "Starlark source"),
 			"flowId": p("integer", "default latest"),
@@ -2373,19 +2399,19 @@ func (s *Server) registerTools() {
 	s.add("get_intercept", "Intercept state + current hold queue.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/intercept") })
 
-	s.add("set_intercept", "Enable/disable request interception (hold requests to edit/drop).",
+	s.add("set_intercept", "Enable/disable request interception (hold requests to edit/drop). "+liveInterceptWarning,
 		obj(map[string]any{"enabled": pt("boolean")}, "enabled"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/intercept/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
 		})
 
-	s.add("set_response_intercept", "Enable/disable response interception (hold responses to edit/drop).",
+	s.add("set_response_intercept", "Enable/disable response interception (hold responses to edit/drop). "+liveInterceptWarning,
 		obj(map[string]any{"enabled": pt("boolean")}, "enabled"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/intercept/response/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
 		})
 
-	s.add("forward_request", "Forward a held request (optionally with edited raw bytes).",
+	s.add("forward_request", "Forward a held request (optionally with edited raw bytes). "+liveInterceptDeprecation,
 		obj(map[string]any{"id": pt("integer"), "raw": p("string", "edited raw request (optional)")}, "id"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{}
@@ -2395,12 +2421,12 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/forward", argInt(a, "id", 0)), body)
 		})
 
-	s.add("drop_request", "Drop a held request.", obj(map[string]any{"id": pt("integer")}, "id"),
+	s.add("drop_request", "Drop a held request. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/drop", argInt(a, "id", 0)), nil)
 		})
 
-	s.add("forward_response", "Forward a held response (optionally with edited raw bytes).",
+	s.add("forward_response", "Forward a held response (optionally with edited raw bytes). "+liveInterceptDeprecation,
 		obj(map[string]any{"id": pt("integer"), "raw": p("string", "edited raw response (optional)")}, "id"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{}
@@ -2411,7 +2437,7 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
-	s.add("drop_response", "Drop a held response.", obj(map[string]any{"id": pt("integer")}, "id"),
+	s.add("drop_response", "Drop a held response. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/drop", argInt(a, "id", 0)), nil)
 			return boundJSON(out, 200), err

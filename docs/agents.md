@@ -127,6 +127,19 @@ Two transports expose the same tools:
 `interseptor mcp` reads `INTERSEPTOR_CONTROL_URL` (default `http://127.0.0.1:9966`); set it to drive an
 instance on another port. Start Interseptor **before** connecting the client.
 
+Both transports serve the whole tool surface by default. If your client loads every tool schema into
+every prompt, pick a smaller profile: set `INTERSEPTOR_MCP_PROFILE` to `web-pentest`, `reporting` or
+`mobile` for stdio, or add `?profile=web` to the HTTP endpoint. Nothing is removed from the default
+`full` profile; a profile only narrows what one connection advertises, and a tool outside it is
+refused with a message saying how to widen it. `GET /api/mcp` lists the profiles and their live
+sizes; [API and MCP](api-and-mcp.md) explains the selection rules.
+
+The live intercept hold tools (`forward_request`, `drop_request`, `forward_response`,
+`drop_response`) are deprecated over MCP: a held packet keeps a browser socket open until you
+answer, and your round trip outlasts the browser's timeout. They stay in `full` for a
+human-supervised hold and are out of every curated profile. Use `send_request` and `start_intruder`
+instead.
+
 ### Claude Code
 
 ```bash
@@ -262,7 +275,10 @@ A `read` scope key can view but not mutate and cannot use `/mcp`. Keep keys out 
 
 Everything MCP does is also a REST route under `http://127.0.0.1:9966/api/`. Use REST when your client
 has no MCP support. Every route is listed in the [generated reference](#reference-generated) and at
-runtime by `GET /api/reference`; `GET /openapi.json` is the OpenAPI form.
+runtime by `GET /api/reference`. `GET /openapi.json` is an OpenAPI 3.1 document generated from the
+same catalog, for SDK generators: every route with its method, path, path parameters and a unique
+operation id. Bodies are declared permissively and query parameters are not declared — read each
+operation's description for those, as [API and MCP](api-and-mcp.md) explains.
 
 The examples use the default control address `http://127.0.0.1:9966`; use the address you were given if it
 differs. Send `X-Interseptor-Source: ai` on **every** request, reads included, and
@@ -302,7 +318,11 @@ matter; `oob`, `auth_identities`, and `login_macro` matter only if you use those
   (final report not ready, conflict), `413` (too large), `503` (busy).
 - `GET /api/events` is a Server-Sent Events stream. It sends `event: hello`, then `data:` lines of JSON
   objects with a `type` such as `flow.new`, `findings.update`, `scope.update`, `scanner.update`,
-  `intruder.update`, `activity`, `human.input`, and `collrun`.
+  `intruder.update`, `activity`, `human.input`, and `collrun`. A running passive scan adds
+  `scan.progress` (a `scan` object with `scanned`, `total`, `issues`, `skipped`, `done`, `cancelled`)
+  and `scan.issue` (one issue as the scan finds it, with `saved: false` because it has not been
+  reconciled into the store yet). The `scanner.update` that follows a finished scan marks the
+  persisted set, which `GET /api/scanner/issues` then returns with ids.
 
 ### Most-used endpoints
 
@@ -729,6 +749,12 @@ needs raw values. The recorded run itself is raw, like the flow store.
 `run_scanner` is passive: it sends nothing. Treat `list_issues` entries as leads. Confirm each with a
 baseline and a changed request before filing. Never file a scanner hit as `verified`.
 
+The scan runs one goroutine per CPU over the captured flows, and its results are in flow order
+whatever order the workers finish in, so two runs over the same history return the same list. It
+streams `scan.progress` and `scan.issue` over `GET /api/events` while it works. A scan blocks the
+request that started it; `POST /api/scanner/cancel` stops every running scan, which answers the run
+request with `409` and persists nothing — a cancelled scan leaves the stored issues as they were.
+
 ### Authorization and identities
 
 Save identities with `add_authz_identity` or `promote_flow_to_authz`. Run `authz_run` (one `flowId` or
@@ -944,7 +970,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `set_ws_frame_note` | `id`, `frameId` | Annotate one WebSocket frame of a flow (see list_ws_frames for frame ids) with what it proves. |
 | `start_intruder` | `target`, `template` | Fuzz a request. |
 | `tag_flow` | `id`, `tags` | Attach short tags to a flow for triage/grouping (e.g. |
-| `test_check` | `source` | Compile+run a Starlark check against a flow WITHOUT saving (returns findings or the error). |
+| `test_check` | `source` | Compile+run a Starlark check against a flow WITHOUT saving. |
 | `test_codec` | none | Compile+match/decode a message codec against a flow WITHOUT saving. |
 | `test_login_macro` | none | Dry-run the login macro — returns login response status and headers it would capture (does not apply... |
 | `untag_flow` | `id`, `tags` | Remove tags from a flow without replacing the rest. |
@@ -1058,7 +1084,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (292)
+### REST routes (293)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1304,6 +1330,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/runner/runs/{uid}/persist` | Answer a persist=ask prompt. |
 | POST | `/api/runner/runs/{uid}/resume` | Continue a paused run |
 | GET | `/api/runs/{uid}` | Per-request results of one run |
+| POST | `/api/scanner/cancel` | Stop every running passive scan and return {cancelled:N}, the number stopped. |
 | DELETE | `/api/scanner/issues` | Clear passive scanner issues only; curated Findings are unchanged |
 | GET | `/api/scanner/issues` | List scanner findings |
 | GET | `/api/scanner/report` | Download scanner findings as a Markdown report |
@@ -1354,6 +1381,6 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/mcp` | Streamable-HTTP MCP transport — SSE stream for server-initiated messages |
 | OPTIONS | `/mcp` | CORS preflight for the Streamable-HTTP MCP transport |
 | POST | `/mcp` | Streamable-HTTP MCP transport (JSON-RPC; for remote/hosted agents) |
-| GET | `/openapi.json` | REST route discovery index (method/path/summary; not a full OpenAPI client-generation contract) |
+| GET | `/openapi.json` | OpenAPI 3.1 document for this REST surface, generated from the route catalog: every route with its method... |
 | GET | `/replay/{id}` | Side-effect-free replay confirmation page (?session=current\|flow) that POSTs to /api/flows/{id}/replay only... |
 <!-- docscheck:end reference -->

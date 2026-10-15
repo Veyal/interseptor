@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -52,58 +53,56 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	var all []store.Issue
-	scannedFlowIDs := make([]int64, 0, len(flows))
-	for _, f := range flows {
-		// The reconciliation universe includes every flow matching the requested
-		// host/path, even if scope changed since its old issue was created.
-		scannedFlowIDs = append(scannedFlowIDs, f.ID)
-		if !h.sc.InScope(f) { // focus the scanner on in-scope traffic only
-			continue
-		}
-		req, err := h.bodyBytesResult(f.ReqBodyHash)
-		if err != nil {
-			// A missing body blob (externally deleted file, partial project copy,
-			// disk issue) skips this flow: one broken blob must not discard a
-			// full scan's results. Other errors (I/O) stay fatal.
-			if errors.Is(err, os.ErrNotExist) {
-				log.Printf("scanner: skip flow %d: request body blob %q missing", f.ID, f.ReqBodyHash)
-				continue
-			}
-			httpFileNotFoundOrInternal(w, err, "request body not found")
-			return
-		}
-		res, err := h.bodyBytesResult(f.ResBodyHash)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				log.Printf("scanner: skip flow %d: response body blob %q missing", f.ID, f.ResBodyHash)
-				continue
-			}
-			httpFileNotFoundOrInternal(w, err, "response body not found")
-			return
-		}
-		all = append(all, scanner.AnalyzeWithDisabled(f, req, res, disabled)...)
+	// The scan runs across one goroutine per CPU. It is registered so
+	// POST /api/scanner/cancel can stop it, and inherits the request context
+	// so a disconnected client no longer leaves a scan running into a dead
+	// ResponseWriter.
+	ctx, scan := h.scanJob.begin(r.Context())
+	defer scan.release()
 
-		if len(checks) > 0 {
-			cf := checkscript.Flow{
-				ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
-				Path: f.Path, Status: f.Status, Mime: f.Mime,
-				ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
-				ReqBody: string(req), ResBody: string(res),
-			}
-			for _, c := range checks {
-				if disabled[c.ID] {
-					continue
-				}
-				iss, err := c.Run(cf)
-				if err != nil {
-					log.Printf("scanner: custom check %s on flow %d: %v", c.ID, f.ID, err)
-					continue
-				}
-				all = append(all, iss...)
-			}
+	h.broadcast(scanProgressEvent(scanner.Progress{Total: len(flows)}, false))
+	result, err := scanner.RunPassive(ctx, scanner.Request{
+		Flows:    flows,
+		Disabled: disabled,
+		// The reconciliation universe includes every flow matching the
+		// requested host/path, even if scope changed since its old issue was
+		// created — so scope filters what is analysed, not what is considered.
+		InScope: h.sc.InScope,
+		Bodies:  h.scanBodies,
+		Custom:  h.customChecksRunner(checks, disabled),
+		OnProgress: func(p scanner.Progress) {
+			h.broadcast(scanProgressEvent(p, false))
+		},
+		OnIssue: func(is store.Issue) { h.broadcast(scanIssueEvent(is)) },
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			h.broadcast(scanProgressEvent(scanner.Progress{Total: len(flows), Done: true}, true))
+			httpErr(w, http.StatusConflict, "passive scan cancelled before it finished; nothing was persisted")
+			return
 		}
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
+		return
 	}
+	// beforeScanCommit is a test seam that fires in the commit window — after
+	// RunPassive has returned a complete result but before anything is written.
+	// It is nil in production.
+	if h.beforeScanCommit != nil {
+		h.beforeScanCommit()
+	}
+	// Point of no return. A cancel can land between RunPassive finishing and
+	// this write even though every worker completed — the context is no longer
+	// consulted, so the only thing standing between a cancelled scan and a
+	// committed one is this atomic claim. If a cancel won it, persist nothing
+	// and report the conflict, so a scan never both persists and is reported
+	// cancelled.
+	if !scan.claimCommit() {
+		h.broadcast(scanProgressEvent(scanner.Progress{Total: len(flows), Done: true}, true))
+		httpErr(w, http.StatusConflict, "passive scan cancelled before it finished; nothing was persisted")
+		return
+	}
+	all := result.Issues
+	scannedFlowIDs := result.FlowIDs
 	fullScan := host == "" && search == ""
 	if fullScan {
 		scanned := make(map[int64]struct{}, len(scannedFlowIDs))
@@ -144,6 +143,63 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 	}
 	h.broadcast(map[string]any{"type": "scanner.update"})
 	h.scannerIssues(w, r)
+}
+
+// scanBodies is the scan engine's body loader. It reports a missing blob as
+// os.ErrNotExist so the engine skips that one flow, and anything else as a
+// real error that ends the scan.
+func (h *Hub) scanBodies(f *store.Flow) (reqBody, resBody []byte, err error) {
+	if reqBody, err = h.bodyBytesResult(f.ReqBodyHash); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("scanner: skip flow %d: request body blob %q missing", f.ID, f.ReqBodyHash)
+		}
+		return nil, nil, err
+	}
+	if resBody, err = h.bodyBytesResult(f.ResBodyHash); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("scanner: skip flow %d: response body blob %q missing", f.ID, f.ResBodyHash)
+		}
+		return nil, nil, err
+	}
+	return reqBody, resBody, nil
+}
+
+// customChecksRunner adapts the compiled Starlark checks to the scan engine, so
+// internal/scanner never imports internal/checkscript. A check that fails at
+// runtime is logged and skipped: one broken user script must not void a scan.
+// The compiled checks are frozen, so running them from several goroutines is
+// safe; each call still gets its own Starlark thread.
+func (h *Hub) customChecksRunner(checks []*checkscript.Check, disabled map[string]bool) scanner.CustomChecks {
+	if len(checks) == 0 {
+		return nil
+	}
+	return func(f *store.Flow, reqBody, resBody []byte) []store.Issue {
+		cf := checkscript.Flow{
+			ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
+			Path: f.Path, Status: f.Status, Mime: f.Mime,
+			ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
+			ReqBody: string(reqBody), ResBody: string(resBody),
+		}
+		var out []store.Issue
+		for _, c := range checks {
+			if disabled[c.ID] {
+				continue
+			}
+			iss, err := c.Run(cf)
+			if err != nil {
+				log.Printf("scanner: custom check %s on flow %d: %v", c.ID, f.ID, err)
+				continue
+			}
+			out = append(out, iss...)
+		}
+		return out
+	}
+}
+
+// scannerCancel stops every running passive scan. The scan handler blocks
+// until the scan finishes, so cancelling it takes a second request.
+func (h *scannerAPI) scannerCancel(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": h.scanJob.cancelAll()})
 }
 
 func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {

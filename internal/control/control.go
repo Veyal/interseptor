@@ -134,10 +134,12 @@ type Hub struct {
 	switchClosed     bool
 	switchWG         sync.WaitGroup
 
-	mcpMu           sync.Mutex
-	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
-	mcpKeysSeen     atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
-	iosTCPReachable func(string, int) bool
+	mcpMu            sync.Mutex
+	mcpSrv           *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
+	scanJob          scanJob     // running passive scans, so POST /api/scanner/cancel can stop one
+	beforeScanCommit func()      // test seam fired in the scan's commit window; nil in production, set before serving
+	mcpKeysSeen      atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
+	iosTCPReachable  func(string, int) bool
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
 	tunnelCloseOnce sync.Once
@@ -228,8 +230,15 @@ func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.
+// ?profile= scopes the tool surface (see mcpProfileForRequest); the transport is
+// stateless, so a client that wants a profile must send it on every request.
 func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
-	srv := mcp.New(h.loopbackControlBase())
+	profile, err := mcpProfileForRequest(r)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	srv := mcp.NewProfile(h.loopbackControlBase(), profile)
 	srv.SetAuthorization(r.Header.Get("Authorization"))
 	srv.SetActivityReporter(h.recordMCPActivity)
 	srv.ServeHTTP(w, r)
