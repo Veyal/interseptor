@@ -2,7 +2,8 @@
 // directly — that back-edge was part of the proxy↔findings↔settings ESM cycle.
 import { emit as busEmit, EVENTS } from './bus.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref, saveFile } from './core.js';
+import { FORMAT_CHOICES, findingReportURL, findingReportName } from './report-preflight-model.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { findingRouteTarget, ANCHOR_IDS, buildReproductionSteps, timelineHTML, readDocumentHTML, readPropertiesHTML, stepElementId } from './finding-document.js';
@@ -799,10 +800,30 @@ function showFindingRowCtx(event, id) {
       { label: 'CVSS vector', disabled: !f.cvss, act: () => copyText(f.cvss || '', 'vector copied') },
       { label: 'Summary line for a report', act: () => copyText(findingSummaryLine(f), 'summary copied') },
     ] },
+    { label: 'Export this finding', icon: 'download', children: FORMAT_CHOICES.map(fmt => (
+      { label: fmt.label, act: () => exportOneFinding(id, fmt.value) })) },
     { sep: true },
     { label: 'Delete finding', icon: 'trash', danger: true, disabled: !write, act: () => deleteFinding(id) },
   ] }]);
 }
+// exportOneFinding downloads a report of just this finding, reusing the report
+// endpoint's ids selector, so an operator can hand over one finding without the
+// rest of the engagement.
+async function exportOneFinding(id, format) {
+  try {
+    const res = await fetch(findingReportURL(id, format), { credentials: 'same-origin' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body && body.error) || ('Export failed (' + res.status + ')'));
+    }
+    const blob = await res.blob();
+    await saveFile(blob, findingReportName(id, format), blob.type);
+    toast('finding exported');
+  } catch (e) {
+    toastError(e && e.message ? e.message : 'Export failed');
+  }
+}
+
 // findingSummaryLine is the one row a triager pastes into a ticket or a chat.
 function findingSummaryLine(f) {
   return [

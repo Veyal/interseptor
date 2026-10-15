@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
-  exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows,
+  exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows, findingReportURL, findingReportName,
 } from '../js/report-preflight-model.js';
 
 const quality = (over = {}) => ({
@@ -126,4 +126,12 @@ test('blocker rows closed by reproduction say where to verify', async () => {
   assert.equal(byRule.verification.hint, VERIFY_HINT);
   assert.match(VERIFY_HINT, /Repeater/);
   assert.equal(byRule.cvss.hint, undefined, 'other gaps carry no verify hint');
+});
+
+test('findingReportURL selects one finding in a valid format, default md', () => {
+  assert.equal(findingReportURL(41, 'json'), '/api/findings/report?ids=41&format=json&mode=draft');
+  assert.equal(findingReportURL(41, 'pdf'), '/api/findings/report?ids=41&format=md&mode=draft'); // not a UI format → md
+  assert.equal(findingReportURL('x', 'html'), '/api/findings/report?ids=0&format=html&mode=draft');
+  assert.equal(findingReportName(41, 'json'), 'finding-41.json');
+  assert.equal(findingReportName(41, 'bogus'), 'finding-41.md');
 });

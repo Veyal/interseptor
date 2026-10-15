@@ -137,6 +137,19 @@ export function exportFilename(format) {
   return 'interseptor-findings.' + sanitizeOptions({ format }).format;
 }
 
+// A single finding (or a chosen few) exported in report form, reusing the
+// report endpoint's ids selector. Draft mode, since this is a one-off export of
+// specific findings rather than a gated final deliverable.
+export function findingReportURL(id, format) {
+  const n = posInt(id);
+  const fmt = FORMAT_CHOICES.some((f) => f.value === format) ? format : 'md';
+  return '/api/findings/report?ids=' + n + '&format=' + fmt + '&mode=draft';
+}
+
+export function findingReportName(id, format) {
+  return 'finding-' + posInt(id) + '.' + sanitizeOptions({ format }).format;
+}
+
 // previewRows is the skeleton preview: the findings the export would contain,
 // in report order, each with a text status.
 export function previewRows(quality) {

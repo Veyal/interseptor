@@ -277,3 +277,21 @@ func TestUIFindingsRailFoldsOnlyWhenTheDocumentNeedsTheWidth(t *testing.T) {
 		"@container findws (min-width:900px) and (max-width:1000px)",
 		"@container findws (min-width:1172px)")
 }
+
+// The finding row context menu offers a one-click report export of just that
+// finding, in each report format, through the report endpoint's ids selector.
+func TestUIFindingRowMenuExportsASingleFinding(t *testing.T) {
+	js := readUIAsset(t, "js/findings.js")
+	requireUIContains(t, js,
+		"Export this finding",
+		"exportOneFinding(id,",
+		"findingReportURL",
+		"findingReportName",
+	)
+	model := readUIAsset(t, "js/report-preflight-model.js")
+	requireUIContains(t, model,
+		"export function findingReportURL",
+		"'/api/findings/report?ids='",
+		"&mode=draft",
+	)
+}
