@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+## [2.15.0] - 2026-10-16
 
-- **UI hints are off by default.** Only an explicit stored `interseptor.hints=on` enables hover/focus hints; unset or unreadable storage now means off, and the initial markup matches so first paint shows no hints. Users who turned hints on keep them.
-- **`interseptor launcher` dashboard redesigned.** Mobile-first (viewport meta, 44px touch targets at phone width), light/dark via `prefers-color-scheme`, running projects first then most recent, project filter, Running/Stopped status pills, project path, wrapping MCP setting with a Copy button, a real create form with label and inline validation, visible start/stop/fetch errors, loading/empty/error states, focus-preserving auto-refresh, `aria-live` status, and no inline handlers. `/api/instances` now also returns `path` and `modified`.
+> Minor release reworking project selection and trimming duplicate chrome. The Projects dialog
+> is rebuilt around a focused filter, keyboard navigation, a Recent group and a full-height phone
+> sheet, and Settings and a new phone top-bar chip open the same picker; the `interseptor launcher`
+> dashboard is redesigned mobile-first with light and dark themes. The open-document tab strip
+> (#116) and the Flight Bar project chip (#117) are removed, split and close move into the Flight
+> Bar, UI hints are off by default, the Intercept action bar stays pinned while a held message
+> scrolls, and AI-originated authorization replays are tagged as AI traffic (#114, #115).
 
 ### Added
 
@@ -20,19 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **UI hints are off by default.** Only an explicit stored `interseptor.hints=on` enables hover/focus hints; unset or unreadable storage now means off, and the initial markup matches so first paint shows no hints. Users who turned hints on keep them.
+- **`interseptor launcher` dashboard redesigned.** Mobile-first (viewport meta, 44px touch targets at phone width), light/dark via `prefers-color-scheme`, running projects first then most recent, project filter, Running/Stopped status pills, project path, wrapping MCP setting with a Copy button, a real create form with label and inline validation, visible start/stop/fetch errors, loading/empty/error states, focus-preserving auto-refresh, `aria-live` status, and no inline handlers. `/api/instances` now also returns `path` and `modified`.
 - **Settings › Project** now reads "Current: *name* · Switch project…" and opens the same picker; the saved-project select and the duplicate create fields are gone. The rail-foot project badge is a real button. Switch status copy is unified on "Opening *project*… Interseptor is restarting".
-### Fixed
-
-- **Intercept action bar no longer scrolls away.** The Pretty and Decoded held-message views overflowed their box, so scrolling them scrolled the whole detail pane and carried Forward / Drop out of view. `.icpt-raw` now scrolls internally (`flex:1 1 0; min-height:0; overflow:auto`), keeping the action bar pinned for held requests and responses at desktop and phone widths.
-- **AI-originated authorization replays now carry the AI tag.** Flows recorded by `/api/authz/run`, `/check-sessions`, `/differential` and `/cross-host-replay` get `FlagAI` alongside `FlagAuthz` when the request has `X-Interseptor-Source: ai`, so they appear under the History "AI" chip and `?ai=1` filter (#114).
-
-### Changed
-
 - **Removed the redundant open-document tab strip (#116).** The `#docStrip`/`#docTabs` row duplicated the left rail (same eleven tools, same order) and cost ~34px of height; the panes now fill the workspace and the rail is the only navigation surface. Split left/right and top/bottom (`#splitLrBtn`/`#splitTbBtn`, still `aria-pressed`) moved into an action cluster in the Flight Bar that acts on the focused pane (in normal flow, so it never covers a panel toolbar; hidden on phones, where splitting is unavailable), joined by a close-document button (`#paneCloseBtn`, shown when more than one document is open). The old tab-strip arrow-key and `Delete`/`Backspace` shortcuts are gone; the rail's Up/Down roving focus already switches documents.
 - **Removed the duplicate project chip from the Flight Bar (#117).** The rail-foot badge `#projBadge` is the single project control; `#ctxProject`, `setCtxProject` and the `.ctx-project` styles are gone, and static contracts now assert the chip stays absent.
 - Document Cloud Agent Go toolchain behavior and a local run command in AGENTS.md.
 - **AI-origin tagging is now test-enforced (#115).** A table-driven control-plane test drives every flow-creating send endpoint (repeater, finding retest, replay, Intruder, WebSocket repeater, collections send/run/matrix, authz run/check-sessions/differential/cross-host-replay) with and without `X-Interseptor-Source: ai` and asserts `FlagAI` is set only for AI calls, and a static scan of the MCP tools fails when a tool reaches an endpoint missing from that table.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.14.0` release.
+
+### Fixed
+
+- **Intercept action bar no longer scrolls away.** The Pretty and Decoded held-message views overflowed their box, so scrolling them scrolled the whole detail pane and carried Forward / Drop out of view. `.icpt-raw` now scrolls internally (`flex:1 1 0; min-height:0; overflow:auto`), keeping the action bar pinned for held requests and responses at desktop and phone widths.
+- **AI-originated authorization replays now carry the AI tag.** Flows recorded by `/api/authz/run`, `/check-sessions`, `/differential` and `/cross-host-replay` get `FlagAI` alongside `FlagAuthz` when the request has `X-Interseptor-Source: ai`, so they appear under the History "AI" chip and `?ai=1` filter (#114).
 
 ## [2.14.0] - 2026-10-15
 
