@@ -1,6 +1,7 @@
 /* canvas.css — the multi-document workbench canvas (#103): the one or two
    document panes (#canvas), the sash that resizes a split and the per-pane
-   action cluster (#paneActions: split left/right, split top/bottom, close). The
+   action cluster (#paneActions in the Flight Bar: split left/right, split
+   top/bottom, close for the focused pane). The
    left rail is the only navigation surface; there is no open-document tab strip.
    Loaded after the panel sheets and before mobile.css so the phone model still
    wins the cascade. Only transform and opacity may animate here; the focus
@@ -15,9 +16,9 @@
 #canvas{position:absolute;left:0;right:0;bottom:0;top:0;display:flex;flex-direction:row;min-width:0;min-height:0}
 #canvas[data-layout="split-tb"]{flex-direction:column}
 
-/* ---- per-pane actions: split + close, floated top-right of the focused pane ---- */
-.pane-actions{position:absolute;top:var(--sp-1);right:var(--sp-1);display:flex;align-items:center;gap:2px;padding:2px;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md);z-index:var(--z-strip)}
-#canvas > .pane-actions{display:none}
+/* ---- pane actions: split + close for the focused pane, in the Flight Bar ----
+   In normal flow so they never cover a panel's own toolbar. */
+.pane-actions{display:flex;align-items:center;flex:none;gap:2px;padding:2px;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md)}
 .pane-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;color:var(--fg2);cursor:pointer}
 .pane-btn>.icon{width:15px;height:15px}
 .pane-btn:hover{background:var(--bg3);color:var(--fg)}
@@ -46,7 +47,7 @@
 
 /* ---- phone: single pane only; the dock switches the focused document ---- */
 @media (max-width:720px){
-  .pane-btn[aria-pressed]{display:none}
+  .pane-actions{display:none}
   #canvas[data-layout^="split"]{flex-direction:column}
   #canvas[data-layout^="split"] .canvas-pane[data-pane="0"]{flex:1 1 0}
   #canvas[data-layout^="split"] .canvas-pane[data-pane="1"],#canvas[data-layout^="split"] .canvas-sash{display:none}

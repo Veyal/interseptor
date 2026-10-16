@@ -171,6 +171,11 @@
       <span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span>
       <span id="icptCompact" class="kv state-active icpt-compact" aria-hidden="true" hidden></span>
       <div id="ctxIdentityWrap" class="ctx-identity" hidden><span id="ctxAvatar" class="ctx-avatar" data-hue="1" aria-hidden="true">?</span><label for="ctxIdentity" class="ctx-key">Act as</label><select id="ctxIdentity" class="btn" aria-label="Active identity"></select></div>
+      <div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">
+        <button type="button" id="splitLrBtn" class="pane-btn" aria-pressed="false" aria-label="Split view left and right" title="Split left / right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg></button>
+        <button type="button" id="splitTbBtn" class="pane-btn" aria-pressed="false" aria-label="Split view top and bottom" title="Split top / bottom"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg></button>
+        <button type="button" id="paneCloseBtn" class="pane-btn" aria-label="Close this document" title="Close this document" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      </div>
       <button type="button" id="ctxRing" class="ctx-ring" aria-haspopup="dialog" aria-expanded="false" aria-controls="ctxRingPop" aria-label="Readiness: loading" data-state="loading" data-mark="none" data-report="false"><svg class="icon ctx-ring-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="ctx-ring-track" d="M12 3h4l5 5v8l-5 5H8l-5-5V8l5-5z"/><path id="ctxRingArc" class="ctx-ring-arc" d="M12 3h4l5 5v8l-5 5H8l-5-5V8l5-5z" pathLength="100" stroke-dasharray="0 100"/><path class="ctx-ring-bang" d="M12 8v5M12 16h.01"/><path class="ctx-ring-check" d="M8 12l3 3 5-5"/></svg><span id="ctxRingText" class="ctx-ring-text" hidden></span><span id="ctxRingBadge" class="ctx-ring-badge" aria-hidden="true" hidden></span></button>
       <div id="ctxRingPop" class="ctx-pop" role="dialog" aria-modal="false" aria-labelledby="ctxRingTitle" hidden>
         <div class="ctx-pop-head"><h2 id="ctxRingTitle" class="ctx-pop-title">Readiness</h2><button type="button" class="btn xs" id="ctxRingClose" aria-label="Close readiness"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
@@ -240,19 +245,14 @@
 
 <main id="main" tabindex="-1" aria-label="Workspace">
   <!-- Multi-document workbench canvas (#103): one/two document panes. The rail is
-       the only navigation surface; split and close live in #paneActions, which
-       canvas.js moves into the focused pane. canvas.js moves the tool panels below
+       the only navigation surface; split and close live in #paneActions in the
+       Flight Bar and act on the focused pane. canvas.js moves the tool panels below
        into the visible pane(s) at boot and parks the rest in #canvasPool. -->
   <div id="canvas" class="canvas" data-layout="single">
     <div class="canvas-pane" data-pane="0"></div>
     <div id="canvasSash" class="canvas-sash" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize split panes" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
     <div class="canvas-pane" data-pane="1"></div>
     <div id="canvasPool" class="canvas-pool" hidden></div>
-    <div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">
-      <button type="button" id="splitLrBtn" class="pane-btn" aria-pressed="false" aria-label="Split view left and right" title="Split left / right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg></button>
-      <button type="button" id="splitTbBtn" class="pane-btn" aria-pressed="false" aria-label="Split view top and bottom" title="Split top / bottom"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg></button>
-      <button type="button" id="paneCloseBtn" class="pane-btn" aria-label="Close this document" title="Close this document" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
-    </div>
   </div>
   <!-- PROXY -->
   <!-- region:proxy -->

@@ -3,7 +3,7 @@
 // a model state onto the DOM: it lays out one or two panes (#canvas), MOVES the
 // singleton tool panels into the visible panes (parking the rest in a hidden pool) and mirrors focus onto the
 // rail (the rail is the only navigation surface; there is no document tab strip).
-// The split/close controls (#paneActions) are moved into the focused pane.
+// The split/close controls (#paneActions) live in the Flight Bar and act on the focused pane.
 // Keeping `.panel.active` == "mounted in a visible pane" means the existing
 // panel-gated SSE paths (proxy.handleFlowNew, onPanelUpdate, …) keep working with
 // two panels visible: a visible panel still renders live events, a parked one
@@ -88,19 +88,14 @@ function reflect() {
   placeActions();
   syncSplitButtons();
 }
-// The action cluster floats over the focused pane (pane 0 when not split).
+// The action cluster sits in the Flight Bar and acts on the focused pane. A
+// document can be closed while more than one is open (the rail reopens any tool);
+// focus moves off the close button before it hides so it never drops to <body>.
 function placeActions() {
-  if (!els.actions) return;
-  const pane = effSplit() && state.focused === 1 ? els.pane1 : els.pane0;
-  if (pane && pane.lastElementChild !== els.actions) {
-    // Keep the cluster last in the pane (after the panel in tab order) without
-    // dropping focus if one of its buttons currently has it.
-    const held = els.actions.contains(document.activeElement) ? document.activeElement : null;
-    pane.appendChild(els.actions);
-    if (held && document.activeElement !== held) held.focus();
-  }
-  // A document can be closed while more than one is open (the rail reopens any tool).
-  if (els.close) els.close.hidden = M.docOrderPanels(state).length < 2;
+  if (!els.close) return;
+  const hide = M.docOrderPanels(state).length < 2;
+  if (hide && document.activeElement === els.close) els.splitLr?.focus();
+  els.close.hidden = hide;
 }
 function syncSplitButtons() {
   if (els.splitLr) els.splitLr.setAttribute('aria-pressed', effLayout() === 'split-lr' ? 'true' : 'false');

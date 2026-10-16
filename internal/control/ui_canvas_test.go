@@ -34,15 +34,17 @@ func TestUICanvasShellMarkup(t *testing.T) {
 			t.Errorf("workspace markup still references the removed tab strip (%q)", gone)
 		}
 	}
-	// Split + close controls live in a per-pane action cluster, not a strip.
-	requireUIContains(t, main, `<div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">`,
+	// Split + close controls live in the Flight Bar (see TestUICanvasPaneActionsNeverCoverPanels).
+	bar := index[strings.Index(index, `<header id="bar"`):]
+	bar = bar[:strings.Index(bar, "</header>")]
+	requireUIContains(t, bar, `<div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">`,
 		`id="paneCloseBtn"`, `aria-label="Close this document"`, `href="#i-close"`)
 	// Split controls are labelled buttons drawing sprite icons (no glyphs).
 	for _, want := range []string{
 		`id="splitLrBtn"`, `aria-label="Split view left and right"`, `href="#i-columns"`,
 		`id="splitTbBtn"`, `aria-label="Split view top and bottom"`, `href="#i-panel-bottom"`,
 	} {
-		if !strings.Contains(main, want) {
+		if !strings.Contains(bar, want) {
 			t.Errorf("canvas split control markup missing %q", want)
 		}
 	}
@@ -154,7 +156,29 @@ func TestUICanvasStripRemovedFromCSS(t *testing.T) {
 			t.Errorf("canvas.css still carries removed strip rule %q", gone)
 		}
 	}
-	// The panes fill the whole workspace; the action cluster floats over the focused pane.
+	// The panes fill the whole workspace.
 	requireUIRegex(t, css, `#canvas\{[^}]*top:0`)
 	requireUIContains(t, css, ".pane-actions{", ".pane-btn")
+}
+
+// The split/close cluster once floated over the focused pane and covered panel
+// toolbar buttons (Collections console, Scanner tools, Activity clear, the phone
+// close X over Run scan). It now sits in the Flight Bar, in normal flow, and is
+// hidden on phones where splitting is unavailable.
+func TestUICanvasPaneActionsNeverCoverPanels(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	main := index[strings.Index(index, `<main id="main"`):]
+	main = main[:strings.Index(main, "</main>")]
+	if strings.Contains(main, `id="paneActions"`) {
+		t.Error("#paneActions must not live inside the workspace panes, where it covers panel toolbars")
+	}
+	css := stripCSSComments(readUIAsset(t, "canvas.css"))
+	if regexp.MustCompile(`\.pane-actions\{[^}]*position:absolute`).MatchString(css) {
+		t.Error(".pane-actions must stay in normal flow, not float over a pane")
+	}
+	requireUIRegex(t, css, `@media \(max-width:720px\)\{[^@]*\.pane-actions\{display:none\}`)
+	js := executableJS(readUIAsset(t, "js/canvas.js"))
+	if strings.Contains(js, "appendChild(els.actions)") {
+		t.Error("canvas.js must not move #paneActions into a pane")
+	}
 }
