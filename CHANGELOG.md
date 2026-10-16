@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.15.0` release.
+
 ## [2.15.0] - 2026-10-16
 
 > Minor release reworking project selection and trimming duplicate chrome. The Projects dialog
