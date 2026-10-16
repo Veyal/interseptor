@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.15.1` release.
+
 ## [2.15.1] - 2026-10-16
 
 > Patch release: held Intercept requests and responses can now be edited directly in the Pretty
