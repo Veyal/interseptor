@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings › Project** now reads "Current: *name* · Switch project…" and opens the same picker; the saved-project select and the duplicate create fields are gone. The rail-foot project badge is a real button. Switch status copy is unified on "Opening *project*… Interseptor is restarting".
 ### Fixed
 
+- **Intercept action bar no longer scrolls away.** The Pretty and Decoded held-message views overflowed their box, so scrolling them scrolled the whole detail pane and carried Forward / Drop out of view. `.icpt-raw` now scrolls internally (`flex:1 1 0; min-height:0; overflow:auto`), keeping the action bar pinned for held requests and responses at desktop and phone widths.
 - **AI-originated authorization replays now carry the AI tag.** Flows recorded by `/api/authz/run`, `/check-sessions`, `/differential` and `/cross-host-replay` get `FlagAI` alongside `FlagAuthz` when the request has `X-Interseptor-Source: ai`, so they appear under the History "AI" chip and `?ai=1` filter (#114).
 
 ### Changed
