@@ -235,9 +235,7 @@ Report sub-view with gated export. `checklist.js` is the first-run checklist, de
 state.
 
 The central workspace is a **multi-document canvas** (`canvas.js`, pure state in `canvas-model.js`,
-styles in `canvas.css`) rather than a singleton `.panel.active`. A strip of open-document tabs
-(`#docTabs`, a `role="tablist"` with a roving tab stop, `aria-selected` tracking focus, and a close
-affordance plus `Delete`/`Backspace`) sits above one or two panes (`#canvas`). Opening a tool — from
+styles in `canvas.css`) rather than a singleton `.panel.active`. The rail is the only navigation surface — there is no open-document tab strip — and one or two panes (`#canvas`) fill the whole workspace. Split and close live in a per-pane action cluster (`#paneActions`, floated top-right of the focused pane): `#splitLrBtn`/`#splitTbBtn` keep their `aria-pressed` state and `#paneCloseBtn` closes the focused pane's document (shown once more than one document is open; the next open document is revealed, and any tool reopens from the rail). Switching documents is the rail's own Up/Down roving focus; the former tab-strip arrow-key and `Delete`/`Backspace` handling is gone. Opening a tool — from
 the rail's `activateTab`, the command palette, a deep link or a Send-to flow — opens or focuses that
 tool's document; the canvas moves the singleton tool panels between the visible pane(s) and a hidden
 `#canvasPool`, so the panels keep their global state and the existing `openFlow`/`closeFlow` and

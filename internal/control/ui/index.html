@@ -238,21 +238,20 @@
 </div>
 
 <main id="main" tabindex="-1" aria-label="Workspace">
-  <!-- Multi-document workbench canvas (#103): the open-document tab strip and the
-       one/two document panes. canvas.js moves the tool panels below into the
-       visible pane(s) at boot and parks the rest in #canvasPool. -->
-  <div id="docStrip" class="doc-strip">
-    <div id="docTabs" class="doc-tabs" role="tablist" aria-label="Open documents"></div>
-    <div class="doc-strip-actions">
-      <button type="button" id="splitLrBtn" class="doc-split-btn" aria-pressed="false" aria-label="Split view left and right" title="Split left / right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg></button>
-      <button type="button" id="splitTbBtn" class="doc-split-btn" aria-pressed="false" aria-label="Split view top and bottom" title="Split top / bottom"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg></button>
-    </div>
-  </div>
+  <!-- Multi-document workbench canvas (#103): one/two document panes. The rail is
+       the only navigation surface; split and close live in #paneActions, which
+       canvas.js moves into the focused pane. canvas.js moves the tool panels below
+       into the visible pane(s) at boot and parks the rest in #canvasPool. -->
   <div id="canvas" class="canvas" data-layout="single">
     <div class="canvas-pane" data-pane="0"></div>
     <div id="canvasSash" class="canvas-sash" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize split panes" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
     <div class="canvas-pane" data-pane="1"></div>
     <div id="canvasPool" class="canvas-pool" hidden></div>
+    <div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">
+      <button type="button" id="splitLrBtn" class="pane-btn" aria-pressed="false" aria-label="Split view left and right" title="Split left / right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg></button>
+      <button type="button" id="splitTbBtn" class="pane-btn" aria-pressed="false" aria-label="Split view top and bottom" title="Split top / bottom"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg></button>
+      <button type="button" id="paneCloseBtn" class="pane-btn" aria-label="Close this document" title="Close this document" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    </div>
   </div>
   <!-- PROXY -->
   <!-- region:proxy -->

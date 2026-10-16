@@ -7,8 +7,9 @@ import (
 )
 
 // The multi-document workbench canvas (#103) replaces the singleton `.panel.active`
-// model with an open-document tab strip and one or two panes. These static
-// contracts pin the shell markup, the ARIA roles the document tabs carry, the
+// model with one or two document panes; the rail is the only navigation surface
+// (the duplicate open-document tab strip was removed in #116). These static
+// contracts pin the shell markup, the per-pane split/close controls, the
 // split layout and the wiring that keeps every entry point and the panel-gated
 // SSE model correct with two panels visible. The pure tab/split transitions are
 // exercised under node (canvas-model.test.mjs via TestUIPrimitivesPureLogicUnderNode).
@@ -19,8 +20,6 @@ func TestUICanvasShellMarkup(t *testing.T) {
 	main := index[strings.Index(index, `<main id="main"`):]
 	main = main[:strings.Index(main, "</main>")]
 	requireUIContains(t, main,
-		`<div id="docStrip" class="doc-strip">`,
-		`<div id="docTabs" class="doc-tabs" role="tablist" aria-label="Open documents">`,
 		`<div id="canvas" class="canvas" data-layout="single">`,
 		`<div class="canvas-pane" data-pane="0">`,
 		`<div class="canvas-pane" data-pane="1">`,
@@ -28,6 +27,16 @@ func TestUICanvasShellMarkup(t *testing.T) {
 	)
 	// The sash is a keyboard-operable separator.
 	requireUIRegex(t, main, `<div id="canvasSash" class="canvas-sash" role="separator"[^>]*tabindex="0"[^>]*aria-label="Resize split panes"`)
+	// The redundant open-document tab strip is gone (#116): the rail is the only
+	// navigation surface, so no strip markup, ids or document-tab rules remain.
+	for _, gone := range []string{"docStrip", "docTabs", "doc-strip", "doc-tab", "doctabs"} {
+		if strings.Contains(main, gone) {
+			t.Errorf("workspace markup still references the removed tab strip (%q)", gone)
+		}
+	}
+	// Split + close controls live in a per-pane action cluster, not a strip.
+	requireUIContains(t, main, `<div id="paneActions" class="pane-actions" role="group" aria-label="Pane controls">`,
+		`id="paneCloseBtn"`, `aria-label="Close this document"`, `href="#i-close"`)
 	// Split controls are labelled buttons drawing sprite icons (no glyphs).
 	for _, want := range []string{
 		`id="splitLrBtn"`, `aria-label="Split view left and right"`, `href="#i-columns"`,
@@ -78,11 +87,16 @@ func TestUICanvasControllerContracts(t *testing.T) {
 		"el.classList.add('active')", "'is-focused'",
 		// focus reflects onto the rail tabs so the dock/rail stay in sync.
 		"#tabs .tab", "aria-selected",
-		// document tabs carry the tab role + roving tab stop + close/Delete handling.
-		"setAttribute('role', 'tab')", "aria-controls', 'panel-'", "'Delete'", "'Backspace'",
+		// the per-pane close control closes the focused document; no strip remains.
+		"paneCloseBtn", "paneActions",
 		// layout + sizing reuse the pure split geometry and persist per project.
 		"clampSplitSize", "projectStorageKey('canvasLayout')",
 	)
+	for _, gone := range []string{"docTabs", "docStrip", "renderStrip", "wireStrip", "doc-tab"} {
+		if strings.Contains(js, gone) {
+			t.Errorf("canvas.js still references the removed tab strip (%q)", gone)
+		}
+	}
 	// The split pairs two documents; parked panels move to the hidden pool.
 	requireUIContains(t, js, "els.pool.appendChild", "placeInPane(els.pane1")
 	// Phones never split.
@@ -131,4 +145,16 @@ func TestUICanvasSplitCSSShowsTwoPanes(t *testing.T) {
 	if strings.Contains(css, "transition:") || strings.Contains(css, "@keyframes") {
 		t.Error("canvas.css must not animate; the panel entrance is a JS one-shot in canvas.js")
 	}
+}
+
+func TestUICanvasStripRemovedFromCSS(t *testing.T) {
+	css := stripCSSComments(readUIAsset(t, "canvas.css"))
+	for _, gone := range []string{"#docStrip", ".doc-tab", ".doc-strip", "--doctabs-h", ".doc-split-btn"} {
+		if strings.Contains(css, gone) {
+			t.Errorf("canvas.css still carries removed strip rule %q", gone)
+		}
+	}
+	// The panes fill the whole workspace; the action cluster floats over the focused pane.
+	requireUIRegex(t, css, `#canvas\{[^}]*top:0`)
+	requireUIContains(t, css, ".pane-actions{", ".pane-btn")
 }

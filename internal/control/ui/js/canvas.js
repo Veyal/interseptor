@@ -1,14 +1,15 @@
 // canvas.js — DOM controller for the multi-document workbench canvas (#103).
 // The pure tab/split transitions live in canvas-model.js; this module reflects
-// a model state onto the DOM: it renders the open-document tab strip (#docTabs),
-// lays out one or two panes (#canvas), MOVES the singleton tool panels into the
-// visible panes (parking the rest in a hidden pool) and mirrors focus onto the
-// rail. Keeping `.panel.active` == "mounted in a visible pane" means the existing
+// a model state onto the DOM: it lays out one or two panes (#canvas), MOVES the
+// singleton tool panels into the visible panes (parking the rest in a hidden pool) and mirrors focus onto the
+// rail (the rail is the only navigation surface; there is no document tab strip).
+// The split/close controls (#paneActions) are moved into the focused pane.
+// Keeping `.panel.active` == "mounted in a visible pane" means the existing
 // panel-gated SSE paths (proxy.handleFlowNew, onPanelUpdate, …) keep working with
 // two panels visible: a visible panel still renders live events, a parked one
 // still pauses. The focused panel additionally carries `.is-focused`, which
 // activePanel()/keyboard shortcuts read.
-import { $, $$, icon, projectStorageKey } from './core.js';
+import { $, $$, projectStorageKey } from './core.js';
 import * as M from './canvas-model.js';
 import { clampSplitSize, splitBounds, toPercent, fromPercent, splitKeyAction } from './layout-math.js';
 import { transitionView, prefersReducedMotion } from './motion.js';
@@ -21,28 +22,10 @@ let state = null;
 let splitPct = 50;
 let lastFocused = null;
 let opts = {};
-let meta = {};               // panel -> { label, icon }
 let els = {};
 let narrowMq = null;
 let drag = null;
 let built = false;
-
-// ---- metadata derived from the rail (labels + icon names) ----
-function deriveMeta() {
-  meta = {};
-  for (const tab of $$('#tabs .tab')) {
-    const panel = tab.dataset.tab;
-    if (!panel) continue;
-    const use = tab.querySelector('use');
-    const iconName = use ? (use.getAttribute('href') || '').replace('#i-', '') : '';
-    // Use only the rail tab's own text nodes so the label is the clean tool name,
-    // never a count badge (Findings), a nav dot or a visually-hidden note.
-    let label = '';
-    for (const node of tab.childNodes) if (node.nodeType === 3) label += node.textContent;
-    label = label.trim() || (tab.getAttribute('title') || panel).trim();
-    meta[panel] = { label, icon: iconName };
-  }
-}
 
 const allPanels = () => $$('.panel[data-panel]').map((p) => p.dataset.panel);
 const panelEl = (panel) => document.querySelector('.panel[data-panel="' + panel + '"]');
@@ -91,45 +74,8 @@ function mountPanels() {
   els.sash.setAttribute('aria-orientation', effLayout() === 'split-tb' ? 'horizontal' : 'vertical');
   applySplitSize();
 }
-function renderStrip() {
-  const order = M.docOrderPanels(state);
-  const focusedId = M.focusedDocId(state);
-  const shown = new Set(M.paneDocIds(state));
-  els.docTabs.textContent = '';
-  for (const panel of order) {
-    const m = meta[panel] || { label: panel };
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'doc-tab';
-    tab.id = 'doctab-' + panel;
-    tab.dataset.doc = panel;
-    tab.setAttribute('role', 'tab');
-    tab.setAttribute('aria-controls', 'panel-' + panel);
-    const selected = panel === focusedId;
-    tab.setAttribute('aria-selected', selected ? 'true' : 'false');
-    tab.tabIndex = selected ? 0 : -1;
-    if (effSplit() && shown.has(panel)) tab.dataset.shown = 'true';
-    tab.title = m.label;
-    if (m.icon) tab.insertAdjacentHTML('beforeend', icon(m.icon));
-    const lab = document.createElement('span');
-    lab.className = 'doc-tab-label';
-    lab.textContent = m.label;
-    tab.appendChild(lab);
-    if (order.length > 1) {
-      const close = document.createElement('span');
-      close.className = 'doc-tab-close';
-      close.dataset.close = panel;
-      // Decorative glyph; keyboard users press Delete/Backspace on the focused tab.
-      close.setAttribute('aria-hidden', 'true');
-      close.insertAdjacentHTML('beforeend', icon('close'));
-      tab.appendChild(close);
-    }
-    els.docTabs.appendChild(tab);
-  }
-}
 function reflect() {
   const focused = M.focusedPanel(state);
-  const focusedId = M.focusedDocId(state);
   for (const p of $$('.panel[data-panel]')) p.classList.toggle('is-focused', p.dataset.panel === focused && p.classList.contains('active'));
   for (const t of $$('#tabs .tab')) {
     const on = t.dataset.tab === focused;
@@ -137,14 +83,24 @@ function reflect() {
     t.setAttribute('aria-selected', on ? 'true' : 'false');
     t.tabIndex = on ? 0 : -1;
   }
-  for (const dt of $$('#docTabs .doc-tab')) {
-    const on = dt.dataset.doc === focusedId;
-    dt.setAttribute('aria-selected', on ? 'true' : 'false');
-    dt.tabIndex = on ? 0 : -1;
-  }
   if (els.pane0) els.pane0.dataset.focused = (!effSplit() || state.focused === 0) ? 'true' : 'false';
   if (els.pane1) els.pane1.dataset.focused = (effSplit() && state.focused === 1) ? 'true' : 'false';
+  placeActions();
   syncSplitButtons();
+}
+// The action cluster floats over the focused pane (pane 0 when not split).
+function placeActions() {
+  if (!els.actions) return;
+  const pane = effSplit() && state.focused === 1 ? els.pane1 : els.pane0;
+  if (pane && pane.lastElementChild !== els.actions) {
+    // Keep the cluster last in the pane (after the panel in tab order) without
+    // dropping focus if one of its buttons currently has it.
+    const held = els.actions.contains(document.activeElement) ? document.activeElement : null;
+    pane.appendChild(els.actions);
+    if (held && document.activeElement !== held) held.focus();
+  }
+  // A document can be closed while more than one is open (the rail reopens any tool).
+  if (els.close) els.close.hidden = M.docOrderPanels(state).length < 2;
 }
 function syncSplitButtons() {
   if (els.splitLr) els.splitLr.setAttribute('aria-pressed', effLayout() === 'split-lr' ? 'true' : 'false');
@@ -179,7 +135,7 @@ function commit(next, { structural = false, explicit = false } = {}) {
   const prevVisible = state ? visibleEff() : [];
   state = next;
   const newFocused = M.focusedPanel(state);
-  const run = () => { if (structural) { mountPanels(); renderStrip(); } reflect(); };
+  const run = () => { if (structural) mountPanels(); reflect(); };
   if (!prefersReducedMotion() && prevFocused && prevFocused !== newFocused) {
     setMotionDir(prevFocused, newFocused);
     const tr = transitionView(run);
@@ -236,28 +192,11 @@ export const canvasIsVisible = (name) => canvasVisiblePanels().includes(name);
 export const canvasIsSplit = () => (state ? effSplit() : false);
 
 // ---- event wiring ----
-function wireStrip() {
-  els.docTabs.addEventListener('click', (e) => {
-    const close = e.target.closest('.doc-tab-close');
-    if (close) { e.preventDefault(); e.stopPropagation(); canvasCloseDoc(close.dataset.close); return; }
-    const tab = e.target.closest('.doc-tab');
-    if (tab) canvasFocusDoc(tab.dataset.doc);
-  });
-  els.docTabs.addEventListener('keydown', (e) => {
-    const tabs = $$('#docTabs .doc-tab');
-    const cur = tabs.indexOf(document.activeElement.closest('.doc-tab'));
-    if (cur < 0) return;
-    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); canvasCloseDoc(tabs[cur].dataset.doc); return; }
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault();
-    const n = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : e.key === 'ArrowRight' ? (cur + 1) % tabs.length : (cur - 1 + tabs.length) % tabs.length;
-    canvasFocusDoc(tabs[n].dataset.doc);
-    (document.getElementById('doctab-' + M.focusedDocId(state)) || tabs[n]).focus();
-  });
-}
 function wireSplitButtons() {
   if (els.splitLr) els.splitLr.onclick = () => (effLayout() === 'split-lr' ? canvasUnsplit() : canvasSplit('split-lr'));
   if (els.splitTb) els.splitTb.onclick = () => (effLayout() === 'split-tb' ? canvasUnsplit() : canvasSplit('split-tb'));
+  // Closes the document in the focused pane; the next open document is revealed.
+  if (els.close) els.close.onclick = () => canvasCloseDoc(M.focusedDocId(state));
 }
 function wirePaneFocus() {
   const focusFromEvent = (e) => {
@@ -311,17 +250,16 @@ function wireSash() {
 export function initCanvas(options = {}) {
   opts = options || {};
   els = {
-    main: $('#main'), canvas: $('#canvas'), docTabs: $('#docTabs'),
+    main: $('#main'), canvas: $('#canvas'),
     pane0: document.querySelector('.canvas-pane[data-pane="0"]'),
     pane1: document.querySelector('.canvas-pane[data-pane="1"]'),
     sash: $('#canvasSash'), pool: $('#canvasPool'),
     splitLr: $('#splitLrBtn'), splitTb: $('#splitTbBtn'),
+    actions: $('#paneActions'), close: $('#paneCloseBtn'),
   };
-  if (!els.canvas || !els.docTabs || !els.pane0) return false;
-  deriveMeta();
+  if (!els.canvas || !els.pane0) return false;
   if (!restore()) state = M.createCanvasState(opts.initialPanel || 'proxy');
   if (!built) {
-    wireStrip();
     wireSplitButtons();
     wirePaneFocus();
     wireSash();

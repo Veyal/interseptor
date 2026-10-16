@@ -77,7 +77,7 @@ $$('.tab').forEach(tab=>{tab.disabled=true;});
 {const button=$('#cmdkBtn');if(button)button.disabled=true;}
 // activateTab routes a rail click to the canvas: it opens (or focuses) that
 // tool's document in the focused pane. The canvas owns panel placement, the
-// `.panel.active` visibility flag, the rail/doc-tab focus reflection and the
+// `.panel.active` visibility flag, the rail focus reflection and the
 // entrance motion; the shell keeps the navigation side effects (below).
 function activateTab(t){
   if(!projectScopedUIReady)return;
