@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Document Cloud Agent Go toolchain behavior and a local run command in AGENTS.md.
+- **AI-origin tagging is now test-enforced (#115).** A table-driven control-plane test drives every flow-creating send endpoint (repeater, finding retest, replay, Intruder, WebSocket repeater, collections send/run/matrix, authz run/check-sessions/differential/cross-host-replay) with and without `X-Interseptor-Source: ai` and asserts `FlagAI` is set only for AI calls, and a static scan of the MCP tools fails when a tool reaches an endpoint missing from that table.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.14.0` release.
 
 ## [2.14.0] - 2026-10-15
