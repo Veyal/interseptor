@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.15.1] - 2026-10-16
+
+> Patch release: held Intercept requests and responses can now be edited directly in the Pretty
+> view. Viewing alone still forwards the original bytes, an edit forwards exactly what is shown
+> with Content-Length recomputed, Pretty only reformats bodies losslessly, and an untouched held
+> message no longer shows MODIFIED because of line-ending differences.
+
 ### Added
 
 - **Intercept: edit held requests and responses in the Pretty view.** Pretty is now an Pretty only reformats a body when that changes nothing but whitespace; JSON that a parse/stringify round-trip would alter (big integers, duplicate or reordered keys, `1.0`, `\u` escapes) is shown verbatim, so a Pretty edit never silently rewrites the rest of the payload.
