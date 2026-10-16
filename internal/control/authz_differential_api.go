@@ -37,7 +37,7 @@ func (h *authzAPI) authzDifferentialRun(w http.ResponseWriter, r *http.Request) 
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	opts := differentialOpts{InvalidBody: in.InvalidBody}
+	opts := differentialOpts{InvalidBody: in.InvalidBody, Flags: aiSourceFlag(r)}
 	if in.SideEffectFlowID > 0 {
 		if opts.SideEffectFlow, err = h.st.GetFlow(in.SideEffectFlowID); err != nil {
 			httpNotFoundOrInternal(w, err, "sideEffectFlowId flow not found")

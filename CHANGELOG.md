@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **AI-originated authorization replays now carry the AI tag.** Flows recorded by `/api/authz/run`, `/check-sessions`, `/differential` and `/cross-host-replay` get `FlagAI` alongside `FlagAuthz` when the request has `X-Interseptor-Source: ai`, so they appear under the History "AI" chip and `?ai=1` filter (#114).
+
 ### Changed
 
 - Document Cloud Agent Go toolchain behavior and a local run command in AGENTS.md.

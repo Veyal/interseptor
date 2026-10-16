@@ -217,7 +217,7 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		hasAuth := identityHasAuth(id)
-		rr := h.authzReplay(f, id)
+		rr := h.authzReplay(f, id, aiSourceFlag(r))
 		out = append(out, check{
 			Name:           id.Name,
 			Status:         rr.Status,
@@ -296,7 +296,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	var runs []authzRunOut
 	flagged := 0
 	for _, f := range flows {
-		ro := h.authzRunOne(f, ids)
+		ro := h.authzRunOne(f, ids, aiSourceFlag(r))
 		runs = append(runs, ro)
 		for i, rr := range ro.Results {
 			if i > 0 && rr.Same {
@@ -313,7 +313,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
+func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity, extra int64) authzRunOut {
 	ro := authzRunOut{
 		FlowID: f.ID, Method: f.Method, Host: f.Host, Path: f.Path,
 	}
@@ -332,7 +332,7 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 			continue
 		}
 		hasAuth := identityHasAuth(id)
-		rr := h.authzReplay(f, id)
+		rr := h.authzReplay(f, id, extra)
 		rr.Name = id.Name
 		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth, rr.resHeaders)
 		rr.AccessDenied = accessDenied(rr.Status, hasAuth)
@@ -346,13 +346,14 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 	return ro
 }
 
-func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
-	return h.authzReplayBody(f, id, nil)
+// extra is OR-ed into the recorded flow flags (e.g. store.FlagAI for AI-originated requests).
+func (h *authzAPI) authzReplay(f *store.Flow, id identity, extra int64) authzResult {
+	return h.authzReplayBody(f, id, nil, extra)
 }
 
 // authzReplayBody is authzReplay with an optional replacement request body
 // (nil keeps the captured body). Used by the differential invalid-body probe.
-func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []byte) authzResult {
+func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []byte, extra int64) authzResult {
 	url := flowURLStr(f)
 	if h.targetsOwnListener(url) {
 		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
@@ -366,7 +367,7 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 		}
 	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
-	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
+	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz | extra, NoSession: true})
 	rr := authzResult{Name: id.Name}
 	if sendErr != nil {
 		rr.Error = "send failed"
@@ -741,7 +742,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			URL:       targetURL,
 			Headers:   hdrs,
 			Body:      refBody,
-			Flags:     store.FlagAuthz,
+			Flags:     store.FlagAuthz | aiSourceFlag(r),
 			NoSession: true,
 		})
 

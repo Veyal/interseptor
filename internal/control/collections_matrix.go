@@ -107,7 +107,7 @@ func (f flowMatrixReplayer) Replay(_ context.Context, tg collmatrix.FlowTarget, 
 	if err != nil || fl == nil {
 		return collmatrix.ReplayResult{Error: "flow not found"}
 	}
-	rr := (&authzAPI{f.h}).authzReplayBody(fl, toControlIdentity(id), nil)
+	rr := (&authzAPI{f.h}).authzReplayBody(fl, toControlIdentity(id), nil, 0)
 	loc := ""
 	if v := rr.resHeaders["Location"]; len(v) > 0 {
 		loc = v[0]

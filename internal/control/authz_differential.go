@@ -118,6 +118,7 @@ type authzDifferentialEvidence struct {
 type differentialOpts struct {
 	InvalidBody    string      // non-empty: probe anonymous with this body to learn auth/validation order
 	SideEffectFlow *store.Flow // optional read-only flow replayed before/after each context
+	Flags          int64       // extra flow flags OR-ed onto every replay (e.g. store.FlagAI)
 }
 
 // FlowIDs lists every raw flow referenced by the evidence, in stable order.
@@ -213,22 +214,22 @@ func differentialContexts(ids []identity) []identity {
 	return out
 }
 
-func (h *authzAPI) sideEffectProbe(obs *store.Flow, observer identity) (authzResult, bool) {
-	rr := h.authzReplay(obs, observer)
+func (h *authzAPI) sideEffectProbe(obs *store.Flow, observer identity, extra int64) (authzResult, bool) {
+	rr := h.authzReplay(obs, observer, extra)
 	return rr, rr.Error == ""
 }
 
 // observeAround replays obs before and after run() and reports whether the
 // observed state changed.
-func (h *authzAPI) observeAround(obs *store.Flow, run func()) *differentialSideEffect {
+func (h *authzAPI) observeAround(obs *store.Flow, extra int64, run func()) *differentialSideEffect {
 	if obs == nil {
 		run()
 		return nil
 	}
 	observer := identity{Name: "observer", Headers: extractAuthHeaders(obs.ReqHeaders)}
-	before, okB := h.sideEffectProbe(obs, observer)
+	before, okB := h.sideEffectProbe(obs, observer, extra)
 	run()
-	after, okA := h.sideEffectProbe(obs, observer)
+	after, okA := h.sideEffectProbe(obs, observer, extra)
 	se := &differentialSideEffect{BeforeFlowID: before.FlowID, AfterFlowID: after.FlowID}
 	if !okB || !okA {
 		se.Error = strings.TrimSpace(before.Error + " " + after.Error)
@@ -257,8 +258,8 @@ func (h *authzAPI) authzDifferential(f *store.Flow, ids []identity, opts differe
 			anonID = &id
 		}
 		var rr authzResult
-		se := h.observeAround(opts.SideEffectFlow, func() {
-			rr = h.authzReplay(f, id)
+		se := h.observeAround(opts.SideEffectFlow, opts.Flags, func() {
+			rr = h.authzReplay(f, id, opts.Flags)
 			rr.Name = id.Name
 		})
 		c := contextFromResult(rr, hasAuth)
@@ -291,7 +292,7 @@ func (h *authzAPI) finishDifferential(ev *authzDifferentialEvidence, f *store.Fl
 			"Hypothesis: authentication may not be enforced — the anonymous replay succeeded with the same response as the baseline identity. Reproduce before reporting.")
 	}
 	if opts.InvalidBody != "" && anon != nil && anonCtx != nil {
-		rr := h.authzReplayBody(f, *anon, []byte(opts.InvalidBody))
+		rr := h.authzReplayBody(f, *anon, []byte(opts.InvalidBody), opts.Flags)
 		rr.Name = anonymousContextName + "+invalid-body"
 		probe := contextFromResult(rr, false)
 		ev.InvalidProbe = &probe

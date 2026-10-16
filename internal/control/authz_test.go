@@ -179,7 +179,7 @@ func TestAuthzReplayReportsIncompleteResponseCapture(t *testing.T) {
 	h, _, _ := newHub(t)
 	rr := (&authzAPI{h}).authzReplay(&store.Flow{
 		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
-	}, identity{Name: "user"})
+	}, identity{Name: "user"}, 0)
 	if rr.Error != "response capture incomplete" {
 		t.Fatalf("error = %q, want response capture incomplete", rr.Error)
 	}
@@ -189,7 +189,7 @@ func TestAuthzReplaySurfacesSendFailure(t *testing.T) {
 	h, _, _ := newHub(t)
 	rr := (&authzAPI{h}).authzReplay(&store.Flow{
 		Method: "GET\nInvalid", Scheme: "https", Host: "example.com", Port: 443, Path: "/probe",
-	}, identity{Name: "user"})
+	}, identity{Name: "user"}, 0)
 	if rr.Error != "send failed" {
 		t.Fatalf("error = %q, want send failed", rr.Error)
 	}
@@ -200,7 +200,7 @@ func TestAuthzReplayRefusesOwnListener(t *testing.T) {
 	h.SetSelfAddr("127.0.0.1:9966")
 	rr := (&authzAPI{h}).authzReplay(&store.Flow{
 		Method: "GET", Scheme: "http", Host: "localhost", Port: 9966, Path: "/api/authz",
-	}, identity{Name: "user", Headers: "Authorization: Bearer example"})
+	}, identity{Name: "user", Headers: "Authorization: Bearer example"}, 0)
 	if rr.Error != "refusing to send to Interseptor's own listener" {
 		t.Fatalf("error = %q, want own-listener refusal", rr.Error)
 	}
@@ -230,7 +230,7 @@ func TestAuthzRunDoesNotUseErroredReplayAsBaseline(t *testing.T) {
 	}, []identity{
 		{Name: "broken", Headers: "Authorization: Bearer broken"},
 		{Name: "valid", Headers: "Authorization: Bearer valid"},
-	})
+	}, 0)
 	if len(ro.Results) != 2 || ro.Results[0].Error == "" {
 		t.Fatalf("results = %+v, want errored first replay", ro.Results)
 	}
@@ -262,7 +262,7 @@ func TestAuthzRunComparesDecodedResponseBodies(t *testing.T) {
 	}, []identity{
 		{Name: "one", Headers: "Authorization: Bearer one"},
 		{Name: "two", Headers: "Authorization: Bearer two"},
-	})
+	}, 0)
 	if len(ro.Results) != 2 || !ro.Results[1].Same {
 		t.Fatalf("results = %+v, want decoded bodies to match", ro.Results)
 	}
