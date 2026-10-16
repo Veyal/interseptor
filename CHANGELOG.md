@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > Patch release: held Intercept requests and responses can now be edited directly in the Pretty
 > view. Viewing alone still forwards the original bytes, an edit forwards exactly what is shown
 > with Content-Length recomputed, Pretty only reformats bodies losslessly, and an untouched held
-> message no longer shows MODIFIED because of line-ending differences.
+> message no longer shows MODIFIED because of line-ending differences. Repeater also drops its
+> response-only copy-image button.
 
 ### Added
 
@@ -37,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   now omits `raw` so the server forwards the held original bytes.
 
 ### Changed
+
+- **Repeater: removed the response-only copy-image button.** The image icon in the response
+  head only copied the response as a picture and is gone; the toolbar "Copy as PNG" button and
+  the exchange PNG menu items, which cover the full request and response, stay.
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.15.0` release.
 

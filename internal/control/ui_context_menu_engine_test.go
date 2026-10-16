@@ -220,14 +220,19 @@ func TestUIFlowPngCopyIsMountedWhereProofIsPasted(t *testing.T) {
 		// The inspector dropdown carries side, layout and a fixed theme.
 		"{label:'Fixed theme',icon:'appearance',children:[",
 	)
-	// Repeater mounts it on the toolbar and in the response head.
+	// Repeater mounts the full-exchange button on the toolbar only.
 	requireUIContracts(t, "js/repeater.js",
 		"pngMount.id = 'repCopyPng';",
-		"resPngMount.id = 'repResCopyPng';",
 		"mountFlowCopyPng(pngMount, id, 'btn xs');",
-		"{ side: 'res', text: '', ariaLabel: 'Copy this response as a PNG image' }",
 		"const pngFlowId = (t) => (t && t.resId && !t.sendPending ? t.resId : 0);",
 	)
+	// The response-only image control is gone; the full-exchange toolbar button stays.
+	rep := readUIAsset(t, "js/repeater.js")
+	for _, gone := range []string{"repResCopyPng", "rep-res-copy-png", "rep-res-png", "resPngMount", "Copy this response as a PNG image"} {
+		if strings.Contains(rep, gone) {
+			t.Errorf("js/repeater.js must not reference %s", gone)
+		}
+	}
 	// The Comparer and the authz matrix copy the renderer's own image.
 	requireUIContracts(t, "js/flow-diff.js",
 		"copyPng.id = 'proxyDiffCopyPng';",

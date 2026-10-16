@@ -191,14 +191,6 @@ export function wireRepeaterExtras(deps) {
   pngMount.className = 'rep-copy-png';
   group.prepend(attach, proof, diff, copy, pngMount, chip);
 
-  // A compact icon in the response head, next to status, duration and size:
-  // the picture is of the response, so the control belongs beside it.
-  const resHead = resPane.querySelector('.pane-head');
-  const resPngMount = doc.createElement('span');
-  resPngMount.id = 'repResCopyPng';
-  resPngMount.className = 'rep-res-copy-png';
-  if (resHead) resHead.appendChild(resPngMount);
-
   // pngFlowId is the sent exchange a picture can be made of: a captured flow,
   // not an in-flight send and not an unsent tab.
   const pngFlowId = (t) => (t && t.resId && !t.sendPending ? t.resId : 0);
@@ -207,17 +199,13 @@ export function wireRepeaterExtras(deps) {
     if (!mountFlowCopyPng) return;
     if (id) {
       mountFlowCopyPng(pngMount, id, 'btn xs');
-      mountFlowCopyPng(resPngMount, id, 'btn xs rep-res-png', { side: 'res', text: '', ariaLabel: 'Copy this response as a PNG image' });
       return;
     }
     const why = t && t.sendPending ? 'Wait for the send to finish' : 'Send the request first to copy it as a PNG';
-    for (const [mount, text] of [[pngMount, 'Copy as PNG'], [resPngMount, '']]) {
-      mount.replaceChildren();
-      const b = button(doc, { icon: 'image', text, label: why, cls: text ? 'btn xs' : 'btn xs rep-res-png' });
-      b.disabled = true;
-      if (!text) b.setAttribute('aria-label', 'Copy this response as a PNG image');
-      mount.appendChild(b);
-    }
+    pngMount.replaceChildren();
+    const b = button(doc, { icon: 'image', text: 'Copy as PNG', label: why, cls: 'btn xs' });
+    b.disabled = true;
+    pngMount.appendChild(b);
   }
 
   function sync() {
