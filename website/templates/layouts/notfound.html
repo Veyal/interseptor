@@ -1,0 +1,21 @@
+{{- /*
+  The 404 page: the frog that dropped the request, the h1, one sentence, search and the popular
+  pages. It uses the wide page shell and no sidebar or outline; the menu drawer in base.html
+  still gives the full navigation. The art is decorative, so it is hidden from assistive
+  technology and the page reads the same without it.
+*/ -}}
+{{define "main" -}}
+<div class="page-shell wrap">
+  <main id="main" class="page-main not-found" tabindex="-1">
+    <div class="nf-stage">
+      <div class="nf-art" aria-hidden="true">
+        <img class="nf-frog" src="{{asset "img/mascot/frog-drop-512.webp"}}" srcset="{{asset "img/mascot/frog-drop-512.webp"}} 512w, {{asset "img/mascot/frog-drop-1024.webp"}} 1024w" sizes="(min-width: 52rem) 336px, 176px" width="512" height="512" alt="" decoding="async">
+      </div>
+      <div class="nf-copy">
+        {{template "page-heading" .}}
+        {{.Page.Content}}
+      </div>
+    </div>
+  </main>
+</div>
+{{- end}}

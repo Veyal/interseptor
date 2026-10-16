@@ -1,11 +1,11 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/csrf"
 	"github.com/Veyal/interseptor/internal/store"
@@ -86,29 +86,11 @@ func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]
 	if strings.TrimSpace(headers) == "" {
 		return nil, fmt.Errorf("flow #%d has no Cookie/Authorization headers to promote", flowID)
 	}
-	newID := identity{Name: name, Headers: headers}
-	ids, err := h.authzIdentitiesResult()
-	if err != nil {
-		return nil, err
-	}
-	if merge {
-		updated := false
-		for i, id := range ids {
-			if id.Name == name {
-				ids[i] = newID
-				updated = true
-				break
-			}
+	newID := stampIdentity(identity{Name: name, Headers: headers}, "", time.Now())
+	return h.mutateIdentities(func(ids []identity) ([]identity, error) {
+		if merge {
+			return upsertIdentity(ids, newID), nil
 		}
-		if !updated {
-			ids = append(ids, newID)
-		}
-	} else {
-		ids = append(ids, newID)
-	}
-	b, _ := json.Marshal(ids)
-	if err := h.st.SetSetting("authz.identities", string(b)); err != nil {
-		return nil, err
-	}
-	return ids, nil
+		return append(ids, newID), nil
+	})
 }

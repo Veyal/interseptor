@@ -790,3 +790,57 @@ func TestDirectoryListingNegativeTitleOnlyNoLinks(t *testing.T) {
 		t.Fatalf("should not flag when <a href= links are absent; got: %s", titles(got))
 	}
 }
+
+func TestCORSCredentialsNullOrigin(t *testing.T) {
+	// Positive: ACAO=null + Allow-Credentials: true -> High severity
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "api.example.com", Path: "/data", Status: 200,
+		ReqHeaders: map[string][]string(http.Header{"Origin": {"null"}}),
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":                     {"application/json"},
+			"Strict-Transport-Security":        {"max-age=1"},
+			"Access-Control-Allow-Origin":      {"null"},
+			"Access-Control-Allow-Credentials": {"true"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(`{"data":"secret"}`))
+	if !has(got, "CORS allows null origin with credentials enabled") {
+		t.Fatalf("expected CORS null origin finding; got: %s", titles(got))
+	}
+}
+
+func TestPrototypePollutionInRequestBody(t *testing.T) {
+	flow := &store.Flow{
+		Scheme: "https", Method: "POST", Host: "api.example.com", Path: "/profile", Status: 200,
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"application/json"},
+			"Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	// Object containing __proto__
+	got := Analyze(flow, []byte(`{"name":"test","__proto__":{"admin":true}}`), []byte(`{"ok":true}`))
+	if !has(got, "Prototype pollution vector in request") {
+		t.Fatalf("expected prototype pollution finding; got: %s", titles(got))
+	}
+
+	// Negative test: clean payload
+	clean := Analyze(flow, []byte(`{"name":"test","admin":false}`), []byte(`{"ok":true}`))
+	if has(clean, "Prototype pollution vector in request") {
+		t.Fatalf("clean payload should not trigger prototype pollution; got: %s", titles(clean))
+	}
+}
+
+func TestSensitiveURLParamExpanded(t *testing.T) {
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "api.example.com", Path: "/auth/callback?refresh_token=sec_abc123xyz456", Status: 200,
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"application/json"},
+			"Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(`{"status":"ok"}`))
+	if !has(got, "Sensitive token or credential in URL") {
+		t.Fatalf("expected sensitive token in URL finding for refresh_token; got: %s", titles(got))
+	}
+}
+

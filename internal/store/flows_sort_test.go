@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,4 +73,42 @@ func flowIDs(flows []*Flow) []int64 {
 		out[i] = f.ID
 	}
 	return out
+}
+
+// Every History sort expression must be index-backed: without an expression
+// index, ORDER BY lower(host) / lower(path) / COALESCE(res_len,0) /
+// lower(COALESCE(mime,'')) builds a temp B-tree per page of a large capture.
+func TestFlowSortExpressionsAreIndexBacked(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	for _, key := range []string{"method", "host", "path", "status", "size", "time", "mime"} {
+		expr, ok := flowSortExpr(key)
+		if !ok {
+			t.Fatalf("sort expr for %q missing", key)
+		}
+		rows, err := s.db.Query("EXPLAIN QUERY PLAN SELECT id FROM flows ORDER BY " + expr + " ASC, id ASC")
+		if err != nil {
+			t.Fatalf("explain %s: %v", key, err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var sid, ord, from int
+			var detail string
+			if err := rows.Scan(&sid, &ord, &from, &detail); err != nil {
+				rows.Close()
+				t.Fatalf("scan plan %s: %v", key, err)
+			}
+			plan.WriteString(detail)
+			plan.WriteString("; ")
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatalf("close plan %s: %v", key, err)
+		}
+		if got := plan.String(); strings.Contains(got, "TEMP B-TREE") {
+			t.Fatalf("sort %q (%s) is not index-backed; plan: %s", key, expr, got)
+		}
+	}
 }

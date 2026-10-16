@@ -1,0 +1,47 @@
+type: collection.insomnia.rest/5.0
+name: V5 Example
+meta:
+  id: wrk_v5
+collection:
+  - name: Folder
+    meta:
+      id: fld_a
+      sortKey: 1
+    children:
+      - url: "{{ _.host }}/items"
+        name: List
+        meta:
+          id: req_a
+          sortKey: 1
+        method: GET
+        headers:
+          - name: Accept
+            value: application/json
+        parameters:
+          - name: q
+            value: x
+        authentication:
+          type: apikey
+          key: X-Key
+          value: "{{ _.key }}"
+          addTo: header
+        scripts:
+          preRequest: "pm.environment.set('a', 1);"
+  - url: https://example.com/root
+    name: Root
+    meta:
+      id: req_b
+      sortKey: 2
+    method: DELETE
+environments:
+  name: Base Environment
+  meta:
+    id: env_v5
+  data:
+    host: https://example.com
+  subEnvironments:
+    - name: Prod
+      meta:
+        id: env_v5p
+      data:
+        host: https://prod.example.com

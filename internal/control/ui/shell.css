@@ -1,0 +1,199 @@
+/* shell.css — the workbench shell: the Flight Bar (#bar, the one top bar), its
+   readiness popover, the Connection chip and popover, the offline banner and the
+   rail badge. Loaded after app.css, so equal-specificity rules here win; app.css
+   keeps only the bar's base box and the --topbar-h token. Only transform and
+   opacity may ever animate in this file, and it currently animates nothing, so
+   the global reduced-motion block has nothing to cover. Breakpoints follow
+   workbench.css: 1100 drops the brand text, 900 shortens the pills, 720 is the
+   phone bar (project and identity move to the dock and the palette), 480 drops
+   the theme toggle (the More sheet has it) and shortens the omnibar, and 360
+   drops the logo mark. */
+
+/* ---- the Flight Bar ---- */
+#crumb.sr-only{position:absolute}
+@media (max-width:720px){#bar #crumb{display:flex}}
+/* The Connection and readiness popovers live inside #bar, so the bar sits at
+   popover level to stay above the workspace and the drawer. Its height is the
+   --topbar-h token (42px at the default density) plus the top safe-area inset;
+   overflow is the last resort for a window narrower than the phone tier, so a
+   control scrolls into view instead of being clipped. */
+#bar{position:relative;z-index:var(--z-popover);gap:var(--sp-2);min-width:0;padding:var(--safe-t) max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l));font-size:var(--fs-sm);white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#bar::-webkit-scrollbar{display:none}
+/* Two equal zones around the omnibar keep it centred in the bar whatever the
+   pills on either side hold. */
+.fb-zone{display:flex;align-items:center;gap:var(--sp-2);flex:1 1 0}
+.fb-end{justify-content:flex-end}
+.fb-brand,.fb-engage{display:flex;align-items:center;gap:var(--sp-2);flex:none}
+#logo{width:24px;height:24px;flex:none}
+#logo .icon{width:16px;height:16px}
+#cmdkBtn{flex:1 1 280px;min-width:8rem;max-width:640px;justify-content:flex-start;min-height:var(--hit-min);padding-top:0;padding-bottom:0;background:var(--bg);border-color:var(--line2)}
+#cmdkBtn .cmdk-label{display:inline-flex;align-items:center;gap:var(--sp-2);min-width:0;overflow:hidden;white-space:nowrap}
+#cmdkBtn .cmdk-label-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#cmdkBtn:hover{background:var(--bg3)}
+#cmdkBtn kbd{margin-left:auto;flex:none}
+#cmdkBtn kbd+kbd{margin-left:0}
+#themeToggle{flex:none;width:var(--hit-min);height:var(--hit-min)}
+#icptStat{flex:0 1 auto;min-width:0;max-width:26ch;overflow:hidden;text-overflow:ellipsis}
+.icpt-compact{display:none;flex:none;white-space:nowrap}
+
+/* ---- pills: project and scope ---- */
+.ctx-chip{display:inline-flex;align-items:center;gap:var(--sp-1);flex:0 1 auto;min-width:0;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg2);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.ctx-chip:hover{background:var(--bg3);color:var(--fg)}
+.ctx-chip:focus-visible,.ctx-ring:focus-visible,.ctx-row:focus-visible,.conn-chip:focus-visible,#cmdkBtn:focus-visible,#themeToggle:focus-visible,.ctx-identity .ui-select-trigger:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.ctx-chip .icon,.ctx-row .icon{flex:none;width:14px;height:14px}
+.ctx-caret{color:var(--fg3)}
+.ctx-key{flex:none;color:var(--fg3);font-weight:600}
+.ctx-text{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
+.ctx-project .ctx-text{max-width:16ch}
+.ctx-scope .ctx-text{max-width:24ch}
+.ctx-chip[data-stale="true"],.ctx-row[data-stale="true"],.ctx-ring[data-stale="true"]{border-style:dashed}
+.ctx-scope[data-state="filtering"]{border-color:var(--scope-on);background:var(--rd-pass-dim)}
+.ctx-scope[data-state="filtering"] .icon{color:var(--scope-on)}
+.ctx-scope[data-state="defined"] .icon{color:var(--scope-on)}
+.ctx-scope[data-state="none"]{border-color:var(--scope-off);background:var(--rd-gap-dim)}
+.ctx-scope[data-state="none"] .icon{color:var(--scope-off)}
+.ctx-scope[data-state]:hover{background:var(--bg3)}
+
+/* ---- identity ---- */
+.ctx-identity{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none}
+.ctx-identity[hidden]{display:none}
+.ctx-identity .ui-select-btn .ui-select-trigger{height:var(--hit-min);min-height:var(--hit-min)}
+.ctx-avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--idn-6);color:var(--idn-fg);font:700 var(--fs-xs)/1 var(--ui)}
+.ctx-avatar[data-hue="1"]{background:var(--idn-1)}
+.ctx-avatar[data-hue="2"]{background:var(--idn-2)}
+.ctx-avatar[data-hue="3"]{background:var(--idn-3)}
+.ctx-avatar[data-hue="4"]{background:var(--idn-4)}
+.ctx-avatar[data-hue="5"]{background:var(--idn-5)}
+.ctx-avatar[data-hue="6"]{background:var(--idn-6)}
+
+/* ---- the readiness ring ----
+   An octagon (the status-icon shape) whose arc is the share of findings that are
+   report-ready. It always sits on the bar. Outside the Report view it carries no
+   readiness signal: the fraction, the arc and the blocker count are report-time
+   information. It flags only missing project setup (target, scope), and does so
+   with a "!" shape, not colour alone. */
+.ctx-ring{position:relative;display:inline-flex;align-items:center;gap:var(--sp-1);flex:none;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg2);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.ctx-ring:hover{background:var(--bg3);color:var(--fg)}
+.ctx-ring-svg{width:20px;height:20px;flex:none;overflow:visible}
+.ctx-ring-track{stroke:var(--fg3)}
+.ctx-ring-arc{stroke:var(--rd-pass);stroke-linecap:butt}
+.ctx-ring-bang,.ctx-ring-check{display:none}
+.ctx-ring[data-mark="bang"] .ctx-ring-bang,.ctx-ring[data-mark="check"] .ctx-ring-check{display:inline}
+.ctx-ring[data-state="setup"] .ctx-ring-track,.ctx-ring[data-state="setup"] .ctx-ring-bang{stroke:var(--rd-gap)}
+.ctx-ring[data-state="blocked"] .ctx-ring-bang{stroke:var(--rd-block)}
+.ctx-ring[data-state="ready"] .ctx-ring-check{stroke:var(--rd-pass)}
+.ctx-ring-text{color:var(--fg)}
+.ctx-ring-badge{min-width:16px;padding:1px var(--sp-1);border-radius:var(--r-pill);background:var(--redSolid);color:var(--onDanger);font:700 var(--fs-xs)/1.3 var(--ui);text-align:center}
+
+/* ---- readiness popover (non-modal) ---- */
+.ctx-pop{--pop-right:8px;position:fixed;top:calc(var(--sticky-top) + var(--safe-t));right:var(--pop-right);z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(380px,calc(100vw - 16px));max-height:min(70vh,480px);overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2);white-space:normal}
+.ctx-pop[hidden]{display:none}
+.ctx-pop-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+.ctx-pop-title{margin:0;font-size:var(--fs-lg);font-weight:650;color:var(--fg)}
+.ctx-pop-sub{margin:var(--sp-1) 0 0;font-size:var(--fs-sm);font-weight:650;color:var(--fg2)}
+.ctx-pop-meter{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm)}
+.ctx-meter{display:inline-flex;align-items:center;min-height:16px}
+.ctx-meter[hidden]{display:none}
+.ctx-segs{display:inline-flex;gap:2px;align-items:center}
+/* Pass = solid fill, gap = hollow outline with a stripe; the words carry the rest. */
+.ctx-seg{width:8px;height:12px;border-radius:2px;border:1px solid var(--rd-pass);box-sizing:border-box}
+.ctx-seg.is-pass{background:var(--rd-pass)}
+.ctx-seg.is-gap{border-color:var(--rd-gap);background:var(--rd-stripe);color:var(--rd-gap)}
+.ctx-pop-rows{display:flex;flex-direction:column;gap:var(--sp-1)}
+.ctx-row{display:grid;grid-template-columns:14px 4.5rem minmax(0,1fr);align-items:center;gap:var(--sp-2);width:100%;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1);color:var(--fg2);font:600 var(--fs-sm)/1.2 var(--ui);text-align:left;cursor:pointer}
+.ctx-row:hover{background:var(--bg3);color:var(--fg)}
+.ctx-row>.icon{grid-column:1}
+.ctx-row>.ctx-key{grid-column:2}
+.ctx-row>.ctx-text{grid-column:3;white-space:nowrap}
+.ctx-next{border-color:var(--accent)}
+.ctx-next .ctx-text{color:var(--accent)}
+.ctx-target[data-empty="true"]{border-color:var(--rd-gap);background:var(--rd-gap-dim)}
+.ctx-target[data-empty="true"] .ctx-text{color:var(--rd-gap)}
+/* The list scrolls inside the popover, under its fixed header and above its footer.
+   Its padding (undone by the negative margin) gives a Fix button's focus ring room
+   inside the scroll area. A window under 560px tall has no room for a list of its
+   own (the header, rows and footer take about 245px of the popover's 70vh), so
+   there the popover scrolls as a whole and the list grows to its content. */
+.ctx-pop-list{margin:calc(-1 * var(--sp-1));padding:var(--sp-1);list-style:none;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp-1);min-height:0}
+.ctx-pop-list>li{flex:none}
+.ctx-pop-row{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);font-size:var(--fs-sm);color:var(--fg2)}
+.ctx-pop-row .icon{flex:none;width:14px;height:14px;color:var(--rd-block)}
+.ctx-pop-label{flex:1;min-width:0;overflow-wrap:anywhere}
+.ctx-pop-label strong{color:var(--fg);margin-right:var(--sp-1)}
+.ctx-gap{color:var(--accent);text-decoration:underline;margin-right:var(--sp-1)}
+.ctx-pop-empty{color:var(--fg3);font-size:var(--fs-sm);padding:var(--sp-2) 0}
+.ctx-pop-foot{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.ctx-pop a.btn{align-self:flex-start;text-decoration:none}
+.ctx-pop-row a.btn{align-self:center;flex:none}
+.ctx-gap:focus-visible,.ctx-pop a:focus-visible,.ctx-pop button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- connection: live status chip and popover ---- */
+.conn-chip{display:inline-flex;align-items:center;gap:var(--sp-2);flex:none;min-height:var(--hit-min);padding:0 var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.conn-chip:hover{background:var(--bg3)}
+.conn-chip[data-state="offline"]{border-color:var(--rd-block);color:var(--rd-block)}
+.conn-chip[data-state="reconnecting"]{border-color:var(--rd-gap);color:var(--rd-gap)}
+.conn-pop{position:fixed;top:calc(var(--topbar-h) + var(--safe-t));right:max(var(--sp-2),var(--safe-r));z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(320px,calc(100vw - 16px));padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
+.conn-pop[hidden]{display:none}
+.conn-pop{white-space:normal}
+.conn-row{display:flex;align-items:center;gap:var(--sp-2);min-width:0;font-size:var(--fs-sm)}
+.conn-key{flex:0 0 96px;color:var(--fg3)}
+.conn-val{min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-weight:600;color:var(--fg)}
+.conn-row:has(>#deviceProxyChip[style*="none"]){display:none}
+.conn-row .chip-btn{min-width:0;max-width:100%;overflow-wrap:anywhere}
+
+/* ---- offline banner ---- */
+.offline-banner{flex:none;display:flex;align-items:center;min-height:32px;padding:0 max(var(--sp-4),var(--safe-l));background:var(--rd-gap-dim);border-bottom:1px solid var(--rd-gap);color:var(--fg);font-size:var(--fs-sm)}
+.offline-banner[hidden]{display:none}
+
+/* ---- rail badge for Findings blockers ---- */
+#tab-findings #findBadge{margin-left:auto;background:var(--redSolid);color:var(--onDanger)}
+
+/* ---- density: the bar is the control height plus room for its focus ring ---- */
+:root[data-density="compact"]{--topbar-h:36px}
+:root[data-density="comfortable"]{--topbar-h:50px}
+
+/* ---- breakpoints ---- */
+@media (max-width:1100px){
+  #bar .brand,.ctx-scope .ctx-key,.ctx-identity .ctx-key{display:none}
+}
+@media (max-width:900px){
+  .ctx-project .ctx-text{max-width:10ch}
+  .ctx-scope .ctx-text{max-width:14ch}
+  .conn-chip[data-state="connected"] #connText,#cmdkBtn kbd,.ctx-avatar{display:none}
+  #cmdkBtn{min-width:6rem}
+  .ctx-identity .ui-select-trigger{max-width:10ch}
+  #icptStat{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .icpt-compact{display:inline}
+}
+@media (max-width:720px){
+  #bar{padding-left:max(var(--sp-2),var(--safe-l));padding-right:max(var(--sp-2),var(--safe-r))}
+  .ctx-project,.ctx-identity{display:none}
+  .ctx-pop{left:max(var(--sp-2),var(--safe-l));right:max(var(--sp-2),var(--safe-r));width:auto}
+}
+@media (max-width:480px){
+  #themeToggle,#cmdkBtn .cmdk-label-more{display:none}
+  .ctx-scope .ctx-text{max-width:7ch}
+  #cmdkBtn{min-width:3rem}
+}
+@media (max-height:560px){
+  .ctx-pop-list{overflow:visible;flex:none}
+}
+@media (max-width:360px){
+  #bar{gap:var(--sp-1)}
+  #logo{display:none}
+  .ctx-scope .ctx-text{max-width:6ch}
+}
+@media (pointer:coarse){
+  :root,:root[data-density]{--topbar-h:54px}
+  .ctx-chip,.ctx-ring,.ctx-row,.conn-chip,#cmdkBtn{min-height:44px}
+  .conn-pop .btn.xs,.ctx-pop .btn.xs{min-height:44px;min-width:44px}
+}
+@media (forced-colors:active){
+  .ctx-chip,.ctx-ring,.ctx-row,.conn-chip{border-color:CanvasText}
+  .ctx-chip:focus-visible,.ctx-ring:focus-visible,.ctx-row:focus-visible,.conn-chip:focus-visible{outline-color:Highlight}
+  .ctx-seg{border-color:CanvasText}
+  .ctx-seg.is-pass{background:Highlight}
+  .ctx-ring-track,.ctx-ring-bang,.ctx-ring-check{stroke:CanvasText}
+  .ctx-ring-arc{stroke:Highlight}
+  .conn-chip .sse-dot{forced-color-adjust:none}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image/png"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -98,8 +99,13 @@ func TestNormalizeLayoutTheme(t *testing.T) {
 	if got := NormalizeLayout("vertical"); got != LayoutVertical {
 		t.Fatalf("NormalizeLayout(vertical)=%q", got)
 	}
-	if got := NormalizeLayout(""); got != LayoutHorizontal {
-		t.Fatalf("NormalizeLayout(\"\")=%q want horizontal", got)
+	if got := NormalizeLayout(""); got != LayoutVertical {
+		t.Fatalf("NormalizeLayout(\"\")=%q want vertical", got)
+	}
+	for _, alias := range []string{"horizontal", "horiz", "side", "split", "row", "columns"} {
+		if got := NormalizeLayout(alias); got != LayoutHorizontal {
+			t.Fatalf("NormalizeLayout(%q)=%q want horizontal", alias, got)
+		}
 	}
 	if got := NormalizeTheme("dark"); got != ThemeDark {
 		t.Fatalf("NormalizeTheme(dark)=%q", got)
@@ -141,10 +147,10 @@ func TestRenderHorizontalIsWiderThanVertical(t *testing.T) {
 	}
 }
 
-func TestRenderDefaultsAreLightHorizontalPretty(t *testing.T) {
+func TestRenderDefaultsAreLightVerticalPretty(t *testing.T) {
 	req := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
 	res := []byte("HTTP/1.1 200 OK\r\n\r\n{\"id\":1}")
-	// Empty options → light theme, horizontal layout, pretty bodies.
+	// Empty options → light theme, vertical layout, pretty bodies.
 	pngBytes, err := Render(req, res, Options{Side: SideBoth, MaxCols: 40, MaxLines: 20})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
@@ -162,8 +168,41 @@ func TestRenderDefaultsAreLightHorizontalPretty(t *testing.T) {
 		t.Fatal(err)
 	}
 	vImg, _ := png.Decode(bytes.NewReader(vert))
-	if img.Bounds().Dx() <= vImg.Bounds().Dx() {
-		t.Fatalf("default (horizontal) width %d should exceed vertical %d", img.Bounds().Dx(), vImg.Bounds().Dx())
+	if img.Bounds() != vImg.Bounds() {
+		t.Fatalf("default bounds %v want vertical %v", img.Bounds(), vImg.Bounds())
+	}
+	horiz, err := Render(req, res, Options{Side: SideBoth, Layout: LayoutHorizontal, MaxCols: 40, MaxLines: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hImg, _ := png.Decode(bytes.NewReader(horiz))
+	if img.Bounds().Dx() >= hImg.Bounds().Dx() {
+		t.Fatalf("default (vertical) width %d should be narrower than horizontal %d", img.Bounds().Dx(), hImg.Bounds().Dx())
+	}
+}
+
+func TestRenderConcurrent(t *testing.T) {
+	req := []byte("GET /search?q=example HTTP/1.1\r\nHost: example.com\r\nAccept: application/json\r\n\r\n")
+	res := []byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"id\":1,\"name\":\"a\",\"items\":[1,2,3]}")
+	const workers = 12
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for n := 0; n < 6; n++ {
+				if _, err := Render(req, res, Options{Title: "GET example.com/search → 200"}); err != nil {
+					errCh <- err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
 	}
 }
 

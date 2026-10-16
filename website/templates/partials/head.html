@@ -1,0 +1,42 @@
+{{define "head"}}  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Page.Title}}{{if ne .Page.Kind "landing"}} · Interseptor docs{{end}}</title>
+  <meta name="description" content="{{.Page.Description}}">
+  <meta name="theme-color" content="#fff8eb">
+  {{- if .Page.NoIndex}}
+  <meta name="robots" content="noindex, follow">
+  {{- end}}
+  <link rel="canonical" href="{{.Page.Canonical}}">
+  <meta property="og:site_name" content="{{.Site.Title}}">
+  <meta property="og:type" content="{{.Page.OGType}}">
+  <meta property="og:title" content="{{.Page.Title}}">
+  <meta property="og:description" content="{{.Page.Description}}">
+  <meta property="og:url" content="{{.Page.Canonical}}">
+  <meta property="og:image" content="{{.Page.Image}}">
+  <meta property="og:image:width" content="{{or .Page.Params.image_width 1200}}">
+  <meta property="og:image:height" content="{{or .Page.Params.image_height 630}}">
+  <meta property="og:image:alt" content="{{.Page.ImageAlt}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{.Page.Title}}">
+  <meta name="twitter:description" content="{{.Page.Description}}">
+  <meta name="twitter:image" content="{{.Page.Image}}">
+  <meta name="twitter:image:alt" content="{{.Page.ImageAlt}}">
+  {{- /* Before first paint: mark that scripts run, and apply the stored theme or the system one, so
+       nothing flashes. site.js keeps data-theme in sync afterwards. */}}
+  <script>(function(){var d=document.documentElement,t=null;d.classList.add('js');try{t=localStorage.getItem('interseptor-docs-theme')}catch(_){}if(t!=='dark'&&t!=='light')t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='dark'?'#1a1722':'#fff8eb'})()</script>
+  {{- /* Fonts keep their plain URL: site.css loads them without a hash, and a preload must match it. */}}
+  <link rel="preload" href="{{url "/website/assets/fonts/nunito-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{url "/website/assets/fonts/baloo-2-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{asset "site.css"}}">
+  <link rel="stylesheet" href="{{asset "css/chrome.css"}}">
+  {{- if ne .Page.Kind "landing"}}
+  <link rel="stylesheet" href="{{asset "css/docs.css"}}">
+  {{- end}}
+  {{- /* Per-page stylesheets: front matter `css: [css/pages.css]`. */}}
+  {{- range .Page.Params.css}}
+  <link rel="stylesheet" href="{{asset .}}">
+  {{- end}}
+  <link rel="icon" href="{{asset "mark.svg"}}" type="image/svg+xml">
+  <link rel="icon" href="{{asset "img/icons/favicon-32.png"}}" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="{{asset "img/icons/apple-touch-icon.png"}}">
+{{- end}}

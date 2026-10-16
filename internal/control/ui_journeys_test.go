@@ -168,9 +168,7 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
 	}
 	requireUIContains(t, css,
-		`.settings-nav-group{display:none}`,
-		`.settings-picker{display:flex;align-items:center`,
-		`.settings-picker .ui-select{flex:1;min-width:0}`,
+		`.settings-wrap:not(.split) .settings-nav-group{display:contents}`,
 	)
 }
 
@@ -183,11 +181,13 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"function setSuppressTelemetry(",
 		"function setSuppressAndroidTelemetry(",
 		"function setInvisibleProxy(",
+		"function setFindingsUIEditing(",
 		"function setAutoBypass(",
 		"saveBooleanSetting('captureScopeOnly',on",
 		"saveBooleanSetting('suppressBrowserTelemetry',on",
 		"saveBooleanSetting('suppressAndroidTelemetry',on",
 		"saveBooleanSetting('invisibleProxy',on",
+		"saveBooleanSetting('findingsUIEditing',on",
 		"saveBooleanSetting('autoBypassOnPinFailure',on",
 		"saveSettingsPatch({tlsBypassHosts:next})",
 		"buildUpstreamProxyURL()",
@@ -218,19 +218,13 @@ func TestUIBrowserBackgroundSuppressionExplainsScope(t *testing.T) {
 	}
 }
 
-func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
+func TestUIJourneyOriginTLSVerificationToggle(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	requireUIContains(t, index,
-		`id="originTLSVerifyWarning"`,
-		`settings-origin-tls-warning`,
-		`role="alert"`,
 		`id="originTLSVerifyMode"`,
 		`Compatibility — accept test certificates`,
 		`Strict — verify origin certificates`,
-		`Origin certificates are not verified`,
-		`Interception/capture can accept impersonated servers`,
-		`HTTPS upstream-proxy verification remains strict`,
 		`id="originTLSVerifyBypassHost"`,
 		`id="originTLSVerifyBypassAdd"`,
 		`id="originTLSVerifyBypassSelected"`,
@@ -244,7 +238,6 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 		"selectedOriginHost(",
 		"loadSettings();",
 		"document.activeElement!==ol",
-		"catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true)",
 	)
 }
 
@@ -457,11 +450,10 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}
-	requireUIContains(t, index, `id="findExportStatuses"`)
+	requireUIContains(t, executableJS(readUIAsset(t, "js/report-preflight.js")), `id="reportStatuses"`)
 	requireUIContains(t, intercept, "intercept-danger", "held")
 	requireUIContains(t, index,
 		`id="interceptWarning"`,
-		`id="findExportStatuses"`,
 		`id="scanClear"`,
 		`id="scanRescanState"`,
 		`id="sharePrereq"`,

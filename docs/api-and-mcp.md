@@ -31,6 +31,71 @@ arguments (types, required fields, accepted variants) inline, so an agent can re
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
+### Tool profiles
+
+The whole tool surface is about 100 KB of JSON Schema. An eager-loading MCP client puts every schema
+into every prompt before the operator has said anything, so an agent that only replays requests and
+files findings still pays for the mobile, codec, collection and vault tools. A **profile** is a named
+subset.
+
+| Profile | `tools/list` size | What it serves |
+|---|---|---|
+| `full` | the whole surface | Everything. The default, unchanged from releases before profiles existed. |
+| `web-pentest` (alias `web`) | about a third of `full` | Scope, flows, Repeater, Intruder, passive scan, authz identities, OOB, findings. |
+| `reporting` (alias `report`) | under a fifth of `full` | The report pass over findings that already exist: readiness, target cleanup, CVSS, evidence rendering, export. |
+| `mobile` | under a tenth of `full` | Device interception setup: Android, iOS, CA install, SSL-pinning detection. |
+
+`GET /api/mcp` lists the profiles with the live tool count for each, so the numbers come from the
+running build rather than this page. `tools/list` on a connection is the authoritative list.
+
+Select one with the `INTERSEPTOR_MCP_PROFILE` environment variable for stdio, or `?profile=` on the
+HTTP endpoint:
+
+```jsonc
+{
+  "mcpServers": {
+    "interseptor": {
+      "command": "interseptor",
+      "args": ["mcp"],
+      "env": { "INTERSEPTOR_MCP_PROFILE": "web-pentest" }
+    }
+  }
+}
+```
+
+```bash
+curl -s -X POST 'http://127.0.0.1:9966/mcp?profile=web' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+An explicit `?profile=` wins over the environment variable, which wins over `full`. An unrecognised
+name is a `400`, never a silent fall back to a different surface. The HTTP transport is stateless, so
+send `?profile=` on every request; drop it and that request gets the environment's profile. A tool
+outside the active profile is refused with a message naming the profile and how to widen it —
+`tools/list` has to be the truth about what the connection serves. `initialize` and
+`GET /api/mcp/capabilities` report the active profile and its size.
+
+Two things shrink in a reduced profile beyond the tool count. The connect instructions drop the
+workflow sections whose tools the profile does not serve, so the guidance never tells an agent to
+call something it cannot. And `create_finding` / `update_finding` carry a pointer to the
+finding-writing contract instead of repeating all 9 KB of it, because `initialize` already sent it
+once — the contract itself is unchanged and still arrives in full.
+
+Profiles do not change what Interseptor can do, only what one connection advertises. Nothing is
+removed from `full`.
+
+### Live intercept over MCP is deprecated
+
+`forward_request`, `drop_request`, `forward_response` and `drop_response` hold a real browser socket
+open until something answers. An agent round trip is seconds; a browser's read timeout is not, so
+pages stall or error while the model thinks. Those four tools stay in `full` for a human-supervised
+hold, with the deprecation stated in each tool's description, and are left out of every curated
+profile. Agent-driven work belongs on the replay tools, which cannot stall live traffic:
+`send_request` to re-issue one request, `start_intruder` to vary it. The interception toggles
+(`set_intercept`, `set_response_intercept`) carry the same warning, because switching interception on
+is what starts the hold queue filling.
+
 The MCP `initialize` result includes the running `apiVersion`, a stable `schemaVersion`, and a
 `schemaHash` computed from the live tool registry. Clients that explicitly send `schemaVersion` or
 `schemaHash` during initialization receive a reconnect diagnostic when their contract is stale;
@@ -50,6 +115,34 @@ and path. Live updates stream over Server-Sent Events at `GET /api/events`. High
 `/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 
+### OpenAPI
+
+`GET /openapi.json` is an OpenAPI 3.1 document, generated from the same route catalog
+`GET /api/reference` serves, so it cannot drift from the running build. Every route is there with its
+real method, path, templated path parameters, tag and a unique `operationId`, which is what an SDK
+generator needs:
+
+```bash
+curl -s http://127.0.0.1:9966/openapi.json > interseptor.json
+# then run your generator of choice over interseptor.json
+```
+
+How far the declarations go, so you are not surprised by a generated client: request and response
+bodies are declared permissively (an untyped JSON object), and query parameters are not declared at
+all. The catalog holds those as prose, and each operation's `description` is that prose verbatim —
+it lists the accepted body fields and query parameters. So you get one correctly routed method per
+operation and read the description for the payload. Routes that return an image, Markdown or an
+event stream declare no response schema rather than claiming JSON.
+
+This URL used to return a bespoke route index (`kind: "interseptor-route-index"`). Its `routes`
+array survives as the `x-interseptor-routes` extension; the removed top-level `kind`, `baseURL` and
+`description` keys have no replacement in this document — `GET /api/reference` serves the same data
+in the old shape.
+
+Highlights of the REST surface:
+`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
+`/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
+
 Burp Suite migration uses `POST /api/import/burp` with a raw **Save items** XML export. The endpoint
 streams entries into History and returns `{imported, skipped}`. Native `.burp` project files are not
 an accepted interchange format.
@@ -63,6 +156,40 @@ multipart, and GraphQL bodies are prepared where possible; unresolved variables 
 unsupported features (such as local file bodies) are reported for review. Import intentionally
 creates no History flows because a collection is a plan, not captured evidence; sending a tab is
 what creates live replay evidence.
+
+### Collections API and MCP
+
+Collections have their own REST surface; the [collections guide](collections.md) explains the model.
+Every route is listed by `GET /api/` with its description.
+
+| Area | Routes |
+| --- | --- |
+| Collections and items | `GET/POST /api/collections`, `GET/PUT/DELETE /api/collections/{uid}`, `POST /api/collections/{uid}/items`, `GET/PUT/DELETE /api/items/{uid}`, `POST /api/items/{uid}/duplicate`, `/api/items/{uid}/examples` |
+| Environments and variables | `/api/environments`, `/api/environments/{uid}`, `GET/PUT /api/variables/{kind}/{uid}`, `PUT .../current`, `POST .../current/reset`, `POST /api/variables/resolve` |
+| Import | `POST /api/import/collection/preview` then `/commit` (raw file, 64 MiB cap; `?format=auto\|postman\|openapi\|curl\|insomnia\|bruno\|bruno-files\|har\|burp`) |
+| Send and run | `POST /api/collections/send`, `POST /api/collections/run` (sequential, max 1000 requests, 10 minutes), `GET /api/collections/{uid}/runs`, `GET /api/runs/{uid}` |
+| Async runner | `POST /api/runner/runs` (202 with a run uid), `GET /api/runner/runs`, `GET /api/runner/runs/{uid}?since=N`, `.../events` (SSE), `.../pause`, `.../resume`, `.../abort`, `.../persist` |
+| Scripts and trust | `GET /api/collections/{uid}/scripts`, `POST .../trust`, `POST .../trust/revoke` |
+| OAuth | `POST /api/collections/oauth/begin`, `GET /api/collections/oauth/callback` |
+
+Rules the AI channel and API keys cannot change:
+
+- **Trust and capabilities are UI-session only.** `trust`, `trust/revoke`, `oauth/begin` and
+  `runner/runs/{uid}/persist` need an interactive UI session (the `X-Interseptor-CSRF` header and no
+  `X-Interseptor-Source` other than `ui`); AI, MCP, API-key and agent callers get 403.
+- **Scrubbed reads.** AI-source callers receive secret-scrubbed collections, environments and
+  variables, no script source, and no `reveal`. Secret values are never echoed by a write.
+- **Scope policy.** A send from the UI defaults to `warn`; MCP, runs and scripts use the collection's
+  policy (default `block`), which an AI caller cannot loosen.
+- **Persist.** UI sends keep script variable writes, runs and MCP default to `discard`; the async
+  runner defaults to `ask` for the UI and `discard` for the AI channel, which cannot answer a prompt.
+- **History.** Collection flows carry `FlagCollection`; `GET /api/flows?collection=0|only` filters
+  them, and `{type:"collrun"}` events appear on the global event stream.
+
+MCP tools: `list_collections`, `get_collection` (with script approval status), `run_request`,
+`run_collection` (scope policy `block`; untrusted scripts are skipped and counted), `set_variable`
+(a local current value; secrets are never echoed) and `script_approval_status` (read-only). No MCP
+tool can trust a script or grant a capability.
 
 ### Findings: one canonical evidence format
 
@@ -85,7 +212,7 @@ export. The stable envelope is:
 Use `blocks` as the source of truth for reproduction. A block is `text`, `flow`, or `image` and
 may carry `role` (`context`, `setup`, `baseline`, `action`, `result`, `control`, `retest`, or
 `observation`), `proof` (the exact claim established), and `source`. Flow evidence uses
-`source=captured_flow` and `sourceFlowId`; generated HTTP previews use `source=flow_preview`.
+`source=captured_flow` and `sourceFlowId`; generated HTTP previews use `source=flow_preview`; generated evidence renders use `source=evidence_render` with a server-stamped `sourceRef` such as `intruder:<runId>`.
 See [image source classifications](findings-and-reporting.md#evidence-rules) for image evidence values.
 Prefer a real browser/device screenshot when it visibly proves the issue, and attach the captured
 flow as the inspectable request/response record. The API validates and stores images by content
@@ -118,6 +245,12 @@ POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof
 DELETE /api/findings/{id}/flows/{flowId}     detach a flow
 POST   /api/findings/{id}/images             attach {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}
 POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG
+GET    /api/intruder/attacks                 recent recorded Intruder runs (last 20 kept)
+GET    /api/intruder/attacks/{id}            one recorded run by runId; survives the next start and restarts
+GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip&width=&unmask=1&expected=N&format=json&png=1 evidence render PNG (unattached; X-Render-Alt/X-Render-Summary headers)
+GET    /api/intruder/attacks/{id}/render     alias of render.png (MCP render_intruder_preview)
+GET    /api/evidence-render                  ?kind=...&runId|flowIdA,flowIdB|flowIds|findingIds&includeBody=1 single-endpoint render PNG (MCP render_evidence)
+POST   /api/findings/{id}/evidence-render    render and attach {kind, runId?|flowIds?|..., caption?, role?, proof?, position?}
 GET    /api/findings/report                  md (default), html, or json export
 ```
 
@@ -144,7 +277,7 @@ For example, an AI can create the narrative without embedding raw HTTP, then att
 
 Use `get_finding` before an AI update so it does not replace a concurrent human edit. MCP maps
 `create_finding`, `get_finding`, `update_finding`, `add_finding_poc`, `add_finding_image`,
-`render_flow_preview`, and `export_report` to these same contracts. `body` remains accepted for
+`render_flow_preview`, `render_evidence`, and `export_report` to these same contracts. `body` remains accepted for
 legacy clients, but must not be sent together with `blocks`; old `ready`/`missing` fields remain
 alongside structured `readiness` for compatibility. Report export supports Markdown, self-contained
 HTML, and JSON (`format=md|html|json`); use self-contained HTML when screenshot pixels must travel
@@ -188,7 +321,12 @@ The UI and MCP share the report-quality and evidence contracts:
 - `finding_readiness` returns actionable field/capability checks; `export_report` accepts `mode=final`
   to enforce them or `mode=draft` to retain incomplete work.
 - `preview_finding_targets` previews deduplication and optional path templates without saving.
+- `normalize_finding_targets` applies reviewer-approved suggestion indexes from that preview to a saved finding
+  (`dryRun` defaults to true; `POST /api/findings/{id}/normalize-targets`).
 - `evaluate_finding_cvss` previews a CVSS v4 vector without updating a finding.
+- `redact_value` (and `POST /api/redact`) returns `{len, sha256_prefix, kind}` for a secret so a finding can show
+  length and equality without the value. The value is hashed in memory and never stored. Finding writes
+  warn when text looks like a JWT, `AIza` key, `$2b$` hash or `Bearer` token.
 - `list_finding_revisions`, `get_finding_revision`, and `restore_finding_revision` expose immutable
   finding history and recovery. Restore appends a revision and cannot reconstruct separately purged
   traffic. Historical snapshots require the same care as current evidence.
@@ -196,3 +334,56 @@ The UI and MCP share the report-quality and evidence contracts:
 Capability declarations under `proofReview.claims` are reviewer observations linked to retained
 artifacts, never automatic confirmation of exploitation. Image provenance is server-stamped and is
 separate from a reviewer's browser/device classification. See [Findings and reporting](findings-and-reporting.md).
+
+### Evidence renders
+
+Evidence renders are deterministic, report-width PNGs drawn in pure Go from recorded data only. Each
+carries alt text, a summary line and the footer "Generated by Interseptor from recorded data - not a
+browser screenshot". There are eight kinds: `intruder-timeline`, `intruder-distribution`,
+`intruder-race`, `intruder-strip`, `authz-matrix`, `flow-diff`, `flow-waterfall` and `finding-chain`.
+Without a `findingId`, the MCP tool `render_evidence` returns the PNG as a data URI; with one it attaches
+the image atomically with `source=evidence_render` and `sourceRef` (`intruder:<runId>`, `authz:<runId>`).
+
+What is and is not recorded:
+
+- Each Intruder result records `seq`, `worker`, `startUs`/`endUs` (monotonic microsecond offsets from run
+  start), `bodyHash` and whitelisted rate-limit headers (`Retry-After`, `X-RateLimit-*`, `RateLimit-*`).
+  Runs recorded before this existed render as a ranked-by-completion strip with a "timing not recorded" note.
+- `barrier=true` on a repeat run makes workers launch together after all are parked. They still use
+  separate connections; there is no single-packet or last-byte synchronisation, and renders say so.
+- Flow-based renders (`flow-waterfall`, `flow-diff`) have millisecond precision and only total duration;
+  DNS, connect and TTFB are not recorded and are never drawn.
+- Claims such as "first 429 at request #N" are computed from recorded status and offsets only. A render
+  never says a race or rate-limit bypass is confirmed; it reports counts.
+- Secrets are redacted by the adapters (`redact.Text`: header lines, Bearer/Basic schemes, JWTs, long
+  opaque tokens and key=value / JSON secrets under snake_case, kebab-case and camelCase names such as
+  `accessToken`, `csrf_token`, `otp`, `reset_code`, `?code=482913`). Short standalone values with no
+  recognisable key cannot be detected, so values that are often credentials are masked by default instead:
+  Intruder payloads (strip) and extracted values (race) are drawn as `[len N #digest]` (equal values stay
+  comparable) unless the request passes `unmask=1` (`mask=0`; MCP `unmask`; attach body `unmask`). Flow-diff
+  response-body lines are omitted by default (only the changed-line count is drawn); `includeBody=1` draws
+  redacted lines and the footer says body excerpts can still show personal data. `expected=N` (race) adds
+  the baseline "expected at most N" to the headline.
+- Anything target-controlled (header values, URLs, titles, payloads, targets, run ids) is clipped before
+  drawing. Characters the embedded fonts cannot draw (CJK and other non-Latin scripts) are drawn as
+  `U+XXXX` and the footer says so. `width` is `0` (default 1100) or 640-1600; non-numeric or negative ids
+  are a 400. At most four renders run at once (503 when busy) with a 10 s deadline. The JSON form
+  (`format=json`) adds the base64 PNG with `png=1` for PNGs up to 1 MiB, otherwise `pngOmitted` and `bytes`.
+- Rate-limit wording is descriptive: tiles say `2xx responses`, `throttle statuses (429/403/423)` and
+  `5xx/other`; a missing throttle status is reported as "no throttling status observed; body-based
+  lockouts are not detected unless a grep pattern was set". Grep matches are counted separately.
+- The persisted run record (`GET /api/intruder/attacks/{id}`, table `intruder_runs`, last 20 runs) is raw
+  like the flow store: payloads, extracted values and rate-limit headers are not redacted, and it travels in
+  full-project archives (it is not part of portable JSON export or peer merge). Only the renders redact.
+  Runs over the 4 MiB record cap drop payloads, then rate-limit headers and error text, then keep a head
+  and tail with a `truncated` marker in the stored run state.
+
+Provenance: `evidence_render` is generated. It never satisfies the real-visual-proof check, and reports
+label it "generated evidence render from recorded data; not browser proof". `sourceRef` is stamped
+server-side and immutable, like `sourceFlowId` (the first recorded flow of an Intruder run, the baseline
+flow of an authz run, flow A of a diff). The source is deliberately `evidence_render`, a separate value
+from `generated_image`, and the run id lives in `sourceRef` (`intruder:<runId>`) rather than in a separate
+`attackId` field. Every render also shows its ref in the footer and carries an `Interseptor-Render` PNG
+tEXt marker; the store refuses to attach a marked PNG as `browser_screenshot`, `device_screenshot` or
+`operator_upload`. Attach a real screenshot with `add_finding_image` when a
+finding makes a visual claim.

@@ -135,8 +135,10 @@ func TestUIActivityReconcilesLiveEventsAcrossLoadsAndClears(t *testing.T) {
 		"activityLoadGeneration++",
 	)
 	requireUIContracts(t, "js/app.js",
-		"if(t.dataset.tab==='activity'){clearActSeen();loadActivity();}",
-		".classList.contains('active'))loadActivity()",
+		// Focusing/showing the Activity document refetches via loadPanelData, and
+		// the stale-reconnect resync refetches it when its panel is visible.
+		"if(name==='activity'){clearActSeen();loadActivity();}",
+		"isPanelVisible('activity'))loadActivity()",
 	)
 }
 

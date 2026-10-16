@@ -130,7 +130,7 @@ func main() {
 		if base == "" {
 			base = "http://" + resolveControlAddr(nil, "")
 		}
-		srv := mcp.New(base)
+		srv := mcp.NewProfile(base, mcp.ProfileFromEnv())
 		if socket := mcp.ActivitySocketPath(base); socket != "" {
 			srv.SetActivityReporter(mcp.ActivitySocketReporter(socket))
 		}
@@ -235,11 +235,13 @@ func run() error {
 	// manager (rebind), the manager needs the proxy handler. Create the manager
 	// first, then the hub, then the proxy handler, then attach it to the manager.
 	sc := scope.New() // one shared target-scope matcher: control owns CRUD, the proxy gate reads it
-	pm := &proxyManager{verifyAPIKeyScope: st.VerifyAPIKeyScope}
+	pm := &proxyManager{}
 	cm := &controlManager{}
 	hub := control.New(st, eng, ca, pm, sc)
 	defer hub.Close()
+	hub.ScriptRouter = newScriptRouter() // collection scripts run in the isolated worker
 	hub.SetControlRebinder(cm)
+	hub.WireIntruderRunSink() // persist finished Intruder runs for evidence renders
 	// User-authored Starlark scanner checks are global (shared across projects).
 	checksDir := filepath.Join(globalDir, "checks")
 	migrateGlobalChecks(globalDir, filepath.Join(globalDir, "projects"))
@@ -289,8 +291,13 @@ func run() error {
 		}
 	}
 	// Capture policy: persist all traffic, or only in-scope (saves DB space).
+	// With no explicit choice, default to dropping out-of-scope bodies whenever an
+	// allow-list (include rules) is set — defining a target scope implies the
+	// operator does not want full out-of-scope traffic on disk (issue #108). The
+	// scope engine already has its persisted rules loaded via control.New.
 	hub.SetCaptureScopeOnly = prx.SetCaptureScopeOnly
-	if v, ok, _ := st.GetSetting("capture.scopeOnly"); ok && v == "1" {
+	scopeOnlyRaw, scopeOnlySet, _ := st.GetSetting("capture.scopeOnly")
+	if control.ResolveCaptureScopeOnly(scopeOnlyRaw, scopeOnlySet, sc.HasIncludes()) {
 		prx.SetCaptureScopeOnly(true)
 	}
 	// Browser background-traffic suppression: on by default; the persisted/API
@@ -334,7 +341,14 @@ func run() error {
 	if v, ok, _ := st.GetSetting("proxy.autoBypassOnPinFailure"); ok && v == "1" {
 		prx.SetAutoBypassOnPinFailure(true)
 	}
-	pm.handler = prx
+	proxyAuth := &proxy.BasicAuth{}
+	hub.SetProxyBasicAuth = proxyAuth.Set
+	proxyAuthOn, _, _ := st.GetSetting("proxy.authEnabled")
+	proxyAuthUser, _, _ := st.GetSetting("proxy.authUser")
+	proxyAuthPassword, _, _ := st.GetSetting("proxy.authPassword")
+	proxyAuth.Set(proxyAuthOn == "1", strings.TrimSpace(proxyAuthUser), proxyAuthPassword)
+	proxyAuth.SetExempt(st.AllowlistMatch)
+	pm.handler = proxyAuth.Handler(prx)
 	cm.handler = hub.Handler()
 	hub.SyncSelfPorts = func() {
 		addrs := pm.Addrs()
@@ -511,9 +525,8 @@ func (m *controlManager) Shutdown(ctx context.Context) {
 // new listeners before tearing down old ones, so a failed rebind leaves the running
 // proxy untouched. It implements control.Rebinder and control.MultiProxyRebinder.
 type proxyManager struct {
-	handler           http.Handler
-	verifyAPIKeyScope func(string) (bool, string, error)
-	listenFn          func(string) (net.Listener, error)
+	handler  http.Handler
+	listenFn func(string) (net.Listener, error)
 
 	mu    sync.Mutex
 	addrs []string
@@ -521,49 +534,13 @@ type proxyManager struct {
 }
 
 func (m *proxyManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: proxyListenerHandler(ln.Addr(), m.handler, m.verifyAPIKeyScope)}
+	srv := &http.Server{Handler: m.handler}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("proxy serve: %v", err)
 		}
 	}()
 	return srv
-}
-
-func proxyListenerHandler(addr net.Addr, next http.Handler, verify func(string) (bool, string, error)) http.Handler {
-	if !proxyListenerRequiresAuth(addr) {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var token string
-		credentialsPresent := false
-		if value := r.Header.Get("Proxy-Authorization"); value != "" {
-			credentials := r.Header.Get("Authorization")
-			r.Header.Set("Authorization", value)
-			_, token, credentialsPresent = r.BasicAuth()
-			if credentials == "" {
-				r.Header.Del("Authorization")
-			} else {
-				r.Header.Set("Authorization", credentials)
-			}
-		}
-		ok, scope, err := false, "", error(nil)
-		if credentialsPresent && verify != nil {
-			ok, scope, err = verify(token)
-		}
-		if err != nil || !ok || scope != store.ScopeFull {
-			w.Header().Set("Proxy-Authenticate", `Basic realm="interseptor"`)
-			w.WriteHeader(http.StatusProxyAuthRequired)
-			return
-		}
-		r.Header.Del("Proxy-Authorization")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func proxyListenerRequiresAuth(addr net.Addr) bool {
-	tcpAddr, ok := addr.(*net.TCPAddr)
-	return !ok || tcpAddr.IP == nil || !tcpAddr.IP.IsLoopback()
 }
 
 func (m *proxyManager) listenAll(addrs []string) ([]net.Listener, error) {

@@ -14,6 +14,7 @@ const flowListColumns = `id, ts, method, scheme, host, port, path, http_version,
 // list/summary views that only need flowJSON fields; use QueryFlowsFilter when headers or body
 // hashes are needed downstream.
 func (s *Store) QueryFlowsListFilter(f FlowFilter) ([]*Flow, error) {
+	s.syncFlows()
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 200

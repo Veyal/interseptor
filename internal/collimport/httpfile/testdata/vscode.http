@@ -1,0 +1,60 @@
+# Example collection for the REST Client dialect (example.com only)
+@host = https://api.example.com
+@apiToken = canary-secret-value-123
+@userId = 42
+
+### List users
+# @name listUsers
+GET {{host}}/users?limit=10
+    &page=2 HTTP/1.1
+Accept: application/json
+Authorization: Bearer {{apiToken}}
+
+###
+// @no-redirect
+// @timeout 5000
+POST {{host}}/users
+Content-Type: application/json
+X-Request-Id: {{$uuid}}
+
+{
+  "name": "Ada",
+  "id": "{{$guid}}",
+  "n": {{$randomInt}},
+  "at": "{{$datetime iso8601}}"
+}
+
+### Chained
+GET {{host}}/users/{{listUsers.response.body.$[0].id}}
+Accept: application/json
+
+### Upload
+POST {{host}}/upload
+Content-Type: multipart/form-data; boundary=----Boundary123
+
+------Boundary123
+Content-Disposition: form-data; name="title"
+
+hello
+------Boundary123
+Content-Disposition: form-data; name="file"; filename="a.png"
+Content-Type: image/png
+
+< ./fixtures/a.png
+------Boundary123--
+
+### From file
+POST {{host}}/import
+Content-Type: application/json
+
+< ./body.json
+
+### Encoded
+POST {{host}}/import
+Content-Type: text/plain
+
+<@latin1 ./body.txt
+
+### Env
+GET /health
+Host: staging.example.com

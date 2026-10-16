@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+// One document has one proof renderer. The old glance + story pair (two
+// renderFindingProof call sites) is gone: each affected target lists the
+// evidence that proves it, and the reproduction timeline holds the evidence itself.
+func TestFindingsProofGroupsMultipleTargets(t *testing.T) {
+	findings := readUIAsset(t, "js/findings.js")
+	doc := readUIAsset(t, "js/finding-document.js")
+	for _, want := range []string{"export function affectedRows", "image_hashes", "flow_ids", "needs evidence", "find-evref", "targets.length", "rows.length < 2"} {
+		if !strings.Contains(doc, want) && !strings.Contains(doc, strings.ReplaceAll(want, "targets.length", "rows.length")) {
+			t.Errorf("finding document missing per-target proof %q", want)
+		}
+	}
+	for _, gone := range []string{"function renderFindingProof", "function renderFindingStory", "renderFindingProof("} {
+		if strings.Contains(findings, gone) {
+			t.Errorf("findings.js still has the duplicate proof renderer %q", gone)
+		}
+	}
+	if !strings.Contains(findings, "readDocumentHTML(f,") || !strings.Contains(findings, "buildReproductionSteps(bodyBlocks)") {
+		t.Error("the read view must render claim/affected/reproduction from the document model")
+	}
+}
+
 func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	findings := readUIAsset(t, "js/findings.js")
@@ -13,7 +34,7 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if strings.Contains(index, `<option value="pdf">`) {
 		t.Error("findings export must not advertise PDF when the browser cannot produce it")
 	}
-	if !strings.Contains(index, `<option value="html">HTML with images</option>`) {
+	if !strings.Contains(readUIAsset(t, "js/report-preflight-model.js"), `{ value: 'html', label: 'HTML with images' }`) {
 		t.Error("findings export must identify self-contained HTML as the image-preserving handoff")
 	}
 	for _, want := range []string{`<nav id="findList"`, `id="findEvidenceRail"`, `id="findNarrativePreset"`, `id="findBackToList"`} {
@@ -90,7 +111,7 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if strings.Contains(textBranch[:imageStart], "Proof annotation needed") {
 		t.Error("text reproduction steps must not demand proof annotations")
 	}
-	for _, want := range []string{".find-evidence-rail", ".find-mobile-back", ".find-readiness", ".find-row[aria-selected=\"true\"]"} {
+	for _, want := range []string{".find-evidence-rail", ".find-mobile-back", ".find-readiness", ".find-row.sel"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("findings CSS missing %q", want)
 		}
@@ -106,9 +127,10 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if !strings.Contains(compactDesktop, ".findings-toolbar-actions{order:2;flex:1 1 100%;width:100%;flex-wrap:wrap}") {
 		t.Error("findings toolbar must wrap its actions before they collide at compact desktop widths")
 	}
-	if !strings.Contains(compactDesktop, ".find-header-top{display:grid;grid-template-columns:auto auto 1fr auto auto") ||
-		!strings.Contains(compactDesktop, ".find-header-top .find-title-text{grid-column:1/-1") ||
-		!strings.Contains(compactDesktop, ".find-header-top #findToggleEdit{grid-column:5;grid-row:1}") {
-		t.Error("finding titles must receive a full header row at compact desktop widths")
+	// The header is now three rows (status, title, context); the title sits in its own
+	// .find-title-row, so the compact block only has to let the status row wrap.
+	if !strings.Contains(compactDesktop, ".find-header-top{display:flex;flex-wrap:wrap;align-items:center}") ||
+		!strings.Contains(compactDesktop, ".find-reading .find-save-state:empty{display:none}") {
+		t.Error("finding status row must wrap at compact desktop widths")
 	}
 }

@@ -16,6 +16,7 @@ func (h *Hub) routes() {
 	az := &authzAPI{h}
 	sess := &sessionAPI{h}
 	meta := &metaAPI{h}
+	ev := newEvidenceAPI(h)
 
 	h.registerFlowRoutes(f)
 	h.registerInterceptRoutes(ic)
@@ -27,9 +28,11 @@ func (h *Hub) routes() {
 	h.registerChecksRoutes(chk)
 	h.registerProjectRoutes(proj)
 	h.registerOobRoutes(oob)
-	h.registerAuthzRoutes(az)
+	h.registerAuthzRoutes(az, ev)
+	h.registerEvidenceRoutes(ev)
 	h.registerMetaRoutes(meta)
 	h.registerPacksRoutes()
+	h.registerCollectionRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
 }
@@ -37,6 +40,7 @@ func (h *Hub) routes() {
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
 	h.mux.HandleFunc("GET /api/flows/session-inspect", f.inspectSession)
+	h.mux.HandleFunc("GET /api/flows/{id}/auth-timeline", f.authTimelineHandler)
 	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
 	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
 	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
@@ -51,10 +55,12 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows/{id}/preview.png", f.getFlowPreviewPNG)
 	h.mux.HandleFunc("GET /api/flows/{id}/body", f.getFlowBody)
 	h.mux.HandleFunc("GET /api/flows/{id}/ws", f.flowWS)
+	h.mux.HandleFunc("PUT /api/flows/{id}/ws/{frameId}/note", f.putWSFrameNote)
 	h.mux.HandleFunc("GET /api/flows/{id}/analyze", f.analyzeFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", f.flowCurl)
 	h.mux.HandleFunc("GET /api/flows/diff", f.diffFlows)
 	h.mux.HandleFunc("PUT /api/flows/{id}/note", f.setFlowNote)
+	h.mux.HandleFunc("PUT /api/flows/{id}/interception", f.putFlowInterception)
 	h.mux.HandleFunc("PUT /api/flows/{id}/tags", f.setFlowTags)
 	h.mux.HandleFunc("POST /api/flows/tags", f.addFlowTagsBulk)
 	h.mux.HandleFunc("GET /api/tags", f.listTags)
@@ -95,6 +101,8 @@ func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *ios
 	h.mux.HandleFunc("POST /api/proxy/device-endpoint", set.setDeviceProxyEndpoint)
 	h.mux.HandleFunc("GET /api/sysproxy", set.getSysProxy)
 	h.mux.HandleFunc("POST /api/sysproxy", set.setSysProxy)
+	h.mux.HandleFunc("GET /api/test-browser", set.getTestBrowser)
+	h.mux.HandleFunc("POST /api/test-browser/launch", set.postTestBrowserLaunch)
 	h.mux.HandleFunc("GET /api/ca.crt", set.getCA)
 	h.mux.HandleFunc("GET /openapi.json", (&metaAPI{h}).openapi)
 	h.mux.HandleFunc("GET /api/android/status", and.getAndroidStatus)
@@ -102,6 +110,7 @@ func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *ios
 	h.mux.HandleFunc("POST /api/android/unproxy", and.postAndroidUnproxy)
 	h.mux.HandleFunc("POST /api/android/install-ca", and.postAndroidInstallCA)
 	h.mux.HandleFunc("POST /api/android/setup", and.postAndroidSetup)
+	h.mux.HandleFunc("GET /api/android/magisk-module.zip", and.getAndroidMagiskModule)
 	h.mux.HandleFunc("GET /api/ios/status", ios.getIOSStatus)
 	h.mux.HandleFunc("GET /api/ios/profile.mobileconfig", ios.getIOSProfile)
 	h.mux.HandleFunc("POST /api/ios/setup", ios.postIOSSetup)
@@ -137,20 +146,29 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("GET /api/findings/images/{hash}", fd.getFindingImage)
 	h.mux.HandleFunc("POST /api/findings", fd.createFinding)
 	h.mux.HandleFunc("POST /api/finding-targets/preview", fd.previewFindingTargets)
+	h.mux.HandleFunc("POST /api/findings/{id}/normalize-targets", fd.normalizeFindingTargets)
+	h.mux.HandleFunc("GET /api/finding-quality/{id}", fd.findingQuality)
+	h.mux.HandleFunc("GET /api/finding-export/{id}", fd.exportFinding)
 	h.mux.HandleFunc("GET /api/findings/{id}", fd.getFinding)
 	h.mux.HandleFunc("PATCH /api/findings/{id}", fd.updateFinding)
 	h.mux.HandleFunc("DELETE /api/findings/{id}", fd.deleteFinding)
 	h.mux.HandleFunc("POST /api/findings/{id}/flows", fd.attachFindingFlow)
 	h.mux.HandleFunc("DELETE /api/findings/{id}/flows/{flowId}", fd.detachFindingFlow)
 	h.mux.HandleFunc("POST /api/findings/{id}/images", fd.attachFindingImage)
+	h.mux.HandleFunc("POST /api/findings/{id}/images/{hash}/classify", fd.classifyFindingImage)
 	h.mux.HandleFunc("POST /api/findings/{id}/flow-preview", fd.attachFindingFlowPreview)
+	h.mux.HandleFunc("POST /api/findings/{id}/retest", fd.retestFinding)
 }
 
 func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 	h.mux.HandleFunc("POST /api/repeater/send", tools.repeaterSend)
 	h.mux.HandleFunc("GET /api/repeater/history", tools.repeaterHistory)
+	h.mux.HandleFunc("POST /api/repeater/params/parse", tools.repeaterParamsParse)
+	h.mux.HandleFunc("POST /api/repeater/params/build", tools.repeaterParamsBuild)
 	h.mux.HandleFunc("POST /api/intruder/start", tools.intruderStart)
+	h.mux.HandleFunc("POST /api/intruder/stop", tools.intruderStop)
 	h.mux.HandleFunc("GET /api/intruder/state", tools.intruderState)
+	h.mux.HandleFunc("GET /api/intruder/results", tools.intruderResults)
 	h.mux.HandleFunc("POST /api/ws/send", tools.wsSend)
 	h.mux.HandleFunc("POST /api/decode", tools.decode)
 	h.mux.HandleFunc("POST /api/selection-decode", tools.selectionDecode)
@@ -160,6 +178,7 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 
 func (h *Hub) registerScannerRoutes(scan *scannerAPI) {
 	h.mux.HandleFunc("POST /api/scanner/run", scan.scannerRun)
+	h.mux.HandleFunc("POST /api/scanner/cancel", scan.scannerCancel)
 	h.mux.HandleFunc("GET /api/scanner/targets", scan.scannerTargets)
 	h.mux.HandleFunc("GET /api/scanner/issues", scan.scannerIssues)
 	h.mux.HandleFunc("DELETE /api/scanner/issues", scan.clearScannerIssues)
@@ -193,6 +212,13 @@ func (h *Hub) registerPacksRoutes() {
 }
 
 func (h *Hub) registerProjectRoutes(proj *projectAPI) {
+	h.mux.HandleFunc("GET /api/interception-setup", proj.getInterceptionSetup)
+	h.mux.HandleFunc("PUT /api/interception-setup", proj.putInterceptionSetup)
+	h.mux.HandleFunc("GET /api/engagement-brief", proj.getEngagementBrief)
+	h.mux.HandleFunc("PUT /api/engagement-brief", proj.putEngagementBrief)
+	h.mux.HandleFunc("GET /api/report-branding", proj.getReportBranding)
+	h.mux.HandleFunc("PUT /api/report-branding", proj.putReportBranding)
+	h.mux.HandleFunc("GET /api/project/readiness", proj.getProjectReadiness)
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", proj.putNotes)
 	h.mux.HandleFunc("PATCH /api/notes", proj.patchNotes)
@@ -212,6 +238,7 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("POST /api/views", proj.createView)
 	h.mux.HandleFunc("DELETE /api/views/{id}", proj.deleteView)
 	h.mux.HandleFunc("GET /api/project", proj.apiProject)
+	h.mux.HandleFunc("POST /api/project/folder", proj.setProjectFolder)
 	h.mux.HandleFunc("POST /api/project/switch", proj.switchProject)
 }
 
@@ -232,15 +259,18 @@ func (h *Hub) registerOobRoutes(oob *oobAPI) {
 // neutral receiver (e.g. metaAPI) would require either duplicating
 // authzIdentities() or introducing a cross-group call, which isn't worth it for a
 // cosmetic regroup.
-func (h *Hub) registerAuthzRoutes(az *authzAPI) {
+func (h *Hub) registerAuthzRoutes(az *authzAPI, ev *evidenceAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
+	h.mux.HandleFunc("POST /api/authz/identity", az.addAuthzIdentity)
+	h.mux.HandleFunc("DELETE /api/authz/identity/{name}", az.removeAuthzIdentity)
 	h.mux.HandleFunc("GET /api/readiness", az.getReadiness)
 	h.mux.HandleFunc("GET /api/tls-diagnosis", az.getTLSDiagnosis)
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)
-	h.mux.HandleFunc("POST /api/authz/run", az.authzRun)
+	h.mux.HandleFunc("POST /api/authz/run", ev.captureAuthzRun(az.authzRun))
+	h.mux.HandleFunc("POST /api/authz/differential", az.authzDifferentialRun)
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
 
@@ -262,7 +292,9 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /api/reference", meta.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", meta.apiMCP)
 	h.mux.HandleFunc("GET /api/mcp/capabilities", meta.apiMCPCapabilities)
+	h.mux.HandleFunc("GET /api/capabilities", meta.apiMCPCapabilities)
 	h.mux.HandleFunc("POST /api/finding-cvss", meta.evaluateCVSS)
+	h.mux.HandleFunc("POST /api/redact", meta.redactValue)
 	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /mcp", h.handleMCP)
 	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)
@@ -289,4 +321,19 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("POST /api/vault/backup", h.vaultBackup)
 	h.mux.HandleFunc("POST /api/vault/import", h.vaultImport)
 	h.mux.HandleFunc("POST /api/vault/merge", h.vaultMerge)
+}
+
+// registerEvidenceRoutes wires the evidence render family: Intruder attack
+// records and renders, authz/diff/waterfall/chain renders, and the attach path.
+func (h *Hub) registerEvidenceRoutes(ev *evidenceAPI) {
+	h.mux.HandleFunc("GET /api/intruder/attacks", ev.intruderAttacks)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}", ev.intruderAttack)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render.png", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/evidence-render", ev.getEvidenceRender)
+	h.mux.HandleFunc("GET /api/render/authz/{runId}", ev.getAuthzRender)
+	h.mux.HandleFunc("GET /api/render/flow-diff.png", ev.getFlowDiffRender)
+	h.mux.HandleFunc("GET /api/render/flow-waterfall.png", ev.getFlowWaterfallRender)
+	h.mux.HandleFunc("GET /api/render/finding-chain.png", ev.getFindingChainRender)
+	h.mux.HandleFunc("POST /api/findings/{id}/evidence-render", ev.attachEvidenceRender)
 }

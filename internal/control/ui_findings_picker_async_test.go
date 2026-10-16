@@ -22,7 +22,7 @@ func TestUIFindingsFlowPickerGuardsAsyncOwnership(t *testing.T) {
 		"renderFlowPickList(search?.value||'')",
 		"if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId",
 		"if(epoch!==flowPickEpoch||flowPickFindingId!==findingId",
-		"$('#findFlowPickModal')?.style.display!=='none'",
+		"$('#findFlowPickModal')?.style.display==='flex'",
 		"flowPickEpoch++",
 	} {
 		if !strings.Contains(findings, want) {

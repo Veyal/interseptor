@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/httplines"
 	"github.com/Veyal/interseptor/internal/sender"
@@ -22,6 +23,35 @@ type repeaterSendJSON struct {
 	CodecID  string          `json:"codecId"`  // required when bodyMode=decoded
 	FlowID   int64           `json:"flowId"`   // optional context for encode()
 	RawBody  string          `json:"rawBody"`  // wire body for encode context (prefix/fields)
+
+	// Replay options (sender.SendOptions). All omitted -> nil options, i.e. the
+	// historical Repeater behaviour: no redirects, no TLS verification, HTTP/1.1.
+	FollowRedirects bool   `json:"followRedirects"`
+	MaxRedirects    int    `json:"maxRedirects"` // 0 -> 10 when following
+	VerifyTLS       bool   `json:"verifyTls"`    // verify the origin certificate
+	ServerName      string `json:"serverName"`   // SNI / verification name override
+	HTTP2           bool   `json:"http2"`        // offer ALPN h2 (HTTPS only)
+	TimeoutMs       int    `json:"timeoutMs"`    // whole-exchange timeout; 0 -> none
+}
+
+// repeaterOptions builds the per-send options, or nil when every option is at
+// its default so the send takes the exact historical client path (byte for byte
+// the pre-existing Repeater behaviour).
+func repeaterOptions(in repeaterSendJSON) *sender.SendOptions {
+	if !in.FollowRedirects && !in.VerifyTLS && !in.HTTP2 && in.ServerName == "" && in.TimeoutMs <= 0 {
+		return nil
+	}
+	o := &sender.SendOptions{
+		FollowRedirects: in.FollowRedirects,
+		MaxRedirects:    in.MaxRedirects,
+		VerifyTLS:       in.VerifyTLS,
+		ServerName:      in.ServerName,
+		HTTP2:           in.HTTP2,
+	}
+	if in.TimeoutMs > 0 {
+		o.Timeout = time.Duration(in.TimeoutMs) * time.Millisecond
+	}
+	return o
 }
 
 // aiSourceFlag returns store.FlagAI when a request was issued by the AI assistant
@@ -70,12 +100,77 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		Headers: hdr,
 		Body:    []byte(body),
 		Flags:   store.FlagRepeater | aiSourceFlag(r),
+		Options: repeaterOptions(in),
 	})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, h.flowDetail(flow))
+}
+
+// repeaterParamsParse splits a URL's query string and an optional
+// x-www-form-urlencoded body into ordered fields, preserving order and
+// duplicate keys so the Repeater "Params" drawer can round-trip them.
+func (h *toolsAPI) repeaterParamsParse(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		URL  string `json:"url"`
+		Body string `json:"body"`
+		Form bool   `json:"form"` // parse Body as application/x-www-form-urlencoded
+	}
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
+		return
+	}
+	base, query := splitURLQuery(in.URL)
+	out := map[string]any{"base": base, "query": orEmptyParams(sender.ParseParams(query))}
+	if in.Form {
+		out["form"] = orEmptyParams(sender.ParseParams(in.Body))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// repeaterParamsBuild rebuilds a URL (base + query string) and a form body from
+// ordered fields — the inverse of repeaterParamsParse.
+func (h *toolsAPI) repeaterParamsBuild(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Base  string         `json:"base"`
+		URL   string         `json:"url"` // alias for base; its own query is dropped
+		Query []sender.Param `json:"query"`
+		Form  []sender.Param `json:"form"`
+	}
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
+		return
+	}
+	base := in.Base
+	if base == "" {
+		base = in.URL
+	}
+	base, _ = splitURLQuery(base)
+	url := base
+	if q := sender.BuildParams(in.Query); q != "" {
+		url += "?" + q
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"url": url, "body": sender.BuildParams(in.Form)})
+}
+
+// splitURLQuery returns the URL without its query or fragment, and the raw query
+// string. A fragment is dropped: it is never sent on the wire.
+func splitURLQuery(raw string) (base, query string) {
+	if i := strings.IndexByte(raw, '#'); i >= 0 {
+		raw = raw[:i]
+	}
+	if i := strings.IndexByte(raw, '?'); i >= 0 {
+		return raw[:i], raw[i+1:]
+	}
+	return raw, ""
+}
+
+// orEmptyParams returns a non-nil slice so the JSON field is [] not null.
+func orEmptyParams(p []sender.Param) []sender.Param {
+	if p == nil {
+		return []sender.Param{}
+	}
+	return p
 }
 
 // splitHostHeader keeps the Repeater's connection URL independent from the

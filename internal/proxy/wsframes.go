@@ -105,19 +105,30 @@ func (s *Server) recordWSFrame(flowID int64, dir string, opcode byte, length uin
 		log.Printf("proxy: persist ws frame: %v", err)
 		return
 	}
-	if s.events != nil {
-		if e, ok := s.events.(interface{ WSFramed(int64) }); ok {
-			// The notifier is external code (SSE fan-out); a panic there must not
-			// crash the proxy or abort the relay. Recover and log — capture is
-			// best-effort and off the hot forwarding path.
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("proxy: ws frame notifier panic: %v", r)
-					}
-				}()
-				e.WSFramed(flowID)
+	// Nudge immediately so a quiet socket still refreshes, and again after the
+	// store commits the batch (SetWSFlushNotify) so the UI doesn't fetch early.
+	s.notifyWSFrames([]int64{flowID})
+}
+
+func (s *Server) notifyWSFrames(flowIDs []int64) {
+	if s.events == nil {
+		return
+	}
+	e, ok := s.events.(interface{ WSFramed(int64) })
+	if !ok {
+		return
+	}
+	for _, flowID := range flowIDs {
+		// The notifier is external code (SSE fan-out); a panic there must not
+		// crash the proxy or abort the relay. Recover and log — capture is
+		// best-effort and off the hot forwarding path.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("proxy: ws frame notifier panic: %v", r)
+				}
 			}()
-		}
+			e.WSFramed(flowID)
+		}()
 	}
 }

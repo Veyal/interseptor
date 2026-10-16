@@ -8,7 +8,7 @@ interseptor [flags]
 
 | Flag or environment variable | Meaning |
 |---|---|
-| `--project <name|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
+| `--project <name\|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
 | `--open` / `INTERSEPTOR_OPEN_BROWSER` | Open the control UI after startup. |
 | `INTERSEPTOR_NO_BROWSER` | Disable browser opening even when another option enables it. |
 | `--control-port <port>` | Bind the control UI/API to that port on loopback. |
@@ -55,6 +55,11 @@ back to `go install`.
 `interseptor mcp` runs the MCP server on stdio and connects to the control URL in
 `INTERSEPTOR_CONTROL_URL` (default `http://127.0.0.1:9966`). The running application also exposes
 Streamable HTTP at `/mcp`. See [API and MCP](api-and-mcp.md).
+
+| Flag or environment variable | Meaning |
+|---|---|
+| `INTERSEPTOR_CONTROL_URL` | Control plane to drive (default `http://127.0.0.1:9966`). |
+| `INTERSEPTOR_MCP_PROFILE` | Which subset of the tool surface to serve: `full` (the default, every tool), `web-pentest`, `reporting` or `mobile`. Also the default for the HTTP `/mcp` endpoint, which takes `?profile=` per request. An unrecognised value falls back to `full` for stdio and is a `400` over HTTP. |
 
 ## Check authoring
 

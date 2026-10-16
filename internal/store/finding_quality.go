@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -12,10 +13,22 @@ type FindingCapabilityClaim struct {
 	Basis    string                     `json:"basis,omitempty"` // state_change: before_after or server_proof
 	Evidence []FindingEvidenceReference `json:"evidence"`
 }
+
+// FindingQualityCheck is one actionable readiness item. Rule groups the check
+// (claim_evidence, completeness, evidence_integrity); Capability names the
+// missing evidence capability for claim_evidence checks.
 type FindingQualityCheck struct {
-	Code    string `json:"code"`
-	Field   string `json:"field"`
-	Message string `json:"message"`
+	Code       string `json:"code"`
+	Field      string `json:"field"`
+	Message    string `json:"message"`
+	Rule       string `json:"rule,omitempty"`
+	Capability string `json:"capability,omitempty"`
+}
+
+// sessionClaims need a server-observed flow, not only a screenshot, because the
+// claimed capability is a property of the authenticated session.
+func requiresFlowEvidence(key string) bool {
+	return key == "authenticated_without_required_factor" || key == "account_control"
 }
 
 var capabilityClaimPatterns = []struct {
@@ -56,6 +69,11 @@ func normalizeCapabilityClaims(f *Finding) error {
 	return nil
 }
 func visitClaimReferences(f *Finding, fn func(*FindingEvidenceReference)) {
+	for i := range f.Claims {
+		for j := range f.Claims[i].Evidence {
+			fn(&f.Claims[i].Evidence[j])
+		}
+	}
 	for key, c := range f.ProofReview.Claims {
 		for i := range c.Evidence {
 			fn(&c.Evidence[i])
@@ -71,7 +89,7 @@ func (f *Finding) capabilityClaimGaps() []string {
 		if !declared && !entry.pattern.MatchString(text) {
 			continue
 		}
-		result, baseline, visual := false, false, false
+		result, baseline, visual, flowResult := false, false, false, false
 		for _, ref := range claim.Evidence {
 			if ref.Missing {
 				continue
@@ -85,6 +103,7 @@ func (f *Finding) capabilityClaimGaps() []string {
 					continue
 				}
 				result = result || b.Role == "result"
+				flowResult = flowResult || (b.Type == "flow" && b.Role == "result")
 				baseline = baseline || b.Role == "baseline" || b.Role == "control"
 				visual = visual || (b.Type == "image" && capturedFindingImage(b.Source) && b.Role == "result")
 			}
@@ -92,6 +111,9 @@ func (f *Finding) capabilityClaimGaps() []string {
 		valid := strings.TrimSpace(claim.Note) != "" && result
 		if entry.key == "browser_execution" {
 			valid = valid && visual
+		}
+		if requiresFlowEvidence(entry.key) {
+			valid = valid && flowResult
 		}
 		if entry.key == "state_change" {
 			valid = valid && baseline
@@ -102,29 +124,47 @@ func (f *Finding) capabilityClaimGaps() []string {
 	}
 	return gaps
 }
-func qualityChecks(gaps []string) []FindingQualityCheck {
-	hints := map[string][2]string{
-		"title": {"title", "Add a precise finding title."}, "summary": {"summary", "State the observed claim and its limits."}, "target": {"targets", "Add an affected endpoint or application."}, "target_evidence": {"targets", "Link retained evidence for each affected target."},
-		"impact": {"impact", "Describe the demonstrated impact."}, "why": {"why", "Explain the failed boundary or root cause."}, "evidence": {"blocks", "Attach a captured flow or screenshot."}, "proof": {"blocks.proof", "Explain what each attached artifact proves."}, "reproduction": {"blocks.role", "Order and label the reproduction steps."},
-		"action": {"proofReview.evidence.action", "Identify the recorded action."}, "result": {"proofReview.evidence.result", "Identify the observed result."}, "control": {"proofReview.evidence.control", "Identify the negative or control case."}, "execution": {"proofReview.execution", "Review whether the claimed impact was demonstrated."}, "execution_reason": {"proofReview.reason", "Explain the verification limit."},
-		"visual": {"blocks.source", "Classify and annotate a real browser/device result capture."}, "cvss": {"cvss", "Provide a valid CVSS v4.0 vector."}, "severity": {"severity", "Align severity with the calculated CVSS rating."}, "fix": {"fix", "Describe the recommended fix."}, "retest": {"retest", "Describe expected secure behavior, including a negative case."}, "confidence": {"confidence", "Record the evidence confidence."}, "evidence_missing": {"blocks", "Restore or replace missing evidence references or raw message bodies."}, "verification": {"status", "Resolve the outstanding verification status before final reporting."},
+
+// findingGapHints maps each readiness gap code to its field and fix hint.
+var findingGapHints = map[string][2]string{
+	"title": {"title", "Add a precise finding title."}, "summary": {"summary", "State the observed claim and its limits."}, "target": {"targets", "Add an affected endpoint or application."}, "target_evidence": {"targets", "Link retained evidence for each affected target."},
+	"impact": {"impact", "Describe the demonstrated impact."}, "why": {"why", "Explain the failed boundary or root cause."}, "evidence": {"blocks", "Attach a captured flow or screenshot."}, "proof": {"blocks.proof", "Explain what each attached artifact proves."}, "reproduction": {"blocks.role", "Order and label the reproduction steps."},
+	"action": {"proofReview.evidence.action", "Identify the recorded action."}, "result": {"proofReview.evidence.result", "Identify the observed result."}, "control": {"proofReview.evidence.control", "Identify the negative or control case."}, "execution": {"proofReview.execution", "Review whether the claimed impact was demonstrated."}, "execution_reason": {"proofReview.reason", "Explain the verification limit."},
+	"visual": {"blocks.source", "Classify and annotate a real browser/device result capture."}, "cvss": {"cvss", "Provide a valid CVSS v4.0 vector."}, "severity": {"severity", "Align severity with the calculated CVSS rating."}, "fix": {"fix", "Describe the recommended fix."}, "retest": {"retest", "Describe expected secure behavior, including a negative case."}, "confidence": {"confidence", "Record the evidence confidence."}, "evidence_missing": {"blocks", "Restore or replace missing evidence references or raw message bodies."}, "verification": {"status", "Resolve the outstanding verification status before final reporting."},
+}
+
+// FindingGapCodes lists the readiness gap codes with a fix hint, sorted. The
+// documentation generator checks the agent guide against it.
+func FindingGapCodes() []string {
+	out := make([]string, 0, len(findingGapHints))
+	for code := range findingGapHints {
+		out = append(out, code)
 	}
+	sort.Strings(out)
+	return out
+}
+
+func qualityChecks(gaps []string) []FindingQualityCheck {
 	out := []FindingQualityCheck{}
 	for _, gap := range gaps {
-		hint, ok := hints[gap]
+		hint, ok := findingGapHints[gap]
+		rule, capability := "completeness", ""
+		if gap == "evidence_missing" {
+			rule = "evidence_integrity"
+		}
 		if !ok && strings.HasPrefix(gap, "capability:") {
 			key := strings.TrimPrefix(gap, "capability:")
 			for _, entry := range capabilityClaimPatterns {
 				if key == entry.key {
 					hint = [2]string{"proofReview.claims." + key, entry.message}
-					ok = true
+					rule, capability, ok = "claim_evidence", key, true
 				}
 			}
 		}
 		if !ok {
 			hint = [2]string{gap, "Review " + gap + "."}
 		}
-		out = append(out, FindingQualityCheck{gap, hint[0], hint[1]})
+		out = append(out, FindingQualityCheck{Code: gap, Field: hint[0], Message: hint[1], Rule: rule, Capability: capability})
 	}
 	return out
 }

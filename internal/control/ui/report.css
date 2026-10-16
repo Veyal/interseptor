@@ -1,0 +1,68 @@
+/* report.css — Report preflight sub-view of Findings (WP8). Loaded after
+   app.css. Colour is never the only signal: every status here pairs an icon with
+   text. Nothing here animates (the skeleton uses the shared .skel pulse, which
+   the global reduced-motion block already covers), so only transform and opacity
+   can ever move. Breakpoints follow workbench.css: 900 stacks the two columns,
+   720 is the phone layout. */
+
+.rp{display:flex;flex-direction:column;gap:var(--sp-4);padding:var(--sp-4);min-width:0}
+.rp-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3)}
+.rp-head h2{margin:0;font-size:var(--fs-lg);flex:1 1 auto;min-width:0}
+.rp-head h2:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.rp-sum{font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.rp h3{margin:0 0 var(--sp-2);font-size:var(--fs-sm);font-weight:700;color:var(--fg2)}
+.rp-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--sp-5);align-items:start}
+.rp-col{min-width:0}
+.rp-side{display:flex;flex-direction:column;gap:var(--sp-5)}
+.rp-error{display:flex;align-items:center;gap:var(--sp-2);margin:0;padding:var(--sp-2) var(--sp-3);border:1px solid var(--rd-block);border-radius:var(--r-sm);color:var(--fg)}
+.rp-error .icon,.rp-issue .icon,.rp-reason .icon,.rp-prow .icon,.rp-none .icon{flex:none;width:16px;height:16px}
+.rp-error .icon{color:var(--rd-block)}
+
+/* blockers */
+.rp-groups{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-3)}
+.rp-group{border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg1);min-width:0}
+.rp-group-h{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
+.rp-id{font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)}
+.rp-title{flex:1 1 160px;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.rp-sev{flex:none;padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:700;color:var(--fg2)}
+.rp-issues{list-style:none;margin:0;padding:0}
+.rp-issue{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);padding:var(--sp-1) var(--sp-3);border-top:1px solid var(--line)}
+.rp-issue:first-child{border-top:0}
+.rp-issue .icon{color:var(--rd-gap)}
+.rp-issue-text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.rp-issue-text small{font-size:var(--fs-xs);color:var(--fg3)}
+.rp-none{display:flex;align-items:center;gap:var(--sp-2);margin:0;font-size:var(--fs-sm)}
+.rp-none .icon{color:var(--rd-pass)}
+
+/* options and export */
+.rp-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2);margin-bottom:var(--sp-3)}
+.rp-fields label{font-size:var(--fs-sm);color:var(--fg2)}
+.rp-fields select{width:100%}
+.rp-check{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min)}
+.rp-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.rp-actions .btn[aria-disabled="true"],.rp-confirm .btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+.rp-reason{display:flex;align-items:flex-start;gap:var(--sp-2);margin:var(--sp-2) 0 0;font-size:var(--fs-sm);color:var(--fg)}
+.rp-reason .icon{color:var(--rd-gap);margin-top:2px}
+.rp-reason.is-ok .icon{color:var(--rd-pass)}
+.rp-confirm{margin-top:var(--sp-3);padding:var(--sp-3);border:1px solid var(--rd-gap);border-radius:var(--r-sm);background:var(--bg2)}
+.rp-confirm label{display:block;margin-bottom:var(--sp-2);font-size:var(--fs-sm)}
+.rp-confirm-row{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.rp-confirm-row input{flex:1 1 120px;min-width:0;font-family:var(--mono)}
+
+/* preview */
+.rp-preview-list{list-style:none;margin:0 0 var(--sp-3);padding:0;display:flex;flex-direction:column;gap:var(--sp-1)}
+.rp-prow{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);border:1px solid var(--line);border-radius:var(--r-sm);font-size:var(--fs-sm)}
+.rp-prow.is-ready .icon{color:var(--rd-pass)}
+.rp-prow.is-blocked .icon{color:var(--rd-gap)}
+.rp-state{flex:none;font-size:var(--fs-xs);font-weight:700;color:var(--fg2)}
+.rp-page{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3);border:1px dashed var(--line2);border-radius:var(--r-sm)}
+.rp-line{display:block;height:var(--sp-2)}
+.rp-line-s{width:60%}
+
+@media (max-width:900px){
+  .rp-body{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .rp{padding-inline:var(--sp-4)}
+  .rp-actions .btn,.rp-confirm-row .btn{flex:1 1 100%;min-height:var(--hit-min)}
+}

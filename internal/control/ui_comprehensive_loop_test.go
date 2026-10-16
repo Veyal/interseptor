@@ -99,16 +99,27 @@ func TestUISettingsAcknowledgementsRetainNewerEdits(t *testing.T) {
 func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
 	core := requireUIContracts(t, "js/core.js",
 		"export function hideCtxMenu({restoreFocus=false}={})",
-		"if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected",
+		"if(restoreFocus&&wasOpen&&ctxReturnFocus?.isConnected",
 		"hideCtxMenu({restoreFocus:true})",
-		"else if(e.key==='Tab')hideCtxMenu()",
+		"if(e.key==='Tab'){hideCtxMenu();return;}",
 	)
-	if strings.Count(core, "hideCtxMenu({restoreFocus:true})") < 3 {
+	// Click and Enter now share one activation path (ctxRunRow), so there are two
+	// focus-restoring call sites rather than three: running an item, and dismissing.
+	if strings.Count(core, "hideCtxMenu({restoreFocus:true})") < 2 {
 		t.Error("context menu activation and keyboard cancellation must restore opener focus")
 	}
+	if !strings.Contains(core, "case 'dismiss':hideCtxMenu({restoreFocus:true})") {
+		t.Error("Escape must restore the opener's focus")
+	}
+	// A cascading flyout is a sibling panel, not a child of #ctxmenu, so the
+	// outside-click test has to ask the engine which panels are open.
 	requireUIContracts(t, "js/proxy.js",
-		"if(!ctx.contains(e.target))hideCtx({restoreFocus:false})",
+		"if(!ctxMenuContains(e.target))hideCtx({restoreFocus:false})",
 		"if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}",
+	)
+	requireUIContracts(t, "js/core.js",
+		"export function ctxMenuContains(node)",
+		"return ctxPanels.some(p=>p.el===node||p.el.contains(node))",
 	)
 }
 
@@ -184,7 +195,8 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 	requireUIContracts(t, "index.html",
 		`id="sseStatus" role="status" aria-live="polite"`,
 	)
-	requireUIContracts(t, "js/app.js",
+	// The status markup moved with the topbar into the Connection popover.
+	requireUIContracts(t, "js/connection.js",
 		"wrap.setAttribute('aria-label'",
 		"wrap.classList.toggle('reconnecting'",
 	)
@@ -197,7 +209,7 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 func TestUIScopeLoadFailureIsPersistentAndRetryable(t *testing.T) {
 	requireUIContracts(t, "index.html", `id="scopeLoadState"`)
 	requireUIContracts(t, "js/proxy.js",
-		"renderLoadError(loadState,'Target scope',e,loadScope",
+		"renderLoadError(loadState,'Scope',e,loadScope",
 		"loadState.style.display='none'",
 	)
 }
@@ -232,9 +244,12 @@ func TestUIEvidenceImagesAreKeyboardOperable(t *testing.T) {
 }
 
 func TestUIFindingFlowEvidenceHasOneExplicitInspectAction(t *testing.T) {
-	findings := requireUIContracts(t, "js/findings.js", `<div class="find-report-flow"`, "find-open-flow")
+	findings := requireUIContracts(t, "js/findings.js", `<a class="find-report-flow find-open-flow find-flow-shot"`, "find-open-flow", "flowPreviewURL", "openFlow(flowId, {source:'finding'})")
 	if strings.Contains(findings, `<button type="button" class="find-report-flow"`) {
 		t.Error("finding flow summary duplicates the adjacent Inspect request action")
+	}
+	if strings.Contains(findings, "Inspect evidence") {
+		t.Error("inline Inspect evidence is redundant with the request/response popup")
 	}
 }
 
@@ -266,18 +281,20 @@ func TestUIMapCollapseAndGraphLabelsMatchVisibleState(t *testing.T) {
 
 func TestUIContextMenuMovesAndRestoresFocus(t *testing.T) {
 	requireUIContracts(t, "js/core.js",
-		"ctx._returnFocus=trigger||document.activeElement",
+		"ctxReturnFocus=trigger||document.activeElement",
 		`role="menuitem" tabindex="-1"`,
-		"items[0].focus()",
-		"ctx._returnFocus?.focus",
+		"if(rows[0])rows[0].focus()",
+		"ctxReturnFocus?.focus",
 	)
 }
 
 func TestUIInspectorEscapeDismissesFindBeforeInspector(t *testing.T) {
-	requireUIContracts(t, "js/proxy.js",
-		"if(e.key==='Escape'&&inspectFindBar.style.display==='flex')",
-		"e.stopImmediatePropagation()",
+	// The inspector uses the shared Finder, whose input closes only the bar on
+	// Escape and stops the event before it reaches any underlying dialog.
+	requireUIContracts(t, "js/finder.js",
+		"e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close_(); }",
 	)
+	requireUIContracts(t, "js/proxy.js", "createFinder(view.parentElement", "proxy.inspector.find")
 }
 
 func TestUIToolEditorsKeepAllActionsReachableOnPhones(t *testing.T) {

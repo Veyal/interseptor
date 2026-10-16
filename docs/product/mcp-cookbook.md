@@ -4,6 +4,12 @@
 `POST http://127.0.0.1:9966/mcp`. Interseptor provides deterministic tools and evidence. Your agent
 provides model reasoning and sequencing.*
 
+*If your client loads every tool schema into every prompt, narrow the surface first:
+`INTERSEPTOR_MCP_PROFILE=web-pentest` (or `?profile=web` over HTTP) serves what these recipes use, at
+about a third of the full schema size. Recipe 4 wants `reporting`; Recipe 5's device setup wants
+`mobile`. `full` stays the default and serves everything. See
+[API and MCP](../api-and-mcp.md) for how to select one, and `GET /api/mcp` for what each serves.*
+
 ## Recipe 1 — Map an API from captured traffic
 
 **Goal:** Triage what landed in History and pick endpoints worth attacking.
@@ -51,7 +57,9 @@ captured flows, no separate Discover tab.
 5. set_session if sends need auth; run_login_macro after a 401
 ```
 
-**Safety:** passive scanning does not send requests. For deliberate testing, use the lower-level
+**Safety:** passive scanning does not send requests. The scan runs across every CPU and streams
+`scan.progress` and `scan.issue` over `GET /api/events`; `POST /api/scanner/cancel` stops it and
+persists nothing. For deliberate testing, use the lower-level
 send and verification tools only on targets you are authorized to test and stay within scope.
 
 ## Recipe 4 — Close out findings (engagement end)

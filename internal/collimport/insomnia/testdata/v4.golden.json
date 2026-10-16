@@ -1,0 +1,588 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Example API",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "insomnia"
+    },
+    "importReport": {
+      "format": "insomnia",
+      "entries": [
+        {
+          "level": "unsupported",
+          "path": "/Login",
+          "item": "id006",
+          "feature": "script-api:insomnia",
+          "message": "insomnia script API (insomnia.environment, insomnia.response) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+        },
+        {
+          "level": "unsupported",
+          "feature": "resource:grpc_request",
+          "message": "1 grpc_request resource(s) not imported (gRPC, WebSocket and mock servers are out of scope)"
+        },
+        {
+          "level": "blocked",
+          "path": "/Users/Upload",
+          "item": "id004",
+          "feature": "script-quarantined",
+          "message": "insomnia prerequest script (1 lines, supported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 3f41cbb30301, then trust it"
+        },
+        {
+          "level": "blocked",
+          "path": "/Login",
+          "item": "id006",
+          "feature": "script-quarantined",
+          "message": "insomnia test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+          "suggestion": "Review the source, hash 1641f20b3bf4, then trust it"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Users/Upload",
+          "item": "id004",
+          "feature": "needs-asset",
+          "message": "form field file uploads a local file; files are never read at import",
+          "suggestion": "Attach the file in the form editor"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Users/GQL",
+          "item": "id005",
+          "feature": "template-expression",
+          "message": "template expression {{ _.a | upper }} has no equivalent and was kept as literal text",
+          "suggestion": "Replace it with a variable"
+        },
+        {
+          "level": "needs-review",
+          "path": "/Login",
+          "item": "id006",
+          "feature": "embedded-credential",
+          "message": "auth basic.password holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "base environment",
+          "feature": "secret-variable",
+          "message": "variable api_token looks like a secret; its value was moved out of the shareable initial value (offered as a local current value only)"
+        },
+        {
+          "level": "degraded",
+          "path": "/Users/Get user",
+          "item": "id003",
+          "feature": "response-chaining",
+          "message": "response chaining tag became variable {{chain_1}}; the extractor is stored but not applied until a request sets it",
+          "suggestion": "Add a script or extractor that sets chain_1"
+        },
+        {
+          "level": "degraded",
+          "path": "/Users/GQL",
+          "item": "id005",
+          "feature": "template-tag:faker",
+          "message": "template tag {% faker %} has no equivalent and was kept as literal text",
+          "suggestion": "Replace it with a variable or a pre-request script"
+        },
+        {
+          "level": "degraded",
+          "feature": "resource:cookie_jar",
+          "message": "cookie jar not imported (cookies are local session state and never imported)"
+        }
+      ],
+      "counts": {
+        "blocked": 2,
+        "degraded": 3,
+        "needs-review": 4,
+        "unsupported": 2
+      },
+      "scripts": {
+        "total": 2,
+        "supported": 1,
+        "partial": 0,
+        "unsupported": 1
+      },
+      "scriptList": [
+        {
+          "path": "/Users/Upload",
+          "item": "id004",
+          "listen": "prerequest",
+          "sourceHash": "3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c",
+          "lines": 1,
+          "status": "supported",
+          "quarantined": true
+        },
+        {
+          "path": "/Login",
+          "item": "id006",
+          "listen": "test",
+          "sourceHash": "1641f20b3bf43d0b9cd483c22426892fb4d2666c7012e1047a46769384c184cc",
+          "lines": 1,
+          "apis": [
+            "insomnia.environment",
+            "insomnia.response"
+          ],
+          "status": "unsupported",
+          "quarantined": true
+        }
+      ],
+      "stats": {
+        "folders": 1,
+        "requests": 4,
+        "examples": 0,
+        "variables": 6,
+        "secretVariables": 1,
+        "disabledRows": 2,
+        "needsAsset": 1,
+        "embeddedCredentials": 1,
+        "environmentVariables": 1
+      },
+      "headline": "1 folder(s), 4 request(s) from Insomnia; 2 scripts: 1 fully supported, 0 partial, 1 using unsupported APIs (all quarantined until trusted); 4 need review, 3 degraded, 2 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "Users",
+      "descriptionMd": "user calls",
+      "sidecar": {
+        "id": "fld_1"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "i",
+      "name": "Get user",
+      "method": "GET",
+      "url": {
+        "raw": "{{base_url}}/users/1?expand=roles",
+        "host": [
+          "{{base_url}}"
+        ],
+        "path": [
+          "users",
+          "1"
+        ],
+        "query": [
+          {
+            "key": "expand",
+            "value": "roles"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Authorization",
+          "value": "Bearer {{chain_1}}"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "type": "string",
+            "value": "{{api_token}}"
+          }
+        ]
+      },
+      "vars": {
+        "extract": [
+          {
+            "field": "body",
+            "name": "chain_1",
+            "origin": "{% response 'body', 'req_login', 'b64::JC50b2tlbg==::46b', 'never', 60 %}",
+            "path": "$.token",
+            "request": "id006",
+            "source": "response",
+            "trigger": "never"
+          }
+        ]
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "sidecar": {
+        "id": "req_get"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "r",
+      "name": "Upload",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/upload",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "upload"
+        ]
+      },
+      "headers": [],
+      "body": {
+        "formdata": [
+          {
+            "key": "title",
+            "type": "text",
+            "value": "x"
+          },
+          {
+            "fileName": "/home/u/secret.bin",
+            "key": "file",
+            "src": "",
+            "type": "file"
+          }
+        ],
+        "mode": "formdata"
+      },
+      "events": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const x = 1;"
+            ]
+          },
+          "dialect": "insomnia"
+        }
+      ],
+      "sidecar": {
+        "id": "req_form"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "v",
+      "name": "GQL",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/graphql",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "graphql"
+        ]
+      },
+      "headers": [
+        {
+          "key": "X-T",
+          "value": "{% faker 'name' %} {{ _.a | upper }}"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "graphql": {
+          "query": "{ me { id } }",
+          "variables": {
+            "a": 1
+          }
+        },
+        "mode": "graphql"
+      },
+      "sidecar": {
+        "id": "req_gql"
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "Login",
+      "method": "POST",
+      "url": {
+        "raw": "{{base_url}}/login",
+        "host": [
+          "{{base_url}}"
+        ],
+        "path": [
+          "login"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "X-Request-Id",
+          "value": "{{$guid}}"
+        },
+        {
+          "key": "X-Off",
+          "value": "1",
+          "disabled": true
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\"user\":\"alice\",\"pass\":\"{{password}}\"}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "type": "string",
+            "value": "alice"
+          },
+          {
+            "key": "password",
+            "type": "string",
+            "value": "literal-secret"
+          }
+        ]
+      },
+      "events": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "insomnia.environment.set('t', insomnia.response.json().token);"
+            ]
+          },
+          "dialect": "insomnia"
+        }
+      ],
+      "sidecar": {
+        "id": "req_login"
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "folder",
+      "ownerUid": "id002",
+      "key": "scope",
+      "type": "default",
+      "initialValue": "users",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "api_token",
+      "type": "secret",
+      "initialValue": "",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "base_url",
+      "type": "default",
+      "initialValue": "https://api.example.com",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "nested.a",
+      "type": "default",
+      "initialValue": "1",
+      "enabled": true
+    },
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "nested.b",
+      "type": "default",
+      "initialValue": "two",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id007",
+        "name": "Staging",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id007",
+          "key": "base_url",
+          "type": "default",
+          "initialValue": "https://stage.example.com",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "insomnia",
+    "entries": [
+      {
+        "level": "unsupported",
+        "path": "/Login",
+        "item": "id006",
+        "feature": "script-api:insomnia",
+        "message": "insomnia script API (insomnia.environment, insomnia.response) has no shim in this build; the script reports 'unsupported' at run time instead of a false pass"
+      },
+      {
+        "level": "unsupported",
+        "feature": "resource:grpc_request",
+        "message": "1 grpc_request resource(s) not imported (gRPC, WebSocket and mock servers are out of scope)"
+      },
+      {
+        "level": "blocked",
+        "path": "/Users/Upload",
+        "item": "id004",
+        "feature": "script-quarantined",
+        "message": "insomnia prerequest script (1 lines, supported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 3f41cbb30301, then trust it"
+      },
+      {
+        "level": "blocked",
+        "path": "/Login",
+        "item": "id006",
+        "feature": "script-quarantined",
+        "message": "insomnia test script (1 lines, unsupported) will not run until the owner trusts it in the UI",
+        "suggestion": "Review the source, hash 1641f20b3bf4, then trust it"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Users/Upload",
+        "item": "id004",
+        "feature": "needs-asset",
+        "message": "form field file uploads a local file; files are never read at import",
+        "suggestion": "Attach the file in the form editor"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Users/GQL",
+        "item": "id005",
+        "feature": "template-expression",
+        "message": "template expression {{ _.a | upper }} has no equivalent and was kept as literal text",
+        "suggestion": "Replace it with a variable"
+      },
+      {
+        "level": "needs-review",
+        "path": "/Login",
+        "item": "id006",
+        "feature": "embedded-credential",
+        "message": "auth basic.password holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "base environment",
+        "feature": "secret-variable",
+        "message": "variable api_token looks like a secret; its value was moved out of the shareable initial value (offered as a local current value only)"
+      },
+      {
+        "level": "degraded",
+        "path": "/Users/Get user",
+        "item": "id003",
+        "feature": "response-chaining",
+        "message": "response chaining tag became variable {{chain_1}}; the extractor is stored but not applied until a request sets it",
+        "suggestion": "Add a script or extractor that sets chain_1"
+      },
+      {
+        "level": "degraded",
+        "path": "/Users/GQL",
+        "item": "id005",
+        "feature": "template-tag:faker",
+        "message": "template tag {% faker %} has no equivalent and was kept as literal text",
+        "suggestion": "Replace it with a variable or a pre-request script"
+      },
+      {
+        "level": "degraded",
+        "feature": "resource:cookie_jar",
+        "message": "cookie jar not imported (cookies are local session state and never imported)"
+      }
+    ],
+    "counts": {
+      "blocked": 2,
+      "degraded": 3,
+      "needs-review": 4,
+      "unsupported": 2
+    },
+    "scripts": {
+      "total": 2,
+      "supported": 1,
+      "partial": 0,
+      "unsupported": 1
+    },
+    "scriptList": [
+      {
+        "path": "/Users/Upload",
+        "item": "id004",
+        "listen": "prerequest",
+        "sourceHash": "3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c",
+        "lines": 1,
+        "status": "supported",
+        "quarantined": true
+      },
+      {
+        "path": "/Login",
+        "item": "id006",
+        "listen": "test",
+        "sourceHash": "1641f20b3bf43d0b9cd483c22426892fb4d2666c7012e1047a46769384c184cc",
+        "lines": 1,
+        "apis": [
+          "insomnia.environment",
+          "insomnia.response"
+        ],
+        "status": "unsupported",
+        "quarantined": true
+      }
+    ],
+    "stats": {
+      "folders": 1,
+      "requests": 4,
+      "examples": 0,
+      "variables": 6,
+      "secretVariables": 1,
+      "disabledRows": 2,
+      "needsAsset": 1,
+      "embeddedCredentials": 1,
+      "environmentVariables": 1
+    },
+    "headline": "1 folder(s), 4 request(s) from Insomnia; 2 scripts: 1 fully supported, 0 partial, 1 using unsupported APIs (all quarantined until trusted); 4 need review, 3 degraded, 2 unsupported"
+  }
+}

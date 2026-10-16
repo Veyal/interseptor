@@ -1,0 +1,25 @@
+{{- /*
+  Previous and next pages in navigation order, as two sticker cards. Each card takes
+  the colour of the navigation group its page belongs to.
+*/ -}}
+{{define "pager" -}}
+{{- if or .Page.Prev .Page.Next}}
+{{- $nav := .Site.Nav}}
+<nav class="pager" aria-label="Previous and next pages">
+  {{- with .Page.Prev}}
+  {{- $path := .Path}}{{$color := ""}}{{range $nav}}{{$group := .}}{{range .Links}}{{if eq .Path $path}}{{$color = $group.Color}}{{end}}{{end}}{{end}}
+  <a class="pager-card pager-prev" href="{{.URL}}" rel="prev" data-color="{{$color}}">
+    <span class="pager-label">{{icon "arrow-left"}}<span>Previous</span></span>
+    <span class="pager-title">{{with .Icon}}<span class="nav-tile" aria-hidden="true">{{icon .}}</span>{{end}}<span>{{.Title}}</span></span>
+  </a>
+  {{- end}}
+  {{- with .Page.Next}}
+  {{- $path := .Path}}{{$color := ""}}{{range $nav}}{{$group := .}}{{range .Links}}{{if eq .Path $path}}{{$color = $group.Color}}{{end}}{{end}}{{end}}
+  <a class="pager-card pager-next" href="{{.URL}}" rel="next" data-color="{{$color}}">
+    <span class="pager-label"><span>Next</span>{{icon "arrow-right"}}</span>
+    <span class="pager-title">{{with .Icon}}<span class="nav-tile" aria-hidden="true">{{icon .}}</span>{{end}}<span>{{.Title}}</span></span>
+  </a>
+  {{- end}}
+</nav>
+{{- end}}
+{{- end}}

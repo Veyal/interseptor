@@ -82,7 +82,9 @@ func TestUIFindingsReadModeAndNotesRecoveryContracts(t *testing.T) {
 	}
 
 	notes := readUIAsset(t, "js/notes.js")
-	for _, want := range []string{"data-notes-retry", "state-error-msg", "Retry", "load notes"} {
+	// Notes now uses the shared load-failure component (alert message + Retry)
+	// instead of its own copy of that markup and its own HTML escaper.
+	for _, want := range []string{"renderLoadError(el,'Notes',err,loadNotes", "showNotesLoadError(e)"} {
 		if !strings.Contains(notes, want) {
 			t.Errorf("notes UI missing recovery contract %q", want)
 		}

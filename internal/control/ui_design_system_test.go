@@ -152,11 +152,12 @@ func TestUIThemeContrastMeetsWCAGAA(t *testing.T) {
 	}{
 		{"dark", ":root{"},
 		{"light", `:root[data-theme="light"]{`},
+		{"high-contrast", `:root[data-theme="hc"]{`},
 	} {
 		t.Run(theme.name, func(t *testing.T) {
 			vars := parseThemeBlock(t, css, theme.prefix)
-			if theme.name == "light" {
-				// The light block only overrides; inherit the rest from :root.
+			if theme.name != "dark" {
+				// The light and high-contrast blocks only override; inherit the rest from :root.
 				base := parseThemeBlock(t, css, ":root{")
 				for k, v := range base {
 					if _, ok := vars[k]; !ok {
@@ -213,9 +214,11 @@ func TestUIThemeContrastMeetsWCAGAA(t *testing.T) {
 func TestUIStylesheetHasNoUntokenizedColours(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	// Everything after the light-theme block is component CSS.
-	lightEnd := strings.Index(css, `:root[data-theme="light"]{`)
+	// The high-contrast token block directly follows the light block, so the
+	// component layer starts after whichever theme block closes last.
+	lightEnd := strings.Index(css, `:root[data-theme="hc"]{`)
 	if lightEnd < 0 {
-		t.Fatal("light theme block not found")
+		t.Fatal("high-contrast theme block not found")
 	}
 	closing := strings.Index(css[lightEnd:], "}")
 	components := css[lightEnd+closing:]
@@ -239,7 +242,7 @@ func TestUIStylesheetHasNoUntokenizedColours(t *testing.T) {
 // a localhost security tool: a webfont fetch leaks that the operator is running
 // it, and breaks the UI entirely on air-gapped engagements.
 func TestUIStylesheetIsSelfContained(t *testing.T) {
-	for _, name := range []string{"app.css", "index.html", "login.html"} {
+	for _, name := range append([]string{"index.html", "login.html"}, foundationStylesheets...) {
 		asset := readUIAsset(t, name)
 		for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com"} {
 			if strings.Contains(asset, host) {
@@ -299,7 +302,7 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 		"js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
-		"js/apipanel.js", "js/setup.js", "js/flowmodal.js"}
+		"js/apipanel.js", "js/setup.js"}
 
 	// These ranges were originally too narrow and let ⚡ (U+26A1, which has
 	// Emoji_Presentation=Yes and therefore renders in full colour), ➕ (U+2795),
@@ -342,39 +345,9 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 	if !strings.Contains(index, `<svg id="iconSprite"`) {
 		t.Fatal("index.html is missing the inline icon sprite")
 	}
-	// Every icon referenced anywhere must exist in the sprite.
-	defined := map[string]bool{}
-	for _, m := range regexp.MustCompile(`<symbol id="i-([a-z-]+)"`).FindAllStringSubmatch(index, -1) {
-		defined[m[1]] = true
-	}
-	if len(defined) == 0 {
-		t.Fatal("icon sprite defines no symbols")
-	}
-	used := map[string]bool{}
-	for _, name := range assets {
-		asset := readUIAsset(t, name)
-		for _, m := range regexp.MustCompile(`href="#i-([a-z-]+)"`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-		// icon('name') / icon("name") calls in JS.
-		for _, m := range regexp.MustCompile(`\bicon\(['"]([a-z-]+)['"]`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-		// ctx-menu items declaring icon:'name'
-		for _, m := range regexp.MustCompile(`icon:\s*['"]([a-z-]+)['"]`).FindAllStringSubmatch(asset, -1) {
-			used[m[1]] = true
-		}
-	}
-	for name := range used {
-		if !defined[name] {
-			t.Errorf("icon %q is referenced but not defined in the sprite", name)
-		}
-	}
-	for name := range defined {
-		if !used[name] {
-			t.Errorf("icon %q is defined in the sprite but never used — drop it", name)
-		}
-	}
+	// Reference/definition integrity (every use resolves, no dead symbols) lives
+	// in TestUIIconReferencesResolveAndNoDeadSymbols (ui_icons_test.go).
+
 	// Icon markup must never be built inside an escaping call or an HTML
 	// attribute value. esc()/escAttr() turn it into visible literal "<svg …>"
 	// text, and an attribute cannot hold markup at all. This is exactly how the
@@ -629,7 +602,8 @@ func TestUISharedToggleAndSegmentContracts(t *testing.T) {
 		"notesFilter", "hideTlsFilter", "scopeToggle", "manualFilter", "aiFilter",
 		"interceptToggle", "respInterceptToggle", "mapHideNoise", "mapCollapseIdentical",
 		"sysProxyToggle", "capScopeToggle", "suppressTelemetryToggle",
-		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "autoBypassToggle",
+		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "findingsUIEditingToggle", "autoBypassToggle",
+		"proxyAuthToggle",
 	} {
 		pattern := regexp.MustCompile(`(?s)<button[^>]*id="` + id + `"[^>]*>`)
 		m := pattern.FindString(index)
@@ -678,8 +652,10 @@ func TestUIMotionTokensExist(t *testing.T) {
 			t.Errorf("motion token %s = %q, want %q", name, vars[name], expected)
 		}
 	}
-	if !strings.Contains(readUIAsset(t, "js/app.js"), "./motion.js") {
-		t.Error("app.js does not use the shared motion helper")
+	// The shared motion helper (transitionView) drives the canvas's panel
+	// entrance now that canvas.js owns panel placement and focus.
+	if !strings.Contains(readUIAsset(t, "js/canvas.js"), "./motion.js") {
+		t.Error("canvas.js does not use the shared motion helper")
 	}
 }
 
@@ -770,11 +746,11 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	// The scale is only real if the markup honours it too. Inline styles in
 	// index.html and JS template strings bypass the stylesheet entirely, and
 	// that is where 9px and 10px text survived the first cleanup.
-	for _, name := range []string{"app.css", "index.html", "login.html", "js/core.js", "js/app.js",
+	for _, name := range append(append([]string{}, foundationStylesheets...), "index.html", "login.html", "js/core.js", "js/app.js",
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
-		"js/setup.js", "js/flowmodal.js"} {
+		"js/setup.js") {
 		for _, m := range regexp.MustCompile(`font-size:\s*([0-9.]+)px`).FindAllStringSubmatch(readUIAsset(t, name), -1) {
 			f, _ := strconv.ParseFloat(m[1], 64)
 			if f > 0 && f < 11 {
@@ -792,5 +768,61 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	}
 	if radii > 5 {
 		t.Errorf("radius scale has %d steps; collapse it to at most 5", radii)
+	}
+}
+
+// TestUIIndexHasNoInlineDesignStyles keeps the design system in the stylesheet.
+// index.html carried 388 style="…" attributes — 32 margin-bottom, 33 flex-wrap,
+// 20 color, 19 gap, 16 font-size — and every one of them was invisible to the
+// theme blocks, to the 720/900/1100 breakpoints, and to every other test in this
+// file. Colour declared inline cannot follow the theme toggle; spacing declared
+// inline cannot be collapsed at a narrow width; a size declared inline silently
+// contradicts the --sp-*/--fs-* scales.
+//
+// Only `display` may be declared inline, because a handful of elements are shown
+// and hidden by JavaScript writing el.style.display directly (see the survey in
+// the utility-layer comment in app.css). There is no allowlist beyond that: a new
+// inline colour or width is a stylesheet change that has not been made yet.
+func TestUIIndexHasNoInlineDesignStyles(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	attr := regexp.MustCompile(`\sstyle="([^"]*)"`)
+	inline, offenders := 0, 0
+	for _, m := range attr.FindAllStringSubmatch(index, -1) {
+		inline++
+		for _, decl := range strings.Split(m[1], ";") {
+			decl = strings.TrimSpace(decl)
+			if decl == "" {
+				continue
+			}
+			prop, _, ok := strings.Cut(decl, ":")
+			if !ok {
+				t.Errorf("malformed inline declaration %q in style=%q", decl, m[1])
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(prop)) != "display" {
+				offenders++
+				t.Errorf("inline style declares %q — move it to a component class or the utility layer in app.css: style=%q", decl, m[1])
+			}
+		}
+	}
+	// A cap on the survivors too: an inline display:none is a JS contract, and
+	// there are only a couple of dozen of those. Well past that and the markup is
+	// drifting back toward styling itself.
+	if inline > 40 {
+		t.Errorf("index.html has %d inline style attributes (%d carrying non-display declarations); the budget is 40 display-only ones", inline, offenders)
+	}
+}
+
+// TestUIHiddenUtilityOutranksComponentDisplayRules pins the specificity trick
+// that keeps `.u-hidden` effective on buttons: `.btn` sets display with a
+// 0-1-3 selector, so a single-class utility would lose and a hidden control
+// (Stop sharing, for one) would render on load.
+func TestUIHiddenUtilityOutranksComponentDisplayRules(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	if !strings.Contains(css, ".u-hidden.u-hidden{display:none}") {
+		t.Fatal("app.css must declare .u-hidden with doubled specificity so it beats .btn's display rule")
+	}
+	if strings.Contains(css, "\n.u-hidden{") {
+		t.Fatal("a single-class .u-hidden rule loses to .btn; keep only the doubled selector")
 	}
 }

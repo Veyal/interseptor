@@ -28,13 +28,14 @@ func TestFindingDeleteSharedWriteBoundary(t *testing.T) {
  const findingWriteQueues=new Map(),bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),cvssApplyDraftTokens=new Map(),findingEvidenceWrites=new Map();
  const findingDeletesPending=new Set(),findingAttachPending=new Set();
  const findingDrafts=createFindingDraftStore(),cvssPreviewDrafts=createFindingDraftStore();
+ const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
  const controls={findDetail:{inert:false},findSaveState:{},findSaveRecovery:{},findSaveRetry:{focus(){}}};
  const $=s=>controls[s.slice(1)],toast=()=>{},refreshDeferredFindingDetail=()=>{},loadFindings=async()=>{};
  const captureActiveFindingTextEditor=()=>{},registerProjectSwitchGuard=fn=>guard=fn;
  const requests=[],api=(path,options)=>new Promise((resolve,reject)=>requests.push({path,...options,resolve,reject}));
  const tick=()=>new Promise(r=>setTimeout(r,30));
  const outcome=p=>p.then(()=>null,e=>e);
- ` + section("function scheduleSave(", "// Paste/drop evidence") + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "async function exportFindingsReport(") + section("registerProjectSwitchGuard(", "\n") + `
+ ` + section("function scheduleSave(", "// Paste/drop evidence") + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "export function flowFindings(") + section("registerProjectSwitchGuard(", "\n") + `
  for(const fields of [{title:'Failed metadata'},{blocks:[{type:'text',md:'Failed body'}]}]) {
   const save=outcome(patchFinding(1,fields));requests.at(-1).reject(Error('save failed'));await save;
   const count=requests.length,err=await outcome(deleteFinding(1));

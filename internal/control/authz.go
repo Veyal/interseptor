@@ -26,6 +26,11 @@ type identity struct {
 	Headers    string `json:"headers"` // "Key: Value" lines (Cookie / Authorization / …)
 	Broken     bool   `json:"broken,omitempty"`
 	BrokenNote string `json:"brokenNote,omitempty"` // e.g. "locked after rate-limit test"
+	// UpdatedAt (RFC3339 UTC) and Owner record who last wrote the identity so
+	// clobbering between parallel agents can be diagnosed. Both are stamped by
+	// the server's write paths.
+	UpdatedAt string `json:"updatedAt,omitempty"`
+	Owner     string `json:"owner,omitempty"`
 }
 
 // UnmarshalJSON accepts headers as a "Key: Value\n..." string (canonical form),
@@ -149,21 +154,6 @@ func (h *authzAPI) getAuthz(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"identities": identities})
-}
-
-func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Identities []identity `json:"identities"`
-	}
-	if !decodeLimitedJSON(w, r, maxAuthzConfigRequestBytes, &in) {
-		return
-	}
-	b, _ := json.Marshal(in.Identities)
-	if err := h.st.SetSetting("authz.identities", string(b)); err != nil {
-		httpInternalErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"identities": in.Identities})
 }
 
 // authzFlowAuth returns Cookie/Authorization from a flow's request plus optional
@@ -357,13 +347,23 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 }
 
 func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
+	return h.authzReplayBody(f, id, nil)
+}
+
+// authzReplayBody is authzReplay with an optional replacement request body
+// (nil keeps the captured body). Used by the differential invalid-body probe.
+func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []byte) authzResult {
 	url := flowURLStr(f)
 	if h.targetsOwnListener(url) {
 		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
 	}
-	body, err := h.bodyBytesResult(f.ReqBodyHash)
-	if err != nil {
-		return authzResult{Name: id.Name, Error: "request body unavailable"}
+	body := bodyOverride
+	if body == nil {
+		var err error
+		body, err = h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			return authzResult{Name: id.Name, Error: "request body unavailable"}
+		}
 	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
 	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})

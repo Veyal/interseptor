@@ -1,0 +1,48 @@
+{{- /*
+  One header for every page, the landing page included. It never contains an h1.
+  Below 960px it keeps the brand, the search, the theme switch and the menu button;
+  the menu opens the drawer (partials/drawer.html).
+*/ -}}
+{{define "header" -}}
+{{- $path := .Page.Path -}}
+<header class="site-header">
+  <div class="site-header-inner wrap-wide">
+    <div class="brand-trail">
+      <a class="brand-parent" href="{{.Site.Parent}}" aria-label="Back to veyal.land">veyal.land</a>
+      <span class="brand-slash" aria-hidden="true">/</span>
+      <a class="brand" href="{{url "/"}}"{{if eq .Page.Kind "landing"}} aria-current="page"{{end}}><span class="brand-mark" aria-hidden="true">{{template "brand-mark"}}</span><span class="brand-name">Interseptor</span></a>
+    </div>
+    <nav class="site-nav" aria-label="Primary">
+      <ul>
+        <li><a href="{{url "/getting-started/"}}"{{if eq $path "/getting-started/"}} aria-current="page"{{else if or (and (eq .Page.Kind "docs") (ne $path "/ai-agents/")) (eq $path "/reference/")}} aria-current="true"{{end}}>Docs</a></li>
+        <li><a href="{{url "/features/"}}"{{if eq $path "/features/"}} aria-current="page"{{end}}>Features</a></li>
+        <li><a href="{{url "/compare/"}}"{{if eq $path "/compare/"}} aria-current="page"{{end}}>Compare</a></li>
+        <li><a href="{{url "/ai-agents/"}}"{{if eq $path "/ai-agents/"}} aria-current="page"{{end}}>For agents</a></li>
+      </ul>
+    </nav>
+    <div class="header-tools">
+      {{template "search-trigger" .}}
+      {{template "release-chip" .}}
+      <a class="icon-btn header-github" href="{{.Site.Repo}}" aria-label="Interseptor on GitHub">{{icon "github"}}</a>
+      {{template "theme-toggle" .}}
+      <button class="icon-btn menu-btn" type="button" aria-controls="site-menu" aria-expanded="false" aria-haspopup="dialog">{{icon "menu"}}<span class="sr-only">Menu</span></button>
+    </div>
+  </div>
+</header>
+{{- end}}
+
+{{- /* The intercept mark: a request arrow caught and sent back. */}}
+{{define "brand-mark"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9h15l-4-4M20 15H5l4 4"/></svg>{{end}}
+
+{{- /* Without JavaScript this is a link to the feature index; search.js turns it into the
+     button that opens the search palette. Any [data-search-open] element opens it too. */}}
+{{define "search-trigger" -}}
+<a class="search-trigger" href="{{url "/features/"}}" data-search-open aria-keyshortcuts="/ Control+K Meta+K">{{icon "search"}}<span class="search-trigger-label">Search docs</span><kbd class="search-trigger-key" aria-hidden="true">⌘K</kbd></a>
+{{- end}}
+
+{{define "theme-toggle"}}<button class="icon-btn theme-toggle" type="button" aria-pressed="false"><span class="sr-only">Dark theme</span>{{icon "moon" "icon-moon"}}{{icon "sun" "icon-sun"}}</button>{{end}}
+
+{{define "release-chip"}}<a class="chip chip-yellow release-chip" href="{{.Site.Repo}}/releases/tag/v{{.Site.Release.Version}}" aria-label="v{{.Site.Release.Version}} release notes" title="Released {{.Site.Release.Date}}">v{{.Site.Release.Version}}</a>{{end}}
+
+{{- /* Kept for other layouts: a chip that leads back to the main site. */}}
+{{define "back-link"}}<a class="chip back-link" href="{{.Site.Parent}}">{{icon "arrow-left"}}<span>Back to veyal.land</span></a>{{end}}

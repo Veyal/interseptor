@@ -16,8 +16,9 @@ var (
 	jwtRe          = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{4,}`)
 	passwordRe     = regexp.MustCompile(`(?i)"?password"?\s*[:=]\s*"?[^"&\s,}]{3,}`)
 	tokenRe        = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
-	versionRe      = regexp.MustCompile(`\d+\.\d+`)
-	urlSensitiveRe = regexp.MustCompile(`(?i)[?&](access_?token|api_?key|token|session|password|secret|passwd|auth)=([^&\s]{6,})`)
+	versionRe        = regexp.MustCompile(`\d+\.\d+`)
+	urlSensitiveRe   = regexp.MustCompile(`(?i)[?&](access_?token|refresh_?token|id_?token|auth_?token|api_?key|token|session|password|secret|passwd|client_?secret|auth)=([^&\s]{6,})`)
+	protoPollutionRe = regexp.MustCompile(`(?i)(?:["']?__proto__["']?\s*[:=]|["']?constructor["']?\s*\[["']?prototype["']?\]|constructor\.(?:prototype|__proto__))`)
 
 	// mixedContentRe matches http:// scheme references inside common HTML resource-loading attributes.
 	mixedContentRe = regexp.MustCompile(`(?i)(?:src|href)\s*=\s*["']?http://`)
@@ -126,6 +127,7 @@ const (
 	checkSameSiteNone      = "samesite-none-insecure"
 	checkInsecureWS        = "insecure-websocket"
 	checkJSONP             = "jsonp-endpoint"
+	checkProtoPollution    = "prototype-pollution"
 )
 
 // BuiltinChecks lists every built-in passive check. The Category groups them in
@@ -145,6 +147,7 @@ var BuiltinChecks = []BuiltinCheck{
 	{checkPrivateIP, "Internal IP address disclosed", "Disclosure", "Low", "The response body contains a private/loopback IP address."},
 	{checkReflectedParam, "Request parameter reflected in HTML", "Injection", "Low", "A parameter is echoed verbatim into HTML — a possible reflected-XSS sink."},
 	{checkDBError, "Possible SQL injection (DB error in response)", "Injection", "High", "The response contains a database error string — a strong SQLi signal."},
+	{checkProtoPollution, "Prototype pollution vector in request", "Injection", "Medium", "The request body contains __proto__ or constructor.prototype keys."},
 	{checkBasicAuth, "HTTP Basic authentication in use", "Auth", "Low", "Credentials are sent as reversible base64 (Authorization: Basic)."},
 	{checkMixedContent, "Mixed content: HTTPS page loads HTTP resource", "Config", "Medium", "An HTTPS page references a resource over plain HTTP."},
 	{checkOpenRedirect, "Potential open redirect via request parameter", "Redirect", "Medium", "A 3xx Location is influenced by a request parameter, off-host."},
@@ -198,6 +201,17 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 				"The request carries a password field in its body; over plaintext HTTP this is trivially sniffable, and even over TLS it should be kept out of logs.",
 				trunc(m, 80),
 				"Always submit credentials over HTTPS, keep the body out of access logs, and consider client-side hashing / SRP so the raw secret never transits.")
+		}
+	}
+
+	// Prototype pollution vector in request body.
+	if on(checkProtoPollution) {
+		if m := protoPollutionRe.FindString(req); m != "" {
+			add("Medium", "Prototype pollution vector in request",
+				"The request body contains a prototype pollution key ('__proto__' or 'constructor.prototype'). "+
+					"Vulnerable object-merging or cloning functions in JavaScript/Node.js backends can pollute the Object prototype, potentially leading to property injection, authorization bypass, or remote code execution.",
+				trunc(m, 80),
+				"Validate input schemas against an allow-list; reject objects containing '__proto__' or 'constructor' properties, or use Object.create(null) for dictionary objects.")
 		}
 	}
 
@@ -292,6 +306,12 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 						"Although browsers block this combination, it is a server-side misconfiguration that signals the developer intended open cross-origin access with credentials.",
 					"Access-Control-Allow-Origin: * | Access-Control-Allow-Credentials: true",
 					"Restrict Access-Control-Allow-Origin to a specific trusted origin when credentials are required; never use * with credentials.")
+			case strings.EqualFold(acao, "null"):
+				add("High", "CORS allows null origin with credentials enabled",
+					"Access-Control-Allow-Origin: null is set alongside Access-Control-Allow-Credentials: true. "+
+						"An attacker can execute cross-origin requests from a sandboxed iframe or opaque origin to read credentialed responses.",
+					"Access-Control-Allow-Origin: null | Access-Control-Allow-Credentials: true",
+					"Do not allow the 'null' origin with credentials; validate origins against an explicit allow-list of trusted schemes and hosts.")
 			case reqOrigin != "" && acao == reqOrigin:
 				add("High", "CORS reflects request Origin with credentials enabled",
 					"The server echoes back the caller's Origin header as Access-Control-Allow-Origin and also sets Access-Control-Allow-Credentials: true. "+

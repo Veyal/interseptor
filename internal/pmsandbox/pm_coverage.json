@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "note": "Data for the static analyser (Analyze). Names mirror the pm.* parity table in the collections plan. The runtime enforces the same limits independently: an API absent here still fails at run time with status unsupported.",
+  "objects": {
+    "pm": {"members": ["info","environment","globals","collectionVariables","iterationData","variables","request","response","cookies","test","expect","sendRequest","execution","visualizer"]},
+    "pm.environment": {"members": ["name","get","set","unset","has","clear","toObject","replaceIn","toJSON"]},
+    "pm.globals": {"members": ["get","set","unset","has","clear","toObject","replaceIn","toJSON"]},
+    "pm.collectionVariables": {"members": ["get","set","unset","has","clear","toObject","replaceIn","toJSON"]},
+    "pm.variables": {"members": ["get","set","unset","has","clear","toObject","replaceIn"]},
+    "pm.iterationData": {"members": ["get","has","toObject","replaceIn","toJSON"]},
+    "pm.info": {"members": ["eventName","iteration","iterationCount","requestName","requestId"]},
+    "pm.execution": {"members": ["setNextRequest","skipRequest"]},
+    "pm.cookies": {"members": ["get","has","toObject","jar"]},
+    "pm.request": {"members": ["name","id","method","url","headers","body","auth","getHeaders","addHeader","removeHeader","upsertHeader","update","toJSON"]},
+    "pm.request.headers": {"members": ["get","one","has","add","append","prepend","upsert","remove","clear","count","all","idx","each","map","filter","find","reduce","populate","toObject","members","toJSON"]},
+    "pm.request.url": {"members": ["protocol","host","port","path","query","hash","auth","update","getHost","getPath","getQueryString","getPathWithQuery","getRemote","addQueryParams","removeQueryParams","toString","toJSON"]},
+    "pm.request.body": {"members": ["mode","raw","urlencoded","formdata","options","isEmpty","toString","update","toJSON"]},
+    "pm.response": {"members": ["code","status","headers","responseTime","responseSize","cookies","text","json","reason","size","to","toJSON"]},
+    "pm.response.headers": {"members": ["get","one","has","each","map","filter","find","count","all","idx","toObject","members","add","append","prepend","upsert","remove","clear","populate","reduce","toJSON"]},
+    "pm.response.cookies": {"members": ["get","one","has","each","map","filter","find","count","all","idx","toObject","members","add","append","prepend","upsert","remove","clear","populate","reduce","toJSON"]},
+    "pm.response.to": {"chain": "response"}
+  },
+  "chain_words": ["to","be","been","is","that","which","and","has","have","with","at","of","same","but","does","still","also","itself","not","deep","own","nested","any","all","ordered"],
+  "chai": ["equal","equals","eq","eql","eqls","include","includes","contain","contains","property","ownProperty","a","an","instanceof","instanceOf","above","gt","greaterThan","below","lt","lessThan","least","gte","greaterThanOrEqual","most","lte","lessThanOrEqual","within","closeTo","approximately","lengthOf","length","oneOf","match","matches","string","keys","key","members","satisfy","throw","throws","ok","true","false","null","undefined","NaN","exist","exists","empty"],
+  "response_chain": ["status","header","jsonBody","body","ok","success","info","redirection","clientError","serverError","error","accepted","badRequest","unauthorized","forbidden","notFound","rateLimited","withBody","json"],
+  "unsupported": {
+    "pm.vault": "pm.vault is not shipped",
+    "pm.iterationData.set": "pm.iterationData is read-only",
+    "pm.iterationData.unset": "pm.iterationData is read-only",
+    "pm.iterationData.clear": "pm.iterationData is read-only",
+    "pm.require": "pm.require (package library) is not shipped",
+    "pm.response.stream": "streamed response bodies are not shipped",
+    "pm.response.to.have.jsonSchema": "JSON-schema assertions (ajv/tv4) are not shipped",
+    "pm.execution.runRequest": "pm.execution.runRequest is not shipped",
+    "pm.execution.location": "pm.execution.location is not shipped",
+    "pm.request.certificate": "client certificates are configured per item, not from scripts",
+    "pm.response.to.have.jsonSchemaValidate": "JSON-schema assertions (ajv/tv4) are not shipped"
+  },
+  "stubs": {
+    "pm.visualizer": "pm.visualizer is a no-op stub; visualizer output is not rendered"
+  },
+  "globals": {
+    "supported": ["pm","postman","tests","responseBody","responseCode","responseHeaders","responseCookies","responseTime","environment","globals","data","iteration","request","console","CryptoJS","Buffer","atob","btoa","TextEncoder","TextDecoder","URL","URLSearchParams","require","setTimeout","setInterval","clearTimeout","clearInterval","setImmediate","performance","Promise","JSON","Math","Date","isp"],
+    "unsupported": {
+      "_": "lodash is not shipped (deferred, data-driven)",
+      "moment": "moment is not shipped (deferred, data-driven)",
+      "tv4": "tv4 is not shipped",
+      "xml2Json": "xml2Json is not shipped",
+      "cheerio": "cheerio is not shipped (deferred, data-driven)",
+      "ajv": "ajv is not shipped",
+      "fetch": "network egress is only available through pm.sendRequest",
+      "XMLHttpRequest": "network egress is only available through pm.sendRequest",
+      "WebSocket": "network egress is only available through pm.sendRequest",
+      "process": "no process access in the sandbox"
+    }
+  },
+  "modules": {
+    "supported": ["crypto","crypto-js","buffer","uuid","url","chai","querystring","atob","btoa","util"],
+    "deferred": {
+      "lodash": "lodash is not shipped (deferred, data-driven)",
+      "moment": "moment is not shipped (deferred, data-driven)",
+      "cheerio": "cheerio is not shipped (deferred, data-driven)",
+      "xml2js": "xml2js is not shipped (deferred, data-driven)",
+      "tv4": "tv4 is not shipped",
+      "ajv": "ajv is not shipped",
+      "csv-parse/lib/sync": "csv-parse is not shipped",
+      "postman-collection": "postman-collection is not shipped"
+    },
+    "forbidden": {
+      "fs": "no filesystem access",
+      "path": "not available",
+      "os": "no host information",
+      "child_process": "no process access",
+      "net": "no raw sockets",
+      "tls": "no raw sockets",
+      "dgram": "no raw sockets",
+      "dns": "no DNS access",
+      "http": "network egress is only available through pm.sendRequest",
+      "https": "network egress is only available through pm.sendRequest",
+      "http2": "network egress is only available through pm.sendRequest",
+      "vm": "no code loading",
+      "worker_threads": "no threads",
+      "cluster": "no process access",
+      "zlib": "not available",
+      "stream": "not available"
+    }
+  }
+}

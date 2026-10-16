@@ -88,6 +88,8 @@ func Findings(issues []store.Issue) string {
 func Project(findings []store.Finding, issues []store.Issue) string {
 	var b strings.Builder
 	b.WriteString("# Interseptor — Engagement Report\n\n")
+	titles := findingTitles(findings)
+	findings = withInverseRelations(findings)
 	if len(findings) == 0 && len(issues) == 0 {
 		b.WriteString("_No findings recorded._\n")
 		return b.String()
@@ -151,8 +153,10 @@ func Project(findings []store.Finding, issues []store.Issue) string {
 				b.WriteString("\n## " + orVal(f.Severity, "Info") + "\n")
 				lastSev = f.Severity
 			}
-			renderFinding(&b, n+1, f)
+			renderFinding(&b, n+1, f, titles)
 		}
+		renderChainsSection(&b, active)
+		renderNotExecutedSection(&b, sorted)
 	}
 
 	// Excluded / false-positive findings, listed but not part of the headline body.
@@ -234,7 +238,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 // originate from untrusted proxied content — e.g. an AI pastes page content
 // into a finding — so it is neutralized before being written verbatim into the
 // exported report; see sanitizeLine/sanitizeBody for what each does and why.
-func renderFinding(b *strings.Builder, n int, f store.Finding) {
+func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]string) {
 	f.EnrichCompleteness()
 	fmt.Fprintf(b, "\n### %d. %s\n", n, sanitizeLine(f.Title))
 	if f.Status != "" {
@@ -263,6 +267,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 	if f.Readiness != nil && len(f.Readiness.Gaps) > 0 {
 		b.WriteString("- **Readiness gaps:** " + strings.Join(f.Readiness.Gaps, ", ") + "\n")
+	}
+	if withdrawn := withdrawnClaimIDs(f); len(withdrawn) > 0 {
+		b.WriteString("- **Withdrawn claims:** " + sanitizeLine(strings.Join(withdrawn, ", ")) + "\n")
 	}
 	if f.VerificationInstructions != "" {
 		b.WriteString("- **Verification:** " + sanitizeLine(f.VerificationInstructions) + "\n")
@@ -306,65 +313,18 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 
 	renderFindingTargets(b, f.Targets)
+	renderClaims(b, f)
+	renderFindingNotExecuted(b, f)
+	renderRelated(b, f, titles)
 
 	hasPoC := len(f.Blocks) > 0 || f.Detail != "" || f.Evidence != "" || len(f.Flows) > 0
 	if hasPoC {
 		b.WriteString("**Reproduction & Evidence:**\n\n")
 	}
 	// Render interleaved PoC timeline (text + flows + images in author's order).
+	// Several affected targets each get the proof linked to that target.
 	if len(f.Blocks) > 0 {
-		hasDetailBlock := false
-		hasEvidenceBlock := false
-		for _, bl := range f.Blocks {
-			if meta := blockEvidenceMeta(bl); meta != "" {
-				label := "Evidence"
-				if bl.Type == "text" {
-					label = "Step"
-				}
-				b.WriteString("_" + label + ": " + meta + "._\n\n")
-			}
-			if bl.Type == "text" && bl.MD != "" {
-				hasDetailBlock = hasDetailBlock || bl.MD == f.Detail
-				hasEvidenceBlock = hasEvidenceBlock || bl.MD == f.Evidence
-				b.WriteString(sanitizeBody(bl.MD) + "\n\n")
-			} else if bl.Type == "flow" {
-				if bl.Missing {
-					// PoC flow was purged from history (prune_history / GC) — note
-					// that the evidence is gone instead of an empty/broken quote.
-					line := fmt.Sprintf("> ⚠ PoC flow #%d — evidence no longer in history", bl.FlowID)
-					if bl.Note != "" {
-						line += " — " + sanitizeBody(bl.Note)
-					}
-					b.WriteString(line + "\n>\n")
-					continue
-				}
-				line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
-				if bl.Status > 0 {
-					line += fmt.Sprintf(" → **%d**", bl.Status)
-				}
-				if bl.Note != "" {
-					line += " — " + sanitizeBody(bl.Note)
-				}
-				b.WriteString(line + "\n>\n")
-				renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
-			} else if bl.Type == "image" {
-				cap := bl.Caption
-				if cap == "" {
-					cap = "screenshot"
-				}
-				if bl.Missing {
-					b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n>\n", code(bl.Hash)))
-					continue
-				}
-				// Relative API URL works when the report is viewed from the control UI;
-				// offline MD exports keep the caption + hash for reference.
-				if bl.URL != "" {
-					b.WriteString(fmt.Sprintf("![%s](%s)\n\n", sanitizeLine(cap), bl.URL))
-				} else {
-					b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
-				}
-			}
-		}
+		hasDetailBlock, hasEvidenceBlock := renderFindingProofSections(b, f)
 		if f.Detail != "" && !hasDetailBlock {
 			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
@@ -411,10 +371,128 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 }
 
+func renderFindingProofSections(b *strings.Builder, f store.Finding) (hasDetailBlock, hasEvidenceBlock bool) {
+	if len(f.Targets) < 2 {
+		return renderFindingBlocks(b, f.Blocks, f.Detail, f.Evidence)
+	}
+	perTarget := make([][]store.FindingBlock, len(f.Targets))
+	var shared []store.FindingBlock
+	for _, bl := range f.Blocks {
+		used := false
+		for i := range f.Targets {
+			if findingBlockLinkedToTarget(bl, f.Targets[i]) {
+				perTarget[i] = append(perTarget[i], bl)
+				used = true
+			}
+		}
+		if !used {
+			shared = append(shared, bl)
+		}
+	}
+	if len(shared) > 0 {
+		b.WriteString("**Shared explanation:**\n\n")
+		detail, evidence := renderFindingBlocks(b, shared, f.Detail, f.Evidence)
+		hasDetailBlock = hasDetailBlock || detail
+		hasEvidenceBlock = hasEvidenceBlock || evidence
+	}
+	for i, t := range f.Targets {
+		fmt.Fprintf(b, "**Proof of `%s`:**\n\n", code(t.URL))
+		if len(perTarget[i]) == 0 {
+			b.WriteString("_No proof recorded for this target yet._\n\n")
+			continue
+		}
+		detail, evidence := renderFindingBlocks(b, perTarget[i], f.Detail, f.Evidence)
+		hasDetailBlock = hasDetailBlock || detail
+		hasEvidenceBlock = hasEvidenceBlock || evidence
+	}
+	return hasDetailBlock, hasEvidenceBlock
+}
+
+func findingBlockLinkedToTarget(bl store.FindingBlock, t store.FindingTarget) bool {
+	if bl.Type == "flow" && bl.FlowID > 0 {
+		for _, id := range t.FlowIDs {
+			if id == bl.FlowID {
+				return true
+			}
+		}
+	}
+	if bl.Type == "image" && bl.Hash != "" {
+		for _, hash := range t.ImageHashes {
+			if hash == bl.Hash {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail, evidence string) (hasDetailBlock, hasEvidenceBlock bool) {
+	for _, bl := range blocks {
+		if meta := blockEvidenceMeta(bl); meta != "" {
+			label := "Evidence"
+			if bl.Type == "text" {
+				label = "Step"
+			}
+			b.WriteString("_" + label + ": " + meta + "._\n\n")
+		}
+		if bl.Type == "text" && bl.MD != "" {
+			hasDetailBlock = hasDetailBlock || bl.MD == detail
+			hasEvidenceBlock = hasEvidenceBlock || bl.MD == evidence
+			b.WriteString(sanitizeBody(bl.MD) + "\n\n")
+		} else if bl.Type == "flow" {
+			if bl.Missing {
+				line := fmt.Sprintf("> ⚠ PoC flow #%d — evidence no longer in history", bl.FlowID)
+				if bl.Note != "" {
+					line += " — " + sanitizeBody(bl.Note)
+				}
+				b.WriteString(line + "\n>\n")
+				continue
+			}
+			line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
+			if bl.Status > 0 {
+				line += fmt.Sprintf(" → **%d**", bl.Status)
+			}
+			if bl.Note != "" {
+				line += " — " + sanitizeBody(bl.Note)
+			}
+			b.WriteString(line + "\n>\n")
+			renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
+		} else if bl.Type == "image" {
+			cap := bl.Caption
+			if cap == "" {
+				cap = "screenshot"
+			}
+			if bl.Missing {
+				b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n>\n", code(bl.Hash)))
+				continue
+			}
+			if bl.URL != "" {
+				b.WriteString(fmt.Sprintf("![%s](%s)\n\n", sanitizeLine(cap), bl.URL))
+			} else {
+				b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
+			}
+		}
+	}
+	return hasDetailBlock, hasEvidenceBlock
+}
+
+func proofStoryLabel(role string) string {
+	switch role {
+	case "baseline", "control":
+		return " (normal behavior)"
+	case "action", "setup":
+		return " (what we changed)"
+	case "result":
+		return " (what changed)"
+	default:
+		return ""
+	}
+}
+
 func blockEvidenceMeta(bl store.FindingBlock) string {
 	var parts []string
 	if bl.Role != "" {
-		parts = append(parts, "role="+sanitizeLine(bl.Role))
+		parts = append(parts, "role="+sanitizeLine(bl.Role)+proofStoryLabel(bl.Role))
 	}
 	if bl.Proof != "" {
 		parts = append(parts, "proof="+sanitizeLine(bl.Proof))
@@ -424,12 +502,17 @@ func blockEvidenceMeta(bl store.FindingBlock) string {
 		switch bl.Source {
 		case "flow_preview":
 			label += " (generated HTTP preview; not browser proof)"
+		case "evidence_render":
+			label += " (generated evidence render from recorded data; not browser proof)"
 		case "browser_screenshot":
 			label += " (operator-declared browser capture)"
 		case "operator_upload":
 			label += " (uploaded image; capture origin not confirmed)"
 		}
 		parts = append(parts, "source="+sanitizeLine(label))
+	}
+	if bl.SourceRef != "" {
+		parts = append(parts, "source ref "+sanitizeLine(bl.SourceRef))
 	}
 	if bl.SourceFlowID > 0 {
 		parts = append(parts, fmt.Sprintf("source flow #%d", bl.SourceFlowID))
@@ -613,6 +696,8 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 		return b.String()
 	}
 
+	titles := findingTitles(findings)
+	active = withInverseRelations(active)
 	sections := groupFindingsByTag(active, order, omit)
 	for _, sec := range sections {
 		b.WriteString("\n## " + sec.Title + "\n")
@@ -628,9 +713,11 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 			return sorted[i].ID < sorted[j].ID
 		})
 		for n, f := range sorted {
-			renderFinding(&b, n+1, f)
+			renderFinding(&b, n+1, f, titles)
 		}
 	}
+	renderChainsSection(&b, active)
+	renderNotExecutedSection(&b, active)
 
 	if len(excluded) > 0 {
 		b.WriteString("\n---\n\n## Excluded — False Positives\n\n")

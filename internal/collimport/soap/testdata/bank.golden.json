@@ -1,0 +1,590 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "BankService",
+    "description": "Example banking service used for importer tests.",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "wsdl-1.1"
+    },
+    "importReport": {
+      "format": "wsdl-1.1",
+      "entries": [
+        {
+          "level": "needs-review",
+          "feature": "ws-security-policy",
+          "message": "the document declares WS-Policy (2 policy element(s)); WS-SecurityPolicy assertions: SupportingTokens, UsernameToken. No WS-Security header or credentials were generated; each envelope carries a header comment instead.",
+          "suggestion": "Add a wsse:Security header with credentials from the engagement scope (keep them in secret variables)"
+        },
+        {
+          "level": "needs-review",
+          "path": "bank.example.com",
+          "feature": "target-host",
+          "message": "6 request(s) target bank.example.com; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "degraded",
+          "path": "BankService/BankSoap11Port/Transfer",
+          "feature": "choice-first-branch",
+          "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+        },
+        {
+          "level": "degraded",
+          "path": "BankService/BankSoap11Port/ListTree",
+          "feature": "recursion-limit",
+          "message": "a self-referential type was expanded 3 levels deep and then cut ({http://example.com/bank}Node)"
+        },
+        {
+          "level": "degraded",
+          "path": "BankService/BankSoap12Port/Transfer",
+          "feature": "choice-first-branch",
+          "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+        },
+        {
+          "level": "degraded",
+          "path": "http://schemas.example.com/audit.xsd",
+          "feature": "external-import",
+          "message": "xsd:import of \"http://schemas.example.com/audit.xsd\" (namespace \"http://example.com/audit\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+          "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+        },
+        {
+          "level": "degraded",
+          "path": "extra-types.xsd",
+          "feature": "external-import",
+          "message": "xsd:include of \"extra-types.xsd\" (namespace \"http://example.com/bank\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+          "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap11Port/GetAccount",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 document/literal (wrapped)"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap11Port/Transfer",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 document/literal"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap11Port/ListTree",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 document/literal (wrapped)"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap11Port/Ping",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 document/literal (wrapped)"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap12Port/GetAccount",
+          "feature": "operation-style",
+          "message": "SOAP 1.2 document/literal (wrapped)"
+        },
+        {
+          "level": "converted",
+          "path": "BankService/BankSoap12Port/Transfer",
+          "feature": "operation-style",
+          "message": "SOAP 1.2 document/literal"
+        }
+      ],
+      "counts": {
+        "converted": 6,
+        "degraded": 5,
+        "needs-review": 2
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 3,
+        "requests": 6,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "3 folders, 6 requests from wsdl-1.1; 2 need review, 5 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "BankService",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "folder",
+      "rank": "i",
+      "name": "BankSoap11Port",
+      "descriptionMd": "Binding: BankSoap11",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "i",
+      "name": "GetAccount",
+      "descriptionMd": "SOAP 1.1 document/literal (wrapped)\n\nSOAPAction: \"http://example.com/bank/GetAccount\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/GetAccount\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n      \u003ctns:TraceHeader\u003e\n         \u003ctns:traceId\u003e?\u003c/tns:traceId\u003e\n      \u003c/tns:TraceHeader\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:GetAccount\u003e\n         \u003ctns:accountId\u003e?\u003c/tns:accountId\u003e\n         \u003c!--Optional:--\u003e\n         \u003ctns:includeHistory\u003efalse\u003c/tns:includeHistory\u003e\n      \u003c/tns:GetAccount\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap11",
+          "operation": "GetAccount",
+          "port": "BankSoap11Port",
+          "service": "BankService",
+          "soapAction": "http://example.com/bank/GetAccount",
+          "soapVersion": "1.1",
+          "style": "document/literal (wrapped)"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "r",
+      "name": "Transfer",
+      "descriptionMd": "SOAP 1.1 document/literal\n\nSOAPAction: \"http://example.com/bank/Transfer\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/Transfer\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://example.com/bank\" xmlns:common=\"http://example.com/common\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:TransferRequest channel=\"?\" version=\"2\"\u003e\n         \u003ctns:from\u003e?\u003c/tns:from\u003e\n         \u003c!--nillable:--\u003e\n         \u003ctns:to\u003e?\u003c/tns:to\u003e\n         \u003ctns:amount\u003e\n            \u003ccommon:amount\u003e0.0\u003c/common:amount\u003e\n            \u003ccommon:currency\u003eUSD\u003c/common:currency\u003e\n         \u003c/tns:amount\u003e\n         \u003c!--Zero or more repetitions:--\u003e\n         \u003ctns:memo\u003e?\u003c/tns:memo\u003e\n         \u003c!--Optional:--\u003e\n         \u003ctns:scheduled\u003e2024-01-01T00:00:00Z\u003c/tns:scheduled\u003e\n         \u003c!--You have a CHOICE of the next 3 items at this level; first branch emitted: otp | token | biometric--\u003e\n         \u003ctns:otp\u003e?\u003c/tns:otp\u003e\n         \u003ctns:priority\u003eNORMAL\u003c/tns:priority\u003e\n      \u003c/tns:TransferRequest\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap11",
+          "operation": "Transfer",
+          "port": "BankSoap11Port",
+          "service": "BankService",
+          "soapAction": "http://example.com/bank/Transfer",
+          "soapVersion": "1.1",
+          "style": "document/literal"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "v",
+      "name": "ListTree",
+      "descriptionMd": "SOAP 1.1 document/literal (wrapped)\n\nSOAPAction: \"\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:ListTree\u003e\n         \u003ctns:root\u003e\n            \u003ctns:label\u003e?\u003c/tns:label\u003e\n            \u003c!--Zero or more repetitions:--\u003e\n            \u003ctns:child\u003e\n               \u003ctns:label\u003e?\u003c/tns:label\u003e\n               \u003c!--Zero or more repetitions:--\u003e\n               \u003ctns:child\u003e\n                  \u003ctns:label\u003e?\u003c/tns:label\u003e\n                  \u003c!--Zero or more repetitions:--\u003e\n                  \u003ctns:child\u003e\n                     \u003c!-- recursion limit reached for {http://example.com/bank}Node; not expanded --\u003e\n                  \u003c/tns:child\u003e\n               \u003c/tns:child\u003e\n            \u003c/tns:child\u003e\n         \u003c/tns:root\u003e\n      \u003c/tns:ListTree\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap11",
+          "operation": "ListTree",
+          "port": "BankSoap11Port",
+          "service": "BankService",
+          "soapAction": "",
+          "soapVersion": "1.1",
+          "style": "document/literal (wrapped)"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "x",
+      "name": "Ping",
+      "descriptionMd": "SOAP 1.1 document/literal (wrapped)",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:Ping/\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap11",
+          "operation": "Ping",
+          "port": "BankSoap11Port",
+          "service": "BankService",
+          "soapVersion": "1.1",
+          "style": "document/literal (wrapped)"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "folder",
+      "rank": "r",
+      "name": "BankSoap12Port",
+      "descriptionMd": "Binding: BankSoap12",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id009",
+      "collectionUid": "id001",
+      "parentUid": "id008",
+      "kind": "request",
+      "rank": "i",
+      "name": "GetAccount",
+      "descriptionMd": "SOAP 1.2 document/literal (wrapped)\n\nSOAPAction: \"http://example.com/bank/GetAccount\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank12",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank12"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/soap+xml; charset=utf-8; action=\"http://example.com/bank/GetAccount\""
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/GetAccount\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:tns=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:GetAccount\u003e\n         \u003ctns:accountId\u003e?\u003c/tns:accountId\u003e\n         \u003c!--Optional:--\u003e\n         \u003ctns:includeHistory\u003efalse\u003c/tns:includeHistory\u003e\n      \u003c/tns:GetAccount\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap12",
+          "operation": "GetAccount",
+          "port": "BankSoap12Port",
+          "service": "BankService",
+          "soapAction": "http://example.com/bank/GetAccount",
+          "soapVersion": "1.2",
+          "style": "document/literal (wrapped)"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id010",
+      "collectionUid": "id001",
+      "parentUid": "id008",
+      "kind": "request",
+      "rank": "r",
+      "name": "Transfer",
+      "descriptionMd": "SOAP 1.2 document/literal\n\nSOAPAction: \"http://example.com/bank/Transfer\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank12",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank12"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/soap+xml; charset=utf-8; action=\"http://example.com/bank/Transfer\""
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/Transfer\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:tns=\"http://example.com/bank\" xmlns:common=\"http://example.com/common\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:TransferRequest channel=\"?\" version=\"2\"\u003e\n         \u003ctns:from\u003e?\u003c/tns:from\u003e\n         \u003c!--nillable:--\u003e\n         \u003ctns:to\u003e?\u003c/tns:to\u003e\n         \u003ctns:amount\u003e\n            \u003ccommon:amount\u003e0.0\u003c/common:amount\u003e\n            \u003ccommon:currency\u003eUSD\u003c/common:currency\u003e\n         \u003c/tns:amount\u003e\n         \u003c!--Zero or more repetitions:--\u003e\n         \u003ctns:memo\u003e?\u003c/tns:memo\u003e\n         \u003c!--Optional:--\u003e\n         \u003ctns:scheduled\u003e2024-01-01T00:00:00Z\u003c/tns:scheduled\u003e\n         \u003c!--You have a CHOICE of the next 3 items at this level; first branch emitted: otp | token | biometric--\u003e\n         \u003ctns:otp\u003e?\u003c/tns:otp\u003e\n         \u003ctns:priority\u003eNORMAL\u003c/tns:priority\u003e\n      \u003c/tns:TransferRequest\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap12",
+          "operation": "Transfer",
+          "port": "BankSoap12Port",
+          "service": "BankService",
+          "soapAction": "http://example.com/bank/Transfer",
+          "soapVersion": "1.2",
+          "style": "document/literal"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": null,
+  "report": {
+    "format": "wsdl-1.1",
+    "entries": [
+      {
+        "level": "needs-review",
+        "feature": "ws-security-policy",
+        "message": "the document declares WS-Policy (2 policy element(s)); WS-SecurityPolicy assertions: SupportingTokens, UsernameToken. No WS-Security header or credentials were generated; each envelope carries a header comment instead.",
+        "suggestion": "Add a wsse:Security header with credentials from the engagement scope (keep them in secret variables)"
+      },
+      {
+        "level": "needs-review",
+        "path": "bank.example.com",
+        "feature": "target-host",
+        "message": "6 request(s) target bank.example.com; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "degraded",
+        "path": "BankService/BankSoap11Port/Transfer",
+        "feature": "choice-first-branch",
+        "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+      },
+      {
+        "level": "degraded",
+        "path": "BankService/BankSoap11Port/ListTree",
+        "feature": "recursion-limit",
+        "message": "a self-referential type was expanded 3 levels deep and then cut ({http://example.com/bank}Node)"
+      },
+      {
+        "level": "degraded",
+        "path": "BankService/BankSoap12Port/Transfer",
+        "feature": "choice-first-branch",
+        "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+      },
+      {
+        "level": "degraded",
+        "path": "http://schemas.example.com/audit.xsd",
+        "feature": "external-import",
+        "message": "xsd:import of \"http://schemas.example.com/audit.xsd\" (namespace \"http://example.com/audit\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+        "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+      },
+      {
+        "level": "degraded",
+        "path": "extra-types.xsd",
+        "feature": "external-import",
+        "message": "xsd:include of \"extra-types.xsd\" (namespace \"http://example.com/bank\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+        "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap11Port/GetAccount",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 document/literal (wrapped)"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap11Port/Transfer",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 document/literal"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap11Port/ListTree",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 document/literal (wrapped)"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap11Port/Ping",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 document/literal (wrapped)"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap12Port/GetAccount",
+        "feature": "operation-style",
+        "message": "SOAP 1.2 document/literal (wrapped)"
+      },
+      {
+        "level": "converted",
+        "path": "BankService/BankSoap12Port/Transfer",
+        "feature": "operation-style",
+        "message": "SOAP 1.2 document/literal"
+      }
+    ],
+    "counts": {
+      "converted": 6,
+      "degraded": 5,
+      "needs-review": 2
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 3,
+      "requests": 6,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "3 folders, 6 requests from wsdl-1.1; 2 need review, 5 degraded, 0 unsupported"
+  }
+}

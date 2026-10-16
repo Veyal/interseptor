@@ -21,10 +21,33 @@ scan under pressure.
   for methods, URLs, status codes, raw HTTP, paths, and operational metadata.
 - Prefer thin rails, inset rules, corner/frame cues, and a very subtle grid to
   large decorative backgrounds or rounded dashboard cards.
+- Never add an inline `style=` for colour, background, spacing, typography,
+  width, or flex layout to `index.html`; use a component class or the `.u-*`
+  utilities in `app.css` (`TestUIIndexHasNoInlineDesignStyles` enforces this).
+  An inline `display:none` is acceptable only when a script shows the element
+  with `el.style.display=''` and therefore needs the inline value to fall back
+  to; otherwise use the `hidden` attribute or `.u-hidden`.
+- A JS-rendered list with one current row is a listbox: wire it with
+  `js/listbox.js` (`wireListbox`, `setListboxSelection`) rather than giving
+  every row its own Tab stop.
 - Follow the [UI motion specification](../../../docs/ui-motion-spec.md) for
   allowed motion, shared tokens, performance limits, and reduced-motion behavior.
   Never use video on the login gate. A static visual must be low contrast,
   self-contained, and leave the access-key action as the clear focal point.
+
+## Icons
+
+- Icons are one inline sprite in `index.html`; the rules and vocabulary live in
+  [docs/ui-icons.md](../../../docs/ui-icons.md). 24x24 grid, 1.75 stroke, square
+  caps and mitre joins, `Gate & Lane` construction (path-only, M/L/H/V/Z, 0/45/90
+  degree segments, chamfered corners, octagons instead of circles, square pads),
+  `currentColor` only, at most about 3 sub-shapes, no fills.
+- Use `<use href="#i-name"/>` or `icon('name')`; never emoji, Unicode glyphs or
+  CSS `content:` glyphs. Name ids by meaning and do not keep aliases.
+- Decorative icons are `aria-hidden="true" focusable="false"`; icon-only buttons
+  carry an `aria-label`.
+- After changing the sprite run `node scripts/ui_icon_sheet.mjs <out.html>` and
+  check every icon at 16px in both themes (no lookalikes, nothing muddy).
 
 ## Workflow
 

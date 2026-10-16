@@ -1,0 +1,8 @@
+{{define "scripts" -}}
+<script src="{{asset "site.js"}}" defer></script>
+<script src="{{asset "search.js"}}" defer data-search-index="{{url "/website/data/search.json"}}" data-search-mascot="{{asset "img/mascot/frog-search-512.webp"}}" data-search-groups="{{range $i, $g := .Site.Nav}}{{if $i}}|{{end}}{{$g.Title}}={{$g.Color}}{{end}}"></script>
+{{- /* Per-page scripts: front matter `js: [js/pages.js]`. */}}
+{{- range .Page.Params.js}}
+<script src="{{asset .}}" defer></script>
+{{- end}}
+{{- end}}

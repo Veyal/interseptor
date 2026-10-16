@@ -123,7 +123,7 @@ func TestValidateFindingFormatWarnsCredentialsNotHighlighted(t *testing.T) {
 
 func TestMCPInstructionsRequireFindingFormat(t *testing.T) {
 	instr := mcpInstructions()
-	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof"} {
+	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof", "what the application normally does", "what we changed", "practical impact", "each affected target", "do not invent"} {
 		if !strings.Contains(instr, want) {
 			t.Fatalf("mcpInstructions missing %q:\n%s", want, instr)
 		}
@@ -146,7 +146,7 @@ func TestFindingBlocksSchemaAdvertisesCapturedFlowProvenance(t *testing.T) {
 }
 
 func TestValidateFindingFormatAcceptsTypedObservationEvidence(t *testing.T) {
-	body := `[{"type":"text","role":"observation","md":"Request the public configuration endpoint."},{"type":"flow","role":"result","flowId":12,"proof":"The unauthenticated response contains internal service names."},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"flow_preview","sourceFlowId":12,"caption":"Unauthenticated response","proof":"Visually identifies the exposed internal service list."}]`
+	body := `[{"type":"text","role":"baseline","md":"An ordinary signed-in user receives only their own configuration."},{"type":"flow","role":"action","flowId":11,"proof":"The same request was sent without a session."},{"type":"text","role":"observation","md":"Request the public configuration endpoint."},{"type":"flow","role":"result","flowId":12,"proof":"The unauthenticated response contains internal service names."},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"flow_preview","sourceFlowId":12,"caption":"Unauthenticated response","proof":"Visually identifies the exposed internal service list."}]`
 	err, warns := validateFindingFormat(findingFormatInput{
 		Severity: "Medium",
 		Summary:  "An unauthenticated endpoint exposes internal service configuration.",
@@ -162,6 +162,64 @@ func TestValidateFindingFormatAcceptsTypedObservationEvidence(t *testing.T) {
 	}
 	if len(warns) > 0 {
 		t.Fatalf("complete typed finding should have no warnings, got %v", warns)
+	}
+}
+
+func TestValidateFindingFormatWarnsWhenProofStoryIsIncomplete(t *testing.T) {
+	body := `[{"type":"flow","role":"result","flowId":12,"proof":"The response lists another tenant's invoices."}]`
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "High",
+		Summary:  "A user can read another tenant's invoices.",
+		Impact:   "Invoice data is disclosed across tenants.",
+		Why:      "The invoice id is not checked against the session tenant.",
+		Target:   "https://api.example.com/invoices/18",
+		Body:     body,
+	})
+	if err != nil {
+		t.Fatalf("incomplete proof should warn, not reject: %v", err)
+	}
+	joined := strings.Join(warns, "\n")
+	for _, want := range []string{"normally does", "role baseline", "role action", "role result"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing proof-story warning %q in %v", want, warns)
+		}
+	}
+}
+
+func TestValidateFindingFormatWarnsWhenAffectedTargetHasNoProof(t *testing.T) {
+	body := `[{"type":"text","role":"baseline","md":"An ordinary user sees only their own invoice."},{"type":"flow","role":"action","flowId":1,"proof":"We requested another account's invoice."},{"type":"text","role":"result","md":"The other invoice was returned."}]`
+	targets := json.RawMessage(`[{"url":"https://example.com/invoices/1","flow_ids":[1]},{"url":"https://example.com/invoices/2","relation":"affected"}]`)
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "High", Summary: "Invoice records cross accounts.", Impact: "Invoice data is disclosed.",
+		Why: "The invoice id is not checked against the session.", Target: "https://example.com/invoices/1",
+		Fix: "Authorize each invoice.", Retest: "A second account is denied.", Body: body, Targets: targets,
+	})
+	if err != nil {
+		t.Fatalf("a target without proof should warn, not reject: %v", err)
+	}
+	joined := strings.Join(warns, "\n")
+	if !strings.Contains(joined, "https://example.com/invoices/2") || !strings.Contains(joined, "no linked proof") || !strings.Contains(joined, "do not invent") {
+		t.Fatalf("missing per-target proof warning: %v", warns)
+	}
+	if strings.Contains(joined, "https://example.com/invoices/1") && strings.Contains(joined, "invoices/1) has no linked proof") {
+		t.Fatalf("linked target should not be warned: %v", warns)
+	}
+}
+
+func TestValidateFindingFormatSkipsProofWarningForUntestedSetupTarget(t *testing.T) {
+	targets := json.RawMessage(`[{"url":"https://example.com/invoices/1","flow_ids":[1]},{"url":"https://example.com/login","relation":"setup","evidenceException":"Login only."}]`)
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "Low", Summary: "Noted.", Impact: "Limited.", Why: "Boundary.", Target: "https://example.com/invoices/1",
+		Body:    `[{"type":"text","role":"baseline","md":"Normal."},{"type":"flow","role":"action","flowId":1,"proof":"Changed."},{"type":"text","role":"result","md":"Impact."}]`,
+		Targets: targets,
+	})
+	if err != nil {
+		t.Fatalf("setup exception should not reject: %v", err)
+	}
+	for _, w := range warns {
+		if strings.Contains(w, "no linked proof") {
+			t.Fatalf("setup target with an evidence exception should not demand proof: %v", warns)
+		}
 	}
 }
 
@@ -248,5 +306,98 @@ func TestMCPFindingAssessmentFieldsReachAPI(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func warnsFor(t *testing.T, in findingFormatInput) []string {
+	t.Helper()
+	err, warns := validateFindingFormat(in)
+	if err != nil {
+		t.Fatalf("unexpected hard rejection: %v", err)
+	}
+	return warns
+}
+
+func hasWarn(warns []string, substr string) bool {
+	for _, w := range warns {
+		if strings.Contains(w, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// Reviewing a real engagement: 64 findings, and the weakest High was the only
+// one whose impact was conditional -- "Given any injection in that origin, an
+// attacker steals the session token". The evidence proved the headers were
+// missing, which is a Low; the High rested on an injection nobody demonstrated.
+// The guide said to narrow impact to the evidence, but nothing checked it.
+func TestConditionalImpactAtHighIsFlagged(t *testing.T) {
+	base := findingFormatInput{
+		Severity: "High", Summary: "GET / on the token-bearing origin is served with no CSP or HSTS.",
+		Why: "no response hardening", Fix: "set CSP and HSTS", Retest: "headers present on GET /",
+	}
+
+	conditional := base
+	conditional.Impact = "Given any injection in that origin, an attacker steals the session token and takes over the account."
+	if w := warnsFor(t, conditional); !hasWarn(w, "precondition") {
+		t.Errorf("a High resting on an undemonstrated precondition must be flagged; got %v", w)
+	}
+
+	// Phrasings an agent actually reaches for.
+	for _, impact := range []string{
+		"If an attacker already holds a valid token, they read every partner record.",
+		"Once chained with a stored XSS, this yields full account takeover.",
+		"Could potentially allow an attacker to escalate to admin.",
+	} {
+		c := base
+		c.Impact = impact
+		if w := warnsFor(t, c); !hasWarn(w, "precondition") {
+			t.Errorf("conditional impact %q was not flagged; got %v", impact, w)
+		}
+	}
+
+	// A demonstrated outcome must stay quiet.
+	demonstrated := base
+	demonstrated.Impact = "A staging operator reads production partner records including emails and bank details."
+	if w := warnsFor(t, demonstrated); hasWarn(w, "precondition") {
+		t.Errorf("a demonstrated High must not be flagged; got %v", w)
+	}
+
+	// Already rated conservatively: nothing to correct.
+	low := base
+	low.Severity = "Low"
+	low.Impact = "Given any injection in that origin, an attacker steals the session token."
+	if w := warnsFor(t, low); hasWarn(w, "precondition") {
+		t.Errorf("a Low with a conditional impact is correctly rated; got %v", w)
+	}
+}
+
+// In the same engagement 13 of 64 findings carried no evidence at all, two of
+// them High. They were device and static findings -- plaintext token storage,
+// logcat leakage, manifest flags -- where a captured flow cannot exist, so the
+// agent attached nothing. The existing no-flow warning only fired for
+// Critical/High, so eleven of them passed in silence.
+func TestFindingWithNoEvidenceAtAllIsFlagged(t *testing.T) {
+	for _, sev := range []string{"High", "Medium", "Low", "Info"} {
+		in := findingFormatInput{
+			Severity: sev, Summary: "Reset tokens are written to the device log by the deeplink handler.",
+			Impact: "A local app reads a live reset token from the log.", Why: "secrets logged",
+			Fix: "stop logging the token", Retest: "log shows no token after a reset",
+		}
+		w := warnsFor(t, in)
+		if !hasWarn(w, "no evidence attached") {
+			t.Errorf("severity %s: a substantial finding with no flow and no image must be flagged; got %v", sev, w)
+		}
+		// The message has to tell a mobile/static finding what to attach instead.
+		if !hasWarn(w, "device screenshot") {
+			t.Errorf("severity %s: the warning must name the non-HTTP alternatives; got %v", sev, w)
+		}
+	}
+
+	// A title-only stub is an allowed intermediate step and must stay quiet.
+	stub := findingFormatInput{Severity: "Low", Title: "placeholder"}
+	if w := warnsFor(t, stub); hasWarn(w, "no evidence attached") {
+		t.Errorf("a stub create must not be nagged; got %v", w)
 	}
 }

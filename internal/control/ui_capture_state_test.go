@@ -136,17 +136,19 @@ func TestUIResponseRenderFallbackKeepsARIAStateInSync(t *testing.T) {
 	}
 }
 
-func TestUIFlowPopupLatestRequestWins(t *testing.T) {
-	modal := executableJS(readUIAsset(t, "js/flowmodal.js"))
+func TestUIFlowInspectorLatestRequestWins(t *testing.T) {
+	// The unified Flow Drawer (which replaced flowmodal.js) guards against a stale
+	// render when a second flow is opened before the first finishes loading.
+	drawer := executableJS(readUIAsset(t, "js/flowdrawer.js"))
 	for _, contract := range []string{
-		"let fmOpenEpoch=0",
-		"const epoch=++fmOpenEpoch",
-		"if(epoch!==fmOpenEpoch)return",
-		"const renderEpoch=++fmSideEpoch[side]",
-		"fmSideEpoch[side]===renderEpoch",
+		"cur.epoch++",
+		"const epoch = cur.epoch",
+		"if (cur.epoch !== epoch) return",
+		"const tabEpoch = ++cur.tabEpoch",
+		"const live = () => cur.epoch === epoch && cur.tabEpoch === tabEpoch",
 	} {
-		if !strings.Contains(modal, contract) {
-			t.Errorf("flow popup latest-request contract missing %q", contract)
+		if !strings.Contains(drawer, contract) {
+			t.Errorf("flow inspector latest-request contract missing %q", contract)
 		}
 	}
 }
@@ -240,8 +242,17 @@ func TestUIIntruderDisplayRendersPreserveAuthoritativeRunState(t *testing.T) {
 
 func TestUIWebSocketReplayRowsAreKeyboardOperable(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
-	if !strings.Contains(proxy, "wireRowKey(el,activate)") {
-		t.Error("replayable WebSocket frames must use the shared keyboard activation contract")
+	// Click-to-replay is a single delegated listener on the stable #resView
+	// ancestor (not a per-row rebind on every 250ms frame burst); replayable rows
+	// carry role/tabindex in markup and Enter/Space activate through delegation.
+	for _, want := range []string{
+		`tabindex="0" role="button"`,
+		"function ensureWsFrameDelegation()",
+		"e.key==='Enter'||e.key===' '",
+	} {
+		if !strings.Contains(proxy, want) {
+			t.Errorf("replayable WebSocket frames must stay keyboard operable via delegated activation: missing %q", want)
+		}
 	}
 }
 

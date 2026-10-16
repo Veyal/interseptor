@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -23,6 +24,10 @@ type Store struct {
 	// projects). When nil, API-key ops use db (project-local, legacy/tests).
 	keys *sql.DB
 
+	// allow caches the parsed machine-global IP allowlist so AllowlistMatch, which
+	// runs on every proxied and control request, never queries SQLite.
+	allow allowlistCache
+
 	// notesMu serializes full notebook replacement and AppendNote's read-modify-write
 	// so an append cannot overwrite a replacement from a stale snapshot.
 	notesMu sync.Mutex
@@ -34,6 +39,56 @@ type Store struct {
 	bodyMu        sync.Mutex
 	pendingBodies map[string]int
 	mergeBodies   map[string]int
+
+	// bodyGCMu serializes GCBodies passes, so the pass marker below has one
+	// owner. bodyGCClaimed collects every hash a writer claimed while a pass is
+	// walking, which is what lets the walk run without bodyMu held; it is nil
+	// when no pass is running, and guarded by bodyMu.
+	bodyGCMu      sync.Mutex
+	bodyGCClaimed map[string]struct{}
+
+	// WebSocket frame capture is batched off the relay goroutine. wsMu guards
+	// the pending buffer and the closed/paused flags; the flusher is the only
+	// writer of wsInserted/wsDirty.
+	wsMu       sync.Mutex
+	wsCmdMu    sync.Mutex
+	wsStopOnce sync.Once
+	wsPending  []*WSFrame
+	wsDropped  atomic.Uint64
+	wsInserted int64
+	wsDirty    map[int64]struct{}
+	wsPaused   bool
+	wsClosed   bool
+	wsNotify   func([]int64)
+	wsWake     chan struct{}
+	wsOp       chan wsFlushOp
+	wsDone     chan struct{}
+
+	// Proxy flow writes are queued off the forward path. flowMu guards the
+	// buffer and pending-id counts; the flusher is the only goroutine that
+	// applies that buffer to SQLite. Direct InsertFlow / UpdateFlow callers
+	// keep the synchronous path and wait when they touch a queued id.
+	flowMu         sync.Mutex
+	flowCmdMu      sync.Mutex
+	flowStopOnce   sync.Once
+	flowCancelOnce sync.Once
+	flowPending    []flowOp
+	flowPendingN   map[int64]int
+	flowVoid       map[int64]struct{}
+	flowDropped    atomic.Uint64
+	flowInFlight   bool
+	flowPaused     bool
+	flowClosed     bool
+	flowGiveUp     atomic.Bool
+	nextFlowID     atomic.Int64
+	// flowTxs counts the SQLite transactions the flow writers have opened. It
+	// exists so the batching contract is observable: a drain pass must commit
+	// once per batch, not once per queued write.
+	flowTxs atomic.Uint64
+	flowWake       chan struct{}
+	flowOpCh       chan flowCmd
+	flowStop       chan struct{}
+	flowDone       chan struct{}
 }
 
 // Flow is one captured request/response exchange. Bodies are referenced by
@@ -110,6 +165,14 @@ CREATE INDEX IF NOT EXISTS idx_flows_host ON flows(host);
 CREATE INDEX IF NOT EXISTS idx_flows_status ON flows(status);
 CREATE INDEX IF NOT EXISTS idx_flows_method ON flows(method);
 CREATE INDEX IF NOT EXISTS idx_flows_ts ON flows(ts);
+-- Expression indexes back the History sorts: ORDER BY lower(host) / lower(path) /
+-- COALESCE(res_len,0) / lower(COALESCE(mime,'')) walks the index (the implicit
+-- trailing rowid serves the ", id" tiebreak) instead of building a temp B-tree
+-- per page of a large capture.
+CREATE INDEX IF NOT EXISTS idx_flows_host_lower ON flows(lower(host));
+CREATE INDEX IF NOT EXISTS idx_flows_path_lower ON flows(lower(path));
+CREATE INDEX IF NOT EXISTS idx_flows_res_len ON flows(COALESCE(res_len, 0));
+CREATE INDEX IF NOT EXISTS idx_flows_mime_lower ON flows(lower(COALESCE(mime, '')));
 -- Composite index backs the Map's GROUP BY host, method, path aggregation and the
 -- host=? filter, so a large flows table is walked via the index instead of a full scan.
 CREATE INDEX IF NOT EXISTS idx_flows_endpoint ON flows(host, method, path);
@@ -122,7 +185,8 @@ CREATE TABLE IF NOT EXISTS rules (
   enabled INTEGER NOT NULL DEFAULT 1,
   type TEXT NOT NULL,
   match TEXT NOT NULL,
-  replace TEXT NOT NULL
+  replace TEXT NOT NULL,
+  big_body INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS scan_issues (
@@ -209,7 +273,8 @@ CREATE TABLE IF NOT EXISTS findings (
   fix TEXT NOT NULL DEFAULT '',
   retest TEXT NOT NULL DEFAULT '',
   targets TEXT NOT NULL DEFAULT '[]',
-  proof_review TEXT NOT NULL DEFAULT '{}'
+  proof_review TEXT NOT NULL DEFAULT '{}',
+  structured TEXT NOT NULL DEFAULT '{}'
 );
 
 -- PoC request/response evidence attached to a finding (many flows per finding).
@@ -274,6 +339,49 @@ CREATE TABLE IF NOT EXISTS finding_verification (
 CREATE INDEX IF NOT EXISTS idx_finding_verification_run ON finding_verification(run_id);
 `
 
+// storePragmas is applied via the DSN so every pooled connection gets it.
+// busy_timeout, synchronous and cache_size are all per-connection, so setting
+// them once with db.Exec would leave the other pooled connections on the
+// defaults — and without a busy timeout they fail immediately with SQLITE_BUSY
+// ("database is locked") under write contention. WAL lets readers run
+// concurrently with the single writer, and the busy timeout makes contending
+// writers wait their turn instead of erroring.
+//
+// cache_size is in KiB when negative: 32 MiB per connection over four pooled
+// connections, so at most 128 MiB of page cache for a capture much larger than
+// that. The default, 2 MiB, evicted pages inside a single scan. On 40,000
+// captured flows that costs the queries that read the whole table: the host
+// size breakdown went from 20.2ms to 16.3ms and the body-GC reference query
+// from 15.0ms to 11.7ms. Index-backed reads — every History sort and the
+// full-text search — are unchanged, because they walk a covering index and
+// never touched more pages than the small cache held.
+//
+// mmap_size and temp_store, which issue #101 also proposed, are deliberately
+// not set: neither beat cache_size on any query measured, mmap made the
+// History sorts slightly slower, and temp_store moved nothing once the flusher
+// stopped opening a savepoint per write. BenchmarkStorePragmas keeps the
+// comparison runnable; docs/benchmarks.md records the numbers.
+var storePragmas = []string{
+	"busy_timeout(10000)",
+	"journal_mode(WAL)",
+	"synchronous(NORMAL)",
+	"foreign_keys(1)",
+	"cache_size(-32000)",
+}
+
+// storeDSN builds the modernc.org/sqlite DSN for the project database.
+func storeDSN(dbPath string) string {
+	var b strings.Builder
+	b.WriteString("file:")
+	b.WriteString(dbPath)
+	b.WriteString("?_txlock=immediate")
+	for _, p := range storePragmas {
+		b.WriteString("&_pragma=")
+		b.WriteString(p)
+	}
+	return b.String()
+}
+
 // Open creates (or opens) the database and body store under dir.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -286,22 +394,15 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(bodiesDir, 0o755); err != nil {
 		return nil, err
 	}
-	// Apply pragmas via the DSN so they run on EVERY pooled connection — busy_timeout
-	// and synchronous are per-connection, so setting them once via db.Exec would leave
-	// the other pooled connections without a busy timeout and they'd fail immediately
-	// with SQLITE_BUSY ("database is locked") under write contention. WAL lets readers
-	// run concurrently with the single writer; the busy timeout makes contending writers
-	// wait their turn instead of erroring.
-	dsn := "file:" + filepath.Join(dir, currentDBName) +
-		"?_pragma=busy_timeout(10000)" +
-		"&_pragma=journal_mode(WAL)" +
-		"&_pragma=synchronous(NORMAL)" +
-		"&_pragma=foreign_keys(1)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", storeDSN(filepath.Join(dir, currentDBName)))
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
+	// Keep all four pool connections alive between bursts: the default idle
+	// pool (2) would tear down and reopen two connections on every scanner /
+	// intruder burst, and slow body-search reads would starve flow writers.
+	db.SetMaxIdleConns(4)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
@@ -323,6 +424,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE findings ADD COLUMN retest TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN targets TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE findings ADD COLUMN proof_review TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE findings ADD COLUMN structured TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN verification_instructions TEXT NOT NULL DEFAULT ''`,
@@ -332,6 +434,8 @@ func Open(dir string) (*Store, error) {
 		// Collaboration: scoped/expiring API keys (existing keys → full, never-expire).
 		`ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
 		`ALTER TABLE api_keys ADD COLUMN expires INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE rules ADD COLUMN big_body INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE ws_frames ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -347,12 +451,27 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	var maxID int64
+	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
+		db.Close()
+		return nil, err
+	}
+	s.nextFlowID.Store(maxID)
+	s.startFlowFlusher()
+	s.startWSFlusher()
 	return s, nil
 }
 
-// Close closes the underlying database.
+// Close drains queued flow writes (bounded) and pending WebSocket frames, then
+// closes the underlying database.
 func (s *Store) Close() error {
 	var first error
+	if err := s.shutdownFlows(); err != nil && first == nil {
+		first = err
+	}
+	if err := s.shutdownWS(); err != nil && first == nil {
+		first = err
+	}
 	if s.keys != nil && s.keys != s.db {
 		if err := s.keys.Close(); err != nil && first == nil {
 			first = err
@@ -362,6 +481,7 @@ func (s *Store) Close() error {
 	if err := s.db.Close(); err != nil && first == nil {
 		first = err
 	}
+	s.waitFlowExit()
 	return first
 }
 
@@ -374,44 +494,52 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // use this so mandatory provenance cannot be lost after the row is published.
 func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
-	rh, _ := json.Marshal(f.ReqHeaders)
-	sh, _ := json.Marshal(f.ResHeaders)
-	orh, _ := json.Marshal(f.OriginalReqHeaders)
-	osh, _ := json.Marshal(f.OriginalResHeaders)
+	if f.ID != 0 {
+		s.noteFlowID(f.ID)
+		return s.insertFlowRow(f, tags, f.ID)
+	}
+	// An id this store allocated can already be taken when another process
+	// (the headless `interseptor run` CLI) wrote flows into the same project
+	// since this store opened. Resync the counter to the table and retry.
+	var err error
+	for attempt := 0; attempt < 4; attempt++ {
+		var id int64
+		if id, err = s.insertFlowRow(f, tags, s.allocFlowID()); err == nil || !isFlowIDConflict(err) {
+			return id, err
+		}
+		var maxID int64
+		if qerr := s.db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); qerr != nil {
+			return 0, err
+		}
+		s.noteFlowID(maxID)
+	}
+	return 0, err
+}
+
+func isFlowIDConflict(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: flows.id")
+}
+
+// flowExec is the statement subset the flow writers need, so the same SQL runs
+// either standalone (one transaction per write) or inside the write-behind
+// flusher's batched transaction. *sql.DB and *sql.Tx both satisfy it.
+type flowExec interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func (s *Store) insertFlowRow(f *Flow, tags []string, id int64) (int64, error) {
 	// The flow row and its FTS index entry go in one transaction so a crash
 	// between them can't leave a flow invisible to full-text search.
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
+	s.flowTxs.Add(1)
 	defer tx.Rollback()
-	res, err := tx.Exec(
-		`INSERT INTO flows
-			 (ts, method, scheme, host, port, path, http_version, status,
-			  req_headers, res_headers, original_req_headers, original_res_headers,
-			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
-			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
-		string(rh), string(sh), string(orh), string(osh),
-		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
-		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
-	if err != nil {
+	if err := insertFlowRowExec(tx, f, tags, id); err != nil {
 		return 0, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
-		id, f.Host, f.Path, f.Method, f.Note); err != nil {
-		return 0, err
-	}
-	for _, tag := range NormalizeTags(tags) {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, id, tag); err != nil {
-			return 0, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
@@ -420,24 +548,77 @@ func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	return id, nil
 }
 
-// UpdateFlow fills in the response-side (and post-send request) fields of a flow
-// that was first inserted at request time, keyed by f.ID. The immutable request
-// identity (ts, scheme, host, port, version, client) is left untouched.
-func (s *Store) UpdateFlow(f *Flow) error {
-	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
+// insertFlowRowExec writes one flow row, its FTS entry and its initial tags.
+// The caller owns the transaction boundary.
+func insertFlowRowExec(ex flowExec, f *Flow, tags []string, id int64) error {
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
 	orh, _ := json.Marshal(f.OriginalReqHeaders)
 	osh, _ := json.Marshal(f.OriginalResHeaders)
-	// One transaction; no pre-SELECT round-trip. host is immutable and the note is
-	// not touched here, so the FTS index only needs its path/method refreshed (a
-	// column UPDATE that leaves the indexed note in place).
+	_, err := ex.Exec(
+		`INSERT INTO flows
+			 (id, ts, method, scheme, host, port, path, http_version, status,
+			  req_headers, res_headers, original_req_headers, original_res_headers,
+			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
+			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
+		string(rh), string(sh), string(orh), string(osh),
+		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
+		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
+	if err != nil {
+		return err
+	}
+	if _, err := ex.Exec(
+		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
+		id, f.Host, f.Path, f.Method, f.Note); err != nil {
+		return err
+	}
+	for _, tag := range NormalizeTags(tags) {
+		if _, err := ex.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, id, tag); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdateFlow fills in the response-side (and post-send request) fields of a flow
+// that was first inserted at request time, keyed by f.ID. The immutable request
+// identity (ts, scheme, host, port, version, client) is left untouched.
+// A flow still sitting in the write-behind queue is drained first so this
+// update cannot land before its insert.
+func (s *Store) UpdateFlow(f *Flow) error {
+	if f != nil {
+		s.waitFlow(f.ID)
+	}
+	return s.writeFlowUpdate(f)
+}
+
+func (s *Store) writeFlowUpdate(f *Flow) error {
+	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
+	// One transaction; no pre-SELECT round-trip.
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
+	s.flowTxs.Add(1)
 	defer tx.Rollback()
-	res, err := tx.Exec(
+	if err := writeFlowUpdateExec(tx, f); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// writeFlowUpdateExec fills in the response-side fields of an existing flow and
+// refreshes its FTS entry. host is immutable and the note is not touched here,
+// so the index only needs its path/method refreshed (a column UPDATE that
+// leaves the indexed note in place). The caller owns the transaction boundary.
+func writeFlowUpdateExec(ex flowExec, f *Flow) error {
+	rh, _ := json.Marshal(f.ReqHeaders)
+	sh, _ := json.Marshal(f.ResHeaders)
+	orh, _ := json.Marshal(f.OriginalReqHeaders)
+	osh, _ := json.Marshal(f.OriginalResHeaders)
+	res, err := ex.Exec(
 		`UPDATE flows SET
 		   method=?, path=?, status=?, req_headers=?, res_headers=?,
 		   original_req_headers=?, original_res_headers=?,
@@ -458,10 +639,7 @@ func (s *Store) UpdateFlow(f *Flow) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	if _, err := tx.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
+	if _, err := ex.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
 		return err
 	}
 	return nil
@@ -469,6 +647,7 @@ func (s *Store) UpdateFlow(f *Flow) error {
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.
 func (s *Store) SetFlowNote(id int64, note string) error {
+	s.waitFlow(id)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -495,43 +674,58 @@ func (s *Store) SetFlowNote(id int64, note string) error {
 // DeleteFlows removes the given flows and returns how many rows were deleted.
 // An empty id list is a no-op. Content-addressed body files are left in place
 // (they are shared/deduplicated across flows); the metadata rows are what go.
+// Ids are chunked to stay below SQLite's 32766 host-parameter limit — a bulk
+// delete of a long capture session would otherwise fail as one giant IN (…).
 func (s *Store) DeleteFlows(ids []int64) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	s.syncFlows()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	// FTS rows are keyed by rowid (= flow id), so unindex in one batch by id (the
-	// content columns aren't needed to delete). Both deletes share one transaction
+	// FTS rows are keyed by rowid (= flow id), so unindex in batches by id (the
+	// content columns aren't needed to delete). All deletes share one transaction
 	// so a partial failure can't leave the full-text index out of sync with flows
 	// (a stale FTS row would make a deleted flow appear in search until reused).
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+ph+`)`, args...); err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`)`, args...); err != nil {
-		return 0, err
-	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
-	if err != nil {
-		return 0, err
+	const chunk = 400
+	var deleted int64
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		args := make([]any, end-start)
+		for i, id := range ids[start:end] {
+			args[i] = id
+		}
+		ph := strings.TrimRight(strings.Repeat("?,", end-start), ",")
+		if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+ph+`)`, args...); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`)`, args...); err != nil {
+			return 0, err
+		}
+		res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
+		if err != nil {
+			return 0, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			deleted += n
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	return deleted, nil
 }
 
-// GetFlow loads a single flow by id.
+// GetFlow loads a single flow by id. A queued write for this id is drained
+// first so a read right after capture sees the row.
 func (s *Store) GetFlow(id int64) (*Flow, error) {
+	s.waitFlow(id)
 	row := s.db.QueryRow(`SELECT `+flowColumns+` FROM flows WHERE id = ?`, id)
 	return scanFlow(row)
 }
@@ -565,6 +759,7 @@ func scanFlow(row scanner) (*Flow, error) {
 
 // QueryFlows returns up to limit flows, newest first.
 func (s *Store) QueryFlows(limit int) ([]*Flow, error) {
+	s.syncFlows()
 	rows, err := s.db.Query(
 		`SELECT `+flowColumns+` FROM flows ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {

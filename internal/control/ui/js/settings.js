@@ -1,8 +1,19 @@
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, getHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
-import { loadFlows, loadScope } from './proxy.js';
-import { loadRules } from './intercept.js';
+import { emit as busEmit, on as busOn, EVENTS } from './bus.js';
+// Cross-panel reloads go over the bus instead of a static import of proxy.js /
+// intercept.js — that back-edge closed the proxy↔findings↔settings ESM cycle.
+// The call sites below keep calling loadFlows()/loadScope()/loadRules(); the panel
+// that owns each list listens for the event and runs the real reload.
+const loadFlows = () => busEmit(EVENTS.PROXY_RELOAD_FLOWS);
+const loadScope = () => busEmit(EVENTS.PROXY_RELOAD_SCOPE);
+const loadRules = () => busEmit(EVENTS.INTERCEPT_RELOAD_RULES);
 import { prefersReducedMotion } from './motion.js';
+import { createSplitPane } from './split.js';
+import { matchSections, searchSummary, highlightRanges } from './settings-model.js';
+import { confirmTyped } from './settings-confirm.js';
+import './settings-appearance.js';
+import './settings-health.js';
 
 /* ---- JWT expiry countdown ---- */
 let sessExpTimer = null;
@@ -65,7 +76,7 @@ function renderHostHdrList(hostHeaders) {
 function makeHostHdrRow(host, hdrs) {
   const row = document.createElement('div');
   row.className = 'host-hdr-row';
-  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
+  row.classList.add('row', 'u-gap-2', 'u-ai-start', 'u-mb-2');
   row.innerHTML = `<input class="btn host-hdr-host" aria-label="Host override hostname" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
     `<textarea class="host-hdr-headers" aria-label="Headers for host override" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
     `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override" aria-label="Remove host header override for ${escAttr(host||'new host')}">×</button>`;
@@ -279,6 +290,7 @@ function restoreDirtySettingsDerived(snapshot) {
   if(dirty('originTLSVerifyMode'))setOriginTLSVerify($('#originTLSVerifyMode').value==='strict');
   if(dirty('tlsBypassList'))updateBypassCount();
   if(dirty('originTLSVerifyBypassList'))updateOriginTLSVerifyBypassCount();
+  if(dirty('proxyAuthEnabled'))setProxyAuth($('#proxyAuthEnabled')?.value==='1');
 }
 
 function runSettingsAction(button, action) {
@@ -387,7 +399,7 @@ function makeProxyListenerRow(addr){
   const{host,port}=parseListenAddr(addr);
   const row=document.createElement('div');
   row.className='proxy-listener-row row';
-  row.style.cssText='gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap';
+  row.classList.add('u-gap-2', 'u-ai-end', 'u-mb-2', 'u-wrap');
   row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" aria-label="Proxy listener host" style="width:100%;text-align:left"></select></div>`+
     `<div class="field" style="width:100px;margin-bottom:0"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
     `<button type="button" class="btn proxy-listener-del" title="Remove proxy listener" aria-label="Remove proxy listener" style="color:var(--red);padding:3px 10px">×</button>`;
@@ -540,14 +552,6 @@ export function openSettingsProxy(){
   if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:prefersReducedMotion()?'auto':'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
 }
 
-function syncSettingsPicker() {
-  const picker=$('#settingsSectionSelect');if(!picker)return;
-  const buttons=$$('#setNav button[data-sec]');
-  [...picker.options].forEach(option=>{option.hidden=!!buttons.find(button=>button.dataset.sec===option.value)?.hidden;});
-  picker.disabled=buttons.every(button=>button.hidden);
-  picker.value=buttons.find(button=>button.classList.contains('on'))?.dataset.sec||'proxy';
-}
-
 function syncSettingsNavA11y(active) {
   $$('#setNav button[data-sec]').forEach(button => {
     const sec = document.querySelector('.set-sec[data-sec="'+button.dataset.sec+'"]');
@@ -562,24 +566,27 @@ function syncSettingsNavA11y(active) {
   });
 }
 
+// On phones the section list and the section page are two views of one split;
+// choosing a section pushes its page (one guarded history entry, Back returns).
+let settingsSplit=null,settingsNavSilent=false;
+try{
+  const wrap=document.querySelector('.settings-wrap');
+  if(wrap)settingsSplit=createSplitPane({root:wrap,list:$('#setNav'),detail:document.querySelector('.settings-body'),key:'settingsSplit',scopeKey:projectStorageKey,min:[200,360],default:22,stackBelow:720,label:'Resize settings navigation',backLabel:'Sections'});
+}catch(e){settingsSplit=null;}
+
 $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
   $$('#setNav button[data-sec]').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   syncSettingsNavA11y(b);
-  syncSettingsPicker();
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'){retentionLoaded=true;loadRetention();}
   if(b.dataset.sec==='tls'){import('./tlsdiag.js').then(m=>m.loadTrafficDiagnosis());}
   if(b.dataset.sec==='devices'){loadAndroid();loadIOS();loadIOSSsh();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
+  if(settingsSplit&&!settingsNavSilent&&settingsSplit.mode()==='stack')settingsSplit.showDetail(b);
 });
 syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||document.querySelector('#setNav button[data-sec]'));
-syncSettingsPicker();
-$('#settingsSectionSelect').onchange=event=>{
-  const button=$$('#setNav button[data-sec]').find(button=>button.dataset.sec===event.currentTarget.value);
-  if(button&&!button.hidden)button.click();
-};
 
 // Settings search — filter the left nav to sections whose label or body text
 // matches the query, so options are discoverable without knowing which group
@@ -587,32 +594,51 @@ $('#settingsSectionSelect').onchange=event=>{
 (function wireSettingsSearch(){
   const box=$('#setSearch'); if(!box) return;
   const empty=$('#setNavEmpty');
-  // Cache each nav button's searchable haystack (label + its section's text).
+  // Cache each nav button's label and its section's text; matching and the
+  // highlight ranges come from the pure model so they are covered by node tests.
   const entries=$$('#setNav button[data-sec]').map(b=>{
     const sec=document.querySelector('.set-sec[data-sec="'+b.dataset.sec+'"]');
-    return {btn:b,text:((b.textContent||'')+' '+(sec?sec.textContent||'':'')).toLowerCase()};
+    return {btn:b,label:b.textContent||'',id:b.dataset.sec,text:sec?sec.textContent||'':''};
   });
   const groups=$$('#setNav .settings-nav-group');
+  // Highlight matches in a nav label with <mark> nodes (textContent only).
+  function paintLabel(btn,label,query){
+    const ranges=highlightRanges(label,query);
+    btn.textContent='';
+    if(!ranges.length){btn.textContent=label;return;}
+    let at=0;
+    ranges.forEach(([a,z])=>{
+      if(a>at)btn.appendChild(document.createTextNode(label.slice(at,a)));
+      const m=document.createElement('mark');m.textContent=label.slice(a,z);btn.appendChild(m);at=z;
+    });
+    if(at<label.length)btn.appendChild(document.createTextNode(label.slice(at)));
+  }
   box.oninput=()=>{
-    const q=box.value.trim().toLowerCase();
-    let firstVisible=null,anyHidden=false,visibleCount=0;
-    entries.forEach(e=>{
-      const hit=!q||e.text.includes(q);
-      e.btn.hidden=!hit;
-      if(hit){visibleCount++; if(!firstVisible)firstVisible=e.btn;} else anyHidden=true;
+    const q=box.value.trim();
+    const rows=matchSections(entries.map(e=>({id:e.id,label:e.label,text:e.text})),q);
+    let firstVisible=null,anyHidden=false;
+    rows.forEach((r,i)=>{
+      const e=entries[i];
+      e.btn.hidden=!r.hit;
+      paintLabel(e.btn,e.label,r.hit?q:'');
+      if(r.hit&&!firstVisible)firstVisible=e.btn; else if(!r.hit)anyHidden=true;
     });
     // Hide a group's eyebrow label too when every button in that group is
     // filtered out — otherwise an orphaned "NETWORK"-style label with no
     // buttons under it would linger during a search.
     groups.forEach(g=>{g.hidden=!g.querySelector('button[data-sec]:not([hidden])');});
-    if(empty)empty.hidden=visibleCount>0;
-    // If the query hid the active section, jump to the first remaining match.
-    if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden))firstVisible.click();
-    syncSettingsPicker();
+    const summary=searchSummary(rows);
+    if(empty){empty.textContent=summary;empty.hidden=!summary;}
+    // If the query hid the active section, jump to the first remaining match
+    // (without pushing a phone page while the operator is still typing).
+    if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden)){settingsNavSilent=true;try{firstVisible.click();}finally{settingsNavSilent=false;}}
   };
   // Escape clears the filter.
   box.onkeydown=e=>{if(e.key==='Escape'){box.value='';box.oninput();box.blur();}};
 })();
+
+/* ---- first-run checklist (Project & data) ---- */
+{const checklistHost=$('#settingsChecklistMount');if(checklistHost)getHook('mountChecklist')?.(checklistHost);}
 
 /* ---- settings ---- */
 let apiLoaded=false;
@@ -655,10 +681,6 @@ function settingsLoadState(){
   const body=document.querySelector('#panel-settings .settings-body');if(body)body.prepend(el);
   return el;
 }
-function renderOriginTLSVerifyWarning(on){
-  const warning=$('#originTLSVerifyWarning');
-  if(warning)warning.hidden=!!on;
-}
 export function setOriginTLSVerify(on){
   const mode=$('#originTLSVerifyMode');
   if(mode)mode.value=on?'strict':'compatible';
@@ -666,7 +688,6 @@ export function setOriginTLSVerify(on){
   if(summary)summary.textContent=on
     ?'Strict mode rejects expired, untrusted, and hostname-mismatched origin certificates. Add only known test hosts as exceptions below.'
     :'Compatibility mode accepts self-signed, expired, and hostname-mismatched origin certificates so authorized test environments remain reachable.';
-  renderOriginTLSVerifyWarning(!!on);
 }
 $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
   const mode=$('#originTLSVerifyMode');
@@ -717,6 +738,11 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#suppressTelemetryToggle'))setSuppressTelemetry(settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision));
   if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision));
   if($('#invisibleProxyToggle'))setInvisibleProxy(settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision));
+  state.findingsUIEditing=!!s.findingsUIEditing;
+  if($('#findingsUIEditingToggle'))setFindingsUIEditing(settingsMutationValue('findingsUIEditing',!!s.findingsUIEditing,settingsRevision));
+  if($('#proxyAuthToggle')?.dataset.settingsDirty!=='1')setProxyAuth(!!s.proxyAuthEnabled);
+  if($('#proxyAuthUser')&&document.activeElement!==$('#proxyAuthUser')&&$('#proxyAuthUser').dataset.settingsDirty!=='1')$('#proxyAuthUser').value=s.proxyAuthUser||'';
+  if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value=s.proxyAuthPassword||'';
   if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
@@ -729,8 +755,9 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   state.intercept.enabled=s.interceptEnabled;
   restoreDirtySettings(dirty);
   restoreDirtySettingsDerived(dirty);
-  if(loadState)loadState.style.display='none';}
-  catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  if(loadState)loadState.style.display='none';
+  window.dispatchEvent(new CustomEvent('interseptor:findings-ui-editing'));}
+  catch(e){if(epoch!==settingsLoadEpoch)return;renderLoadError(loadState,'Settings',e,loadSettings,true);}
   finally{if(epoch===settingsLoadEpoch&&loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){
@@ -784,13 +811,50 @@ $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').oncl
     failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
   });
 });
+export function setFindingsUIEditing(on){state.findingsUIEditing=on;const b=$('#findingsUIEditingToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Findings editing is on':'Findings editing is off';}
 export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
+export function setProxyAuth(on){
+  const b=$('#proxyAuthToggle');
+  if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Proxy authentication is on':'Proxy authentication is off';}
+  const hidden=$('#proxyAuthEnabled');
+  if(hidden)hidden.value=on?'1':'0';
+  const fields=$('#proxyAuthFields');
+  if(fields)fields.hidden=!on;
+}
+$('#proxyAuthToggle')&&($('#proxyAuthToggle').onclick=()=>{
+  setProxyAuth($('#proxyAuthToggle').getAttribute('aria-pressed')!=='true');
+  markSettingsDirty($('#proxyAuthEnabled'));
+});
+$('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($('#saveProxyAuthBtn'),async()=>{
+  const enabled=$('#proxyAuthEnabled')?.value==='1';
+  const user=($('#proxyAuthUser')?.value||'').trim();
+  const password=$('#proxyAuthPassword')?.value||'';
+  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password');return;}
+  const userEl=$('#proxyAuthUser'),passEl=$('#proxyAuthPassword'),enabledEl=$('#proxyAuthEnabled');
+  const generation=settingsEditGeneration(enabledEl);
+  try{
+    await saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password});
+    if(settingsEditOwned(enabledEl,generation)&&userEl?.value.trim()===user&&passEl?.value===password){
+      clearSettingsDirty(['proxyAuthEnabled','proxyAuthUser','proxyAuthPassword']);
+    }
+    toast(enabled?'Proxy authentication enabled':'Proxy authentication disabled');
+  }catch(e){toast('proxy authentication: '+e.message);}
+}));
 $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
   const control=$('#invisibleProxyToggle');
   const on=!control.classList.contains('on');
   return saveBooleanSetting('invisibleProxy',on,{control,lockControl:true,
     success:current=>{setInvisibleProxy(current);toast(current?'Invisible proxy enabled':'Invisible proxy disabled');},
     failure:e=>{toast('invisible: '+e.message);loadSettings();},
+  });
+});
+
+$('#findingsUIEditingToggle')&&($('#findingsUIEditingToggle').onclick=async()=>{
+  const control=$('#findingsUIEditingToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('findingsUIEditing',on,{control,lockControl:true,
+    success:current=>{setFindingsUIEditing(current);window.dispatchEvent(new CustomEvent('interseptor:findings-ui-editing'));toast(current?'Findings editing enabled':'Findings editing disabled');},
+    failure:e=>{toast('findings editing: '+e.message);loadSettings();},
   });
 });
 
@@ -1024,7 +1088,7 @@ const SESSION_DIRTY_FIELDS=['setSessionOn','setSessionUnscoped','setSessionHeade
 function hasUnsavedSettingsFields(){
   return [...SESSION_DIRTY_FIELDS,...upstreamProxyFieldIds,'proxyListenersList','deviceProxyModeSeg','deviceProxyManualHost',
     'setControlHost','setControlPort','setControlAddr','tlsBypassList','originTLSVerifyBypassList','originTLSVerifyMode',
-    'setOobEnabled','hostHdrList','retMaxAge','retMaxFlows'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');
+    'setOobEnabled','hostHdrList','retMaxAge','retMaxFlows','proxyAuthEnabled','proxyAuthUser','proxyAuthPassword'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');
 }
 function sessionFormPayload(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
@@ -1196,11 +1260,11 @@ export function renderRetention(d){
   if(!body)return;
   if(!hosts.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No captured flows yet.</td></tr>';return;}
   body.innerHTML=hosts.map(h=>`<tr data-host="${escAttr(h.host)}">
-    <td><input type="checkbox" class="ret-chk" data-host="${escAttr(h.host)}" aria-label="Select ${escAttr(h.host)}"></td>
+    <td><input type="checkbox" class="ret-chk" data-host="${escAttr(h.host)}" aria-label="Select host ${escAttr(h.host)}"></td>
     <td style="font-family:var(--mono);color:var(--fg)">${esc(h.host)}</td>
     <td style="text-align:right;color:var(--fg2)">${esc(String(h.flows))}</td>
     <td style="text-align:right;color:var(--fg2)">${fmtBytes(h.bytes)}</td>
-    <td style="text-align:right"><button class="btn danger ret-del-one" data-host="${escAttr(h.host)}" data-flows="${escAttr(String(h.flows))}" style="color:var(--red);padding:3px 8px" title="Delete all flows from ${escAttr(h.host)}">Delete</button></td>
+    <td style="text-align:right"><button class="btn danger ret-del-one" data-host="${escAttr(h.host)}" data-flows="${escAttr(String(h.flows))}" style="color:var(--red);padding:3px 8px" title="Delete all flows from ${escAttr(h.host)}" aria-label="Delete all flows from ${escAttr(h.host)}">Delete</button></td>
   </tr>`).join('');
   // per-row delete buttons
   body.querySelectorAll('.ret-del-one').forEach(b=>b.onclick=()=>retDeleteOne(b.dataset.host,Number(b.dataset.flows)));
@@ -1225,13 +1289,13 @@ export function retChecked(){return [].slice.call(document.querySelectorAll('.re
 
 export async function retDeleteOne(host,flows){
   const msg='Delete all '+flows+' flow'+(flows===1?'':'s')+' from '+esc(host)+'? This is permanent.';
-  const confirmed=await uiConfirm('Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 }
 
 $('#retDeleteSelected').onclick=async()=>{
@@ -1241,13 +1305,13 @@ $('#retDeleteSelected').onclick=async()=>{
   const stats=retentionStats&&retentionStats.hosts||[];
   const totalFlows=hosts.reduce((s,h)=>{const e=stats.find(x=>x.host===h);return s+(e?e.flows:0);},0);
   const msg='Delete all flows from '+hosts.length+' host'+(hosts.length===1?'':'s')+' ('+totalFlows+' flow'+(totalFlows===1?'':'s')+')? This is permanent.';
-  const confirmed=await uiConfirm('Delete selected hosts',msg,'Delete','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Delete selected hosts',msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retKeepOnly').onclick=async()=>{
@@ -1258,19 +1322,19 @@ $('#retKeepOnly').onclick=async()=>{
   const total=retentionStats?retentionStats.totalFlows:0;
   const delFlows=total-keepFlows;
   const msg='Keep only '+hosts.length+' host'+(hosts.length===1?'':'s')+' and delete the rest (~'+delFlows+' flow'+(delFlows===1?'':'s')+')? This is permanent.';
-  const confirmed=await uiConfirm('Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retPurgePattern').onclick=async()=>{
   const pat=($('#retPatternInput')||{}).value&&$('#retPatternInput').value.trim();
   if(!pat){toast('enter a host pattern first');return;}
-  const confirmed=await uiConfirm('Purge by pattern',
+  const confirmed=await confirmTyped(uiConfirm,'Purge by pattern',
     'Delete all flows matching <b style="color:var(--accent)">'+esc(pat)+'</b>? This is permanent.','Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
@@ -1278,7 +1342,7 @@ $('#retPurgePattern').onclick=async()=>{
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     if($('#retPatternInput'))$('#retPatternInput').value='';
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retGc').onclick=async()=>{
@@ -1288,7 +1352,7 @@ $('#retGc').onclick=async()=>{
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/gc',{method:'POST'}));
     toast('GC done · removed '+r.removedFiles+' file'+(r.removedFiles===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
-  }catch(e){toast('gc: '+e.message);}
+  }catch(e){toastError('GC failed', e);}
 };
 
 $('#retPolicySave')&&($('#retPolicySave').onclick=async()=>{
@@ -1303,14 +1367,14 @@ $('#retPolicySave')&&($('#retPolicySave').onclick=async()=>{
     if(settingsEditOwned(age,ageGeneration,ageValue))age.removeAttribute('data-settings-dirty');
     if(settingsEditOwned(flows,flowsGeneration,flowsValue))flows.removeAttribute('data-settings-dirty');
     toast('auto retention saved');
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Retention policy save failed', e);}
 });
 $('#retPolicyRun')&&($('#retPolicyRun').onclick=async()=>{
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/retention/run',{method:'POST'}));
     toast('retention run · deleted '+(r.deleted||0)+' flow'+(r.deleted===1?'':'s'));
     loadFlows();
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Retention run failed', e);}
 });
 
 // select-all checkbox for retention table
@@ -1400,9 +1464,11 @@ export async function loadProject(){
     if(sel){
       const list=(d.projects&&d.projects.length)?d.projects:[{name:'default',path:''}];
       sel.innerHTML=list.map(p=>{
-        const isCur=p.name===d.current;
-        const label=p.path?`${esc(p.name)} — ${esc(p.path)}`:esc(p.name);
-        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${label}${isCur?' (current)':''}</option>`;
+        const isCur=isCurrentProject(p,d.current,d.dir,list);
+        const folder=p.category?`${p.category} / `:'';
+        const opened=formatProjectStamp(p.openedAt);
+        const label=`${folder}${p.name}${p.path?` — ${p.path}`:''}${opened?` · ${opened}`:''}${isCur?' (current)':''}`;
+        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${esc(label)}</option>`;
       }).join('');
     }
     projectDataLoaded=true;markProjectDataStale(false);
@@ -1527,16 +1593,127 @@ $('#projSwitchBtn').onclick=()=>{
   if(!opt){toast('no other project to open');return;}
   doSwitchProject(opt.value,opt.dataset.path||'');
 };
-$('#projNewBtn').onclick=()=>{
-  const v=(($('#projNew')||{}).value||'').trim();
-  const path=(($('#projNewPath')||{}).value||'').trim();
-  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
-  doSwitchProject(v,path);
-};
+$('#projNewBtn').onclick=()=>createProjectFrom('#projNew','#projNewPath','');
 
 // ---- top-bar Projects picker modal (click the project badge) ----
 // Same data + switch endpoint as the Settings panel, surfaced as a prominent,
 // first-class action so choosing a project never means opening Settings.
+function formatProjectStamp(sec, nowMs){
+  const n=Number(sec)||0;
+  if(!n)return '';
+  const now=nowMs||Date.now();
+  const delta=Math.max(0, now-n*1000);
+  const min=Math.floor(delta/60000);
+  if(min<1)return 'just now';
+  if(min<60)return min+'m ago';
+  const hr=Math.floor(min/60);
+  if(hr<36)return hr+'h ago';
+  const day=Math.floor(hr/24);
+  if(day<14)return day+'d ago';
+  const d=new Date(n*1000);
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const year=d.getFullYear()===new Date(now).getFullYear()?'':' '+d.getFullYear();
+  return d.getDate()+' '+months[d.getMonth()]+year;
+}
+function groupProjectTree(projects){
+  const root={folders:[], items:[]};
+  const find=(list,name)=>{
+    let folder=list.find(item=>item.name===name);
+    if(!folder){folder={name, folders:[], items:[]}; list.push(folder);}
+    return folder;
+  };
+  for(const project of projects||[]){
+    const parts=String(project.category||'').split(/[\\/]/).map(part=>part.trim()).filter(Boolean);
+    let node=root;
+    for(const part of parts) node=find(node.folders, part);
+    node.items.push(project);
+  }
+  const sortNode=node=>{
+    node.folders.sort((a,b)=>a.name.localeCompare(b.name));
+    node.items.sort((a,b)=>(Number(b.openedAt)||0)-(Number(a.openedAt)||0)||String(a.name).localeCompare(String(b.name)));
+    node.folders.forEach(sortNode);
+    node.count=node.items.length+node.folders.reduce((sum,folder)=>sum+(folder.count||0),0);
+  };
+  sortNode(root);
+  return root;
+}
+function projectMatchesQuery(project, query){
+  if(!query)return true;
+  return `${project.name||''} ${project.path||''} ${project.category||''}`.toLowerCase().includes(query);
+}
+function isCurrentProject(project, current, dir, projects){
+  const dirKey=projectPathKey(dir);
+  const external=(projects||[]).some(item=>item.path&&projectPathKey(item.path)===dirKey);
+  if(project.path)return projectPathKey(project.path)===dirKey;
+  return !external&&project.name===current;
+}
+function projectTimeLabel(project, nowMs){
+  const opened=formatProjectStamp(project.openedAt, nowMs);
+  const created=formatProjectStamp(project.createdAt, nowMs);
+  return `${opened?`Opened ${opened}`:'Not opened yet'}${created?` · Created ${created}`:''}`;
+}
+function projectRowHTML(project, cache){
+  const current=isCurrentProject(project, cache.current, cache.dir, cache.projects);
+  const path=project.path?`<span class="pm-meta">${esc(project.path)}</span>`:'';
+  return `<div class="pm-item"><div class="row u-gap-2"><button type="button" class="btn pm-row" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}"${current?' disabled':''}><span class="pm-name">${esc(project.name)}${current?' (current)':''}</span><span class="pm-meta">${esc(projectTimeLabel(project))}</span>${path}</button><button type="button" class="btn pm-folder-btn" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}" aria-label="Set folder for ${escAttr(project.name)}">Folder</button></div><div class="pm-folder-edit" hidden><input class="btn btn-field pm-folder-input" value="${escAttr(project.category||'')}" aria-label="Folder for ${escAttr(project.name)}" spellcheck="false" placeholder="Clients/Acme"><button type="button" class="btn pm-folder-save">Save</button></div></div>`;
+}
+function projectTreeHTML(node, cache, openAll){
+  const folders=node.folders.map(folder=>{
+    const open=openAll||folderContainsCurrent(folder, cache)?' open':'';
+    return `<details class="pm-folder"${open}><summary>${esc(folder.name)}<span class="pm-count">${folder.count}</span></summary><div class="pm-folder-body">${projectTreeHTML(folder, cache, openAll)}</div></details>`;
+  }).join('');
+  return node.items.map(project=>projectRowHTML(project, cache)).join('')+folders;
+}
+function folderContainsCurrent(node, cache){
+  if(node.items.some(project=>isCurrentProject(project, cache.current, cache.dir, cache.projects)))return true;
+  return node.folders.some(folder=>folderContainsCurrent(folder, cache));
+}
+let projectModalCache=null;
+function paintProjectModal(){
+  const list=$('#pmList');
+  const cache=projectModalCache;
+  if(!list||!cache)return;
+  if(!cache.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';return;}
+  const query=($('#pmFilter')?.value||'').trim().toLowerCase();
+  const projects=(cache.projects||[]).filter(project=>projectMatchesQuery(project, query));
+  if(!projects.length){
+    list.innerHTML=query?'<div class="hint">No projects match that filter.</div>':'<div class="hint">No saved projects yet — create one below.</div>';
+    return;
+  }
+  const openAll=!!query||(cache.projects||[]).length<=8;
+  list.innerHTML=projectTreeHTML(groupProjectTree(projects), cache, openAll);
+  list.querySelectorAll('.pm-row').forEach(button=>{
+    if(button.disabled)return;
+    button.onclick=()=>doSwitchProject(button.dataset.proj, button.dataset.path||'');
+  });
+  list.querySelectorAll('.pm-folder-btn').forEach(button=>button.onclick=()=>{
+    const edit=button.closest('.pm-item')?.querySelector('.pm-folder-edit');
+    if(edit)edit.hidden=!edit.hidden;
+  });
+  list.querySelectorAll('.pm-folder-save').forEach(button=>button.onclick=async()=>{
+    const item=button.closest('.pm-item');
+    const row=item?.querySelector('.pm-row');
+    const input=item?.querySelector('.pm-folder-input');
+    if(!row||!input)return;
+    button.disabled=true;
+    try{
+      const path=row.dataset.path||'';
+      await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:input.value}:{target:row.dataset.proj,category:input.value})});
+      await renderProjModal();
+    }catch(e){toast(e.message,'error');button.disabled=false;}
+  });
+}
+async function createProjectFrom(nameSel, pathSel, folderSel){
+  const v=($(nameSel)?.value||'').trim();
+  const path=($(pathSel)?.value||'').trim();
+  const folder=folderSel?($(folderSel)?.value||'').trim():'';
+  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
+  if(folder){
+    try{await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:folder}:{target:v,category:folder})});}
+    catch(e){toast(e.message,'error');return;}
+  }
+  doSwitchProject(v,path);
+}
 async function renderProjModal(){
   const epoch=++projectModalLoadEpoch;
   const list=$('#pmList');
@@ -1551,16 +1728,9 @@ async function renderProjModal(){
     const cur=$('#pmCurrent');if(cur)cur.textContent=d.current||'default';
     const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
     if(!list)return false;
-    if(!d.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';list.removeAttribute('aria-busy');setProjectModalActionsDisabled(true);projectModalDataLoaded=true;return true;}
-    const others=(d.projects||[]).filter(p=>p.name!==d.current);
-    list.innerHTML=others.length
-      ?others.map(p=>{
-        const sub=p.path?`<div class="hint" style="font-family:var(--mono);font-size:var(--fs-xs);margin-top:1px">${esc(p.path)}</div>`:'';
-        return `<button class="btn pm-row" data-proj="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}" style="text-align:left;background:var(--bg3);display:block">◧ ${esc(p.name)}${sub}</button>`;
-      }).join('')
-      :'<div class="hint">No other saved projects yet — create one below.</div>';
-    list.querySelectorAll('.pm-row').forEach(b=>b.onclick=()=>doSwitchProject(b.dataset.proj,b.dataset.path||''));
-    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(false);return true;
+    projectModalCache={projects:d.projects||[], current:d.current||'default', dir:d.dir||'', canSwitch:!!d.canSwitch};
+    paintProjectModal();
+    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(!d.canSwitch);return true;
   }catch(e){
     if(epoch!==projectModalLoadEpoch)return false;
     setProjectModalActionsDisabled(true);
@@ -1576,17 +1746,14 @@ export async function openProjectModal(){
   clearProjectPathFeedback();
   const inp=$('#pmNew');if(inp)inp.value='';
   const pinp=$('#pmNewPath');if(pinp)pinp.value='';
+  const folder=$('#pmNewFolder');if(folder)folder.value='';
   openModal(m);
   const rendered=await renderProjModal();
   if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();
 }
 {const c=$('#pmClose');if(c)c.onclick=()=>{if(!projectSwitchPending)closeModal($('#projModal'));};}
-{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{
-  const v=(($('#pmNew')||{}).value||'').trim();
-  const path=(($('#pmNewPath')||{}).value||'').trim();
-  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
-  doSwitchProject(v,path);
-};}
+{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>createProjectFrom('#pmNew','#pmNewPath','#pmNewFolder');}
+$('#pmFilter')?.addEventListener('input',paintProjectModal);
 {const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 {const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 ['projNewPath','pmNewPath'].forEach(id=>$('#'+id)?.addEventListener('input',clearProjectPathFeedback));
@@ -1799,6 +1966,11 @@ function toggleAndroidDeviceMenu(){
   const menu=$('#androidDeviceMenu'),trigger=$('#androidDeviceTrigger');
   if(!menu||!trigger||trigger.disabled)return;
   if(!menu.hidden){closeAndroidDeviceMenu();return;}
+  // One popover at a time: each trigger stops propagation, so the document
+  // click that normally dismisses the other menu (and the shared ui-select
+  // dropdowns) never fires. Close them explicitly instead.
+  closeIOSDeviceMenu();
+  closeAllUiSelects();
   menu.hidden=false;
   trigger.setAttribute('aria-expanded','true');
   menu.querySelector('.ui-select-opt.sel')?.scrollIntoView({block:'nearest'});
@@ -2065,6 +2237,9 @@ function toggleIOSDeviceMenu(){
   const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger');
   if(!menu||!trigger||trigger.disabled)return;
   if(!menu.hidden){closeIOSDeviceMenu();return;}
+  // See toggleAndroidDeviceMenu(): only one popover may stay open.
+  closeAndroidDeviceMenu();
+  closeAllUiSelects();
   menu.hidden=false;
   trigger.setAttribute('aria-expanded','true');
 }
@@ -2186,6 +2361,11 @@ $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
   loadIOS();
 });}
 document.addEventListener('click',()=>closeIOSDeviceMenu());
+// Escape must also dismiss while focus is still on the trigger (the menu's own
+// handler only fires once focus has moved inside it) — same as Android.
+{const wrap=$('#iosDeviceSelectWrap');if(wrap)wrap.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeIOSDeviceMenu(true);
+});}
 {const lh=$('#iosLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosOpenProxyBtn'))openSettingsProxy();});}
 wireDeviceMenuKeyboard($('#iosDeviceMenu'),$('#iosDeviceTrigger'),toggleIOSDeviceMenu,closeIOSDeviceMenu);
 $('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(async()=>{}));
@@ -2327,3 +2507,8 @@ $('#iosSshInstallCaBtn')&&($('#iosSshInstallCaBtn').onclick=()=>iosSshAction(asy
   if(hint)hint.textContent=r.message||'Profile opened on device';
   toast(r.message||'Profile opened on device');
 }));
+
+// Findings (and any panel) asks to open a Settings section over the bus rather
+// than importing openSettingsSection — the edge that closed the findings→settings
+// cycle. openSettingsSection is a hoisted declaration, so this runs at load.
+busOn(EVENTS.SETTINGS_OPEN_SECTION, (sec) => openSettingsSection(typeof sec === 'string' ? sec : 'proxy'));

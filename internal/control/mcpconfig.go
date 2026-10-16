@@ -1,6 +1,11 @@
 package control
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/version"
+)
 
 // mcpHTTPClientConfig is the recommended Cursor / Streamable-HTTP MCP config.
 // It talks to the running Interseptor process, so MCP always matches the version
@@ -48,6 +53,7 @@ func mcpDescriptorForRequest(host string) map[string]any {
 		"Start Interseptor first (%s). Recommended for Cursor: paste clientConfig below — Streamable HTTP at /mcp uses the running process and updates when you restart after `interseptor update`. stdioClientConfig spawns `interseptor mcp` separately; on Windows use scripts/interseptor-mcp.cmd to resolve the latest binary on PATH.",
 		base,
 	)
+	out["documentation"] = version.Docs()
 	out["clientConfig"] = mcpHTTPClientConfig(base)
 	out["stdioClientConfig"] = mcpStdioClientConfig(base)
 	out["httpTransport"] = map[string]any{
@@ -55,5 +61,13 @@ func mcpDescriptorForRequest(host string) map[string]any {
 		"url":  base + "/mcp",
 		"note": "Same tools as stdio. Loopback-only. If you created API keys, add Authorization: Bearer <key> to your MCP client headers.",
 	}
+	// Profiles let an eager-loading client load a subset of the tool schemas
+	// instead of all of them. Advertised here so Settings and an agent reading
+	// GET /api/mcp both see the names and sizes without guessing.
+	out["profiles"] = mcp.ProfileCatalog()
+	out["profileNote"] = fmt.Sprintf(
+		"Optional: scope the tool surface with %s=<name> for stdio, or %s/mcp?profile=<name> for Streamable HTTP. "+
+			"Default is full (every tool). Send ?profile= on every request — the HTTP transport is stateless.",
+		mcp.ProfileEnvVar, base)
 	return out
 }

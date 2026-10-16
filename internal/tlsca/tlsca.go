@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -16,6 +17,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,9 +28,24 @@ type CA struct {
 	key     *ecdsa.PrivateKey
 	certPEM []byte
 
-	mu       sync.Mutex
+	// mu guards the cache and the in-flight map. It is an RWMutex because the
+	// hit path — every handshake after the first to a given host — only reads,
+	// and minting happens with no lock held at all.
+	mu       sync.RWMutex
 	cache    map[string]*tls.Certificate
 	cacheOrd []string // insertion order, for bounded (FIFO) eviction
+	minting  map[string]*leafMint
+}
+
+// leafMint is one in-flight mint. Concurrent requests for the same host join
+// the existing mint instead of starting another: a page opening ten parallel
+// connections to a new host should cost one keygen and one signature, not ten.
+// done is closed once tc/err are set, which is also what publishes them to the
+// waiters.
+type leafMint struct {
+	done chan struct{}
+	tc   *tls.Certificate
+	err  error
 }
 
 const (
@@ -135,15 +152,104 @@ func create(crtPath, keyPath string) (*CA, error) {
 // CertPEM returns the PEM-encoded CA certificate (for the user to trust).
 func (c *CA) CertPEM() []byte { return c.certPEM }
 
+// Fingerprint returns the CA certificate's SHA-256 fingerprint as colon-separated
+// uppercase hex, the form device certificate viewers display.
+func (c *CA) Fingerprint() string {
+	sum := sha256.Sum256(c.cert.Raw)
+	parts := make([]string, len(sum))
+	for i, b := range sum {
+		parts[i] = fmt.Sprintf("%02X", b)
+	}
+	return strings.Join(parts, ":")
+}
+
 // LeafForHost mints (or returns a cached) leaf certificate for host, signed by
 // the CA. host may be a DNS name or an IP literal.
+//
+// Minting — an ECDSA keygen, a signature and a parse — runs with no lock held,
+// so handshakes to different hosts mint in parallel instead of queueing behind
+// one another. Requests for the same host still collapse onto one mint.
 func (c *CA) LeafForHost(host string) (*tls.Certificate, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if tc, ok := c.cache[host]; ok && time.Now().Before(tc.Leaf.NotAfter.Add(-time.Minute)) {
-		return tc, nil // still valid; a near-expiry/expired entry falls through and is re-minted
+	if tc := c.cached(host); tc != nil {
+		return tc, nil
 	}
 
+	c.mu.Lock()
+	// Re-check: another goroutine may have finished minting this host between
+	// the read above and this write lock.
+	if tc, ok := c.cache[host]; ok && leafUsable(tc) {
+		c.mu.Unlock()
+		return tc, nil
+	}
+	if m, ok := c.minting[host]; ok {
+		c.mu.Unlock()
+		<-m.done
+		return m.tc, m.err
+	}
+	m := &leafMint{done: make(chan struct{})}
+	if c.minting == nil {
+		c.minting = map[string]*leafMint{}
+	}
+	c.minting[host] = m
+	c.mu.Unlock()
+
+	tc, err := c.mintLeaf(host)
+
+	c.mu.Lock()
+	if err == nil {
+		c.storeLeafLocked(host, tc)
+	}
+	// Clear the in-flight marker before publishing, so a caller arriving after
+	// a failure starts a fresh mint instead of inheriting this one's error.
+	delete(c.minting, host)
+	c.mu.Unlock()
+
+	m.tc, m.err = tc, err
+	close(m.done)
+	return tc, err
+}
+
+// cached returns a usable cached certificate for host, or nil. It takes only a
+// read lock, which is the whole point: once a target's hosts are known, every
+// handshake lands here and they no longer serialize against each other.
+func (c *CA) cached(host string) *tls.Certificate {
+	c.mu.RLock()
+	tc, ok := c.cache[host]
+	c.mu.RUnlock()
+	if ok && leafUsable(tc) {
+		return tc
+	}
+	return nil // absent, or near expiry: fall through and re-mint
+}
+
+func leafUsable(tc *tls.Certificate) bool {
+	return time.Now().Before(tc.Leaf.NotAfter.Add(-time.Minute))
+}
+
+// storeLeafLocked caches a freshly minted certificate, evicting the oldest
+// entries once over the bound so the cache can't grow without limit under many
+// distinct SNIs (e.g. subdomain fuzzing through the proxy). Callers hold mu.
+func (c *CA) storeLeafLocked(host string, tc *tls.Certificate) {
+	if c.cache == nil {
+		c.cache = map[string]*tls.Certificate{}
+	}
+	if _, existed := c.cache[host]; !existed {
+		c.cacheOrd = append(c.cacheOrd, host)
+		for len(c.cacheOrd) > leafCacheMax {
+			oldest := c.cacheOrd[0]
+			c.cacheOrd = c.cacheOrd[1:]
+			delete(c.cache, oldest)
+		}
+	}
+	c.cache[host] = tc
+}
+
+// mintLeaf generates a key and signs one per-host certificate. Every host gets
+// its own key: sharing one leaf key across all minted certificates is common
+// proxy practice, but the keygen is about a tenth of a mint here and was not
+// what made concurrent handshakes slow. docs/architecture.md records the
+// reasoning.
+func (c *CA) mintLeaf(host string) (*tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -180,23 +286,11 @@ func (c *CA) LeafForHost(host string) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	tc := &tls.Certificate{
+	return &tls.Certificate{
 		Certificate: [][]byte{der},
 		PrivateKey:  key,
 		Leaf:        leaf,
-	}
-	if _, existed := c.cache[host]; !existed {
-		c.cacheOrd = append(c.cacheOrd, host)
-		// Evict oldest entries once over the bound so the cache can't grow without
-		// limit under many distinct SNIs (e.g. subdomain fuzzing through the proxy).
-		for len(c.cacheOrd) > leafCacheMax {
-			oldest := c.cacheOrd[0]
-			c.cacheOrd = c.cacheOrd[1:]
-			delete(c.cache, oldest)
-		}
-	}
-	c.cache[host] = tc
-	return tc, nil
+	}, nil
 }
 
 // TLSConfig returns a *tls.Config that serves a per-host leaf chosen from the

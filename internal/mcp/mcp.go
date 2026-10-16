@@ -42,6 +42,7 @@ type Server struct {
 	cl            *http.Client
 	tools         map[string]tool
 	order         []string
+	profile       Profile // which subset of tools this connection serves
 	authMu        sync.RWMutex
 	authorization string
 	report        func(Activity) // called after each tool call; surfaces AI actions in the UI
@@ -104,12 +105,21 @@ func firstLine(s string, n int) string {
 }
 
 // New builds an MCP server that talks to the control API at baseURL
-// (e.g. http://127.0.0.1:9966).
-func New(baseURL string) *Server {
+// (e.g. http://127.0.0.1:9966). It serves the full tool surface; documentation
+// generation and diagnostics rely on that, so the default must stay `full`.
+func New(baseURL string) *Server { return NewProfile(baseURL, ProfileFull) }
+
+// NewProfile builds an MCP server that serves only the tools in p. Every tool
+// is still registered — ToolMeta and ToolNames on a full server see them all —
+// but tools/list, the schema hash, the connect instructions and tools/call are
+// all scoped to the profile. An unknown profile is a programming error; parse
+// it with ParseProfile at the edge.
+func NewProfile(baseURL string, p Profile) *Server {
 	s := &Server{
-		base:  strings.TrimRight(baseURL, "/"),
-		cl:    &http.Client{Timeout: 60 * time.Second},
-		tools: map[string]tool{},
+		base:    strings.TrimRight(baseURL, "/"),
+		cl:      &http.Client{Timeout: 60 * time.Second},
+		tools:   map[string]tool{},
+		profile: p,
 	}
 	s.registerTools()
 	return s
@@ -179,17 +189,8 @@ func (s *Server) handleLine(line []byte, out io.Writer) {
 // mcpInstructions is the guidance surfaced to an AI agent on connect: the
 // pentest workflow, plus a pointer to report bugs/gaps in Interseptor itself.
 func mcpInstructions() string {
-	return "Interseptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\n" +
-		"SETUP: check_readiness (structured JSON blockers: OOB, scope, auth identities, login macro) → fix blockers → scope_from_url → ca_info + route traffic through proxy. Re-run check_readiness if list_flows/scans come back empty.\n\n" +
-		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
-		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
-		"SCAN: run_scanner (passive) → inspect list_issues and relevant flows → use send_request, start_intruder, authz_run, cross_host_token_replay, and oob_* deliberately for confirmation and blind callbacks.\n\n" +
-		"RECORD: write findings point-first — create_finding with claim/risk/target fields and typed reproduction blocks → attach captured requests with add_finding_poc → add a real browser/device screenshot when it visually proves the claim, or use render_flow_preview for a clearly labeled HTTP preview. Give every flow/image a proof statement and provenance. Choose the shortest role sequence that fits the vulnerability; use the Differential proof preset only for authorization or state-change comparisons. Never file a wall of prose or paste raw HTTP into detail/evidence.\n\n" +
-		findingFormatGuide + "\n\n" +
-		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
-		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
-		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings in the canonical claim/risk/target/reproduction/evidence/fix/retest/review envelope. Attach captured flows and proof annotations; prioritize a real screenshot when available, otherwise use a labeled flow preview when it improves reviewability. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
-		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
+	sections := instructionSections()
+	return strings.Join(sections, "")
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -229,9 +230,10 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 			"apiVersion":      version.String(),
 			"schemaVersion":   schemaVersion,
 			"schemaHash":      serverSchemaHash,
+			"profile":         string(s.profile),
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "interseptor", "version": version.String()},
-			"instructions":    mcpInstructions(),
+			"instructions":    instructionsFor(s.profile, s.visibleSet()),
 		}, nil
 	case "tools/list":
 		return map[string]any{"tools": s.toolList()}, nil
@@ -281,9 +283,24 @@ func (s *Server) Capabilities() map[string]any {
 		"protocolVersion": protocolVersion,
 		"schemaVersion":   schemaVersion,
 		"schemaHash":      s.SchemaHash(),
+		// profile scopes schemaHash and the tool count: a client holding a
+		// different profile's cache has a different hash and must reconnect.
+		"profile":  string(s.profile),
+		"profiles": ProfileNames(),
+		"tools": map[string]any{
+			"count":    len(s.visibleOrder()),
+			"registry": len(s.order),
+			"catalog":  ProfileCatalog(),
+		},
+		// documentation points agents at the generated llms.txt/llms-full.txt guide.
+		"documentation": version.Docs(),
 		"finding": map[string]any{
 			"createFields": create,
 			"updateFields": update,
+			// targetsSupported lets a client holding an older tool schema
+			// detect that structured targets exist and reconnect.
+			"targetsSupported":  slices.Contains(create, "targets"),
+			"legacyScalarField": "target",
 		},
 	}
 }
@@ -314,13 +331,21 @@ func schemaPropertyNames(schema map[string]any) []string {
 	return keys
 }
 
+// toolList is the tools/list payload for the active profile. A reduced profile
+// also condenses descriptions that repeat the finding-writing contract already
+// carried once by the initialize instructions.
 func (s *Server) toolList() []map[string]any {
-	out := make([]map[string]any, 0, len(s.order))
-	for _, name := range s.order {
+	names := s.visibleOrder()
+	out := make([]map[string]any, 0, len(names))
+	for _, name := range names {
 		t := s.tools[name]
+		desc := t.description
+		if s.profile != ProfileFull {
+			desc = condenseDescription(desc)
+		}
 		out = append(out, map[string]any{
 			"name":        name,
-			"description": t.description,
+			"description": desc,
 			"inputSchema": t.schema,
 		})
 	}
@@ -352,6 +377,11 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
+	// tools/list has to be the truth about the surface: a profile that
+	// advertises 30 tools must not quietly run the other 103.
+	if s.profile != ProfileFull && !s.visibleSet()[name] {
+		return "", profileRefusal(name, s.profile)
+	}
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -375,7 +405,13 @@ func (s *Server) Call(name string, args map[string]any) (string, error) {
 	return s.runTool(name, args)
 }
 
+// toolError is the single place a tool failure becomes an MCP result, so every
+// hard rejection starts with the same "error:" marker whatever produced it
+// (argument validation, store error, HTTP failure, unknown tool).
 func toolError(msg string) any {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(msg)), "error:") {
+		msg = "error: " + msg
+	}
 	return map[string]any{
 		"content": []map[string]any{{"type": "text", "text": msg}},
 		"isError": true,
@@ -676,6 +712,7 @@ func rulePayload(a map[string]any, enabledDefault bool) map[string]any {
 	return map[string]any{
 		"ord": argInt(a, "ord", 0), "enabled": argBool(a, "enabled", enabledDefault),
 		"type": typ, "match": argStr(a, "match"), "replace": argStr(a, "replace"),
+		"bigBody": argBool(a, "bigBody", false),
 	}
 }
 
@@ -917,13 +954,16 @@ func (s *Server) add(name, desc string, schema map[string]any, call func(map[str
 	s.order = append(s.order, name)
 }
 
-// ToolNames returns the registered tool names in registration order, so the UI
-// descriptor / docs can be checked against the actual toolset (no silent drift).
+// ToolNames returns the tool names this server serves, in registration order,
+// so the UI descriptor / docs can be checked against the actual toolset (no
+// silent drift). On a full server — what New returns — that is every tool.
 func (s *Server) ToolNames() []string {
-	return append([]string(nil), s.order...)
+	return append([]string(nil), s.visibleOrder()...)
 }
 
-// ToolMeta returns the description and JSON Schema for a registered tool.
+// ToolMeta returns the description and JSON Schema for a registered tool. It
+// reads the whole registry, not the active profile, so documentation
+// generation and diagnostics see every tool whatever profile is being served.
 func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok bool) {
 	t, ok := s.tools[name]
 	if !ok {
@@ -935,6 +975,9 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 // registerTools wires every tool to a control-API endpoint.
 func (s *Server) registerTools() {
 	s.registerFindingReviewTools()
+	s.registerEvidenceRenderTools()
+	s.registerCollectionTools()
+	s.registerCollmatrixTools()
 	s.add("list_flows",
 		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
@@ -1011,6 +1054,126 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			return s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
+		})
+
+	s.add("audit_endpoint",
+		"Consolidated endpoint triage: takes a flow id, analyzes its structure, parameters, auth context, and passive findings to return an actionable security assessment with identified attack surfaces and recommended attack vectors.",
+		obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqFlowID(a)
+			if err != nil {
+				return "", err
+			}
+			analysisRaw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
+			if err != nil {
+				return "", fmt.Errorf("analyze flow %d: %w", id, err)
+			}
+			var analysis struct {
+				ID              int64             `json:"id"`
+				URL             string            `json:"url"`
+				Method          string            `json:"method"`
+				Status          int               `json:"status"`
+				InScope         bool              `json:"inScope"`
+				SecurityHeaders map[string]string `json:"securityHeaders"`
+				QueryParams     []string          `json:"queryParams"`
+				PassiveFindings []string          `json:"passiveFindings"`
+			}
+			_ = json.Unmarshal([]byte(analysisRaw), &analysis)
+
+			flowRaw, _ := s.apiGet(fmt.Sprintf("/api/flows/%d", id))
+			var flowData struct {
+				ReqHeaders map[string][]string `json:"reqHeaders"`
+				ResHeaders map[string][]string `json:"resHeaders"`
+				ReqLen     int64               `json:"reqLen"`
+				ResLen     int64               `json:"resLen"`
+				Mime       string              `json:"mime"`
+			}
+			_ = json.Unmarshal([]byte(flowRaw), &flowData)
+
+			type attackSurface struct {
+				Param string `json:"param"`
+				Type  string `json:"type"`
+				Risk  string `json:"risk"`
+				Notes string `json:"notes"`
+			}
+			var surfaces []attackSurface
+			for _, qp := range analysis.QueryParams {
+				lqp := strings.ToLower(qp)
+				switch {
+				case strings.Contains(lqp, "id") || strings.Contains(lqp, "user") || strings.Contains(lqp, "account") || strings.Contains(lqp, "num") || strings.Contains(lqp, "page"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "numeric/identifier", Risk: "IDOR / Broken Object Level Authorization",
+						Notes: "Test with alternate user IDs or sequential integers to probe access control.",
+					})
+				case strings.Contains(lqp, "redirect") || strings.Contains(lqp, "url") || strings.Contains(lqp, "next") || strings.Contains(lqp, "return") || strings.Contains(lqp, "dest") || strings.Contains(lqp, "goto"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "redirect/destination", Risk: "Open Redirect / SSRF",
+						Notes: "Test with external URLs (//evil.com, https://attacker.com) and loopback addresses.",
+					})
+				case strings.Contains(lqp, "search") || strings.Contains(lqp, "query") || strings.Contains(lqp, "q") || strings.Contains(lqp, "filter") || strings.Contains(lqp, "sort"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "search/query", Risk: "SQLi / Reflected XSS",
+						Notes: "Probe with single quote, SQL keywords, and special characters.",
+					})
+				case strings.Contains(lqp, "callback") || strings.Contains(lqp, "cb") || strings.Contains(lqp, "jsonp"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "callback", Risk: "JSONP Injection / Reflected XSS",
+						Notes: "Check if parameter is echoed into JavaScript responses without validation.",
+					})
+				default:
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "general query parameter", Risk: "Parameter Tampering",
+						Notes: "Fuzz parameter values with intruder or custom payloads.",
+					})
+				}
+			}
+
+			authType := "none"
+			var authNotes []string
+			for k, v := range flowData.ReqHeaders {
+				if strings.EqualFold(k, "Authorization") && len(v) > 0 {
+					if strings.HasPrefix(strings.ToLower(v[0]), "bearer ") {
+						authType = "bearer_token"
+					} else if strings.HasPrefix(strings.ToLower(v[0]), "basic ") {
+						authType = "basic_auth"
+					} else {
+						authType = "custom_auth_header"
+					}
+					authNotes = append(authNotes, "Authorization header present: "+k)
+				}
+				if strings.EqualFold(k, "Cookie") && len(v) > 0 {
+					authNotes = append(authNotes, "Cookie header present")
+				}
+			}
+
+			var recs []string
+			if len(surfaces) > 0 {
+				recs = append(recs, fmt.Sprintf("Fuzz %d query parameter(s) using start_intruder with sniper or cluster attack.", len(surfaces)))
+			}
+			if len(analysis.PassiveFindings) > 0 {
+				recs = append(recs, fmt.Sprintf("Investigate %d passive scanner finding(s) on this endpoint.", len(analysis.PassiveFindings)))
+			}
+			if authType != "none" {
+				recs = append(recs, "Test authorization boundary: re-issue request without auth header or with another identity's token to check for BOLA/IDOR.")
+			}
+			if len(recs) == 0 {
+				recs = append(recs, "Check response body for sensitive data leakage or replay request with modified input.")
+			}
+
+			outMap := map[string]any{
+				"flowId":             id,
+				"url":                analysis.URL,
+				"method":             analysis.Method,
+				"status":             analysis.Status,
+				"inScope":            analysis.InScope,
+				"attackSurfaces":     surfaces,
+				"authType":           authType,
+				"authNotes":          authNotes,
+				"passiveFindings":    analysis.PassiveFindings,
+				"recommendedActions": recs,
+			}
+			b, _ := json.MarshalIndent(outMap, "", "  ")
+			return string(b) + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
 		})
 
 	s.add("flow_as_curl",
@@ -1115,6 +1278,85 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/tags") })
 
+	s.add("get_interception_setup",
+		"Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass enablers (tool, script hash, target library, method, hosts) and the record's version, plus the proxy/CA Interseptor currently observes. Use it to tell a pinning capture gap from a finding. Version 0 means nothing is recorded.",
+		obj(map[string]any{"serial": p("string", "optional adb device serial to also read the device proxy")}),
+		func(a map[string]any) (string, error) {
+			path := "/api/interception-setup"
+			if serial := strings.TrimSpace(argStr(a, "serial")); serial != "" {
+				path += "?serial=" + url.QueryEscape(serial)
+			}
+			return s.apiGet(path)
+		})
+
+	s.add("set_interception_setup",
+		"Record the interception setup (system proxy, CA fingerprint, pinning-bypass enablers such as a Frida hook, applicable hosts). Replaces the record; call get_interception_setup first and resend unchanged parts. The version increments only when content changes; reports state how evidence was obtained from it.",
+		obj(map[string]any{
+			"proxyAddress":  p("string", "proxy address the client uses, e.g. 127.0.0.1:8080"),
+			"caFingerprint": p("string", "SHA-256 fingerprint of the installed CA"),
+			"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts the setup applies to (exact or *.wildcard); empty = all"},
+			"enablers": map[string]any{"type": "array", "description": "pinning-bypass enablers in place", "items": obj(map[string]any{
+				"tool":          p("string", "e.g. frida, objection"),
+				"scriptHash":    p("string", "hash of the bypass script"),
+				"targetLibrary": p("string", "e.g. libflutter.so"),
+				"method":        p("string", "hooked function or technique"),
+				"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts this enabler covers; empty = every host the setup covers"},
+			}, "tool")},
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{
+				"proxyAddress": argStr(a, "proxyAddress"), "caFingerprint": argStr(a, "caFingerprint"),
+			}
+			if v, ok := a["hosts"]; ok {
+				body["hosts"] = v
+			}
+			if v, ok := a["enablers"]; ok {
+				body["enablers"] = v
+			}
+			return s.api(http.MethodPut, "/api/interception-setup", body)
+		})
+
+	s.add("annotate_flow_interception",
+		"Mark a bodiless 'CONNECT <host> status 0' flow as pinning_blocked (interception was intended but pinning rejected the handshake) or not_intercepted (never meant to be intercepted), so a capture gap is not read as a security finding. Empty annotation clears it.",
+		obj(map[string]any{
+			"id":         pt("integer"),
+			"annotation": p("string", "pinning_blocked | not_intercepted | \"\" to clear"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			ann := strings.TrimSpace(argStr(a, "annotation"))
+			if ann != "" && ann != "pinning_blocked" && ann != "not_intercepted" {
+				return "", fmt.Errorf("annotation must be pinning_blocked, not_intercepted or empty")
+			}
+			return s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/interception", id), map[string]any{"annotation": ann})
+		})
+
+	s.add("get_engagement_brief",
+		"Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch list and credential policy, plus its version. Read it before testing and obey it; cite the version in findings and reports. Version 0 means no brief is recorded.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/engagement-brief") })
+
+	s.add("set_engagement_brief",
+		"Replace the project's engagement brief (the operator's authorisation and conduct rules). Call get_engagement_brief first and resend unchanged fields; omitted fields are cleared. The version increments only when content changes.",
+		obj(map[string]any{
+			"scope":            p("string", "in-scope hosts/APIs"),
+			"authorisation":    p("string", "authorisation statement: who authorised what"),
+			"conductRules":     p("string", "rules of conduct, e.g. own account only, destructive actions noted not executed"),
+			"rateLimits":       p("string", "e.g. <=1 req/s, request budgets"),
+			"doNotTouch":       p("string", "explicit do-not-touch list"),
+			"credentialPolicy": p("string", "e.g. never print credential values"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			for _, k := range []string{"scope", "authorisation", "conductRules", "rateLimits", "doNotTouch", "credentialPolicy"} {
+				body[k] = argStr(a, k)
+			}
+			return s.api(http.MethodPut, "/api/engagement-brief", body)
+		})
+
 	s.add("get_notes",
 		"Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings and to-dos. Read it before editing with set_notes.",
 		obj(map[string]any{}),
@@ -1160,15 +1402,18 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" Stub create with title only is OK. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
+		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" A title-only create is allowed only as an intermediate step: attach evidence in the same run with add_finding_poc or add_finding_image before you move on. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
 		obj(map[string]any{
 			"title":                    pt("string"),
 			"severity":                 pt("string"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
-			"summary":                  p("string", "concise statement of the vulnerable behavior"),
+			"summary":                  p("string", "one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title"),
 			"target":                   p("string", "legacy primary target; first targets entry takes precedence"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability — which security property breaks"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1176,7 +1421,7 @@ func (s *Server) registerTools() {
 			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
-			"detail":                   p("string", "legacy opening text — prefer impact/why fields + PoC body"),
+			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human"),
@@ -1220,6 +1465,7 @@ func (s *Server) registerTools() {
 				Confidence:               argStr(a, "confidence"),
 				Body:                     narrative,
 				VerificationInstructions: argStr(a, "verificationInstructions"),
+				Targets:                  findingTargetsArg(a["targets"]),
 			})
 			if hard != nil {
 				return "", hard
@@ -1229,7 +1475,7 @@ func (s *Server) registerTools() {
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
 			}
-			for _, key := range []string{"targets", "proofReview"} {
+			for _, key := range []string{"targets", "proofReview", "claims", "notExecuted", "relatedFindings"} {
 				if v, ok := a[key]; ok {
 					reqBody[key] = v
 				}
@@ -1282,7 +1528,7 @@ func (s *Server) registerTools() {
 			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
 				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
 			}
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 
@@ -1342,10 +1588,13 @@ func (s *Server) registerTools() {
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
 			"severity":                 pt("string"),
 			"title":                    pt("string"),
-			"summary":                  p("string", "concise statement of the vulnerable behavior"),
+			"summary":                  p("string", "one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title"),
 			"target":                   pt("string"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1353,7 +1602,7 @@ func (s *Server) registerTools() {
 			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
-			"detail":                   pt("string"),
+			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
@@ -1411,6 +1660,7 @@ func (s *Server) registerTools() {
 					Body:                     narrative,
 					VerificationInstructions: argStr(a, "verificationInstructions"),
 					Partial:                  true,
+					Targets:                  findingTargetsArg(a["targets"]),
 				})
 				if hard != nil {
 					return "", hard
@@ -1423,7 +1673,7 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
@@ -1443,7 +1693,7 @@ func (s *Server) registerTools() {
 				return result, err
 			}
 			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 
@@ -1478,6 +1728,134 @@ func (s *Server) registerTools() {
 				reqBody["position"] = pos
 			}
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", fid), reqBody)
+		})
+
+	s.add("record_finding_from_flow",
+		"Composite tool: creates a finding and attaches the originating captured flow as first-class reproduction proof in a single atomic call. Auto-populates target, summary, and proof from the flow metadata if omitted. Returns the finding with its UI link.",
+		obj(map[string]any{
+			"flowId":   pt("integer"),
+			"title":    pt("string"),
+			"severity": p("string", "Critical|High|Medium|Low|Info (default Medium)"),
+			"summary":  p("string", "concise statement of the vulnerable behavior (auto-generated from flow if omitted)"),
+			"why":      p("string", "why this is a vulnerability — which security property breaks"),
+			"impact":   p("string", "what an attacker gains / CIA consequence"),
+			"fix":      p("string", "remediation at the failed trust boundary"),
+			"proof":    p("string", "what this request/response establishes (auto-generated if omitted)"),
+			"role":     p("string", "context|setup|baseline|action|result|control|retest|observation (default result)"),
+			"status":   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed (default open)"),
+			"tags":     p("string", "optional tags"),
+			"intent":   p("string", "optional: short 'why' shown in Activity"),
+		}, "flowId", "title"),
+		func(a map[string]any) (string, error) {
+			flowID, err := reqInt(a, "flowId")
+			if err != nil || flowID <= 0 {
+				return "", fmt.Errorf("valid flowId is required")
+			}
+			title, err := reqStr(a, "title")
+			if err != nil || title == "" {
+				return "", fmt.Errorf("title is required")
+			}
+
+			flowRaw, err := s.apiGet(fmt.Sprintf("/api/flows/%d", flowID))
+			if err != nil {
+				return "", fmt.Errorf("fetch flow %d: %w", flowID, err)
+			}
+			var flow struct {
+				ID     int64  `json:"id"`
+				Scheme string `json:"scheme"`
+				Host   string `json:"host"`
+				Port   int    `json:"port"`
+				Path   string `json:"path"`
+				Method string `json:"method"`
+				Status int    `json:"status"`
+			}
+			if err := json.Unmarshal([]byte(flowRaw), &flow); err != nil {
+				return "", fmt.Errorf("decode flow %d: %w", flowID, err)
+			}
+
+			target := flow.Host + flow.Path
+			if flow.Scheme != "" && flow.Host != "" {
+				target = fmt.Sprintf("%s://%s%s", flow.Scheme, flow.Host, flow.Path)
+			}
+
+			summary := argStr(a, "summary")
+			if summary == "" {
+				summary = fmt.Sprintf("%s %s (HTTP %d) demonstrates %s", flow.Method, flow.Path, flow.Status, title)
+			}
+
+			proof := argStr(a, "proof")
+			if proof == "" {
+				proof = fmt.Sprintf("HTTP %s to %s returned %d verifying %s", flow.Method, flow.Path, flow.Status, title)
+			}
+
+			role := argStr(a, "role")
+			if role == "" {
+				role = "result"
+			}
+
+			severity := argStr(a, "severity")
+			if severity == "" {
+				severity = "Medium"
+			}
+
+			status := argStr(a, "status")
+			if status == "" {
+				status = "open"
+			}
+
+			why := argStr(a, "why")
+			if why == "" {
+				why = title
+			}
+
+			impact := argStr(a, "impact")
+			if impact == "" {
+				impact = fmt.Sprintf("Potential security impact on %s", target)
+			}
+
+			fix := argStr(a, "fix")
+			if fix == "" {
+				fix = "Enforce appropriate authorization checks and input validation at the trust boundary."
+			}
+
+			reqBody := map[string]any{
+				"title":    title,
+				"severity": severity,
+				"status":   status,
+				"target":   target,
+				"summary":  summary,
+				"why":      why,
+				"impact":   impact,
+				"fix":      fix,
+				"source":   "ai",
+			}
+			if tags := argTags(a, "tags"); tags != nil {
+				reqBody["tags"] = tags
+			}
+
+			findingRes, err := s.api(http.MethodPost, "/api/findings", reqBody)
+			if err != nil {
+				return findingRes, fmt.Errorf("create finding: %w", err)
+			}
+
+			var f struct {
+				ID int64 `json:"id"`
+			}
+			if err := json.Unmarshal([]byte(findingRes), &f); err != nil || f.ID <= 0 {
+				return findingRes, fmt.Errorf("parse finding ID: %s", findingRes)
+			}
+
+			pocBody := map[string]any{
+				"flowId":       flowID,
+				"role":         role,
+				"proof":        proof,
+				"source":       "captured_flow",
+				"sourceFlowId": flowID,
+			}
+			_, _ = s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", f.ID), pocBody)
+
+			return fmt.Sprintf("Created finding #%d %q with flow #%d attached as %s proof.\n\nUI: %s/#finding-%d",
+				f.ID, title, flowID, role, s.base, f.ID), nil
 		})
 
 	s.add("add_finding_image",
@@ -1526,13 +1904,33 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images", fid), reqBody)
 		})
 
+	s.add("classify_finding_image",
+		"Reviewer relabel of an already-attached finding image (for example an operator_upload that is a real browser capture) without re-uploading it. Ingestion metadata is preserved and the classifier is recorded. Generated flow previews cannot be relabelled as captures. Only classify when the capture provenance is known.",
+		obj(map[string]any{
+			"findingId": pt("integer"),
+			"hash":      p("string", "image content hash from the finding's image block"),
+			"source":    p("string", "browser_screenshot|device_screenshot|operator_upload|tool_output|other"),
+			"reason":    pt("string"),
+		}, "findingId", "hash", "source"),
+		func(a map[string]any) (string, error) {
+			fid, err := reqInt(a, "findingId")
+			if err != nil {
+				return "", err
+			}
+			hash := argStr(a, "hash")
+			if fid == 0 || hash == "" {
+				return "", fmt.Errorf("findingId and hash are required")
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images/%s/classify", fid, url.PathEscape(hash)), map[string]any{"source": argStr(a, "source"), "reason": argStr(a, "reason")})
+		})
+
 	s.add("render_flow_preview",
 		"Render a captured flow as an Interseptor-styled HTTP request/response PNG. With findingId, it is attached as source=flow_preview with sourceFlowId retained; this is generated report evidence, not a real browser screenshot. Add a proof statement identifying the security-relevant line or state. Without findingId, returns a data URL.",
 		obj(map[string]any{
 			"flowId":    pt("integer"),
 			"side":      p("string", "both (default) | req | res"),
 			"pretty":    p("boolean", "indent JSON/XML bodies (default true)"),
-			"layout":    p("string", "horizontal (default, request left / response right) | vertical (stacked)"),
+			"layout":    p("string", "vertical (default, request above response) | horizontal (request left / response right)"),
 			"theme":     p("string", "light (default) | dark"),
 			"findingId": p("integer", "if set, attach the PNG to this finding"),
 			"caption":   pt("string"),
@@ -1581,8 +1979,6 @@ func (s *Server) registerTools() {
 			}
 			if layout != "" {
 				q.Set("layout", layout)
-			} else {
-				q.Set("layout", string(preview.LayoutHorizontal))
 			}
 			if theme != "" {
 				q.Set("theme", theme)
@@ -1820,7 +2216,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("start_intruder",
-		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §); repeat=Race / repeat the unchanged request. payloads=list of lists.",
+		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §); repeat=Race / repeat the unchanged request. payloads=list of lists. Returns the run identity (runId) that render_intruder_preview takes as attackId; the last 20 finished runs are kept. barrier=true (repeat with threads>1) makes the first requests launch together after all workers are parked: separate connections launched together, not single-packet sync.",
 		obj(map[string]any{
 			"target":       p("string", "scheme://host[:port]"),
 			"template":     p("string", "raw request with §…§"),
@@ -1830,6 +2226,7 @@ func (s *Server) registerTools() {
 			"count":        p("integer", "alias for repeat"),
 			"threads":      p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
 			"delayMs":      p("integer", "delay between requests in milliseconds"),
+			"barrier":      p("boolean", "repeat/race only, threads>1: launch the first requests together (separate connections, not single-packet sync); recorded in state.barrier"),
 			"grepMatch":    p("string", "regex that flags matching responses"),
 			"grepExtract":  p("string", "regex whose captures are included in results"),
 			"processRules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "payload processing steps"},
@@ -1843,13 +2240,13 @@ func (s *Server) registerTools() {
 				"target": argStr(a, "target"), "template": argStr(a, "template"),
 				"attackType": argStr(a, "attackType"), "payloads": a["payloads"],
 				"repeat": repeat, "threads": argInt(a, "threads", 1),
-				"delayMs": argInt(a, "delayMs", 0), "grepMatch": argStr(a, "grepMatch"),
+				"delayMs": argInt(a, "delayMs", 0), "barrier": argBool(a, "barrier", false), "grepMatch": argStr(a, "grepMatch"),
 				"grepExtract": argStr(a, "grepExtract"), "processRules": a["processRules"],
 			})
 		})
 
 	s.add("intruder_state",
-		"Intruder progress + results (status/length/time per payload; anomalies flagged).",
+		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			out, err := s.apiGet("/api/intruder/state")
@@ -1875,7 +2272,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/checks") })
 
 	s.add("test_check",
-		"Compile+run a Starlark check against a flow WITHOUT saving (returns findings or the error). Iterate, then save_check. Omit flowId for the latest flow. Shape: def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]. flow has method/scheme/host/port/path/status/mime, req_body/res_body, req_header(n)/res_header(n), query_param(n); builtin re_search(pat,text).",
+		"Compile+run a Starlark check against a flow WITHOUT saving. Returns findings, the error if it failed, and logs \u2014 the check's captured print() output, which is how you debug a check that returns an empty list. Iterate, then save_check. Omit flowId for the latest flow. Shape: def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]. flow has method/scheme/host/port/path/status/mime, req_body/res_body, req_header(n)/res_header(n), query_param(n), query_params (name \u2192 list of decoded values) and cookies (name \u2192 value); builtin re_search(pat,text).",
 		obj(map[string]any{
 			"source": p("string", "Starlark source"),
 			"flowId": p("integer", "default latest"),
@@ -2002,19 +2399,19 @@ func (s *Server) registerTools() {
 	s.add("get_intercept", "Intercept state + current hold queue.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/intercept") })
 
-	s.add("set_intercept", "Enable/disable request interception (hold requests to edit/drop).",
+	s.add("set_intercept", "Enable/disable request interception (hold requests to edit/drop). "+liveInterceptWarning,
 		obj(map[string]any{"enabled": pt("boolean")}, "enabled"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/intercept/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
 		})
 
-	s.add("set_response_intercept", "Enable/disable response interception (hold responses to edit/drop).",
+	s.add("set_response_intercept", "Enable/disable response interception (hold responses to edit/drop). "+liveInterceptWarning,
 		obj(map[string]any{"enabled": pt("boolean")}, "enabled"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/intercept/response/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
 		})
 
-	s.add("forward_request", "Forward a held request (optionally with edited raw bytes).",
+	s.add("forward_request", "Forward a held request (optionally with edited raw bytes). "+liveInterceptDeprecation,
 		obj(map[string]any{"id": pt("integer"), "raw": p("string", "edited raw request (optional)")}, "id"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{}
@@ -2024,12 +2421,12 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/forward", argInt(a, "id", 0)), body)
 		})
 
-	s.add("drop_request", "Drop a held request.", obj(map[string]any{"id": pt("integer")}, "id"),
+	s.add("drop_request", "Drop a held request. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/drop", argInt(a, "id", 0)), nil)
 		})
 
-	s.add("forward_response", "Forward a held response (optionally with edited raw bytes).",
+	s.add("forward_response", "Forward a held response (optionally with edited raw bytes). "+liveInterceptDeprecation,
 		obj(map[string]any{"id": pt("integer"), "raw": p("string", "edited raw response (optional)")}, "id"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{}
@@ -2040,7 +2437,7 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
-	s.add("drop_response", "Drop a held response.", obj(map[string]any{"id": pt("integer")}, "id"),
+	s.add("drop_response", "Drop a held response. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/drop", argInt(a, "id", 0)), nil)
 			return boundJSON(out, 200), err
@@ -2056,11 +2453,13 @@ func (s *Server) registerTools() {
 		"replace": pt("string"),
 		"enabled": p("boolean", "default true"),
 		"ord":     p("integer", "rule order"),
+		"bigBody": p("boolean", "opt a body rule into the 64 MB scan cap; default false scans at most 2 MB"),
 	}
 	s.add("add_rule", "Add a request- or response-side match-&-replace rule (regex).",
 		obj(map[string]any{
 			"side": ruleProps["side"], "type": ruleProps["type"], "match": ruleProps["match"],
 			"replace": ruleProps["replace"], "enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
+			"bigBody": ruleProps["bigBody"],
 		}, "type", "match"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPost, "/api/rules", rulePayload(a, true))
@@ -2072,6 +2471,7 @@ func (s *Server) registerTools() {
 			"id": pt("integer"), "side": ruleProps["side"], "type": ruleProps["type"],
 			"match": ruleProps["match"], "replace": ruleProps["replace"],
 			"enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
+			"bigBody": ruleProps["bigBody"],
 		}, "id", "type", "match"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPut, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), rulePayload(a, true))
@@ -2092,8 +2492,26 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
+	s.add("set_ws_frame_note",
+		"Annotate one WebSocket frame of a flow (see list_ws_frames for frame ids) with what it proves. Empty note clears it.",
+		obj(map[string]any{"id": p("integer", "flow id"), "frameId": pt("integer"), "note": pt("string")}, "id", "frameId"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			frameID, err := reqInt(a, "frameId")
+			if err != nil {
+				return "", err
+			}
+			if _, err := s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/ws/%d/note", id, frameID), map[string]any{"note": argStr(a, "note")}); err != nil {
+				return "", err
+			}
+			return "frame note saved", nil
+		})
+
 	s.add("ws_send",
-		"Open a fresh WebSocket, send one message, return the server's reply frames.",
+		"Open a fresh WebSocket, send one message, return the server's reply frames. The handshake and every sent/received frame are recorded as a flow; the reply's flowId can be attached to a finding (add_finding_poc) and its frames read with list_ws_frames. A rejected handshake is recorded too, so a negative control is citable.",
 		obj(map[string]any{
 			"url":     p("string", "ws:// or wss://"),
 			"message": pt("string"),
@@ -2545,13 +2963,92 @@ func (s *Server) registerTools() {
 	s.add("get_authz", "List saved authorization-test identities (name + auth headers per role).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
 
+	s.add("list_authz", "List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz).", obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
+
 	s.add("set_authz",
-		"Save authorization-test identities. Replaces the full identity list — call get_authz first if you want to keep existing ones. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
+		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
+			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/authz", map[string]any{"identities": a["identities"]})
+			body := map[string]any{"identities": a["identities"]}
+			if m := argStr(a, "mode"); m != "" {
+				body["mode"] = m
+			}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz", body)
+		})
+
+	s.add("add_authz_identity",
+		"Add or update ONE authorization-test identity by name without touching the others.",
+		obj(map[string]any{
+			"name":    p("string", "identity name (e.g. admin, user, anonymous)"),
+			"headers": p("string", "auth headers as 'Key: Value' lines (array or object also accepted); empty = anonymous"),
+			"owner":   p("string", "optional owner label"),
+		}, "name"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"name": argStr(a, "name"), "headers": a["headers"]}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz/identity", body)
+		})
+
+	s.add("remove_authz_identity",
+		"Remove ONE authorization-test identity by name; other identities are untouched.",
+		obj(map[string]any{"name": p("string", "identity name to remove")}, "name"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/authz/identity/"+url.PathEscape(argStr(a, "name")), nil)
+		})
+
+	s.add("authz_differential",
+		"Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify each result as auth_failure, authz_failure, validation_failure or success. Optional invalidBody probes whether authentication is evaluated before validation; optional sideEffectFlowId (a read-only state flow) is replayed before/after each context to record side effects. Returns typed evidence retaining every raw flowId; attachToFinding adds all of them to a finding. Findings in 'hypotheses' must be reproduced before reporting.",
+		obj(map[string]any{
+			"flowId":           p("integer", "flow to replay across identities"),
+			"identities":       p("array", "optional identity names to include (default: all saved; anonymous is always added)"),
+			"invalidBody":      p("string", "optional deliberately invalid body, sent anonymously to detect auth-vs-validation ordering"),
+			"sideEffectFlowId": p("integer", "optional read-only flow observing state, replayed before/after each context"),
+			"attachToFinding":  p("integer", "optional finding id to attach every retained flow to as typed evidence"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"flowId": a["flowId"]}
+			for _, k := range []string{"identities", "invalidBody", "sideEffectFlowId", "attachToFinding"} {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api(http.MethodPost, "/api/authz/differential", body)
+		})
+
+	s.add("auth_timeline",
+		"Read-only auth timeline for a login flow and the same client's following captures: redirects, Set-Cookie create/replace/clear/reject, cookie send/omit, session-ID and CSRF rotation, MFA state, scheme/host changes and the first transition where authenticated state appears lost. Detections are hypotheses until reproduced; cookie values are never returned (fingerprints only).",
+		obj(map[string]any{
+			"flowId":        p("integer", "the login flow to start from"),
+			"windowSeconds": p("integer", "how far after the flow to follow the same client (default 120, max 600)"),
+			"max":           p("integer", "max flows in the chain (default 40, max 100)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "flowId", 0)
+			if id <= 0 {
+				return "", fmt.Errorf("flowId required")
+			}
+			q := url.Values{}
+			if v := argInt(a, "windowSeconds", 0); v > 0 {
+				q.Set("windowSeconds", strconv.Itoa(v))
+			}
+			if v := argInt(a, "max", 0); v > 0 {
+				q.Set("max", strconv.Itoa(v))
+			}
+			path := fmt.Sprintf("/api/flows/%d/auth-timeline", id)
+			if len(q) > 0 {
+				path += "?" + q.Encode()
+			}
+			return s.apiGet(path)
 		})
 
 	s.add("authz_run",

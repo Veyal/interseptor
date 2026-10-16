@@ -1,0 +1,285 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Cycles and refs",
+    "description": "Version: 1",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "openapi-3.1.0",
+      "info": {
+        "title": "Cycles and refs",
+        "version": "1"
+      }
+    },
+    "importReport": {
+      "format": "openapi",
+      "entries": [
+        {
+          "level": "unsupported",
+          "feature": "webhooks",
+          "message": "webhooks describe calls made to a client and cannot be sent as requests"
+        },
+        {
+          "level": "blocked",
+          "path": "/loop",
+          "feature": "path-ref",
+          "message": "path item /loop could not be resolved ($ref loop)"
+        },
+        {
+          "level": "blocked",
+          "path": "/loop2",
+          "feature": "path-ref",
+          "message": "path item /loop2 could not be resolved ($ref loop)"
+        },
+        {
+          "level": "blocked",
+          "path": "/ext",
+          "feature": "path-ref",
+          "message": "path item /ext could not be resolved (external $ref (never fetched))"
+        },
+        {
+          "level": "needs-review",
+          "path": "GET /a-b",
+          "feature": "param-ref",
+          "message": "a parameter reference could not be resolved (unresolvable $ref) and was skipped"
+        },
+        {
+          "level": "degraded",
+          "path": "servers",
+          "feature": "no-servers",
+          "message": "the document declares no servers; http://localhost was used as the base URL",
+          "suggestion": "Edit the baseUrl variable"
+        },
+        {
+          "level": "degraded",
+          "path": "POST /nodes",
+          "feature": "ref-cycle",
+          "message": "$ref cycle through Node was cut in a generated example"
+        },
+        {
+          "level": "degraded",
+          "path": "POST /nodes",
+          "feature": "bad-ref",
+          "message": "$ref #/components/schemas/A could not be resolved: $ref loop"
+        },
+        {
+          "level": "converted",
+          "path": "servers",
+          "feature": "servers",
+          "message": "1 server(s) became environments with a baseUrl variable"
+        }
+      ],
+      "counts": {
+        "blocked": 3,
+        "converted": 1,
+        "degraded": 3,
+        "needs-review": 1,
+        "unsupported": 1
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 0,
+        "requests": 2,
+        "examples": 0,
+        "variables": 1,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 1
+      },
+      "headline": "0 folders, 2 requests, 0 saved examples; 1 variables (0 secret), 1 environments; 1 need review"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "Create node",
+      "method": "POST",
+      "url": {
+        "raw": "{{baseUrl}}/nodes",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "nodes"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"value\": \"string\",\n  \"kids\": []\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "sidecar": {
+        "openapi": {
+          "path": "/nodes",
+          "method": "post"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "GET /a-b",
+      "method": "GET",
+      "url": {
+        "raw": "{{baseUrl}}/a-b",
+        "host": [
+          "{{baseUrl}}"
+        ],
+        "path": [
+          "a-b"
+        ]
+      },
+      "headers": [],
+      "sidecar": {
+        "openapi": {
+          "path": "/a-b",
+          "method": "get"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": [
+    {
+      "ownerKind": "collection",
+      "ownerUid": "id001",
+      "key": "baseUrl",
+      "type": "default",
+      "initialValue": "http://localhost",
+      "enabled": true
+    }
+  ],
+  "environments": [
+    {
+      "environment": {
+        "uid": "id002",
+        "name": "Default",
+        "kind": "env",
+        "collectionUid": "id001",
+        "rev": 0,
+        "ts": 0
+      },
+      "variables": [
+        {
+          "ownerKind": "environment",
+          "ownerUid": "id002",
+          "key": "baseUrl",
+          "type": "default",
+          "initialValue": "http://localhost",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "report": {
+    "format": "openapi",
+    "entries": [
+      {
+        "level": "unsupported",
+        "feature": "webhooks",
+        "message": "webhooks describe calls made to a client and cannot be sent as requests"
+      },
+      {
+        "level": "blocked",
+        "path": "/loop",
+        "feature": "path-ref",
+        "message": "path item /loop could not be resolved ($ref loop)"
+      },
+      {
+        "level": "blocked",
+        "path": "/loop2",
+        "feature": "path-ref",
+        "message": "path item /loop2 could not be resolved ($ref loop)"
+      },
+      {
+        "level": "blocked",
+        "path": "/ext",
+        "feature": "path-ref",
+        "message": "path item /ext could not be resolved (external $ref (never fetched))"
+      },
+      {
+        "level": "needs-review",
+        "path": "GET /a-b",
+        "feature": "param-ref",
+        "message": "a parameter reference could not be resolved (unresolvable $ref) and was skipped"
+      },
+      {
+        "level": "degraded",
+        "path": "servers",
+        "feature": "no-servers",
+        "message": "the document declares no servers; http://localhost was used as the base URL",
+        "suggestion": "Edit the baseUrl variable"
+      },
+      {
+        "level": "degraded",
+        "path": "POST /nodes",
+        "feature": "ref-cycle",
+        "message": "$ref cycle through Node was cut in a generated example"
+      },
+      {
+        "level": "degraded",
+        "path": "POST /nodes",
+        "feature": "bad-ref",
+        "message": "$ref #/components/schemas/A could not be resolved: $ref loop"
+      },
+      {
+        "level": "converted",
+        "path": "servers",
+        "feature": "servers",
+        "message": "1 server(s) became environments with a baseUrl variable"
+      }
+    ],
+    "counts": {
+      "blocked": 3,
+      "converted": 1,
+      "degraded": 3,
+      "needs-review": 1,
+      "unsupported": 1
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 0,
+      "requests": 2,
+      "examples": 0,
+      "variables": 1,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 1
+    },
+    "headline": "0 folders, 2 requests, 0 saved examples; 1 variables (0 secret), 1 environments; 1 need review"
+  }
+}

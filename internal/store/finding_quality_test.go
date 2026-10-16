@@ -60,6 +60,46 @@ func TestQualityGateDoesNotRewriteClaim(t *testing.T) {
 		t.Fatal("missing capability check")
 	}
 }
+func TestClaimChecksNameTheMissingCapability(t *testing.T) {
+	cases := map[string]string{
+		"Stored XSS execution":      "browser_execution",
+		"MFA bypass permits access": "authenticated_without_required_factor",
+		"Account takeover":          "account_control",
+		"Unauthorized state change": "state_change",
+	}
+	for title, key := range cases {
+		f := completeAssessment()
+		f.Title = title
+		f.EnrichCompleteness()
+		found := false
+		for _, c := range f.Readiness.Checks {
+			if c.Code == "capability:"+key {
+				found = c.Rule == "claim_evidence" && c.Capability == key && c.Field == "proofReview.claims."+key
+			}
+		}
+		if !found {
+			t.Fatalf("%s: no capability-tagged check in %+v", title, f.Readiness.Checks)
+		}
+	}
+}
+
+func TestSessionClaimsNeedServerObservedFlow(t *testing.T) {
+	hash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	f := completeAssessment()
+	f.Title = "2FA bypass"
+	f.Blocks = append(f.Blocks, FindingBlock{Type: "image", Hash: hash, Source: "browser_screenshot", Role: "result", Proof: "Dashboard visible"})
+	f.ProofReview.Claims = map[string]FindingCapabilityClaim{"authenticated_without_required_factor": {Note: "Reviewer saw dashboard", Evidence: []FindingEvidenceReference{{Hash: hash}}}}
+	f.EnrichCompleteness()
+	if !slices.Contains(f.Missing, "capability:authenticated_without_required_factor") {
+		t.Fatalf("screenshot alone proved an authenticated session: %+v", f.Readiness)
+	}
+	f.ProofReview.Claims["authenticated_without_required_factor"] = FindingCapabilityClaim{Note: "Authenticated response without factor", Evidence: []FindingEvidenceReference{{FlowID: 2}}}
+	f.EnrichCompleteness()
+	if slices.Contains(f.Missing, "capability:authenticated_without_required_factor") {
+		t.Fatalf("flow result rejected: %+v", f.Readiness)
+	}
+}
+
 func TestStateChangeLabelCannotReplaceBeforeAfterEvidence(t *testing.T) {
 	f := completeAssessment()
 	f.Title = "State change"

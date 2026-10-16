@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<description xmlns="http://www.w3.org/ns/wsdl"
+    targetNamespace="http://example.com/greeting"
+    xmlns:tns="http://example.com/greeting"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:wsoap="http://www.w3.org/ns/wsdl/soap">
+  <types>
+    <xs:schema targetNamespace="http://example.com/greeting" elementFormDefault="qualified">
+      <xs:element name="greet">
+        <xs:complexType><xs:sequence><xs:element name="name" type="xs:string"/></xs:sequence></xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </types>
+  <interface name="GreetingInterface">
+    <operation name="greet" pattern="http://www.w3.org/ns/wsdl/in-out">
+      <input messageLabel="In" element="tns:greet"/>
+      <output messageLabel="Out" element="#any"/>
+    </operation>
+    <operation name="notify" pattern="http://www.w3.org/ns/wsdl/out-only">
+      <output messageLabel="Out" element="#none"/>
+    </operation>
+  </interface>
+  <binding name="GreetingSoap" interface="tns:GreetingInterface" type="http://www.w3.org/ns/wsdl/soap"
+      wsoap:version="1.2" wsoap:protocol="http://www.w3.org/2003/05/soap/bindings/HTTP/">
+    <operation ref="tns:greet" wsoap:action="http://example.com/greeting/greet"/>
+  </binding>
+  <binding name="GreetingHttp" interface="tns:GreetingInterface" type="http://www.w3.org/ns/wsdl/http"/>
+  <service name="GreetingService" interface="tns:GreetingInterface">
+    <endpoint name="SoapEndpoint" binding="tns:GreetingSoap" address="http://greeting.example.com/soap"/>
+    <endpoint name="HttpEndpoint" binding="tns:GreetingHttp" address="http://greeting.example.com/http"/>
+  </service>
+</description>

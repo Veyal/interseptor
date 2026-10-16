@@ -67,6 +67,7 @@ export function createFindingDraftStore() {
     values: id => Object.fromEntries([...(records.get(id) || [])].map(([key, draft]) => [key, draft.value])),
     has: id => !!records.get(id)?.size,
     hasAny: () => records.size > 0,
+    ids: () => [...records.keys()],
     failed: id => [...(records.get(id)?.values() || [])].some(draft => draft.failed),
     discard(id, key) { records.get(id)?.delete(key); removeEmpty(id); },
   };

@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<con:soapui-project id="1" activeEnvironment="Default" name="Bank Project" resourceRoot="" soapui-version="5.7.0" xmlns:con="http://eviware.com/soapui/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <con:settings/>
+  <con:interface xsi:type="con:WsdlInterface" wsaVersion="NONE" name="BankSoap11" type="wsdl" bindingName="{http://example.com/bank}BankSoap11" soapVersion="1_1" anonymous="optional" definition="file:/work/bank.wsdl">
+    <con:definitionCache type="TEXT" rootPart="file:/work/bank.wsdl">
+      <con:part><con:url>file:/work/bank.wsdl</con:url><con:content>&lt;wsdl:definitions name="BankService"
+    targetNamespace="http://example.com/bank"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://example.com/bank"
+    xmlns:common="http://example.com/common"
+    xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy"
+    xmlns:sp="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200702"&gt;
+  &lt;wsdl:documentation&gt;Example banking service used for importer tests.&lt;/wsdl:documentation&gt;
+  &lt;wsp:Policy wsp:Id="UsernameTokenPolicy"&gt;
+    &lt;sp:SupportingTokens&gt;&lt;wsp:Policy&gt;&lt;sp:UsernameToken/&gt;&lt;/wsp:Policy&gt;&lt;/sp:SupportingTokens&gt;
+  &lt;/wsp:Policy&gt;
+  &lt;wsdl:types&gt;
+    &lt;xs:schema targetNamespace="http://example.com/common" elementFormDefault="qualified"&gt;
+      &lt;xs:simpleType name="Currency"&gt;
+        &lt;xs:restriction base="xs:string"&gt;
+          &lt;xs:enumeration value="USD"/&gt;
+          &lt;xs:enumeration value="EUR"/&gt;
+        &lt;/xs:restriction&gt;
+      &lt;/xs:simpleType&gt;
+      &lt;xs:complexType name="Money"&gt;
+        &lt;xs:sequence&gt;
+          &lt;xs:element name="amount" type="xs:decimal"/&gt;
+          &lt;xs:element name="currency" type="common:Currency"/&gt;
+        &lt;/xs:sequence&gt;
+      &lt;/xs:complexType&gt;
+    &lt;/xs:schema&gt;
+    &lt;xs:schema targetNamespace="http://example.com/bank" elementFormDefault="qualified"&gt;
+      &lt;xs:import namespace="http://example.com/common"/&gt;
+      &lt;xs:import namespace="http://example.com/audit" schemaLocation="http://schemas.example.com/audit.xsd"/&gt;
+      &lt;xs:include schemaLocation="extra-types.xsd"/&gt;
+      &lt;xs:element name="GetAccount"&gt;
+        &lt;xs:complexType&gt;
+          &lt;xs:sequence&gt;
+            &lt;xs:element name="accountId" type="xs:string"/&gt;
+            &lt;xs:element name="includeHistory" type="xs:boolean" minOccurs="0"/&gt;
+          &lt;/xs:sequence&gt;
+        &lt;/xs:complexType&gt;
+      &lt;/xs:element&gt;
+      &lt;xs:element name="GetAccountResponse" type="xs:string"/&gt;
+      &lt;xs:element name="TransferRequest"&gt;
+        &lt;xs:complexType&gt;
+          &lt;xs:sequence&gt;
+            &lt;xs:element name="from" type="xs:string"/&gt;
+            &lt;xs:element name="to" type="xs:string" nillable="true"/&gt;
+            &lt;xs:element name="amount" type="common:Money"/&gt;
+            &lt;xs:element name="memo" type="xs:string" minOccurs="0" maxOccurs="unbounded"/&gt;
+            &lt;xs:element name="scheduled" type="xs:dateTime" minOccurs="0"/&gt;
+            &lt;xs:choice&gt;
+              &lt;xs:element name="otp" type="xs:string"/&gt;
+              &lt;xs:element name="token" type="xs:int"/&gt;
+              &lt;xs:element name="biometric" type="xs:base64Binary"/&gt;
+            &lt;/xs:choice&gt;
+            &lt;xs:element name="priority" type="tns:Priority" default="NORMAL"/&gt;
+          &lt;/xs:sequence&gt;
+          &lt;xs:attribute name="channel" type="xs:string" use="required"/&gt;
+          &lt;xs:attribute name="version" type="xs:int" default="2"/&gt;
+        &lt;/xs:complexType&gt;
+      &lt;/xs:element&gt;
+      &lt;xs:simpleType name="Priority"&gt;
+        &lt;xs:restriction base="xs:string"&gt;
+          &lt;xs:enumeration value="NORMAL"/&gt;
+          &lt;xs:enumeration value="HIGH"/&gt;
+        &lt;/xs:restriction&gt;
+      &lt;/xs:simpleType&gt;
+      &lt;xs:complexType name="Node"&gt;
+        &lt;xs:sequence&gt;
+          &lt;xs:element name="label" type="xs:string"/&gt;
+          &lt;xs:element name="child" type="tns:Node" minOccurs="0" maxOccurs="unbounded"/&gt;
+        &lt;/xs:sequence&gt;
+      &lt;/xs:complexType&gt;
+      &lt;xs:element name="ListTree"&gt;
+        &lt;xs:complexType&gt;
+          &lt;xs:sequence&gt;
+            &lt;xs:element name="root" type="tns:Node"/&gt;
+          &lt;/xs:sequence&gt;
+        &lt;/xs:complexType&gt;
+      &lt;/xs:element&gt;
+      &lt;xs:element name="Ping"&gt;&lt;xs:complexType/&gt;&lt;/xs:element&gt;
+      &lt;xs:element name="TraceHeader"&gt;
+        &lt;xs:complexType&gt;
+          &lt;xs:sequence&gt;&lt;xs:element name="traceId" type="xs:string"/&gt;&lt;/xs:sequence&gt;
+        &lt;/xs:complexType&gt;
+      &lt;/xs:element&gt;
+    &lt;/xs:schema&gt;
+  &lt;/wsdl:types&gt;
+  &lt;wsdl:message name="GetAccountIn"&gt;&lt;wsdl:part name="parameters" element="tns:GetAccount"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:message name="GetAccountOut"&gt;&lt;wsdl:part name="parameters" element="tns:GetAccountResponse"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:message name="TransferIn"&gt;&lt;wsdl:part name="parameters" element="tns:TransferRequest"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:message name="ListTreeIn"&gt;&lt;wsdl:part name="parameters" element="tns:ListTree"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:message name="PingIn"&gt;&lt;wsdl:part name="parameters" element="tns:Ping"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:message name="TraceMsg"&gt;&lt;wsdl:part name="trace" element="tns:TraceHeader"/&gt;&lt;/wsdl:message&gt;
+  &lt;wsdl:portType name="BankPortType"&gt;
+    &lt;wsdl:operation name="GetAccount"&gt;
+      &lt;wsdl:input message="tns:GetAccountIn"/&gt;
+      &lt;wsdl:output message="tns:GetAccountOut"/&gt;
+    &lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="Transfer"&gt;&lt;wsdl:input message="tns:TransferIn"/&gt;&lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="ListTree"&gt;&lt;wsdl:input message="tns:ListTreeIn"/&gt;&lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="Ping"&gt;&lt;wsdl:input message="tns:PingIn"/&gt;&lt;/wsdl:operation&gt;
+  &lt;/wsdl:portType&gt;
+  &lt;wsdl:binding name="BankSoap11" type="tns:BankPortType"&gt;
+    &lt;soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/&gt;
+    &lt;wsdl:operation name="GetAccount"&gt;
+      &lt;soap:operation soapAction="http://example.com/bank/GetAccount"/&gt;
+      &lt;wsdl:input&gt;
+        &lt;soap:body use="literal"/&gt;
+        &lt;soap:header message="tns:TraceMsg" part="trace" use="literal"/&gt;
+      &lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="Transfer"&gt;
+      &lt;soap:operation soapAction="http://example.com/bank/Transfer"/&gt;
+      &lt;wsdl:input&gt;&lt;soap:body use="literal"/&gt;&lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="ListTree"&gt;
+      &lt;soap:operation soapAction=""/&gt;
+      &lt;wsdl:input&gt;&lt;soap:body use="literal"/&gt;&lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="Ping"&gt;
+      &lt;soap:operation/&gt;
+      &lt;wsdl:input&gt;&lt;soap:body use="literal"/&gt;&lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+  &lt;/wsdl:binding&gt;
+  &lt;wsdl:binding name="BankSoap12" type="tns:BankPortType"&gt;
+    &lt;soap12:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/&gt;
+    &lt;wsdl:operation name="GetAccount"&gt;
+      &lt;soap12:operation soapAction="http://example.com/bank/GetAccount"/&gt;
+      &lt;wsdl:input&gt;&lt;soap12:body use="literal"/&gt;&lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+    &lt;wsdl:operation name="Transfer"&gt;
+      &lt;soap12:operation soapAction="http://example.com/bank/Transfer"/&gt;
+      &lt;wsdl:input&gt;&lt;soap12:body use="literal"/&gt;&lt;/wsdl:input&gt;
+    &lt;/wsdl:operation&gt;
+  &lt;/wsdl:binding&gt;
+  &lt;wsdl:service name="BankService"&gt;
+    &lt;wsdl:port name="BankSoap11Port" binding="tns:BankSoap11"&gt;
+      &lt;soap:address location="https://bank.example.com/ws/bank"/&gt;
+    &lt;/wsdl:port&gt;
+    &lt;wsdl:port name="BankSoap12Port" binding="tns:BankSoap12"&gt;
+      &lt;soap12:address location="https://bank.example.com/ws/bank12"/&gt;
+    &lt;/wsdl:port&gt;
+  &lt;/wsdl:service&gt;
+&lt;/wsdl:definitions&gt;</con:content><con:type>http://schemas.xmlsoap.org/wsdl/</con:type></con:part>
+    </con:definitionCache>
+    <con:endpoints><con:endpoint>https://bank.example.com/ws/bank</con:endpoint></con:endpoints>
+    <con:operation id="a" isOneWay="false" action="http://example.com/bank/GetAccount" name="GetAccount" bindingOperationName="GetAccount" type="Request-Response" inputName="" receivesAttachments="false" sendsAttachments="false" anonymous="optional">
+      <con:call id="b" name="Request 1">
+        <con:settings><con:setting id="x@request-headers">&lt;xml-fragment xmlns:con="http://eviware.com/soapui/config"&gt;&lt;con:entry key="X-Api-Key" value="abc123"/&gt;&lt;con:entry key="X-Trace" value="1"/&gt;&lt;/xml-fragment&gt;</con:setting></con:settings>
+        <con:encoding>UTF-8</con:encoding>
+        <con:endpoint>https://bank.example.com/ws/bank</con:endpoint>
+        <con:request>&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ban="http://example.com/bank"&gt;
+   &lt;soapenv:Header&gt;
+      &lt;wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"&gt;
+         &lt;wsse:UsernameToken&gt;&lt;wsse:Username&gt;demo&lt;/wsse:Username&gt;&lt;wsse:Password&gt;hunter2&lt;/wsse:Password&gt;&lt;/wsse:UsernameToken&gt;
+      &lt;/wsse:Security&gt;
+   &lt;/soapenv:Header&gt;
+   &lt;soapenv:Body&gt;
+      &lt;ban:GetAccount&gt;
+         &lt;ban:accountId&gt;${#Project#acct}&lt;/ban:accountId&gt;
+      &lt;/ban:GetAccount&gt;
+   &lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;</con:request>
+        <con:credentials><con:username>demo</con:username><con:password>hunter2</con:password><con:authType>Global HTTP Settings</con:authType></con:credentials>
+      </con:call>
+    </con:operation>
+    <con:operation id="c" action="http://example.com/bank/Transfer" name="Transfer" bindingOperationName="Transfer" type="One-Way"/>
+    <con:operation id="d" action="" name="Ping" bindingOperationName="Ping" type="One-Way">
+      <con:call id="e" name="Request 1"><con:settings/><con:endpoint>https://bank.example.com/ws/bank</con:endpoint><con:request>&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ban="http://example.com/bank"&gt;
+   &lt;soapenv:Body&gt;&lt;ban:Ping/&gt;&lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;</con:request></con:call>
+    </con:operation>
+  </con:interface>
+  <con:interface xsi:type="con:RestService" name="Legacy REST" type="rest"/>
+  <con:testSuite name="Smoke">
+    <con:testCase name="Ping works">
+      <con:testStep type="request" name="Ping step">
+        <con:config xsi:type="con:RequestStep">
+          <con:interface>BankSoap11</con:interface>
+          <con:operation>Ping</con:operation>
+          <con:request name="Ping step"><con:settings/><con:endpoint>https://bank.example.com/ws/bank</con:endpoint><con:request>&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ban="http://example.com/bank"&gt;
+   &lt;soapenv:Body&gt;&lt;ban:Ping/&gt;&lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;</con:request></con:request>
+        </con:config>
+      </con:testStep>
+      <con:testStep type="groovy" name="Cleanup"><con:config><con:script>log.info 'bye'</con:script></con:config></con:testStep>
+    </con:testCase>
+  </con:testSuite>
+  <con:mockService name="BankMock"/>
+  <con:properties><con:property><con:name>acct</con:name><con:value>1</con:value></con:property></con:properties>
+  <con:afterLoadScript>log.info 'loaded'</con:afterLoadScript>
+</con:soapui-project>

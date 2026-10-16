@@ -1,0 +1,23 @@
+{{- /*
+  Wide pages (features, compare, reference): the docs chrome without the sidebar or
+  outline, one column up to --wrap. Markdown sources read on a white sheet with .prose
+  styles; HTML pages compose their own surfaces on the paper and opt into the sheet and
+  .prose with front matter `prose: true`.
+*/ -}}
+{{define "main" -}}
+{{- $prose := or (contains .Page.Source ".md") .Page.Params.prose}}
+<div class="page-shell wrap">
+  <main id="main" class="page-main" tabindex="-1">
+    <article class="{{if $prose}}page-sheet{{else}}page-plain{{end}}"{{with .Page.Group}} data-color="{{.Color}}"{{end}}>
+      <header class="page-header">
+        {{template "breadcrumb" .}}
+        {{template "page-heading" .}}
+      </header>
+      <div class="{{if $prose}}prose{{else}}page-content{{end}}">
+        {{.Page.Content}}
+      </div>
+    </article>
+    {{template "pager" .}}
+  </main>
+</div>
+{{- end}}

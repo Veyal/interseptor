@@ -1,0 +1,553 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Bank Project",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "soapui"
+    },
+    "importReport": {
+      "format": "soapui",
+      "entries": [
+        {
+          "level": "unsupported",
+          "feature": "soapui-rest-service",
+          "message": "1 REST service(s)/interface(s) in the project were not imported (SOAP only)",
+          "suggestion": "Export them as WADL/OpenAPI and use the OpenAPI importer"
+        },
+        {
+          "level": "unsupported",
+          "feature": "soapui-test-step",
+          "message": "non-request test steps were not imported: groovy x1"
+        },
+        {
+          "level": "unsupported",
+          "feature": "soapui-mock-service",
+          "message": "1 mock service(s) were not imported"
+        },
+        {
+          "level": "unsupported",
+          "feature": "soapui-properties",
+          "message": "1 project propert(ies) were not imported as variables"
+        },
+        {
+          "level": "blocked",
+          "feature": "groovy-script-not-imported",
+          "message": "2 Groovy script(s) in the project were not imported and are never executed",
+          "suggestion": "Port the logic to a collection script manually if needed"
+        },
+        {
+          "level": "needs-review",
+          "feature": "ws-security-policy",
+          "message": "the document declares WS-Policy (2 policy element(s)); WS-SecurityPolicy assertions: SupportingTokens, UsernameToken. No WS-Security header or credentials were generated; each envelope carries a header comment instead.",
+          "suggestion": "Add a wsse:Security header with credentials from the engagement scope (keep them in secret variables)"
+        },
+        {
+          "level": "needs-review",
+          "path": "BankSoap11/GetAccount/Request 1",
+          "item": "id003",
+          "feature": "embedded-credential",
+          "message": "header X-Api-Key holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "BankSoap11/GetAccount/Request 1",
+          "item": "id003",
+          "feature": "embedded-credential",
+          "message": "request body holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "BankSoap11/GetAccount/Request 1",
+          "feature": "soapui-credentials",
+          "message": "the request holds authentication credentials; they were not imported (value not shown)",
+          "suggestion": "Create a secret variable and set auth on the request"
+        },
+        {
+          "level": "needs-review",
+          "path": "bank.example.com",
+          "feature": "target-host",
+          "message": "4 request(s) target bank.example.com; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "degraded",
+          "path": "BankSoap11/Transfer",
+          "feature": "choice-first-branch",
+          "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+        },
+        {
+          "level": "degraded",
+          "path": "BankSoap11/GetAccount/Request 1",
+          "feature": "soapui-property-expansion",
+          "message": "1 request(s) contain ${...} SoapUI property expansions (first at this path); they are kept as literal text and will not be substituted",
+          "suggestion": "Replace them with {{variables}}"
+        },
+        {
+          "level": "degraded",
+          "path": "http://schemas.example.com/audit.xsd",
+          "feature": "external-import",
+          "message": "xsd:import of \"http://schemas.example.com/audit.xsd\" (namespace \"http://example.com/audit\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+          "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+        },
+        {
+          "level": "degraded",
+          "path": "extra-types.xsd",
+          "feature": "external-import",
+          "message": "xsd:include of \"extra-types.xsd\" (namespace \"http://example.com/bank\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+          "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+        },
+        {
+          "level": "converted",
+          "path": "BankSoap11/GetAccount/Request 1",
+          "feature": "operation-style",
+          "message": "stored SoapUI request kept verbatim"
+        },
+        {
+          "level": "converted",
+          "path": "BankSoap11/Transfer",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 document/literal"
+        },
+        {
+          "level": "converted",
+          "path": "BankSoap11/Ping/Request 1",
+          "feature": "operation-style",
+          "message": "stored SoapUI request kept verbatim"
+        },
+        {
+          "level": "converted",
+          "path": "Smoke/Ping works/Ping step",
+          "feature": "operation-style",
+          "message": "stored SoapUI request kept verbatim"
+        }
+      ],
+      "counts": {
+        "blocked": 1,
+        "converted": 4,
+        "degraded": 4,
+        "needs-review": 5,
+        "unsupported": 4
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 3,
+        "requests": 4,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 2,
+        "environmentVariables": 0
+      },
+      "headline": "3 folders, 4 requests from soapui; 5 need review, 4 degraded, 4 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "BankSoap11",
+      "descriptionMd": "SoapUI interface BankSoap11 (binding {http://example.com/bank}BankSoap11)",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "i",
+      "name": "GetAccount - Request 1",
+      "descriptionMd": "Imported verbatim from the SoapUI project.",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/GetAccount\""
+        },
+        {
+          "key": "X-Api-Key",
+          "value": "abc123"
+        },
+        {
+          "key": "X-Trace",
+          "value": "1"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ban=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003cwsse:Security xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\"\u003e\n         \u003cwsse:UsernameToken\u003e\u003cwsse:Username\u003edemo\u003c/wsse:Username\u003e\u003cwsse:Password\u003ehunter2\u003c/wsse:Password\u003e\u003c/wsse:UsernameToken\u003e\n      \u003c/wsse:Security\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003cban:GetAccount\u003e\n         \u003cban:accountId\u003e${#Project#acct}\u003c/ban:accountId\u003e\n      \u003c/ban:GetAccount\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "interface": "BankSoap11",
+          "operation": "GetAccount",
+          "soapAction": "http://example.com/bank/GetAccount",
+          "soapVersion": "1.1",
+          "source": "soapui"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "r",
+      "name": "Transfer",
+      "descriptionMd": "SOAP 1.1 document/literal\n\nSOAPAction: \"http://example.com/bank/Transfer\"",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"http://example.com/bank/Transfer\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://example.com/bank\" xmlns:common=\"http://example.com/common\"\u003e\n   \u003csoapenv:Header\u003e\n      \u003c!-- WS-Policy declared by this WSDL: add a wsse:Security header with your own credentials (none were generated) --\u003e\n   \u003c/soapenv:Header\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:TransferRequest channel=\"?\" version=\"2\"\u003e\n         \u003ctns:from\u003e?\u003c/tns:from\u003e\n         \u003c!--nillable:--\u003e\n         \u003ctns:to\u003e?\u003c/tns:to\u003e\n         \u003ctns:amount\u003e\n            \u003ccommon:amount\u003e0.0\u003c/common:amount\u003e\n            \u003ccommon:currency\u003eUSD\u003c/common:currency\u003e\n         \u003c/tns:amount\u003e\n         \u003c!--Zero or more repetitions:--\u003e\n         \u003ctns:memo\u003e?\u003c/tns:memo\u003e\n         \u003c!--Optional:--\u003e\n         \u003ctns:scheduled\u003e2024-01-01T00:00:00Z\u003c/tns:scheduled\u003e\n         \u003c!--You have a CHOICE of the next 3 items at this level; first branch emitted: otp | token | biometric--\u003e\n         \u003ctns:otp\u003e?\u003c/tns:otp\u003e\n         \u003ctns:priority\u003eNORMAL\u003c/tns:priority\u003e\n      \u003c/tns:TransferRequest\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "BankSoap11",
+          "operation": "Transfer",
+          "port": "BankSoap11",
+          "soapAction": "http://example.com/bank/Transfer",
+          "soapVersion": "1.1",
+          "style": "document/literal"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "v",
+      "name": "Ping - Request 1",
+      "descriptionMd": "Imported verbatim from the SoapUI project.",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ban=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Body\u003e\u003cban:Ping/\u003e\u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "interface": "BankSoap11",
+          "operation": "Ping",
+          "soapAction": "",
+          "soapVersion": "1.1",
+          "source": "soapui"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "r",
+      "name": "Test suite: Smoke",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id006",
+      "kind": "folder",
+      "rank": "i",
+      "name": "Test case: Ping works",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "parentUid": "id007",
+      "kind": "request",
+      "rank": "i",
+      "name": "Ping step",
+      "descriptionMd": "Imported verbatim from the SoapUI project.",
+      "method": "POST",
+      "url": {
+        "raw": "https://bank.example.com/ws/bank",
+        "protocol": "https",
+        "host": [
+          "bank",
+          "example",
+          "com"
+        ],
+        "path": [
+          "ws",
+          "bank"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ban=\"http://example.com/bank\"\u003e\n   \u003csoapenv:Body\u003e\u003cban:Ping/\u003e\u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "interface": "BankSoap11",
+          "operation": "Ping",
+          "soapAction": "",
+          "soapVersion": "1.1",
+          "source": "soapui"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": null,
+  "report": {
+    "format": "soapui",
+    "entries": [
+      {
+        "level": "unsupported",
+        "feature": "soapui-rest-service",
+        "message": "1 REST service(s)/interface(s) in the project were not imported (SOAP only)",
+        "suggestion": "Export them as WADL/OpenAPI and use the OpenAPI importer"
+      },
+      {
+        "level": "unsupported",
+        "feature": "soapui-test-step",
+        "message": "non-request test steps were not imported: groovy x1"
+      },
+      {
+        "level": "unsupported",
+        "feature": "soapui-mock-service",
+        "message": "1 mock service(s) were not imported"
+      },
+      {
+        "level": "unsupported",
+        "feature": "soapui-properties",
+        "message": "1 project propert(ies) were not imported as variables"
+      },
+      {
+        "level": "blocked",
+        "feature": "groovy-script-not-imported",
+        "message": "2 Groovy script(s) in the project were not imported and are never executed",
+        "suggestion": "Port the logic to a collection script manually if needed"
+      },
+      {
+        "level": "needs-review",
+        "feature": "ws-security-policy",
+        "message": "the document declares WS-Policy (2 policy element(s)); WS-SecurityPolicy assertions: SupportingTokens, UsernameToken. No WS-Security header or credentials were generated; each envelope carries a header comment instead.",
+        "suggestion": "Add a wsse:Security header with credentials from the engagement scope (keep them in secret variables)"
+      },
+      {
+        "level": "needs-review",
+        "path": "BankSoap11/GetAccount/Request 1",
+        "item": "id003",
+        "feature": "embedded-credential",
+        "message": "header X-Api-Key holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "BankSoap11/GetAccount/Request 1",
+        "item": "id003",
+        "feature": "embedded-credential",
+        "message": "request body holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "BankSoap11/GetAccount/Request 1",
+        "feature": "soapui-credentials",
+        "message": "the request holds authentication credentials; they were not imported (value not shown)",
+        "suggestion": "Create a secret variable and set auth on the request"
+      },
+      {
+        "level": "needs-review",
+        "path": "bank.example.com",
+        "feature": "target-host",
+        "message": "4 request(s) target bank.example.com; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "degraded",
+        "path": "BankSoap11/Transfer",
+        "feature": "choice-first-branch",
+        "message": "a choice was resolved to its first branch; alternatives: otp, token, biometric"
+      },
+      {
+        "level": "degraded",
+        "path": "BankSoap11/GetAccount/Request 1",
+        "feature": "soapui-property-expansion",
+        "message": "1 request(s) contain ${...} SoapUI property expansions (first at this path); they are kept as literal text and will not be substituted",
+        "suggestion": "Replace them with {{variables}}"
+      },
+      {
+        "level": "degraded",
+        "path": "http://schemas.example.com/audit.xsd",
+        "feature": "external-import",
+        "message": "xsd:import of \"http://schemas.example.com/audit.xsd\" (namespace \"http://example.com/audit\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+        "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+      },
+      {
+        "level": "degraded",
+        "path": "extra-types.xsd",
+        "feature": "external-import",
+        "message": "xsd:include of \"extra-types.xsd\" (namespace \"http://example.com/bank\") points outside the supplied documents; it was not fetched, and types from it are shown as placeholders",
+        "suggestion": "Paste the referenced schema into the WSDL (or import it with the same targetNamespace) and re-import"
+      },
+      {
+        "level": "converted",
+        "path": "BankSoap11/GetAccount/Request 1",
+        "feature": "operation-style",
+        "message": "stored SoapUI request kept verbatim"
+      },
+      {
+        "level": "converted",
+        "path": "BankSoap11/Transfer",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 document/literal"
+      },
+      {
+        "level": "converted",
+        "path": "BankSoap11/Ping/Request 1",
+        "feature": "operation-style",
+        "message": "stored SoapUI request kept verbatim"
+      },
+      {
+        "level": "converted",
+        "path": "Smoke/Ping works/Ping step",
+        "feature": "operation-style",
+        "message": "stored SoapUI request kept verbatim"
+      }
+    ],
+    "counts": {
+      "blocked": 1,
+      "converted": 4,
+      "degraded": 4,
+      "needs-review": 5,
+      "unsupported": 4
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 3,
+      "requests": 4,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 2,
+      "environmentVariables": 0
+    },
+    "headline": "3 folders, 4 requests from soapui; 5 need review, 4 degraded, 4 unsupported"
+  }
+}

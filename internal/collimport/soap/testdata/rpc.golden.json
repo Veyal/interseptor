@@ -1,0 +1,318 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "Inventory",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "wsdl-1.1"
+    },
+    "importReport": {
+      "format": "wsdl-1.1",
+      "entries": [
+        {
+          "level": "needs-review",
+          "path": "inventory.example.com:8080",
+          "feature": "target-host",
+          "message": "3 request(s) target inventory.example.com:8080; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "degraded",
+          "path": "InventoryService/InventoryPort/Add",
+          "feature": "soap-encoded-array",
+          "message": "SOAP-encoded array: one \u003citem\u003e element was emitted; encoded arrays are not validated"
+        },
+        {
+          "level": "converted",
+          "path": "InventoryService/InventoryPort/Lookup",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 rpc/encoded"
+        },
+        {
+          "level": "converted",
+          "path": "InventoryService/InventoryPort/Add",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 rpc/encoded"
+        },
+        {
+          "level": "converted",
+          "path": "InventoryService/InventoryPort/Note",
+          "feature": "operation-style",
+          "message": "SOAP 1.1 rpc/literal"
+        }
+      ],
+      "counts": {
+        "converted": 3,
+        "degraded": 1,
+        "needs-review": 1
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 2,
+        "requests": 3,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 0,
+        "environmentVariables": 0
+      },
+      "headline": "2 folders, 3 requests from wsdl-1.1; 1 need review, 1 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "InventoryService",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "folder",
+      "rank": "i",
+      "name": "InventoryPort",
+      "descriptionMd": "Binding: InventoryBinding",
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "i",
+      "name": "Lookup",
+      "descriptionMd": "SOAP 1.1 rpc/encoded\n\nSOAPAction: \"urn:inventory#Lookup\"",
+      "method": "POST",
+      "url": {
+        "raw": "http://inventory.example.com:8080/soap",
+        "protocol": "http",
+        "host": [
+          "inventory",
+          "example",
+          "com"
+        ],
+        "port": "8080",
+        "path": [
+          "soap"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"urn:inventory#Lookup\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"urn:inventory\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"\u003e\n   \u003csoapenv:Header/\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:Lookup soapenv:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"\u003e\n         \u003csku xsi:type=\"xsd:string\"\u003e?\u003c/sku\u003e\n         \u003cwarehouse xsi:type=\"xsd:int\"\u003e0\u003c/warehouse\u003e\n      \u003c/tns:Lookup\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "InventoryBinding",
+          "operation": "Lookup",
+          "port": "InventoryPort",
+          "service": "InventoryService",
+          "soapAction": "urn:inventory#Lookup",
+          "soapVersion": "1.1",
+          "style": "rpc/encoded"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "r",
+      "name": "Add",
+      "descriptionMd": "SOAP 1.1 rpc/encoded\n\nSOAPAction: \"urn:inventory#Add\"",
+      "method": "POST",
+      "url": {
+        "raw": "http://inventory.example.com:8080/soap",
+        "protocol": "http",
+        "host": [
+          "inventory",
+          "example",
+          "com"
+        ],
+        "port": "8080",
+        "path": [
+          "soap"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"urn:inventory#Add\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"urn:inventory\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\u003e\n   \u003csoapenv:Header/\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:Add soapenv:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"\u003e\n         \u003citem xsi:type=\"tns:Item\"\u003e\n            \u003csku\u003e?\u003c/sku\u003e\n            \u003cqty\u003e0\u003c/qty\u003e\n         \u003c/item\u003e\n         \u003ctags xsi:type=\"tns:StringArray\"\u003e\n            \u003c!--Zero or more repetitions:--\u003e\n            \u003citem\u003e?\u003c/item\u003e\n         \u003c/tags\u003e\n      \u003c/tns:Add\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "InventoryBinding",
+          "operation": "Add",
+          "port": "InventoryPort",
+          "service": "InventoryService",
+          "soapAction": "urn:inventory#Add",
+          "soapVersion": "1.1",
+          "style": "rpc/encoded"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "parentUid": "id003",
+      "kind": "request",
+      "rank": "v",
+      "name": "Note",
+      "descriptionMd": "SOAP 1.1 rpc/literal\n\nSOAPAction: \"urn:inventory#Note\"",
+      "method": "POST",
+      "url": {
+        "raw": "http://inventory.example.com:8080/soap",
+        "protocol": "http",
+        "host": [
+          "inventory",
+          "example",
+          "com"
+        ],
+        "port": "8080",
+        "path": [
+          "soap"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/xml; charset=utf-8"
+        },
+        {
+          "key": "SOAPAction",
+          "value": "\"urn:inventory#Note\""
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "\u003csoapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"urn:inventory\"\u003e\n   \u003csoapenv:Header/\u003e\n   \u003csoapenv:Body\u003e\n      \u003ctns:Note\u003e\n         \u003cnote\u003e?\u003c/note\u003e\n      \u003c/tns:Note\u003e\n   \u003c/soapenv:Body\u003e\n\u003c/soapenv:Envelope\u003e\n",
+        "options": {
+          "raw": {
+            "language": "xml"
+          }
+        }
+      },
+      "sidecar": {
+        "soap": {
+          "binding": "InventoryBinding",
+          "operation": "Note",
+          "port": "InventoryPort",
+          "service": "InventoryService",
+          "soapAction": "urn:inventory#Note",
+          "soapVersion": "1.1",
+          "style": "rpc/literal"
+        }
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "variables": null,
+  "report": {
+    "format": "wsdl-1.1",
+    "entries": [
+      {
+        "level": "needs-review",
+        "path": "inventory.example.com:8080",
+        "feature": "target-host",
+        "message": "3 request(s) target inventory.example.com:8080; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "degraded",
+        "path": "InventoryService/InventoryPort/Add",
+        "feature": "soap-encoded-array",
+        "message": "SOAP-encoded array: one \u003citem\u003e element was emitted; encoded arrays are not validated"
+      },
+      {
+        "level": "converted",
+        "path": "InventoryService/InventoryPort/Lookup",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 rpc/encoded"
+      },
+      {
+        "level": "converted",
+        "path": "InventoryService/InventoryPort/Add",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 rpc/encoded"
+      },
+      {
+        "level": "converted",
+        "path": "InventoryService/InventoryPort/Note",
+        "feature": "operation-style",
+        "message": "SOAP 1.1 rpc/literal"
+      }
+    ],
+    "counts": {
+      "converted": 3,
+      "degraded": 1,
+      "needs-review": 1
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 2,
+      "requests": 3,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 0,
+      "environmentVariables": 0
+    },
+    "headline": "2 folders, 3 requests from wsdl-1.1; 1 need review, 1 degraded, 0 unsupported"
+  }
+}

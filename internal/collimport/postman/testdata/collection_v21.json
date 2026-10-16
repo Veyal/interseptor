@@ -1,0 +1,118 @@
+{
+  "info": {
+    "_postman_id": "11111111-2222-3333-4444-555555555555",
+    "name": "Example API",
+    "description": {"content": "Demo collection for **example.com**", "type": "text/markdown"},
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "0000001",
+    "x-note": "kept"
+  },
+  "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]},
+  "event": [
+    {"listen": "prerequest", "id": "e1", "script": {"type": "text/javascript", "exec": ["pm.collectionVariables.set('ts', Date.now());", "const _ = require('lodash');"]}},
+    {"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.test('ok', function () { pm.response.to.have.status(200); });"]}}
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "https://example.com", "type": "string"},
+    {"key": "apiKey", "value": "CANARY-COLL-SECRET", "type": "secret"},
+    {"key": "legacy", "value": "x", "disabled": true},
+    {"key": "retries", "value": 3, "type": "number"}
+  ],
+  "protocolProfileBehavior": {"followRedirects": false},
+  "item": [
+    {
+      "id": "f1",
+      "name": "Users",
+      "description": "User endpoints",
+      "auth": {"type": "noauth"},
+      "event": [{"listen": "prerequest", "script": {"exec": ["pm.visualizer.set('<p/>');", "fetch('https://example.org/x');"]}}],
+      "variable": [{"key": "folderVar", "value": "fv"}],
+      "item": [
+        {
+          "id": "r1",
+          "name": "Get user",
+          "protocolProfileBehavior": {"disableBodyPruning": true},
+          "event": [{"listen": "test", "disabled": true, "script": {"exec": "pm.expect(1).to.eql(1)"}}],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Accept", "value": "application/json"},
+              {"key": "X-Dup", "value": "1"},
+              {"key": "X-Dup", "value": "2", "disabled": true, "description": "second"},
+              {"key": "Authorization", "value": "Bearer CANARY-HEADER-LITERAL"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/:id?verbose=true&off=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "query": [{"key": "verbose", "value": "true"}, {"key": "off", "value": "1", "disabled": true}],
+              "variable": [{"key": "id", "value": "42"}]
+            },
+            "description": "Fetch one user",
+            "certificate": {"name": "c", "src": "/Users/x/cert.pem"}
+          },
+          "response": [
+            {"name": "200 OK", "originalRequest": {"method": "GET", "url": "https://example.com/users/42"}, "status": "OK", "code": 200, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"id\":42}", "_postman_previewlanguage": "json"}
+          ]
+        },
+        {
+          "id": "r2",
+          "name": "Create user",
+          "request": {
+            "method": "POST",
+            "auth": {"type": "basic", "basic": [{"key": "username", "value": "bob", "type": "string"}, {"key": "password", "value": "CANARY-BASIC-LITERAL", "type": "string"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"name\": \"{{$randomFirstName}}\",\n  \"city\": \"{{$randomCity}}\"\n}", "options": {"raw": {"language": "json"}}},
+            "url": "https://example.com/users"
+          }
+        },
+        {
+          "id": "r3",
+          "name": "Upload",
+          "request": {
+            "method": "POST",
+            "body": {"mode": "formdata", "formdata": [
+              {"key": "name", "value": "pic", "type": "text"},
+              {"key": "off", "value": "1", "type": "text", "disabled": true},
+              {"key": "file", "type": "file", "src": "/Users/x/pic.png", "contentType": "image/png"}
+            ]},
+            "url": {"raw": "https://example.com/upload"}
+          }
+        },
+        {
+          "id": "r4",
+          "name": "Login form",
+          "request": {
+            "method": "POST",
+            "body": {"mode": "urlencoded", "urlencoded": [{"key": "u", "value": "a"}, {"key": "p", "value": "b", "disabled": true}]},
+            "url": {"raw": "https://example.com/login"}
+          }
+        },
+        {
+          "id": "r5",
+          "name": "GraphQL",
+          "request": {
+            "method": "POST",
+            "body": {"mode": "graphql", "graphql": {"query": "query { me { id } }", "variables": "{}"}},
+            "url": {"raw": "https://example.com/graphql"}
+          }
+        },
+        {
+          "id": "r6",
+          "name": "Binary",
+          "request": {"method": "PUT", "body": {"mode": "file", "file": {"src": "/Users/x/a.bin"}}, "url": {"raw": "https://example.com/blob"}}
+        }
+      ]
+    },
+    {
+      "name": "Shorthand",
+      "request": "https://example.com/ping"
+    },
+    {
+      "name": "Signed",
+      "request": {"method": "GET", "auth": {"type": "awsv4", "awsv4": [{"key": "accessKey", "value": "{{ak}}", "type": "string"}]}, "url": {"raw": "https://example.com/s"}},
+      "x-vendor": {"a": 1}
+    }
+  ],
+  "_postman_vendor": {"b": 2}
+}

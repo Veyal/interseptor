@@ -1,0 +1,122 @@
+[
+  {
+    "file": "history-inspector-light.png",
+    "view": "history-inspector",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "bytes": 138564,
+    "alt": "Interseptor Proxy History in light theme: a table of captured HTTP flows across api.example.com, shop.example.com and auth.example.com with methods and status codes, and the inspector open on GET /api/v1/orders/1042 showing a request with a Bearer token and a 200 JSON response belonging to a different customer_id.",
+    "caption": "Proxy History with the request and response inspector open on a captured flow."
+  },
+  {
+    "file": "history-inspector-dark.png",
+    "view": "history-inspector",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "bytes": 140357,
+    "alt": "Interseptor Proxy History in dark theme: a table of captured HTTP flows across api.example.com, shop.example.com and auth.example.com with methods and status codes, and the inspector open on GET /api/v1/orders/1042 showing a request with a Bearer token and a 200 JSON response belonging to a different customer_id.",
+    "caption": "Proxy History with the request and response inspector open on a captured flow."
+  },
+  {
+    "file": "intruder-light.png",
+    "view": "intruder",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "bytes": 329231,
+    "alt": "Interseptor Intruder in light theme: a Sniper attack over an order-id payload list with a marked request template, and a results table flagging which ids returned 200 versus 404.",
+    "caption": "Automated payload attacks with per-request results, anomalies and extracted values."
+  },
+  {
+    "file": "intruder-dark.png",
+    "view": "intruder",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "bytes": 333514,
+    "alt": "Interseptor Intruder in dark theme: a Sniper attack over an order-id payload list with a marked request template, and a results table flagging which ids returned 200 versus 404.",
+    "caption": "Automated payload attacks with per-request results, anomalies and extracted values."
+  },
+  {
+    "file": "collections-light.png",
+    "view": "collections",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "bytes": 335774,
+    "alt": "Interseptor Collections in light theme: a request tree grouped into Auth, Catalog, Cart, Orders, Account and Admin folders, the 'Get order' request selected, and a 200 JSON response in the response pane.",
+    "caption": "Organize, parameterize and send saved API requests with environments."
+  },
+  {
+    "file": "collections-dark.png",
+    "view": "collections",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "bytes": 351354,
+    "alt": "Interseptor Collections in dark theme: a request tree grouped into Auth, Catalog, Cart, Orders, Account and Admin folders, the 'Get order' request selected, and a 200 JSON response in the response pane.",
+    "caption": "Organize, parameterize and send saved API requests with environments."
+  },
+  {
+    "file": "findings-document-light.png",
+    "view": "findings-document",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "bytes": 357212,
+    "alt": "Interseptor Findings workspace in light theme: a list of three findings and the open document for a High-severity access-control finding with CVSS 7.1, impact, root cause, affected targets and a step-by-step reproduction linked to captured flows.",
+    "caption": "Evidence-first findings with CVSS, affected targets and linked proof."
+  },
+  {
+    "file": "findings-document-dark.png",
+    "view": "findings-document",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "bytes": 356063,
+    "alt": "Interseptor Findings workspace in dark theme: a list of three findings and the open document for a High-severity access-control finding with CVSS 7.1, impact, root cause, affected targets and a step-by-step reproduction linked to captured flows.",
+    "caption": "Evidence-first findings with CVSS, affected targets and linked proof."
+  },
+  {
+    "file": "mobile-history-light.png",
+    "view": "mobile-history",
+    "theme": "light",
+    "width": 390,
+    "height": 844,
+    "bytes": 156020,
+    "alt": "Interseptor Proxy History at phone width: a scrollable list of captured flows as two-line cards showing method, path, host, size and status, with a bottom tab bar.",
+    "caption": "The capture workspace adapts to a phone screen."
+  },
+  {
+    "file": "mobile-findings-light.png",
+    "view": "mobile-findings",
+    "theme": "light",
+    "width": 390,
+    "height": 844,
+    "bytes": 157687,
+    "alt": "Interseptor finding document at phone width: a High-severity access-control finding with CVSS 7.1, impact, root cause and affected targets in a single column.",
+    "caption": "Full finding documents stay readable on a phone."
+  },
+  {
+    "file": "mobile-scanner-light.png",
+    "view": "mobile-scanner",
+    "theme": "light",
+    "width": 390,
+    "height": 844,
+    "bytes": 112071,
+    "alt": "Interseptor Scanner at phone width: severity filters and a scrollable list of passive findings with severity badges and target counts.",
+    "caption": "Scanner findings, grouped by severity, on a phone."
+  },
+  {
+    "file": "social-card.png",
+    "view": "social-card",
+    "theme": "dark",
+    "width": 1200,
+    "height": 630,
+    "bytes": 259876,
+    "alt": "Interseptor social share card: the wordmark and the tagline 'The interception workspace for web & API pentests', three feature chips (MITM proxy, Repeater & Intruder, Evidence-first findings), and a dark screenshot of the request and response inspector showing an order endpoint returning another customer's record.",
+    "caption": "Interseptor — the interception workspace for web and API pentests."
+  }
+]

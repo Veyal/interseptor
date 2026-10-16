@@ -1,0 +1,44 @@
+{{- /*
+  The docs reading room: sidebar | article sheet | outline at 1200px and up; sidebar |
+  article from 960px, with the outline as a disclosure at the top of the article; one
+  column below 960px with the sidebar in the drawer.
+*/ -}}
+{{define "main" -}}
+<div class="docs-shell wrap-wide">
+  {{template "sidebar" .}}
+  <main id="main" class="docs-main" tabindex="-1"{{with .Page.Classification}} data-classification="{{.}}"{{end}}>
+    <article class="doc-sheet"{{with .Page.Group}} data-color="{{.Color}}"{{end}}>
+      <header class="doc-header">
+        {{template "breadcrumb" .}}
+        <h1{{with .Page.HeadingID}} id="{{.}}"{{end}}>{{.Page.Heading}}</h1>
+        {{- with .Page.Description}}
+        <p class="doc-lede">{{.}}</p>
+        {{- end}}
+        <ul class="doc-meta">
+          <li>{{icon "clock"}}<span>{{.Page.ReadingMinutes}} min read</span></li>
+          {{- with .Page.Updated}}
+          <li>{{icon "calendar"}}<span>Updated <time datetime="{{.}}">{{.}}</time></span></li>
+          {{- end}}
+          {{- if .Page.SourceURL}}
+          <li><a href="{{.Page.SourceURL}}">{{icon "file-code"}}<span>View source</span></a></li>
+          {{- end}}
+          <li><a href="{{.Site.Repo}}/issues/new?title=Docs%3A%20{{.Page.Title}}">{{icon "bug"}}<span>Report an issue</span></a></li>
+        </ul>
+        {{- if eq .Page.Path "/ai-agents/"}}
+        {{- /* Shown only when scripts run (html.js); site.js wires both buttons. */}}
+        <div class="doc-actions agent-actions">
+          <button class="btn-primary btn-sm copy-button" type="button" data-copy-text="Read {{abs "/llms-full.txt"}} and follow it.">{{icon "bot"}}<span>Copy for agent</span></button>
+          <button class="btn-ghost btn-sm copy-button" type="button" data-copy-url="{{url "/llms-full.txt"}}" data-copy-text="Read {{abs "/llms-full.txt"}} and follow it.">{{icon "copy"}}<span>Copy full guide text</span></button>
+        </div>
+        {{- end}}
+      </header>
+      {{template "outline-disclosure" .}}
+      <div class="prose">
+        {{.Page.Content}}
+      </div>
+    </article>
+    {{template "pager" .}}
+  </main>
+  {{template "outline" .}}
+</div>
+{{- end}}

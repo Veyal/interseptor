@@ -102,6 +102,10 @@ def check(flow):
         return [finding("high", "CORS wildcard with credentials enabled",
             evidence="Access-Control-Allow-Origin: * | Access-Control-Allow-Credentials: true",
             fix="Never use * with credentials; allow-list origins.")]
+    if (acao or "").lower() == "null":
+        return [finding("high", "CORS allows null origin with credentials enabled",
+            evidence="Access-Control-Allow-Origin: null | Access-Control-Allow-Credentials: true",
+            fix="Do not allow the 'null' origin with credentials; validate origins against an explicit allow-list.")]
     if origin and acao == origin:
         return [finding("high", "CORS reflects request Origin with credentials enabled",
             evidence="Access-Control-Allow-Origin: " + acao,
@@ -110,22 +114,24 @@ def check(flow):
 `,
 	checkInsecureCookie: `# Cookie missing Secure/HttpOnly (built-in override).
 def check(flow):
-    cookie = flow.res_header("Set-Cookie")
-    if not cookie:
-        return []
-    lc = cookie.lower()
-    if "secure" not in lc or "httponly" not in lc:
-        return [finding("low", "Cookie set without Secure and HttpOnly", evidence=cookie[:80],
-            fix="Set Secure; HttpOnly; SameSite on session cookies.")]
-    return []
+    findings = []
+    for cookie in flow.res_header_all("Set-Cookie"):
+        lc = cookie.lower()
+        if "secure" not in lc or "httponly" not in lc:
+            findings.append(finding("low", "Cookie set without Secure and HttpOnly", evidence=cookie[:80],
+                fix="Set Secure; HttpOnly; SameSite on session cookies."))
+            break
+    return findings
 `,
 	checkCookieSameSite: `# Cookie missing SameSite (built-in override).
 def check(flow):
-    cookie = flow.res_header("Set-Cookie")
-    if cookie and "samesite" not in cookie.lower():
-        return [finding("low", "Cookie missing SameSite attribute", evidence=cookie[:80],
-            fix="Add SameSite=Strict or Lax to cookies.")]
-    return []
+    findings = []
+    for cookie in flow.res_header_all("Set-Cookie"):
+        if "samesite" not in cookie.lower():
+            findings.append(finding("low", "Cookie missing SameSite attribute", evidence=cookie[:80],
+                fix="Add SameSite=Strict or Lax to cookies."))
+            break
+    return findings
 `,
 	checkCacheableAuth: `# Cacheable auth response (built-in override).
 def check(flow):
@@ -147,8 +153,42 @@ def check(flow):
                 fix="Suppress version-bearing headers at the edge.")]
     return []
 `,
-	checkReflectedParam: `# Reflected parameter in HTML (built-in override — customize).
+	checkReflectedParam: `# Reflected parameter in HTML (built-in override).
+#
+# Mirrors the Go check: a request parameter whose value is at least 6 characters
+# long, contains a letter, and appears verbatim in an HTML response body.
+#
+# Query values arrive url-decoded in flow.query_params. Body values are only
+# +-decoded here: url_decode rejects a malformed escape, and one bad byte in a
+# captured body must not fail the whole check.
+def _candidates(flow):
+    out = []
+    for name, values in flow.query_params.items():
+        for value in values:
+            out.append((name, value))
+    for pair in flow.req_body.split("&"):
+        if "=" not in pair:
+            continue
+        name, sep, value = pair.partition("=")
+        out.append((name, value.replace("+", " ")))
+    return out
+
+def _is_html(flow):
+    return "text/html" in flow.res_header("Content-Type") or "text/html" in flow.mime
+
 def check(flow):
+    if not _is_html(flow):
+        return []
+    for name, value in _candidates(flow):
+        if len(value) < 6 or not re_search("[A-Za-z]", value):
+            continue
+        if value in flow.res_body:
+            return [finding("low", "Request parameter reflected in HTML response",
+                detail="A request parameter is echoed verbatim into an HTML response. If it is not " +
+                    "contextually output-encoded this is a reflected-XSS sink \u2014 confirm by sending a marker payload.",
+                evidence=(name + "=" + value)[:80],
+                fix="HTML-encode user input on output (and set a Content-Security-Policy); verify the " +
+                    "value cannot break out of its HTML/JS/attribute context.")]
     return []
 `,
 	checkDBError: `# SQL error in response (built-in override).
@@ -178,7 +218,7 @@ def check(flow):
 `,
 	checkSensitiveURL: `# Sensitive param in URL (built-in override).
 def check(flow):
-    m = re_search('(?i)[?&](access_?token|api_?key|token|session|password|secret|auth)=([^&\\s]{6,})', flow.path)
+    m = re_search('(?i)[?&](access_?token|refresh_?token|id_?token|auth_?token|api_?key|token|session|password|secret|passwd|client_?secret|auth)=([^&\\s]{6,})', flow.path)
     if m:
         return [finding("medium", "Sensitive token or credential in URL", evidence=m[:80],
             fix="Pass credentials in body or Authorization header, not the URL.")]
@@ -194,8 +234,52 @@ def check(flow):
             fix="Load all sub-resources over HTTPS.")]
     return []
 `,
-	checkOpenRedirect: `# Open redirect (built-in override — customize).
+	checkOpenRedirect: `# Open redirect (built-in override).
+#
+# Mirrors the Go check: a 3xx response whose Location header contains a request
+# parameter value of at least 8 characters that either looks like a URL or
+# carries a known redirect parameter name, where the Location is absolute and
+# does not point back at the request host.
+_REDIRECT_NAMES = ("next", "redirect", "redirect_uri", "return", "returnto",
+                   "url", "goto", "continue", "dest", "destination", "target")
+
+def _candidates(flow):
+    out = []
+    for name, values in flow.query_params.items():
+        for value in values:
+            out.append((name, value))
+    for pair in flow.req_body.split("&"):
+        if "=" not in pair:
+            continue
+        name, sep, value = pair.partition("=")
+        out.append((name, value.replace("+", " ")))
+    return out
+
 def check(flow):
+    if flow.status < 300 or flow.status >= 400:
+        return []
+    location = flow.res_header("Location")
+    if not location:
+        return []
+    low = location.lower()
+    if not low.startswith("http") and not low.startswith("//"):
+        return []
+    if flow.host.lower() in low:
+        return []
+    for name, value in _candidates(flow):
+        if len(value) < 8:
+            continue
+        if not value.startswith("http") and not value.startswith("//") and name.lower() not in _REDIRECT_NAMES:
+            continue
+        if value not in location:
+            continue
+        return [finding("medium", "Potential open redirect via request parameter",
+            detail="A redirect response sets a Location header whose value is influenced by the request " +
+                "parameter '" + name + "'. If the server does not validate the destination, an attacker " +
+                "can craft a link that redirects victims to an attacker-controlled site.",
+            evidence=(name + "=" + value + " \u2192 Location: " + location)[:120],
+            fix="Validate redirect destinations against an explicit allow-list of trusted URLs; never " +
+                "accept full URLs from user-controlled input as redirect targets.")]
     return []
 `,
 	checkDirListing: `# Directory listing (built-in override).
@@ -334,6 +418,14 @@ def check(flow):
             if body.startswith(v + "("):
                 return [finding("low", "JSONP endpoint reflects callback", evidence=v + "(…",
                     fix="Prefer CORS-guarded JSON; allow-list callback names.")]
+    return []
+`,
+	checkProtoPollution: `# Prototype pollution vector in request (built-in override).
+def check(flow):
+    m = re_search('(?i)(?:["\']?__proto__["\']?\\s*[:=]|constructor\\.(?:prototype|__proto__))', flow.req_body)
+    if m:
+        return [finding("medium", "Prototype pollution vector in request", evidence=m[:60],
+            fix="Reject objects containing __proto__ or constructor.prototype keys; freeze prototypes.")]
     return []
 `,
 }

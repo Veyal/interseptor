@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions name="BankService"
+    targetNamespace="http://example.com/bank"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://example.com/bank"
+    xmlns:common="http://example.com/common"
+    xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy"
+    xmlns:sp="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200702">
+  <wsdl:documentation>Example banking service used for importer tests.</wsdl:documentation>
+  <wsp:Policy wsp:Id="UsernameTokenPolicy">
+    <sp:SupportingTokens><wsp:Policy><sp:UsernameToken/></wsp:Policy></sp:SupportingTokens>
+  </wsp:Policy>
+  <wsdl:types>
+    <xs:schema targetNamespace="http://example.com/common" elementFormDefault="qualified">
+      <xs:simpleType name="Currency">
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="USD"/>
+          <xs:enumeration value="EUR"/>
+        </xs:restriction>
+      </xs:simpleType>
+      <xs:complexType name="Money">
+        <xs:sequence>
+          <xs:element name="amount" type="xs:decimal"/>
+          <xs:element name="currency" type="common:Currency"/>
+        </xs:sequence>
+      </xs:complexType>
+    </xs:schema>
+    <xs:schema targetNamespace="http://example.com/bank" elementFormDefault="qualified">
+      <xs:import namespace="http://example.com/common"/>
+      <xs:import namespace="http://example.com/audit" schemaLocation="http://schemas.example.com/audit.xsd"/>
+      <xs:include schemaLocation="extra-types.xsd"/>
+      <xs:element name="GetAccount">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="accountId" type="xs:string"/>
+            <xs:element name="includeHistory" type="xs:boolean" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="GetAccountResponse" type="xs:string"/>
+      <xs:element name="TransferRequest">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="from" type="xs:string"/>
+            <xs:element name="to" type="xs:string" nillable="true"/>
+            <xs:element name="amount" type="common:Money"/>
+            <xs:element name="memo" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            <xs:element name="scheduled" type="xs:dateTime" minOccurs="0"/>
+            <xs:choice>
+              <xs:element name="otp" type="xs:string"/>
+              <xs:element name="token" type="xs:int"/>
+              <xs:element name="biometric" type="xs:base64Binary"/>
+            </xs:choice>
+            <xs:element name="priority" type="tns:Priority" default="NORMAL"/>
+          </xs:sequence>
+          <xs:attribute name="channel" type="xs:string" use="required"/>
+          <xs:attribute name="version" type="xs:int" default="2"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:simpleType name="Priority">
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="NORMAL"/>
+          <xs:enumeration value="HIGH"/>
+        </xs:restriction>
+      </xs:simpleType>
+      <xs:complexType name="Node">
+        <xs:sequence>
+          <xs:element name="label" type="xs:string"/>
+          <xs:element name="child" type="tns:Node" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:complexType>
+      <xs:element name="ListTree">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="root" type="tns:Node"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Ping"><xs:complexType/></xs:element>
+      <xs:element name="TraceHeader">
+        <xs:complexType>
+          <xs:sequence><xs:element name="traceId" type="xs:string"/></xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+  <wsdl:message name="GetAccountIn"><wsdl:part name="parameters" element="tns:GetAccount"/></wsdl:message>
+  <wsdl:message name="GetAccountOut"><wsdl:part name="parameters" element="tns:GetAccountResponse"/></wsdl:message>
+  <wsdl:message name="TransferIn"><wsdl:part name="parameters" element="tns:TransferRequest"/></wsdl:message>
+  <wsdl:message name="ListTreeIn"><wsdl:part name="parameters" element="tns:ListTree"/></wsdl:message>
+  <wsdl:message name="PingIn"><wsdl:part name="parameters" element="tns:Ping"/></wsdl:message>
+  <wsdl:message name="TraceMsg"><wsdl:part name="trace" element="tns:TraceHeader"/></wsdl:message>
+  <wsdl:portType name="BankPortType">
+    <wsdl:operation name="GetAccount">
+      <wsdl:input message="tns:GetAccountIn"/>
+      <wsdl:output message="tns:GetAccountOut"/>
+    </wsdl:operation>
+    <wsdl:operation name="Transfer"><wsdl:input message="tns:TransferIn"/></wsdl:operation>
+    <wsdl:operation name="ListTree"><wsdl:input message="tns:ListTreeIn"/></wsdl:operation>
+    <wsdl:operation name="Ping"><wsdl:input message="tns:PingIn"/></wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="BankSoap11" type="tns:BankPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="GetAccount">
+      <soap:operation soapAction="http://example.com/bank/GetAccount"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+        <soap:header message="tns:TraceMsg" part="trace" use="literal"/>
+      </wsdl:input>
+    </wsdl:operation>
+    <wsdl:operation name="Transfer">
+      <soap:operation soapAction="http://example.com/bank/Transfer"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+    </wsdl:operation>
+    <wsdl:operation name="ListTree">
+      <soap:operation soapAction=""/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+    </wsdl:operation>
+    <wsdl:operation name="Ping">
+      <soap:operation/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="BankSoap12" type="tns:BankPortType">
+    <soap12:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="GetAccount">
+      <soap12:operation soapAction="http://example.com/bank/GetAccount"/>
+      <wsdl:input><soap12:body use="literal"/></wsdl:input>
+    </wsdl:operation>
+    <wsdl:operation name="Transfer">
+      <soap12:operation soapAction="http://example.com/bank/Transfer"/>
+      <wsdl:input><soap12:body use="literal"/></wsdl:input>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="BankService">
+    <wsdl:port name="BankSoap11Port" binding="tns:BankSoap11">
+      <soap:address location="https://bank.example.com/ws/bank"/>
+    </wsdl:port>
+    <wsdl:port name="BankSoap12Port" binding="tns:BankSoap12">
+      <soap12:address location="https://bank.example.com/ws/bank12"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

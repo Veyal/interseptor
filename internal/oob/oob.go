@@ -97,7 +97,7 @@ func TokenFromPath(p string) string {
 		return ""
 	}
 	p = strings.TrimPrefix(p, prefix)
-	if i := strings.IndexAny(p, "/?"); i >= 0 {
+	if i := strings.IndexAny(p, "/?#.;"); i >= 0 {
 		p = p[:i]
 	}
 	if !validToken(p) {

@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // A full-project archive is a lossless, portable copy of one project: a
@@ -182,8 +184,11 @@ func addFileToZip(zw *zip.Writer, srcPath, name string) error {
 	return err
 }
 
-// snapshotDB writes a consistent DB snapshot to a fresh temp file and returns
-// its path; the caller must remove it. VACUUM INTO requires the target not to
+// snapshotDB writes a consistent, secret-scrubbed DB snapshot to a fresh temp
+// file and returns its path; the caller must remove it. Every caller (archive
+// export, file export, merge push, vault backup) ships the result off the
+// machine, so collection secrets (secret variables, cookies, OAuth tokens,
+// auth values, script trust) are always scrubbed (store.BackupToScrubbed). VACUUM INTO requires the target not to
 // exist, so the temp file is created then removed before the snapshot.
 func (h *Hub) snapshotDB() (string, error) {
 	tmp, err := os.CreateTemp("", "interseptor-snap-*.db")
@@ -193,7 +198,7 @@ func (h *Hub) snapshotDB() (string, error) {
 	p := tmp.Name()
 	tmp.Close()
 	os.Remove(p)
-	if err := h.st.BackupTo(p); err != nil {
+	if _, err := h.st.BackupToScrubbed(p, store.ScrubOptions{}); err != nil {
 		os.Remove(p)
 		return "", err
 	}
@@ -376,6 +381,9 @@ func installFullArchiveWithOps(zipPath, destDir string, overwrite bool, ops proj
 		}
 		if err := validateImportedProject(stage); err != nil {
 			return err
+		}
+		if err := store.QuarantineImportedProject(filepath.Join(stage, archiveDBName)); err != nil {
+			return fmt.Errorf("quarantine imported project: %w", err)
 		}
 		if !overwrite || !dirHasProject(destDir) {
 			return os.Rename(stage, destDir)

@@ -27,13 +27,14 @@ func TestUIRepeaterRenderOwnsResponseAndUsesSandbox(t *testing.T) {
 	}
 	core := readUIAsset(t, "js/core.js")
 	source := readUIAsset(t, "js/tools.js")
-	script := repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
+	script := repeaterRenderJS(t, core, "export function formatHexDump(strOrBytes, maxBytes=32768)") +
+		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
 		repeaterRenderJS(t, source, "function repSyncResView(t)") +
 		repeaterRenderJS(t, source, "export async function renderRepResponse()") + `
 const esc=String,escAttr=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
 const highlightHTTP=s=>s,prettify=s=>'pretty:'+s,contentTypeFromRaw=()=>'',highlightBodyText=String;
 const RENDER_CAP=2*1024*1024,fmtSize=String,flowBodyDownloadHref=id=>'/body/'+id,flowBodyDownloadName=()=> 'body.html';
-const buttons=['raw','pretty','decoded','render'].map(view=>({dataset:{view},hidden:false,attrs:{},classList:{toggle(){}},setAttribute(k,v){this.attrs[k]=v;}}));
+const buttons=['raw','pretty','decoded','hex','render'].map(view=>({dataset:{view},hidden:false,attrs:{},classList:{toggle(){}},setAttribute(k,v){this.attrs[k]=v;}}));
 const pane={innerHTML:'',textContent:'',querySelector(){return null;}};
 const $=s=>s==='#repResView'?pane:{querySelectorAll:()=>buttons};
 let repResponseEpoch=0,active,api;
@@ -45,7 +46,9 @@ await renderRepResponse();
 if(!pane.innerHTML.includes('sandbox=""')||!pane.innerHTML.includes('Fixture')||pane.innerHTML.includes('HTTP/1.1')||pane.innerHTML.includes('allow-scripts')||pane.innerHTML.includes('allow-same-origin'))throw Error('HTML preview is not isolated body-only markup');
 if(!renderHTMLResponse('HTTP/1.1 200 OK\n\n<p>LF body</p>').includes('LF body'))throw Error('LF header separator lost body');
 active=tab(2,'application/json');api=async()=>'{"ok":true}';await renderRepResponse();
-if(active.resView!=='pretty'||!buttons[3].hidden||buttons[1].attrs['aria-pressed']!=='true'||pane.innerHTML.includes('<iframe'))throw Error('non-HTML did not fall back to Pretty accessibly');
+if(active.resView!=='pretty'||!buttons.find(b=>b.dataset.view==='render').hidden||buttons[1].attrs['aria-pressed']!=='true'||pane.innerHTML.includes('<iframe'))throw Error('non-HTML did not fall back to Pretty accessibly');
+active=tab(4,'application/json','hex');api=async()=>'foo';await renderRepResponse();
+if(!pane.innerHTML.includes('hex-dump')||!pane.innerHTML.includes('00000000'))throw Error('hex view did not render canonical dump');
 active=tab();const pending=[];api=()=>new Promise(resolve=>pending.push(resolve));
 const old=renderRepResponse(),latest=renderRepResponse();
 pending[1](response('<p>Newest</p>'));await latest;pending[0](response('<p>Old</p>'));await old;

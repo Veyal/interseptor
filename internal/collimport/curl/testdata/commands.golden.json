@@ -1,0 +1,593 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "curl import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "curl"
+    },
+    "importReport": {
+      "format": "curl",
+      "entries": [
+        {
+          "level": "unsupported",
+          "path": "GET example.com/h",
+          "item": "id009",
+          "feature": "flag:proxy",
+          "message": "option --proxy cannot be represented and was dropped",
+          "suggestion": "Configure it in Interseptor settings (proxy, client certificates, resolver)"
+        },
+        {
+          "level": "needs-review",
+          "path": "GET example.com/basic",
+          "item": "id004",
+          "feature": "embedded-credential",
+          "message": "-u holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "POST example.com/upload",
+          "item": "id006",
+          "feature": "needs-asset",
+          "message": "form field file uploads a local file; files are never read at import",
+          "suggestion": "Attach the file in the form editor"
+        },
+        {
+          "level": "needs-review",
+          "path": "PUT example.com/items/1",
+          "item": "id007",
+          "feature": "needs-asset",
+          "message": "1 body value(s) read from files; files are never read at import",
+          "suggestion": "Attach the file or paste its content"
+        },
+        {
+          "level": "needs-review",
+          "path": "GET example.com/h",
+          "item": "id009",
+          "feature": "embedded-credential",
+          "message": "header Authorization holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "GET example.com/h",
+          "item": "id009",
+          "feature": "embedded-credential",
+          "message": "header Cookie holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "path": "GET example.com/$API_PATH",
+          "item": "id010",
+          "feature": "shell-expansion",
+          "message": "the command uses shell variables, command substitution or backticks that were kept as literal text",
+          "suggestion": "Replace each $VAR with a {{variable}} reference"
+        },
+        {
+          "level": "degraded",
+          "path": "GET example.com/h",
+          "item": "id009",
+          "feature": "unknown-flag",
+          "message": "unknown option --unknown-thing ignored",
+          "suggestion": "Check the curl documentation; the request may differ from the original"
+        },
+        {
+          "level": "degraded",
+          "feature": "non-curl-command",
+          "message": "2 non-curl command(s) ignored"
+        },
+        {
+          "level": "converted",
+          "path": "POST example.com/api/users",
+          "item": "id002",
+          "feature": "compressed",
+          "message": "--compressed became an Accept-Encoding header"
+        }
+      ],
+      "counts": {
+        "converted": 1,
+        "degraded": 2,
+        "needs-review": 6,
+        "unsupported": 1
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 0,
+        "requests": 10,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 2,
+        "embeddedCredentials": 3,
+        "environmentVariables": 0
+      },
+      "headline": "10 request(s) from curl: 6 need review, 2 degraded, 1 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "i",
+      "name": "POST example.com/api/users",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/api/users?active=1",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "api",
+          "users"
+        ],
+        "query": [
+          {
+            "key": "active",
+            "value": "1"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Accept",
+          "value": "application/json"
+        },
+        {
+          "key": "X-Request-Id",
+          "value": "{{reqId}}"
+        },
+        {
+          "key": "Accept-Encoding",
+          "value": "gzip, deflate"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\"name\":\"alice\",\"tags\":[\"a\",\"b\"]}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "r",
+      "name": "GET example.com/redirect",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/redirect",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "redirect"
+        ]
+      },
+      "headers": [],
+      "settings": {
+        "followRedirects": true,
+        "verifyTls": false,
+        "timeoutMs": 2500
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "v",
+      "name": "GET example.com/basic",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/basic",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "basic"
+        ]
+      },
+      "headers": [],
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "type": "string",
+            "value": "alice"
+          },
+          {
+            "key": "password",
+            "type": "string",
+            "value": "s3cret-canary"
+          }
+        ]
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "x",
+      "name": "GET example.com/search",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/search?q=hello+world\u0026page=2",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "search"
+        ],
+        "query": [
+          {
+            "key": "q",
+            "value": "hello+world"
+          },
+          {
+            "key": "page",
+            "value": "2"
+          }
+        ]
+      },
+      "headers": [],
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "y",
+      "name": "POST example.com/upload",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/upload",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "upload"
+        ]
+      },
+      "headers": [],
+      "body": {
+        "formdata": [
+          {
+            "key": "title",
+            "type": "text",
+            "value": "report"
+          },
+          {
+            "contentType": "application/pdf",
+            "key": "file",
+            "src": "",
+            "type": "file"
+          }
+        ],
+        "mode": "formdata"
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "z",
+      "name": "PUT example.com/items/1",
+      "method": "PUT",
+      "url": {
+        "raw": "https://example.com/items/1",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "items",
+          "1"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/x-www-form-urlencoded"
+        }
+      ],
+      "body": {
+        "file": {
+          "src": ""
+        },
+        "mode": "file"
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id008",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "zi",
+      "name": "HEAD example.com/health",
+      "method": "HEAD",
+      "url": {
+        "raw": "https://example.com/health",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "health"
+        ]
+      },
+      "headers": [],
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id009",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "zr",
+      "name": "GET example.com/h",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/h",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "h"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Authorization",
+          "value": "Bearer CANARY-TOKEN"
+        },
+        {
+          "key": "User-Agent",
+          "value": "probe/1.0"
+        },
+        {
+          "key": "Cookie",
+          "value": "a=1; b=2"
+        }
+      ],
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id010",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "zv",
+      "name": "GET example.com/$API_PATH",
+      "method": "GET",
+      "url": {
+        "raw": "https://example.com/$API_PATH",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "$API_PATH"
+        ]
+      },
+      "headers": [],
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id011",
+      "collectionUid": "id001",
+      "kind": "request",
+      "rank": "zx",
+      "name": "POST example.com/json",
+      "method": "POST",
+      "url": {
+        "raw": "https://example.com/json",
+        "protocol": "https",
+        "host": [
+          "example",
+          "com"
+        ],
+        "path": [
+          "json"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Accept",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\"k\":1}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "settings": {
+        "followRedirects": false
+      },
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "report": {
+    "format": "curl",
+    "entries": [
+      {
+        "level": "unsupported",
+        "path": "GET example.com/h",
+        "item": "id009",
+        "feature": "flag:proxy",
+        "message": "option --proxy cannot be represented and was dropped",
+        "suggestion": "Configure it in Interseptor settings (proxy, client certificates, resolver)"
+      },
+      {
+        "level": "needs-review",
+        "path": "GET example.com/basic",
+        "item": "id004",
+        "feature": "embedded-credential",
+        "message": "-u holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "POST example.com/upload",
+        "item": "id006",
+        "feature": "needs-asset",
+        "message": "form field file uploads a local file; files are never read at import",
+        "suggestion": "Attach the file in the form editor"
+      },
+      {
+        "level": "needs-review",
+        "path": "PUT example.com/items/1",
+        "item": "id007",
+        "feature": "needs-asset",
+        "message": "1 body value(s) read from files; files are never read at import",
+        "suggestion": "Attach the file or paste its content"
+      },
+      {
+        "level": "needs-review",
+        "path": "GET example.com/h",
+        "item": "id009",
+        "feature": "embedded-credential",
+        "message": "header Authorization holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "GET example.com/h",
+        "item": "id009",
+        "feature": "embedded-credential",
+        "message": "header Cookie holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "path": "GET example.com/$API_PATH",
+        "item": "id010",
+        "feature": "shell-expansion",
+        "message": "the command uses shell variables, command substitution or backticks that were kept as literal text",
+        "suggestion": "Replace each $VAR with a {{variable}} reference"
+      },
+      {
+        "level": "degraded",
+        "path": "GET example.com/h",
+        "item": "id009",
+        "feature": "unknown-flag",
+        "message": "unknown option --unknown-thing ignored",
+        "suggestion": "Check the curl documentation; the request may differ from the original"
+      },
+      {
+        "level": "degraded",
+        "feature": "non-curl-command",
+        "message": "2 non-curl command(s) ignored"
+      },
+      {
+        "level": "converted",
+        "path": "POST example.com/api/users",
+        "item": "id002",
+        "feature": "compressed",
+        "message": "--compressed became an Accept-Encoding header"
+      }
+    ],
+    "counts": {
+      "converted": 1,
+      "degraded": 2,
+      "needs-review": 6,
+      "unsupported": 1
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 0,
+      "requests": 10,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 2,
+      "embeddedCredentials": 3,
+      "environmentVariables": 0
+    },
+    "headline": "10 request(s) from curl: 6 need review, 2 degraded, 1 unsupported"
+  }
+}

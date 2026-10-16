@@ -31,6 +31,27 @@ type respItem struct {
 	done chan ResponseDecision
 }
 
+// matchResponseField tests the intercept filter against a response. "url" and
+// "method" read the flow, exactly as on the request side. "header" and "body"
+// read this response. "any" is the default target and an operator writes it
+// against the whole exchange, so it sees the request line as well; matching only
+// the response bytes would make a path filter silently hold nothing.
+func matchResponseField(target string, re *regexp.Regexp, flow *store.Flow, raw []byte) bool {
+	if target == "any" || target == "" {
+		var b strings.Builder
+		if flow != nil {
+			b.WriteString(flow.Method)
+			b.WriteByte(' ')
+			b.WriteString(flow.Host)
+			b.WriteString(flow.Path)
+			b.WriteString("\r\n")
+		}
+		b.Write(raw)
+		return re.MatchString(b.String())
+	}
+	return matchField(target, re, flow, raw)
+}
+
 // ResponseEnabled reports whether response interception is on.
 func (e *Engine) ResponseEnabled() bool {
 	e.mu.Lock()
@@ -51,11 +72,13 @@ func (e *Engine) SetResponseEnabled(on bool) {
 		e.respQueue = map[int64]*respItem{}
 		e.respOrder = nil
 	}
+	e.seq++
+	seq := e.seq
 	e.mu.Unlock()
 	for _, item := range drained {
 		item.done <- ResponseDecision{Raw: item.raw}
 	}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReset, Seq: seq})
 }
 
 // HoldResponse blocks (when response interception is on) until the UI forwards
@@ -71,6 +94,13 @@ func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw 
 		e.mu.Unlock()
 		return ResponseDecision{Raw: raw}
 	}
+	// The same conditional-intercept filter selects requests and responses. Without
+	// this, turning response interception on holds every in-scope response -- images,
+	// fonts, analytics, stylesheets -- and the queue floods.
+	if e.matchEnabled && e.matchRe != nil && !matchResponseField(e.matchTarget, e.matchRe, flow, raw) {
+		e.mu.Unlock()
+		return ResponseDecision{Raw: raw}
+	}
 	if e.respQueue == nil {
 		e.respQueue = map[int64]*respItem{}
 	}
@@ -79,14 +109,17 @@ func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw 
 	item := &respItem{held: HeldResponse{ID: id, Flow: flow, Raw: raw}, raw: raw, done: make(chan ResponseDecision, 1)}
 	e.respQueue[id] = item
 	e.respOrder = append(e.respOrder, id)
+	e.seq++
+	seq := e.seq
+	held := item.held
 	e.mu.Unlock()
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeHeld, Seq: seq, Side: SideResponse, ID: id, Response: held})
 	select {
 	case d := <-item.done:
 		return d
 	case <-ctx.Done():
-		if e.removeResp(id) {
-			e.fireNotify()
+		if seq, ok := e.removeResp(id); ok {
+			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseDropped})
 			return ResponseDecision{Drop: true}
 		}
 		return <-item.done
@@ -106,11 +139,12 @@ func (e *Engine) ForwardResponse(id int64, editedRaw []byte) error {
 	if edited {
 		raw = editedRaw
 	}
-	if !e.removeResp(id) {
+	seq, ok := e.removeResp(id)
+	if !ok {
 		return ErrNotHeld
 	}
 	item.done <- ResponseDecision{Edited: edited, Raw: raw}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseForwarded})
 	return nil
 }
 
@@ -122,19 +156,22 @@ func (e *Engine) DropResponse(id int64) error {
 	if !ok {
 		return ErrNotHeld
 	}
-	if !e.removeResp(id) {
+	seq, ok := e.removeResp(id)
+	if !ok {
 		return ErrNotHeld
 	}
 	item.done <- ResponseDecision{Drop: true}
-	e.fireNotify()
+	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseDropped})
 	return nil
 }
 
-func (e *Engine) removeResp(id int64) bool {
+// removeResp deletes a held response and bumps the generation, returning the new
+// Seq and whether the item was present.
+func (e *Engine) removeResp(id int64) (int64, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, ok := e.respQueue[id]; !ok {
-		return false
+		return 0, false
 	}
 	delete(e.respQueue, id)
 	for i, v := range e.respOrder {
@@ -143,7 +180,8 @@ func (e *Engine) removeResp(id int64) bool {
 			break
 		}
 	}
-	return true
+	e.seq++
+	return e.seq, true
 }
 
 // ResponseQueue returns a snapshot of held responses in arrival order.
@@ -169,9 +207,43 @@ func (e *Engine) HasResponseRules() bool {
 	return false
 }
 
+// ResponseBodyScanLimit reports how many response body bytes to buffer for
+// match-and-replace. hasBody is true when an enabled res-body rule exists.
+// allowBig is true when any such rule opts into the 64 MB cap; otherwise the
+// cap is RuleScanLimit (2 MB).
+func (e *Engine) ResponseBodyScanLimit() (limit int64, hasBody, allowBig bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	limit = ruleScanLimit
+	for _, cr := range e.rules {
+		if !cr.enabled || cr.typ != "res-body" {
+			continue
+		}
+		hasBody = true
+		if cr.bigBody {
+			return maxBodyRuleBytes, true, true
+		}
+	}
+	return limit, hasBody, false
+}
+
+// NoteSkippedResponseBodyRules logs once per enabled res-body rule that is not
+// opted into big bodies. Call it when a response body exceeds the scan limit.
+func (e *Engine) NoteSkippedResponseBodyRules() {
+	e.mu.Lock()
+	rules := e.rules
+	e.mu.Unlock()
+	for _, cr := range rules {
+		if cr.enabled && cr.typ == "res-body" && !cr.bigBody {
+			logSkippedBodyRule(cr.id, cr.typ)
+		}
+	}
+}
+
 // ApplyResponseRules applies enabled response-side rules to a response's headers
-// and body, returning the transformed pair.
-func (e *Engine) ApplyResponseRules(h http.Header, body []byte) (http.Header, []byte) {
+// and body, returning the transformed pair. skipLargeBody omits res-body rules
+// that have not opted into big bodies (header rules still run).
+func (e *Engine) ApplyResponseRules(h http.Header, body []byte, skipLargeBody bool) (http.Header, []byte) {
 	e.mu.Lock()
 	rules := e.rules
 	e.mu.Unlock()
@@ -183,6 +255,10 @@ func (e *Engine) ApplyResponseRules(h http.Header, body []byte) (http.Header, []
 		case "res-header":
 			h = applyResHeaderRule(h, cr.re, cr.replace)
 		case "res-body":
+			if skipLargeBody && !cr.bigBody {
+				logSkippedBodyRule(cr.id, cr.typ)
+				continue
+			}
 			body = cr.re.ReplaceAll(body, []byte(cr.replace))
 		}
 	}

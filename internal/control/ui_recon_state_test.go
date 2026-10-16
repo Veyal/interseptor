@@ -242,11 +242,13 @@ func TestProjectDraftHydrationGatesNavigationEditorsAndCrossFeatureEntries(t *te
 		"if(!projectScopedUIReady)return",
 		"function completeProjectScopedUIHydration(statuses)",
 		"projectScopedUIReady=true",
-		"if(!projectScopedUIReady){toast('Loading saved workspace…');return;}",
+		// The palette readiness guard moved to cmdk.js; app.js still supplies the flag.
+		"ready:()=>projectScopedUIReady",
 		"releaseWorkstationReady()",
 		"panel.removeAttribute('inert')",
 		"tab.disabled=false",
 	)
+	requireUIContains(t, executableJS(readUIAsset(t, "js/cmdk.js")), "if(!cmdkEnv.ready()){toast('Loading saved workspace…');return;}")
 	requireUIContains(t, tools,
 		"const repeaterReady=new Promise",
 		"const intruderReady=new Promise",
@@ -289,8 +291,8 @@ func TestProjectIdentityFailureSettlesWorkstationActions(t *testing.T) {
 		"if(result?.ok)return true",
 		"return false",
 	)
-	if strings.Count(tools, "if(!await waitForWorkstationReady())return false") != 2 {
-		t.Error("Repeater and Intruder sends must both reject failed workstation readiness")
+	if strings.Count(tools, "if(!await waitForWorkstationReady())return false") != 3 {
+		t.Error("Repeater, Intruder and held-request Repeater loads must all reject failed workstation readiness")
 	}
 	requireUIContains(t, findings,
 		"const ok = await sendToRepeater({ id })",

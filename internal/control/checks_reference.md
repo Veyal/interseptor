@@ -25,6 +25,25 @@ def check(flow):
 The file name (without `.star`) is the check's id. `check` is called once per captured in-scope
 flow. Return a list of `finding(...)`; return `[]` (or `None`) when there's nothing to report.
 
+## Test a check before saving it
+
+`POST /api/checks/test` compiles source and runs it against one captured flow without writing
+anything:
+
+```bash
+curl -s -X POST http://127.0.0.1:9966/api/checks/test \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"def check(flow):\n    print(flow.path)\n    return []\n"}'
+```
+
+Body: `{source, flowId?}` — omit `flowId` and it uses the most recent captured flow. The response is
+`{findings, logs, flowId}`, or `{error, logs}` when the check fails to compile or errors at runtime.
+A bad check is always a `200`, so a caller can show the error inline.
+
+`logs` is the check's `print()` output, in the order it happened: module-level prints from the
+compile first, then the run's. It comes back even when the check errored — what it printed before
+failing is usually the reason. Over MCP the same thing is `test_check`.
+
 ## The `flow` object
 
 | Field | Type | Notes |
@@ -38,6 +57,8 @@ flow. Return a list of `finding(...)`; return `[]` (or `None`) when there's noth
 | `flow.mime` | str | response Content-Type |
 | `flow.req_body` / `flow.res_body` | str | bodies (bounded) |
 | `flow.req_headers` / `flow.res_headers` | dict | canonicalized name → first value |
+| `flow.query_params` | dict | every query parameter, url-decoded, as name → **list** of values. A list because a query string can repeat a name meaningfully (`?id=1&id=2`) and a check that enumerates parameters has to see both. Iteration follows the order they appear in the query string. `{}` when there is no query string. |
+| `flow.cookies` | dict | request cookies parsed from the `Cookie` header, as name → value. A plain string per name, not a list: unlike a query string a `Cookie` header does not repeat names meaningfully, so the first occurrence wins. Malformed segments are skipped. `{}` when there is no `Cookie` header. |
 
 Methods:
 
@@ -45,7 +66,7 @@ Methods:
 |---|---|
 | `flow.req_header(name)` / `flow.res_header(name)` | first header value (**case-insensitive**), or `""` if absent |
 | `flow.req_header_all(name)` / `flow.res_header_all(name)` | **all** values for a header as a list (use for multi-`Set-Cookie`, etc.); `[]` if absent |
-| `flow.query_param(name)` | query-string value, or `""` |
+| `flow.query_param(name)` | first value of one query parameter, or `""`. Use `flow.query_params` to enumerate them. |
 
 ## Builtins
 
@@ -59,6 +80,7 @@ Methods:
 | `url_decode(text)` / `url_encode(text)` | percent-encoding decode/encode (query escaping). |
 | `hash(algo, text)` | hex digest; `algo` ∈ `sha256`, `sha1`, `sha512`, `md5`. |
 | `hmac(algo, key, message)` | lowercase-hex HMAC digest; same algorithms as `hash`. |
+| `print(...)` | Starlark's own `print`. Its output is captured, not discarded: `POST /api/checks/test` returns it as `logs`, and during a scan it goes to the server log labelled with the check id and flow id. This is how you debug a check that returns an empty list. Capture is bounded at 200 lines or 32 KiB per run, then cut with a truncation notice. |
 
 ## Example
 
@@ -85,6 +107,12 @@ More ready-to-copy examples ship in the repo under `examples/checks/`.
   aborts that one check instead of hanging the scan.
 - **Isolated failures:** a check that fails to compile or errors at runtime is logged and skipped —
   it never aborts the scan or the other checks.
+- **Bounded output:** `print()` is captured per run, up to 200 lines or 32 KiB, then cut with a
+  truncation notice. A check cannot flood memory or the log with output.
+- **Run in parallel:** a scan runs one goroutine per CPU, so your check runs on several flows at
+  once. Checks are pure functions of the flow handed to them and hold no state between calls, so
+  this needs nothing from you — but a check that depends on being called in flow order never had
+  that guarantee and now definitely does not have it.
 
 ## External-agent authoring
 

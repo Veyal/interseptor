@@ -1,0 +1,73 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Pet Store", "version": "1.2.0", "description": "Example API at example.com"},
+  "servers": [
+    {"url": "https://{env}.example.com/v1", "description": "Production", "variables": {"env": {"default": "api"}}},
+    {"url": "https://staging.example.com/v1", "description": "Staging"}
+  ],
+  "tags": [{"name": "pets", "description": "Everything about pets"}, {"name": "store"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/pets": {
+      "parameters": [{"name": "X-Trace", "in": "header", "schema": {"type": "string"}, "example": "t-1"}],
+      "get": {
+        "tags": ["pets"], "summary": "List pets", "operationId": "listPets",
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 20}},
+          {"name": "status", "in": "query", "required": true, "schema": {"type": "string", "enum": ["available", "sold"]}}
+        ],
+        "responses": {
+          "200": {"description": "ok", "content": {"application/json": {
+            "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Pet"}},
+            "examples": {"one": {"value": [{"id": 1, "name": "Rex"}]}}}}},
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "post": {
+        "tags": ["pets"], "summary": "Create pet",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}}},
+        "responses": {"201": {"description": "created"}}
+      }
+    },
+    "/pets/{petId}": {
+      "get": {
+        "tags": ["pets"], "operationId": "getPet",
+        "parameters": [{"name": "petId", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 7}],
+        "security": [{"apiKey": []}],
+        "responses": {"200": {"description": "ok", "content": {"application/json": {"example": {"id": 7, "name": "Fido"}}}}}
+      },
+      "delete": {"tags": ["pets", "admin"], "deprecated": true, "security": [], "responses": {"204": {"description": "gone"}}}
+    },
+    "/orders": {
+      "post": {
+        "tags": ["store"],
+        "requestBody": {"content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"sku": {"type": "string"}, "qty": {"type": "integer", "minimum": 1}}}}}},
+        "responses": {"200": {"description": "ok"}}
+      }
+    },
+    "/upload": {
+      "post": {
+        "requestBody": {"content": {"multipart/form-data": {"schema": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}, "note": {"type": "string"}}}}}},
+        "responses": {"200": {"description": "ok"}}
+      }
+    },
+    "/health": {"get": {"summary": "Health", "security": [{}], "responses": {"200": {"description": "ok"}}}}
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {"type": "http", "scheme": "bearer"},
+      "apiKey": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
+      "oauth": {"type": "oauth2", "flows": {"clientCredentials": {"tokenUrl": "https://auth.example.com/token", "scopes": {"read": "r", "write": "w"}}}}
+    },
+    "schemas": {
+      "Pet": {"type": "object", "required": ["name"], "properties": {
+        "id": {"type": "integer", "format": "int64", "readOnly": true},
+        "name": {"type": "string", "example": "Rex"},
+        "tag": {"type": "string"},
+        "parent": {"$ref": "#/components/schemas/Pet"},
+        "owner": {"$ref": "#/components/schemas/Owner"}}},
+      "Owner": {"type": "object", "properties": {"email": {"type": "string", "format": "email"}, "pets": {"type": "array", "items": {"$ref": "#/components/schemas/Pet"}}}}
+    },
+    "responses": {"Error": {"description": "error", "content": {"application/json": {"example": {"code": 500, "message": "boom"}}}}}
+  }
+}

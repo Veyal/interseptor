@@ -331,7 +331,7 @@ func TestFindingCvssRoundTrip(t *testing.T) {
 	id, err := s.CreateFinding(&Finding{
 		Severity: "Critical",
 		Title:    "CVSS round-trip",
-		Cvss:     "9.8",
+		Cvss:     testCVSS4,
 	})
 	if err != nil {
 		t.Fatalf("CreateFinding: %v", err)
@@ -340,14 +340,14 @@ func TestFindingCvssRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFinding: %v", err)
 	}
-	if got.Cvss != "9.8" {
-		t.Fatalf("create: cvss want %q got %q", "9.8", got.Cvss)
+	if got.Cvss != testCVSS4 {
+		t.Fatalf("create: cvss want %q got %q", testCVSS4, got.Cvss)
 	}
 	if got.Severity != "Critical" {
 		t.Fatalf("create: severity want Critical got %q", got.Severity)
 	}
 
-	vector := "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+	vector := "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:N/SA:N"
 	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &vector, nil); err != nil {
 		t.Fatalf("UpdateFinding cvss: %v", err)
 	}
@@ -680,5 +680,66 @@ func TestAttachFlowExistingFlowNotMissing(t *testing.T) {
 	}
 	if !saw {
 		t.Fatalf("flow block missing from body: %+v", got.Blocks)
+	}
+}
+
+func TestFindingCVSS31AndStatusAliases(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// Test status aliases "confirmed" -> "verified", "triage" -> "needs_verification"
+	f1, err := s.CreateFinding(&Finding{
+		Title:    "Auth Bypass",
+		Severity: "Critical",
+		Status:   "confirmed",
+	})
+	if err != nil {
+		t.Fatalf("CreateFinding with CVSS 3.1: %v", err)
+	}
+	seedLegacyCVSS(t, s, f1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
+
+	got1, err := s.GetFinding(f1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got1.Status != "verified" {
+		t.Fatalf("status confirmed want verified, got %s", got1.Status)
+	}
+	if got1.CvssScore == nil || *got1.CvssScore != 9.8 {
+		t.Fatalf("CVSS 3.1 score want 9.8, got %v", got1.CvssScore)
+	}
+	if got1.CvssRating != "CRITICAL" {
+		t.Fatalf("CVSS 3.1 rating want CRITICAL, got %s", got1.CvssRating)
+	}
+
+	f2, err := s.CreateFinding(&Finding{
+		Title:    "Open Redirect",
+		Severity: "Medium",
+		Status:   "triage",
+	})
+	if err != nil {
+		t.Fatalf("CreateFinding with triage status: %v", err)
+	}
+	seedLegacyCVSS(t, s, f2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N")
+	got2, err := s.GetFinding(f2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.Status != "needs_verification" {
+		t.Fatalf("status triage want needs_verification, got %s", got2.Status)
+	}
+	if got2.CvssScore == nil || *got2.CvssScore != 6.1 {
+		t.Fatalf("CVSS 3.1 score want 6.1, got %v", got2.CvssScore)
+	}
+}
+
+// seedLegacyCVSS stores a pre-4.0 vector the way an old archive would have, bypassing write validation.
+func seedLegacyCVSS(t *testing.T, s *Store, id int64, vector string) {
+	t.Helper()
+	if _, err := s.db.Exec(`UPDATE findings SET cvss=? WHERE id=?`, vector, id); err != nil {
+		t.Fatal(err)
 	}
 }

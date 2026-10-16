@@ -217,6 +217,6 @@ func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.
 	if flow.ID == 0 {
 		return false
 	}
-	_, _ = s.st.AddFlowTags(flow.ID, []string{"tls-bypassed"})
+	s.st.AddFlowTagsNonBlocking(flow.ID, []string{"tls-bypassed"})
 	return true
 }

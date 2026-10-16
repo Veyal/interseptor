@@ -65,17 +65,44 @@ BROWSER_ENGINES = ("chromium", "firefox", "webkit")
 
 def select_ui_option(page: Page, selector: str, value: str) -> None:
     """Choose through the visible app dropdown, never a hidden native adapter."""
-    label = page.locator(selector + " option").evaluate_all(
-        "(options, value) => options.find(option => option.value === value)?.textContent", value
-    )
-    if label is None:
-        raise AssertionError(f"missing option {value!r} in {selector}")
-    trigger = page.locator(selector + "Ui")
-    trigger.click()
-    menu_id = trigger.get_attribute("aria-controls")
-    if not menu_id:
-        raise AssertionError(f"missing app dropdown menu for {selector}")
-    page.locator("#" + menu_id).get_by_role("option", name=label, exact=True).click()
+    escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            label = page.locator(selector + " option").evaluate_all(
+                "(options, value) => options.find(option => option.value === value)?.textContent", value
+            )
+            if label is None:
+                raise AssertionError(f"missing option {value!r} in {selector}")
+            trigger = page.locator(selector + "Ui")
+            # Scroll as its own step before clicking. A click that implicitly
+            # scrolls the trigger into view fires a real "scroll" event on
+            # window *after* the click handler already opened the menu
+            # (scroll events are dispatched asynchronously, not synchronously
+            # with the position change); the app's global "scroll closes
+            # every open dropdown" listener then closes the menu we just
+            # opened. Settling the scroll first decouples the two.
+            trigger.scroll_into_view_if_needed()
+            trigger.click()
+            menu_id = trigger.get_attribute("aria-controls")
+            if not menu_id:
+                raise AssertionError(f"missing app dropdown menu for {selector}")
+            # Match on the option's own data-value, not its accessible name:
+            # Chromium, Firefox, and WebKit all append a selection affordance
+            # (e.g. "Proxy ✓") to role="option" elements carrying
+            # aria-selected="true", so a name lookup for the currently
+            # selected option never matches with exact=True.
+            page.locator(f'#{menu_id} .ui-select-opt[data-value="{escaped_value}"]').click()
+            return
+        except AssertionError:
+            raise  # missing option / missing menu is never transient
+        except Exception:
+            # A finding/settings panel can rerender out from under an
+            # in-flight interaction when the server echoes back a write this
+            # same page just made (SSE). Retrying re-resolves every locator
+            # against the settled DOM instead of a detached one.
+            if attempt == attempts:
+                raise
 
 
 def browser_project_storage_key(base: str, project: str) -> str:
@@ -793,6 +820,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             if not exercise_keyboard:
                 return
             if engine_name != "webkit":
+                # Chromium only honors a synthetic Tab keypress as native focus
+                # traversal once the page has real user activation; a blur with
+                # no prior pointer interaction leaves activeElement stuck on
+                # <body>. A harmless click establishes that activation without
+                # affecting which element Tab lands on next.
+                module_page.mouse.click(1, 1)
                 module_page.evaluate("document.activeElement?.blur()")
                 module_page.keyboard.press("Tab")
                 result.require(
@@ -2390,11 +2423,19 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
         result.run("Repeater/Intruder inner tabs and every Settings section", inner_tabs_and_settings)
 
         def viewport_and_reduced_motion() -> None:
-            for width, height in VIEWPORTS:
-                page.set_viewport_size({"width": width, "height": height})
-                page.locator('.tab[data-tab="proxy"]').click()
-                overflow = page.evaluate("document.documentElement.scrollWidth-document.documentElement.clientWidth")
-                result.require(overflow == 0, f"{width}x{height} has {overflow}px document overflow")
+            try:
+                for width, height in VIEWPORTS:
+                    page.set_viewport_size({"width": width, "height": height})
+                    if width <= 720:
+                        select_ui_option(page, "#mobileToolSelect", "proxy")
+                    else:
+                        page.locator('.tab[data-tab="proxy"]').click()
+                    overflow = page.evaluate("document.documentElement.scrollWidth-document.documentElement.clientWidth")
+                    result.require(overflow == 0, f"{width}x{height} has {overflow}px document overflow")
+            finally:
+                # A failure at a narrow viewport must not strand the shared
+                # page there for every journey that runs afterward.
+                page.set_viewport_size({"width": 1440, "height": 900})
 
             reduced = browser.new_context(
                 viewport={"width": 1024, "height": 768}, reduced_motion="reduce"
@@ -3201,10 +3242,36 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 )
                 page.locator("#findImpact").fill("A record outside the user's scope is disclosed.")
                 page.locator("#findWhy").fill("The object-level access check is missing.")
-                page.locator("#findTarget").fill(f"{fixture_base}/audit/seed")
+                # Affected targets start empty; the first one is added through
+                # the "+ Add target" prompt, not a pre-rendered #findTarget
+                # input (that id only appears once a first target row exists).
+                page.locator("#findAddTarget").click()
+                page.wait_for_selector("#promptModal", state="visible", timeout=10_000)
+                page.locator("#promptInput").fill(f"{fixture_base}/audit/seed")
+                page.locator("#promptOk").click()
+                page.wait_for_selector("#promptModal", state="hidden", timeout=10_000)
+                page.wait_for_selector("#findTarget", timeout=10_000)
+                # Adding a target rerenders the whole detail pane once locally
+                # and again off the server's own echo; let both settle (save
+                # state back to "Saved") before treating the DOM as stable.
+                page.wait_for_function(
+                    "document.querySelector('#findSaveState')?.textContent==='Saved'", timeout=10_000
+                )
+                # The finding detail view is split into Overview / Evidence /
+                # Remediation / Review sections; only one .find-workspace-panel
+                # is visible at a time, so each field's own section must be
+                # activated before it is reachable.
+                page.locator('.find-section-nav a[data-find-section="remediation"]').click()
+                page.wait_for_selector("#findFix", state="visible", timeout=10_000)
                 page.locator("#findFix").fill("Enforce authorization before returning the requested record.")
                 page.locator("#findRetest").fill("The same request returns 403 and no record data.")
+                page.locator('.find-section-nav a[data-find-section="review"]').click()
+                # findConfidence is an enhanced select: the native element stays
+                # aria-hidden, so wait on its visible trigger, not itself.
+                page.wait_for_selector("#findConfidenceUi", state="visible", timeout=10_000)
                 select_ui_option(page, "#findConfidence", "firm")
+                page.locator('.find-section-nav a[data-find-section="evidence"]').click()
+                page.wait_for_selector("#findBody", state="visible", timeout=10_000)
                 page.locator("#findBody").click(position={"x": 4, "y": 4})
                 page.wait_for_function(
                     """async () => {
@@ -3300,6 +3367,68 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.locator("#findBody .find-block-proof").count() >= 2,
                     "evidence blocks did not expose proof annotations",
                 )
+
+                # Reaching report_ready also requires a demonstrated impact
+                # verification, a CVSS v4.0 vector matching the Info severity
+                # chosen at creation, and the action/result/control roles each
+                # mapped to a qualifying evidence artifact. The mapping picker
+                # only offers flows and browser/device screenshots, not this
+                # operator_upload image, so the one attached flow covers all
+                # three roles.
+                flow_id = page.evaluate(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      const flow=(f?.blocks||[]).find(b=>b.type==='flow' && b.source==='captured_flow');
+                      return flow?.flowId || 0;
+                    }"""
+                )
+                result.require(flow_id, "attached flow was not available for role mapping")
+                page.locator('.find-section-nav a[data-find-section="review"]').click()
+                page.wait_for_selector("#findExecutionUi", state="visible", timeout=10_000)
+                select_ui_option(page, "#findExecution", "demonstrated")
+                page.locator("#findCvss").fill(
+                    "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N"
+                )
+                page.locator("[data-cvss-preview]").click()
+                page.wait_for_selector("[data-cvss-apply]:not([disabled])", timeout=10_000)
+                page.locator("[data-cvss-apply]").click()
+                page.wait_for_function(
+                    "document.querySelector('#findCvssStatus')?.textContent.includes('Applied')",
+                    timeout=10_000,
+                )
+                # The evidence-to-check mapping lives in a closed <details>.
+                if not page.locator("#findProofMapping").evaluate("el => el.open"):
+                    page.locator("#findProofMapping summary").click()
+                select_ui_option(page, "#findEvidenceMap-action", f"flow:{flow_id}")
+                select_ui_option(page, "#findEvidenceMap-result", f"flow:{flow_id}")
+                select_ui_option(page, "#findEvidenceMap-control", f"flow:{flow_id}")
+                page.wait_for_function(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      const ev=f?.proofReview?.evidence||{};
+                      return f?.proofReview?.execution==='demonstrated' && !!f?.cvss
+                        && ev.action && ev.result && ev.control;
+                    }""",
+                    timeout=10_000,
+                )
+                # A single unmapped target is only excused from its own
+                # evidence link when a real browser/device screenshot exists;
+                # the operator_upload image here doesn't qualify, so the
+                # target's own "Evidence flows" toggle must be used too.
+                page.locator('.find-section-nav a[data-find-section="overview"]').click()
+                page.wait_for_selector("#findTargetCard-0", state="visible", timeout=10_000)
+                page.locator(f'#findTargetCard-0 [data-target-evidence="{flow_id}"]').click()
+                page.wait_for_function(
+                    """async flowId => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      return (f?.targets||[])[0]?.flow_ids?.includes(flowId);
+                    }""",
+                    arg=flow_id,
+                    timeout=10_000,
+                )
                 page.locator("#findToggleEdit").click()
                 page.wait_for_selector("#findSummary", state="hidden", timeout=10_000)
                 evidence = page.evaluate(
@@ -3328,7 +3457,15 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     finding.get("readiness", {}).get("stage") == "report_ready",
                     "complete evidence-first finding did not become report ready",
                 )
-                result.require("operator_upload" in evidence["text"] and "captured_flow" in evidence["text"], "finding view hid evidence provenance")
+                # evidenceSourceLabel() humanizes the raw source enum for
+                # display ("operator_upload" -> "Uploaded image · origin
+                # unconfirmed", "captured_flow" -> "Captured traffic"); the
+                # raw strings never appear in rendered text, only in a title
+                # attribute innerText doesn't include.
+                result.require(
+                    "origin unconfirmed" in evidence["text"] and "Captured traffic" in evidence["text"],
+                    "finding view hid evidence provenance",
+                )
 
                 # Verify all supported report handoffs produce a browser download.
                 # Headless Chromium exposes the native File System Access API,
@@ -3336,15 +3473,23 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # Force the product's documented anchor-download fallback so
                 # the real UI fetch/blob/filename path remains observable.
                 page.evaluate("Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true})")
-                page.locator(".find-export-options > summary").click()
-                for fmt in ("md", "html", "json"):
-                    page.wait_for_function("!document.querySelector('#findExport')?.disabled")
-                    select_ui_option(page, "#findExportFmt", fmt)
-                    with page.expect_download(timeout=10_000) as download_info:
-                        page.locator("#findExport").click()
-                    download = download_info.value
-                    result.require(download.suggested_filename.endswith("." + fmt), f"{fmt} export filename was not reported")
-                    page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+                page.locator("#findExportOpen").click()
+                page.wait_for_selector("#findExportModal", state="visible", timeout=10_000)
+                try:
+                    for fmt in ("md", "html", "json"):
+                        page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+                        select_ui_option(page, "#findExportFmt", fmt)
+                        with page.expect_download(timeout=10_000) as download_info:
+                            page.locator("#findExport").click()
+                        download = download_info.value
+                        result.require(download.suggested_filename.endswith("." + fmt), f"{fmt} export filename was not reported")
+                        page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+                finally:
+                    # A failed export must not leave the modal on top of the
+                    # stack; later Escape presses in this journey dismiss the
+                    # top-most modal, not necessarily the intended popover.
+                    page.locator("#findExportClose").click()
+                    page.wait_for_selector("#findExportModal", state="hidden", timeout=10_000)
 
                 # At 1024px the report toolbar must remain distinct from the
                 # findings content, and the mobile listbox must retain its
@@ -4764,45 +4909,53 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             def mobile_dense_reachability() -> None:
                 invalidate_and_close_flow_popup(page)
                 page.set_viewport_size({"width": 390, "height": 844})
-                key_controls = {
-                    "proxy": "#fSearch",
-                    "intercept": "#interceptToggle",
-                    "repeater": "#repUrl",
-                    "intruder": "#intrTarget",
-                    "scanner": "#scanRun",
-                    "map": "#mapDomainUi",
-                    "findings": "#findNew",
-                    "notes": "#notesEdit",
-                    "activity": "#actIntentFilter",
-                    "settings": "#setSearch",
-                }
-                for name in TOP_LEVEL_TABS:
-                    select_ui_option(page, "#mobileToolSelect", name)
-                    panel = page.locator(f'.panel[data-panel="{name}"]')
-                    result.require(panel.is_visible(), f"mobile {name} panel is not visible")
-                    box = panel.bounding_box()
-                    result.require(box is not None and box["width"] > 0 and box["height"] > 0, f"mobile {name} panel has no reachable layout box")
-                    controls = panel.locator("button, input, select, textarea, [tabindex]").count()
-                    result.require(controls > 0, f"mobile {name} panel has no keyboard/pointer controls")
-                    result.require(
-                        page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"),
-                        f"mobile {name} panel introduces document overflow",
-                    )
-                    result.require(page.evaluate("[...document.querySelectorAll('select')].every(el => el.getClientRects().length===0)"), f"mobile {name} exposes a native select")
-                    key = page.locator(key_controls[name])
-                    key.scroll_into_view_if_needed()
-                    result.require(key.is_visible(), f"mobile {name} key control is not reachable")
-                page.locator('.tab[data-tab="scanner"]').click()
-                for button_id, modal_id, close_id in (("checksBtn", "checksModal", "checksClose"), ("codecsBtn", "codecsModal", "codecsClose")):
-                    button = page.locator(f"#{button_id}")
-                    result.require(button.is_visible() and not button.is_disabled(), f"mobile {button_id} is not reachable")
-                    button.click()
-                    page.wait_for_selector(f"#{modal_id}[style*='display'], #{modal_id}", state="visible", timeout=10_000)
-                    result.require(page.locator(f"#{modal_id} [role='dialog']").is_visible(), f"mobile {modal_id} dialog did not open")
-                    result.require(page.locator(f"#{modal_id} button, #{modal_id} input, #{modal_id} textarea").count() > 0, f"mobile {modal_id} has no reachable controls")
-                    page.locator(f"#{close_id}").click()
-                    page.wait_for_selector(f"#{modal_id}", state="hidden", timeout=10_000)
-                result.require(page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"), "mobile dense panels have document overflow")
+                try:
+                    key_controls = {
+                        "proxy": "#fSearch",
+                        "intercept": "#interceptToggle",
+                        "repeater": "#repUrl",
+                        "intruder": "#intrTarget",
+                        "scanner": "#scanRun",
+                        "map": "#mapDomainUi",
+                        "findings": "#findNew",
+                        "notes": "#notesEdit",
+                        "activity": "#actIntentFilter",
+                        "settings": "#setSearch",
+                    }
+                    for name in TOP_LEVEL_TABS:
+                        select_ui_option(page, "#mobileToolSelect", name)
+                        panel = page.locator(f'.panel[data-panel="{name}"]')
+                        result.require(panel.is_visible(), f"mobile {name} panel is not visible")
+                        box = panel.bounding_box()
+                        result.require(box is not None and box["width"] > 0 and box["height"] > 0, f"mobile {name} panel has no reachable layout box")
+                        controls = panel.locator("button, input, select, textarea, [tabindex]").count()
+                        result.require(controls > 0, f"mobile {name} panel has no keyboard/pointer controls")
+                        result.require(
+                            page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"),
+                            f"mobile {name} panel introduces document overflow",
+                        )
+                        result.require(page.evaluate("[...document.querySelectorAll('select')].every(el => el.getClientRects().length===0)"), f"mobile {name} exposes a native select")
+                        key = page.locator(key_controls[name])
+                        key.scroll_into_view_if_needed()
+                        result.require(key.is_visible(), f"mobile {name} key control is not reachable")
+                    select_ui_option(page, "#mobileToolSelect", "scanner")
+                    for button_id, modal_id, close_id in (("checksBtn", "checksModal", "checksClose"), ("codecsBtn", "codecsModal", "codecsClose")):
+                        button = page.locator(f"#{button_id}")
+                        result.require(button.is_visible() and not button.is_disabled(), f"mobile {button_id} is not reachable")
+                        button.click()
+                        try:
+                            page.wait_for_selector(f"#{modal_id}[style*='display'], #{modal_id}", state="visible", timeout=10_000)
+                            result.require(page.locator(f"#{modal_id} [role='dialog']").is_visible(), f"mobile {modal_id} dialog did not open")
+                            result.require(page.locator(f"#{modal_id} button, #{modal_id} input, #{modal_id} textarea").count() > 0, f"mobile {modal_id} has no reachable controls")
+                        finally:
+                            if page.locator(f"#{modal_id}").is_visible():
+                                page.locator(f"#{close_id}").click()
+                                page.wait_for_selector(f"#{modal_id}", state="hidden", timeout=10_000)
+                    result.require(page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"), "mobile dense panels have document overflow")
+                finally:
+                    # A failure anywhere in the mobile matrix must not strand
+                    # the shared page at phone width for whatever runs next.
+                    page.set_viewport_size({"width": 1440, "height": 900})
 
             result.run("mobile reachability for every dense panel and Checks/Codecs", mobile_dense_reachability)
 
@@ -4816,7 +4969,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     result.require((width, height) == dimensions, f"{path.name} is {width}x{height}, expected {dimensions[0]}x{dimensions[1]}")
                     screenshot_meta[name] = {"path": str(path), "width": width, "height": height}
 
-                page.locator(".find-export-options").evaluate("element => element.open=false")
+                if page.locator("#findExportModal").is_visible():
+                    page.locator("#findExportClose").click()
+                    page.wait_for_selector("#findExportModal", state="hidden", timeout=10_000)
 
                 # Retain the evidence-first Findings detail at every required
                 # viewport, not only the surrounding product surfaces.
@@ -4869,7 +5024,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 capture("1024x768", output / "after-1024x768-map.png", (1024, 768))
 
                 page.set_viewport_size({"width": 390, "height": 844})
-                page.locator('.tab[data-tab="scanner"]').click()
+                select_ui_option(page, "#mobileToolSelect", "scanner")
                 page.wait_for_function("!document.querySelector('#scanRescanState')?.textContent.startsWith('Loading')", timeout=10_000)
                 result.require(page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"), "mobile Scanner screenshot has document overflow")
                 page.mouse.move(170, 20)

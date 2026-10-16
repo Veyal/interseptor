@@ -1,0 +1,20 @@
+meta {
+  name: Upload
+  type: http
+  seq: 2
+}
+
+post {
+  url: https://example.com/upload
+  body: multipartForm
+  auth: inherit
+}
+
+body:multipart-form {
+  title: hello
+  file: @file(/etc/hosts)
+}
+
+script:pre-request {
+  const fs = require('fs');
+}

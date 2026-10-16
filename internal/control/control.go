@@ -34,10 +34,12 @@ import (
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/oob"
 	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
 	"github.com/Veyal/interseptor/internal/sysproxy"
+	"github.com/Veyal/interseptor/internal/testbrowser"
 	"github.com/Veyal/interseptor/internal/tlsca"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
@@ -73,6 +75,7 @@ type Hub struct {
 	oob           *oob.Catcher
 	hi            *humanInput // pending AI→human input prompts (request_human_input)
 	mux           *http.ServeMux
+	authzMu       sync.Mutex // serializes read-modify-write of saved authz identities
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
@@ -83,6 +86,11 @@ type Hub struct {
 	sysProxyDisable    func() error
 	sysProxyStatus     func() (bool, error)
 	sysProxySupported  func() bool
+	// launchTestBrowser starts an isolated Chrome/Chromium pointed at the proxy;
+	// testBrowserAvailable reports whether a browser could be found. Seams so the
+	// handler is testable without launching a real browser.
+	launchTestBrowser    func(proxy string) (testbrowser.LaunchResult, error)
+	testBrowserAvailable func() bool
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of known Chrome/Firefox
@@ -91,13 +99,23 @@ type Hub struct {
 	// SetSuppressAndroidTelemetry toggles suppression of Android/GMS/Crashlytics telemetry. Set by cmd.
 	SetSuppressAndroidTelemetry func(bool)
 	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
-	SetInvisibleProxy             func(bool)
+	SetInvisibleProxy func(bool)
+	// SetProxyBasicAuth replaces the optional proxy-listener username and
+	// password. enabled false is the default and accepts every client. Set by cmd.
+	SetProxyBasicAuth             func(enabled bool, user, password string)
 	SetTLSBypassHosts             func([]string)
 	SetOriginTLSVerify            func(bool)
 	SetOriginTLSVerifyBypassHosts func([]string)
 	// SetAutoBypassOnPinFailure toggles auto-adding a host to the bypass list on
 	// an MITM handshake failure (SSL pinning). Set by cmd.
 	SetAutoBypassOnPinFailure func(bool)
+
+	// ScriptRouter picks the engine for collection scripts: the out-of-process
+	// worker, or in-process for trusted scripts when InProcessTrusted is set.
+	// The zero value runs everything in-process (tests); cmd wires the
+	// worker. Set before serving.
+	ScriptRouter scriptworker.Router
+	collAPI      *collectionsAPI
 
 	// ChecksDir holds user-authored Starlark scanner checks (global, shared across
 	// projects — typically ~/.interseptor/checks). Set by cmd.
@@ -116,15 +134,18 @@ type Hub struct {
 	GlobalDir     string
 	SwitchProject func(target string) error
 
-	switchMu     sync.Mutex  // guards the delayed project-switch lifecycle
-	switchTimer  *time.Timer // pending delayed project switch; reset per request so only the latest fires
-	switchClosed bool
-	switchWG     sync.WaitGroup
+	switchMu         sync.Mutex  // guards the delayed project-switch lifecycle
+	switchTimer      *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	projectOpenNoted atomic.Bool // first project listing in this process records last opened
+	switchClosed     bool
+	switchWG         sync.WaitGroup
 
-	mcpMu           sync.Mutex
-	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
-	mcpKeysSeen     atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
-	iosTCPReachable func(string, int) bool
+	mcpMu            sync.Mutex
+	mcpSrv           *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
+	scanJob          scanJob     // running passive scans, so POST /api/scanner/cancel can stop one
+	beforeScanCommit func()      // test seam fired in the scan's commit window; nil in production, set before serving
+	mcpKeysSeen      atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
+	iosTCPReachable  func(string, int) bool
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
 	tunnelCloseOnce sync.Once
@@ -159,21 +180,23 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sc = scope.New()
 	}
 	h := &Hub{
-		st:                st,
-		eng:               eng,
-		ca:                ca,
-		rebind:            rebind,
-		sc:                sc,
-		snd:               sender.New(st, capture.New(st)),
-		mux:               http.NewServeMux(),
-		clients:           map[chan string]struct{}{},
-		iosTCPReachable:   ios.TCPReachable,
-		setSetting:        st.SetSetting,
-		sysProxyEnable:    sysproxy.Enable,
-		sysProxyDisable:   sysproxy.Disable,
-		sysProxyStatus:    sysproxy.Status,
-		sysProxySupported: sysproxy.Supported,
-		gcBodiesFn:        st.GCBodies,
+		st:                   st,
+		eng:                  eng,
+		ca:                   ca,
+		rebind:               rebind,
+		sc:                   sc,
+		snd:                  sender.New(st, capture.New(st)),
+		mux:                  http.NewServeMux(),
+		clients:              map[chan string]struct{}{},
+		iosTCPReachable:      ios.TCPReachable,
+		setSetting:           st.SetSetting,
+		sysProxyEnable:       sysproxy.Enable,
+		sysProxyDisable:      sysproxy.Disable,
+		sysProxyStatus:       sysproxy.Status,
+		sysProxySupported:    sysproxy.Supported,
+		launchTestBrowser:    testbrowser.Launch,
+		testBrowserAvailable: testbrowser.Available,
+		gcBodiesFn:           st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
@@ -197,7 +220,10 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.applySessionFromStore()
 	h.routes()
 	if eng != nil {
-		eng.SetNotifier(h.broadcastIntercept)
+		// Per-item delta notifier: a hold/release becomes a small intercept.held /
+		// intercept.released SSE event instead of re-broadcasting the whole queue on
+		// every change (the O(N^2) fix). A bulk reset still re-sends the snapshot.
+		eng.SetChangeNotifier(h.onInterceptChange)
 		if rules, err := st.ListRules(); err == nil {
 			_ = eng.SetRules(rules)
 		}
@@ -215,8 +241,15 @@ func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.
+// ?profile= scopes the tool surface (see mcpProfileForRequest); the transport is
+// stateless, so a client that wants a profile must send it on every request.
 func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
-	srv := mcp.New(h.loopbackControlBase())
+	profile, err := mcpProfileForRequest(r)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	srv := mcp.NewProfile(h.loopbackControlBase(), profile)
 	srv.SetAuthorization(r.Header.Get("Authorization"))
 	srv.SetActivityReporter(h.recordMCPActivity)
 	srv.ServeHTTP(w, r)
@@ -284,6 +317,10 @@ type flowDetailJSON struct {
 	ResHeaders  map[string][]string `json:"resHeaders"`
 	ReqBodyHash string              `json:"reqBodyHash"`
 	ResBodyHash string              `json:"resBodyHash"`
+	// InterceptionProvenance states how this flow's traffic was obtained: the
+	// interception setup version in force at capture time. Omitted when no
+	// setup was recorded or it did not cover the flow's host.
+	InterceptionProvenance *store.InterceptionProvenance `json:"interceptionProvenance,omitempty"`
 }
 
 type ruleJSON struct {
@@ -293,6 +330,7 @@ type ruleJSON struct {
 	Type    string `json:"type"`
 	Match   string `json:"match"`
 	Replace string `json:"replace"`
+	BigBody bool   `json:"bigBody,omitempty"`
 }
 
 type heldJSON struct {
@@ -306,6 +344,11 @@ type heldJSON struct {
 }
 
 type interceptJSON struct {
+	// Seq is the intercept engine's generation for this snapshot. The UI stores
+	// it and applies a later intercept.held/intercept.released delta only when the
+	// delta's seq is exactly one greater; a gap triggers a fresh snapshot. It makes
+	// the lossy SSE delta stream self-correcting.
+	Seq             int64      `json:"seq"`
 	Enabled         bool       `json:"enabled"`
 	Queue           []heldJSON `json:"queue"`
 	ResponseEnabled bool       `json:"responseEnabled"`
@@ -327,10 +370,14 @@ type settingsJSON struct {
 	SuppressBrowserTelemetry   bool     `json:"suppressBrowserTelemetry"`
 	SuppressAndroidTelemetry   bool     `json:"suppressAndroidTelemetry"`
 	InvisibleProxy             bool     `json:"invisibleProxy"`
+	FindingsUIEditing          bool     `json:"findingsUIEditing"`
 	OriginTLSVerify            bool     `json:"originTLSVerify"`
 	TLSBypassHosts             []string `json:"tlsBypassHosts"`
 	OriginTLSVerifyBypassHosts []string `json:"originTLSVerifyBypassHosts"`
 	AutoBypassOnPinFailure     bool     `json:"autoBypassOnPinFailure"`
+	ProxyAuthEnabled           bool     `json:"proxyAuthEnabled"`
+	ProxyAuthUser              string   `json:"proxyAuthUser"`
+	ProxyAuthPassword          string   `json:"proxyAuthPassword"`
 	DeviceProxy                string   `json:"deviceProxy,omitempty"`
 	DeviceProxyMode            string   `json:"deviceProxyMode,omitempty"`
 }
@@ -341,6 +388,12 @@ const tlsBypassSettingKey = "proxy.tlsBypassHosts"
 const originTLSVerifySettingKey = "proxy.originTLSVerify"
 
 const originTLSVerifyBypassSettingKey = "proxy.originTLSVerifyBypassHosts"
+
+const (
+	proxyAuthEnabledKey  = "proxy.authEnabled"
+	proxyAuthUserKey     = "proxy.authUser"
+	proxyAuthPasswordKey = "proxy.authPassword"
+)
 
 // parseHostList splits a stored/edited host-list blob (newline- or comma-
 // separated) into trimmed, non-empty, lower-cased, de-duplicated patterns.
@@ -666,6 +719,15 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	case showManual && !showAI:
 		f.WithoutFlags = store.FlagAI
 	}
+	// Collection-sent flows are History traffic by default (FlagCollection, a
+	// COLL chip in the UI). collection=0 hides them, collection=only shows
+	// nothing else; both compose with the source filters above.
+	switch q.Get("collection") {
+	case "0":
+		f.WithoutFlags |= store.FlagCollection
+	case "only":
+		f.RequireFlags |= store.FlagCollection
+	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
 	}
@@ -771,13 +833,15 @@ func (h *flowAPI) getFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.st.AttachTags([]*store.Flow{f})
+	prov, _ := h.st.InterceptionProvenance(f.TS, f.Host) // best-effort metadata
 	writeJSON(w, http.StatusOK, flowDetailJSON{
-		flowJSON:    toFlowJSON(f),
-		HTTPVersion: f.HTTPVersion,
-		ReqHeaders:  f.ReqHeaders,
-		ResHeaders:  f.ResHeaders,
-		ReqBodyHash: f.ReqBodyHash,
-		ResBodyHash: f.ResBodyHash,
+		InterceptionProvenance: prov,
+		flowJSON:               toFlowJSON(f),
+		HTTPVersion:            f.HTTPVersion,
+		ReqHeaders:             f.ReqHeaders,
+		ResHeaders:             f.ResHeaders,
+		ReqBodyHash:            f.ReqBodyHash,
+		ResBodyHash:            f.ResBodyHash,
 	})
 }
 
@@ -1029,7 +1093,7 @@ func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	if !validRule(w, in) {
 		return
 	}
-	rule := store.Rule{Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}
+	rule := store.Rule{Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace, BigBody: in.BigBody}
 	id, err := h.st.CreateRule(&rule)
 	if err != nil {
 		httpInternalErr(w, err)
@@ -1054,7 +1118,7 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 	if !validRule(w, in) {
 		return
 	}
-	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}); err != nil {
+	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace, BigBody: in.BigBody}); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			httpErr(w, http.StatusNotFound, "rule not found")
 			return
@@ -1156,15 +1220,19 @@ func (h *Hub) interceptStateWithRaw(includeRaw bool) interceptJSON {
 	if h.eng == nil {
 		return out
 	}
-	out.Enabled = h.eng.Enabled()
-	for _, held := range h.eng.Queue() {
+	// One atomic snapshot so the queue contents and Seq cannot drift apart under a
+	// concurrent hold/forward (what a delta client reconciles against).
+	s := h.eng.Snapshot()
+	out.Seq = s.Seq
+	out.Enabled = s.Enabled
+	for _, held := range s.Queue {
 		out.Queue = append(out.Queue, heldFromRequest(held, includeRaw))
 	}
-	out.ResponseEnabled = h.eng.ResponseEnabled()
-	for _, held := range h.eng.ResponseQueue() {
+	out.ResponseEnabled = s.ResponseEnabled
+	for _, held := range s.ResponseQueue {
 		out.ResponseQueue = append(out.ResponseQueue, heldFromResponse(held, includeRaw))
 	}
-	out.FilterEnabled, out.FilterTarget, out.FilterPattern = h.eng.InterceptFilter()
+	out.FilterEnabled, out.FilterTarget, out.FilterPattern = s.FilterEnabled, s.FilterTarget, s.FilterPattern
 	return out
 }
 
@@ -1413,19 +1481,38 @@ func (h *Hub) currentControlAddr() string {
 	return "127.0.0.1:9966"
 }
 
+// ResolveCaptureScopeOnly decides whether out-of-scope response/request bodies
+// are dropped from capture. An explicit stored choice always wins. With no
+// stored choice the default is to drop them exactly when the operator has set an
+// allow-list (active include rules): defining a target scope signals they do not
+// want full out-of-scope bodies written to disk by surprise (issue #108). With
+// no include rules the default stays off, preserving capture-everything. Both
+// cmd startup and GET /api/settings use this so the behaviour, the proxy, and the
+// UI toggle agree.
+func ResolveCaptureScopeOnly(stored string, ok bool, hasIncludes bool) bool {
+	if ok {
+		return stored == "1"
+	}
+	return hasIncludes
+}
+
 func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
 	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
-	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
+	scopeOnly, scopeOnlySet, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
 	suppressTelemetryOn := !stOK || suppressTelemetry == "1"
 	suppressAndroid, andOK, _ := h.st.GetSetting("capture.suppressAndroidTelemetry")
 	suppressAndroidOn := !andOK || suppressAndroid == "1"
 	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
+	findingsUIEditing, _, _ := h.st.GetSetting("findings.uiEditing")
 	originTLSVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
 	originTLSVerifyBypassRaw, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	autoBypass, _, _ := h.st.GetSetting("proxy.autoBypassOnPinFailure")
+	proxyAuthEnabled, _, _ := h.st.GetSetting(proxyAuthEnabledKey)
+	proxyAuthUser, _, _ := h.st.GetSetting(proxyAuthUserKey)
+	proxyAuthPassword, _, _ := h.st.GetSetting(proxyAuthPasswordKey)
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
@@ -1433,10 +1520,12 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
 		ControlAddr: h.currentControlAddr(), InterceptEnabled: h.eng != nil && h.eng.Enabled(),
 		UpstreamProxy: up, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
-		CaptureScopeOnly: scopeOnly == "1", SuppressBrowserTelemetry: suppressTelemetryOn,
+		CaptureScopeOnly: ResolveCaptureScopeOnly(scopeOnly, scopeOnlySet, h.sc.HasIncludes()), SuppressBrowserTelemetry: suppressTelemetryOn,
 		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
-		OriginTLSVerify: originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
+		FindingsUIEditing: findingsUIEditing == "1",
+		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
+		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPassword: proxyAuthPassword,
 	})
 }
 
@@ -1495,6 +1584,67 @@ func (h *Hub) ConfigureSenderUpstreamProxyCA(value []byte) error {
 	return h.snd.SetUpstreamProxyCA(value)
 }
 
+func (h *settingsAPI) applyProxyBasicAuth(w http.ResponseWriter, enabled *bool, user, password *string) bool {
+	currentEnabled, _, err := h.st.GetSetting(proxyAuthEnabledKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	currentUser, _, err := h.st.GetSetting(proxyAuthUserKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	currentPassword, _, err := h.st.GetSetting(proxyAuthPasswordKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	on := currentEnabled == "1"
+	if enabled != nil {
+		on = *enabled
+	}
+	if user != nil {
+		currentUser = strings.TrimSpace(*user)
+	}
+	if password != nil {
+		currentPassword = *password
+	}
+	if err := validateProxyBasicAuth(on, currentUser, currentPassword); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+	stored := "0"
+	if on {
+		stored = "1"
+	}
+	if err := h.st.SetSettings(map[string]string{
+		proxyAuthEnabledKey:  stored,
+		proxyAuthUserKey:     currentUser,
+		proxyAuthPasswordKey: currentPassword,
+	}); err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	if h.SetProxyBasicAuth != nil {
+		h.SetProxyBasicAuth(on, currentUser, currentPassword)
+	}
+	return true
+}
+
+func validateProxyBasicAuth(enabled bool, user, password string) error {
+	if strings.ContainsAny(user, "\r\n\x00:") || strings.ContainsAny(password, "\r\n\x00") {
+		return errors.New("proxy authentication rejects newlines and a colon in the username")
+	}
+	if len(user) > 128 || len(password) > 256 {
+		return errors.New("proxy authentication username or password is too long")
+	}
+	if enabled && (user == "" || password == "") {
+		return errors.New("proxy authentication requires a username and password")
+	}
+	return nil
+}
+
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProxyAddr                  string    `json:"proxyAddr"`
@@ -1507,10 +1657,14 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
 		SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
 		InvisibleProxy             *bool     `json:"invisibleProxy"`
+		FindingsUIEditing          *bool     `json:"findingsUIEditing"`
 		OriginTLSVerify            *bool     `json:"originTLSVerify"`
 		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
 		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
+		ProxyAuthEnabled           *bool     `json:"proxyAuthEnabled"`
+		ProxyAuthUser              *string   `json:"proxyAuthUser"`
+		ProxyAuthPassword          *string   `json:"proxyAuthPassword"`
 	}
 	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
@@ -1574,6 +1728,16 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SetInvisibleProxy != nil {
 			h.SetInvisibleProxy(*in.InvisibleProxy)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.FindingsUIEditing != nil {
+		v := "0"
+		if *in.FindingsUIEditing {
+			v = "1"
+		}
+		if !h.persistSetting(w, "findings.uiEditing", v) {
+			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
@@ -1675,6 +1839,12 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SyncSelfPorts != nil {
 			h.SyncSelfPorts()
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.ProxyAuthEnabled != nil || in.ProxyAuthUser != nil || in.ProxyAuthPassword != nil {
+		if !h.applyProxyBasicAuth(w, in.ProxyAuthEnabled, in.ProxyAuthUser, in.ProxyAuthPassword) {
+			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}

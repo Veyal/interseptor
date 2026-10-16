@@ -12,6 +12,7 @@ package checkscript
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,21 +65,33 @@ func predeclared() starlark.StringDict {
 // otherwise a runaway comprehension at module scope could hang or OOM the
 // process before a single check(flow) is ever called.
 func Compile(id, src string) (*Check, error) {
-	thread := &starlark.Thread{Name: "compile:" + id} // no Load func ⇒ load() is disabled
+	c, logs, err := CompileWithLogs(id, src)
+	for _, line := range logs {
+		log.Printf("check %s (compile): %s", id, line)
+	}
+	return c, err
+}
+
+// CompileWithLogs is Compile, also returning whatever the module's top level
+// printed. A `print()` at module scope is the usual "did this file even load"
+// debug, so the check editor shows it next to the compile result.
+func CompileWithLogs(id, src string) (*Check, []string, error) {
+	out := &printLog{}
+	thread := &starlark.Thread{Name: "compile:" + id, Print: out.add} // no Load func ⇒ load() is disabled
 	thread.SetMaxExecutionSteps(maxSteps)
 	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
 	if err != nil {
-		return nil, starx.ScriptError(fmt.Sprintf("check %q", id), err)
+		return nil, out.out(), starx.ScriptError(fmt.Sprintf("check %q", id), err)
 	}
 	fn, ok := globals["check"]
 	if !ok {
-		return nil, fmt.Errorf("check %q: missing a `check(flow)` function", id)
+		return nil, out.out(), fmt.Errorf("check %q: missing a `check(flow)` function", id)
 	}
 	if _, ok := fn.(starlark.Callable); !ok {
-		return nil, fmt.Errorf("check %q: `check` must be a function", id)
+		return nil, out.out(), fmt.Errorf("check %q: `check` must be a function", id)
 	}
 	globals.Freeze()
-	return &Check{ID: id, fn: fn}, nil
+	return &Check{ID: id, fn: fn}, out.out(), nil
 }
 
 // LoadDir compiles every `*.star` check in dir (sorted by name for determinism).
@@ -119,22 +132,37 @@ func LoadDir(dir string) ([]*Check, map[string]error) {
 }
 
 // Run executes the check against one flow and returns its findings. A runtime
-// error (bad type, exceeded step limit, …) is returned, not panicked.
-func (c *Check) Run(f Flow) (issues []store.Issue, err error) {
+// error (bad type, exceeded step limit, …) is returned, not panicked. Anything
+// the check printed goes to the server log, attributed to the check and flow,
+// instead of raw stderr — use RunWithLogs to get it back as data.
+func (c *Check) Run(f Flow) ([]store.Issue, error) {
+	issues, logs, err := c.RunWithLogs(f)
+	for _, line := range logs {
+		log.Printf("check %s on flow %d: %s", c.ID, f.ID, line)
+	}
+	return issues, err
+}
+
+// RunWithLogs executes the check and returns its findings together with its
+// bounded print() output. The output comes back even when the check errors —
+// what it printed before failing is usually the reason it failed.
+func (c *Check) RunWithLogs(f Flow) (issues []store.Issue, logs []string, err error) {
+	printed := &printLog{}
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("check %q panicked: %v", c.ID, r)
 		}
+		logs = printed.out()
 	}()
-	thread := &starlark.Thread{Name: "run:" + c.ID}
+	thread := &starlark.Thread{Name: "run:" + c.ID, Print: printed.add}
 	thread.SetMaxExecutionSteps(maxSteps)
 	res, err := starlark.Call(thread, c.fn, starlark.Tuple{&flowValue{f}}, nil)
 	if err != nil {
-		return nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
+		return nil, nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
 	}
 	out, err := collect(res)
 	if err != nil {
-		return nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
+		return nil, nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
 	}
 	target := f.Method + " " + f.Host + f.Path
 	for i := range out {
@@ -143,7 +171,7 @@ func (c *Check) Run(f Flow) (issues []store.Issue, err error) {
 			out[i].Target = target
 		}
 	}
-	return out, nil
+	return out, nil, nil
 }
 
 func collect(res starlark.Value) ([]store.Issue, error) {
@@ -215,7 +243,8 @@ func (v *flowValue) AttrNames() []string {
 	return []string{
 		"method", "scheme", "host", "port", "path", "status", "mime",
 		"req_body", "res_body", "req_headers", "res_headers",
-		"req_header", "res_header", "req_header_all", "res_header_all", "query_param",
+		"req_header", "res_header", "req_header_all", "res_header_all",
+		"query_param", "query_params", "cookies",
 	}
 }
 
@@ -253,6 +282,10 @@ func (v *flowValue) Attr(name string) (starlark.Value, error) {
 		return headerAllGetter("res_header_all", v.f.ResHeaders), nil
 	case "query_param":
 		return queryParamGetter(v.f.Path), nil
+	case "query_params":
+		return queryParamsDict(v.f.Path), nil
+	case "cookies":
+		return cookiesDict(v.f.ReqHeaders), nil
 	}
 	return nil, nil // unknown attribute ⇒ Starlark raises AttributeError
 }
@@ -317,6 +350,80 @@ func queryParamGetter(path string) *starlark.Builtin {
 		}
 		return starlark.String(""), nil
 	})
+}
+
+// queryParamsDict exposes the whole query string as name → list of values.
+// It is a list per name, not a single string, because a query string can
+// repeat a name meaningfully (?id=1&id=2) and a check that enumerates
+// parameters — looking for a reflected value, a redirect target — has to see
+// both. Values are url-decoded; flow.query_param(name) remains the
+// first-value convenience. Insertion order follows the query string, and
+// Starlark dicts keep it, so iteration is deterministic.
+func queryParamsDict(path string) starlark.Value {
+	d := starlark.NewDict(0)
+	i := strings.IndexByte(path, '?')
+	if i < 0 {
+		d.Freeze()
+		return d
+	}
+	for _, kv := range strings.Split(path[i+1:], "&") {
+		if kv == "" {
+			continue
+		}
+		raw, rawVal, _ := strings.Cut(kv, "=")
+		name, err := url.QueryUnescape(raw)
+		if err != nil {
+			name = raw
+		}
+		val, err := url.QueryUnescape(rawVal)
+		if err != nil {
+			val = rawVal
+		}
+		key := starlark.String(name)
+		existing, found, err := d.Get(key)
+		if err != nil {
+			continue
+		}
+		vals := []starlark.Value{}
+		if found {
+			if list, ok := existing.(*starlark.List); ok {
+				for n := 0; n < list.Len(); n++ {
+					vals = append(vals, list.Index(n))
+				}
+			}
+		}
+		vals = append(vals, starlark.String(val))
+		_ = d.SetKey(key, starlark.NewList(vals))
+	}
+	d.Freeze()
+	return d
+}
+
+// cookiesDict exposes the request's cookies as name → value. Unlike a query
+// string, a Cookie header does not repeat names meaningfully, so this is a
+// plain string per name — the first occurrence wins — matching req_headers.
+// Malformed segments are skipped rather than failing the check.
+func cookiesDict(h map[string][]string) starlark.Value {
+	d := starlark.NewDict(0)
+	for key, vals := range h {
+		if !strings.EqualFold(key, "Cookie") {
+			continue
+		}
+		for _, header := range vals {
+			for _, part := range strings.Split(header, ";") {
+				name, val, ok := strings.Cut(strings.TrimSpace(part), "=")
+				if !ok || name == "" {
+					continue
+				}
+				if _, found, err := d.Get(starlark.String(name)); err != nil || found {
+					continue
+				}
+				_ = d.SetKey(starlark.String(name), starlark.String(strings.TrimSpace(val)))
+			}
+		}
+	}
+	d.Freeze()
+	return d
 }
 
 var _ starlark.HasAttrs = (*flowValue)(nil)

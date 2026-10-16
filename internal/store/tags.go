@@ -1,7 +1,6 @@
 package store
 
 import (
-	"database/sql"
 	"sort"
 	"strings"
 )
@@ -64,6 +63,7 @@ func NormalizeTags(tags []string) []string {
 
 // SetFlowTags replaces a flow's tag set with the normalized `tags` (empty clears).
 func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
+	s.waitFlow(flowID)
 	norm := NormalizeTags(tags)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -88,21 +88,42 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 }
 
 // AddFlowTags adds tags to a flow (union) and returns the flow's full tag set.
+// Queued capture writes for this flow are drained first so the tag cannot
+// land before the row.
 func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
+	s.waitFlow(flowID)
+	return s.writeFlowTags(flowID, tags)
+}
+
+func (s *Store) writeFlowTags(flowID int64, tags []string) ([]string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
+	s.flowTxs.Add(1)
 	defer tx.Rollback()
-	if err := requireFlowForTags(tx, flowID); err != nil {
+	out, err := writeFlowTagsExec(tx, flowID, tags)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// writeFlowTagsExec unions tags onto an existing flow and returns the row's
+// full tag set. The caller owns the transaction boundary.
+func writeFlowTagsExec(ex flowExec, flowID int64, tags []string) ([]string, error) {
+	if err := requireFlowForTags(ex, flowID); err != nil {
 		return nil, err
 	}
 	for _, t := range NormalizeTags(tags) {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
+		if _, err := ex.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
 			return nil, err
 		}
 	}
-	rows, err := tx.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
+	rows, err := ex.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,15 +143,15 @@ func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return out, nil
 }
 
 // MutateFlowTags applies one add/remove command to every selected flow in one
 // transaction. Remove wins when the same normalized tag appears in both sets.
 func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
+	for _, id := range flowIDs {
+		s.waitFlow(id)
+	}
 	add = NormalizeTags(add)
 	remove = NormalizeTags(remove)
 	tx, err := s.db.Begin()
@@ -156,19 +177,21 @@ func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
 	return tx.Commit()
 }
 
-func requireFlowForTags(tx *sql.Tx, flowID int64) error {
+func requireFlowForTags(ex flowExec, flowID int64) error {
 	var exists int
-	return tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
+	return ex.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
 }
 
 // RemoveFlowTag detaches a single tag from a flow.
 func (s *Store) RemoveFlowTag(flowID int64, tag string) error {
+	s.waitFlow(flowID)
 	_, err := s.db.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, normalizeTag(tag))
 	return err
 }
 
 // FlowTags returns one flow's tags, sorted.
 func (s *Store) FlowTags(flowID int64) ([]string, error) {
+	s.waitFlow(flowID)
 	rows, err := s.db.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
 	if err != nil {
 		return nil, err
@@ -188,6 +211,7 @@ func (s *Store) FlowTags(flowID int64) ([]string, error) {
 // TagsForFlows batch-loads tags for many flows in one query (no N+1), returning a
 // map from flow id to its sorted tag list. Ids with no tags are absent from the map.
 func (s *Store) TagsForFlows(ids []int64) (map[int64][]string, error) {
+	s.syncFlows()
 	out := map[int64][]string{}
 	if len(ids) == 0 {
 		return out, nil

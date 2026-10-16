@@ -1256,3 +1256,78 @@ func TestMergeInitialRevisionPreservesMissingEvidenceAndProvenance(t *testing.T)
 	}
 	check(restored)
 }
+
+func mergeLegacyPeer(t *testing.T, mutate func(s *Store, id int64)) string {
+	t.Helper()
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := peer.CreateFinding(&Finding{Title: "legacy peer finding", Severity: "High"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutate(peer, id)
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(peerDir, currentDBName)
+}
+
+func TestMergeFromPreservesLegacyCVSS31Finding(t *testing.T) {
+	const legacy = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+	peerDB := mergeLegacyPeer(t, func(s *Store, id int64) {
+		if _, err := s.db.Exec(`UPDATE findings SET cvss=? WHERE id=?`, legacy, id); err != nil {
+			t.Fatal(err)
+		}
+	})
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	stats, err := local.MergeFrom(peerDB, "", "legacy")
+	if err != nil {
+		t.Fatalf("MergeFrom must preserve a legacy CVSS 3.1 finding: %v", err)
+	}
+	if stats.FindingsAdded != 1 {
+		t.Fatalf("FindingsAdded=%d", stats.FindingsAdded)
+	}
+	var cvss string
+	if err := local.db.QueryRow(`SELECT cvss FROM findings`).Scan(&cvss); err != nil || cvss != legacy {
+		t.Fatalf("cvss=%q err=%v, want legacy vector preserved", cvss, err)
+	}
+}
+
+func TestMergeFromPreservesSeverityMismatchedFinding(t *testing.T) {
+	const v4 = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+	peerDB := mergeLegacyPeer(t, func(s *Store, id int64) {
+		if _, err := s.db.Exec(`UPDATE findings SET cvss=?, severity='Low' WHERE id=?`, v4, id); err != nil {
+			t.Fatal(err)
+		}
+	})
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDB, "", "mismatch"); err != nil {
+		t.Fatalf("MergeFrom must preserve a severity-mismatched finding: %v", err)
+	}
+	var sev string
+	if err := local.db.QueryRow(`SELECT severity FROM findings`).Scan(&sev); err != nil || !strings.EqualFold(sev, "low") {
+		t.Fatalf("severity=%q err=%v, want preserved Low", sev, err)
+	}
+}
+
+func TestCreateFindingStillEnforcesCVSSAfterMergePath(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.CreateFinding(&Finding{Title: "x", Cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}); err == nil {
+		t.Fatal("normal CreateFinding must still reject CVSS 3.1")
+	}
+}

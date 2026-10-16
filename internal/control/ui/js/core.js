@@ -7,6 +7,9 @@
 // to the shared `state` object are visible across modules (live object binding).
 
 import { placeFloatingSurface } from './surface-position.js';
+import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
+import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
+import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -39,23 +42,99 @@ export function projectSwitchBlocker(){
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
-  filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
+  filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false,findingsUIEditing:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
-export function toast(m, sev){
+// Errors and warnings are role=alert (announced assertively). Warnings live longer
+// and pause while hovered or focused; errors persist until dismissed. Neither is
+// evicted by newer info toasts.
+function evictToasts(c) {
+  const keep = (sel, max) => {
+    const items = c.querySelectorAll(sel);
+    for (let i = 0; i < items.length - max; i++) items[i].remove();
+  };
+  // Older notices are less useful than the latest result, so cap each class.
+  // .toast-keep is exempt: it carries an action with a promised lifetime (an
+  // Undo), and sweeping it as a stale notice would quietly withdraw the offer
+  // before the window the user was told about had passed.
+  keep('.toast-item:not(.error):not(.toast-keep)', 3);
+  keep('.toast-item.error', 5);
+}
+function dismissToast(t) {
+  t.classList.remove('show');
+  setTimeout(() => t.remove(), 220);
+}
+function armToastTimer(t, ms) {
+  let left = ms, started = 0, timer = null;
+  const dismiss = () => dismissToast(t);
+  const run = () => { started = Date.now(); clearTimeout(timer); timer = setTimeout(dismiss, left); };
+  const pause = () => {
+    if (timer === null) return;
+    clearTimeout(timer); timer = null;
+    left = Math.max(2000, left - (Date.now() - started));
+  };
+  const resume = () => {
+    if (t.matches(':hover') || t.contains(document.activeElement)) return;
+    run();
+  };
+  t.addEventListener('mouseenter', pause);
+  t.addEventListener('focusin', pause);
+  t.addEventListener('mouseleave', resume);
+  t.addEventListener('focusout', resume);
+  run();
+}
+export function toast(m, sev) {
   const c = $('#toast');
-  if (!c) return;
-  // Keep transient feedback from obscuring the compact workspace. Older notices
-  // are less useful than the latest result, so evict them before appending.
-  const visible = c.querySelectorAll('.toast-item');
-  for (let i = 0; i < visible.length - 3; i++) visible[i].remove();
+  if (!c) return null;
+  const loud = sev === 'error' || sev === 'warn';
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
+  if (loud) { t.setAttribute('role', 'alert'); t.tabIndex = 0; }
+  if (sev === 'error') {
+    // Failures stay until dismissed (WCAG 2.2.1): a button, or Escape on the focused toast.
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn xs toast-dismiss';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.innerHTML = icon('close');
+    x.addEventListener('click', () => dismissToast(t));
+    t.addEventListener('keydown', e => { if (e.key === 'Escape') dismissToast(t); });
+    t.appendChild(x);
+  }
   c.appendChild(t);
+  evictToasts(c);
   requestAnimationFrame(() => t.classList.add('show'));
-  const ms = sev === 'error' ? 4500 : 2600;
-  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); }, ms);
+  if (sev !== 'error') armToastTimer(t, sev === 'warn' ? 5000 : 2600);
+  return t;
+}
+// Findings are agent-maintained: the web UI writes to them only while
+// Settings > findings.uiEditing is on. This is the ONE definition of that gate;
+// every UI path that writes a finding (and every control that exists only to
+// write one) goes through it. It is a UI guard only: agents keep full write
+// access over MCP and REST.
+export const FINDINGS_EDITING_OFF = 'Findings editing is off. Enable it in Settings.';
+export function findingsEditable(){ return !!state.findingsUIEditing; }
+// requireFindingsEditing is the gate for an action that was invoked anyway
+// (keyboard shortcut, palette entry, stale handler): it refuses and says why.
+export function requireFindingsEditing(){
+  if(findingsEditable())return true;
+  toast(FINDINGS_EDITING_OFF);
+  return false;
+}
+// assertFindingsWritable is the same gate for code that reports failure by
+// throwing (queued saves, deletes, evidence writes): re-check it at the write,
+// after any await, rather than trusting the state at render time.
+export function assertFindingsWritable(){
+  if(!findingsEditable())throw new Error(FINDINGS_EDITING_OFF);
+}
+// toastError(prefix, e) reports a failed action. e may be an Error, a string or
+// anything with a message; the prefix names the action ("Save failed"). A single
+// non-string argument is treated as the error itself.
+export function toastError(prefix, e) {
+  if (e === undefined && typeof prefix !== 'string') { e = prefix; prefix = ''; }
+  const detail = (e && e.message) || (e ? String(e) : '') || 'request failed';
+  toast(prefix ? prefix + ': ' + detail : detail, 'error');
 }
 
 // wireRowKey makes a clickable <div> row keyboard-operable: it becomes a focusable
@@ -332,8 +411,8 @@ export function createTabManager(opts){
     <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
-    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
-    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">＋</button>`;
+    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">${icon('close')}</button></div>`;
+    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">${icon('plus')}</button>`;
     const tabPanel=document.getElementById(tabPanelId);
     const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
     if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
@@ -577,7 +656,7 @@ export function enhanceSelect(sel){
   const wrap=document.createElement('div');
   wrap.className='ui-select';
   if(sel.classList.contains('btn'))wrap.classList.add('ui-select-btn');
-  if(sel.classList.contains('rep-method'))wrap.classList.add('ui-select-rep');
+  if(sel.classList.contains('rep-method')||sel.classList.contains('repurl'))wrap.classList.add('ui-select-rep');
   if(sel.closest('.search'))wrap.classList.add('ui-select-search');
   if(sel.closest('.rules-tbl')||sel.closest('td'))wrap.classList.add('ui-select-inline');
   if(sel.closest('.settings-body .field'))wrap.classList.add('ui-select-field');
@@ -602,7 +681,7 @@ export function enhanceSelect(sel){
   const caret=document.createElement('span');
   caret.className='ui-select-caret';
   caret.setAttribute('aria-hidden','true');
-  caret.textContent='▾';
+  caret.innerHTML=icon('chevron');
   trigger.append(valueEl,caret);
 
   const menu=document.createElement('div');
@@ -660,7 +739,7 @@ export function enhanceSelect(sel){
         const v=o.value;
         const selOn=v===cur;
         const dis=o.disabled;
-        return `<button type="button" role="option" tabindex="-1" id="${menu.id}Opt${i}" class="ui-select-opt${selOn?' sel':''}${i===inst.active?' active':''}" data-index="${i}" data-value="${escAttr(v)}"${dis?' disabled aria-disabled="true"':''}${o.hidden?' hidden':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span></button>`;
+        return `<button type="button" role="option" tabindex="-1" id="${menu.id}Opt${i}" class="ui-select-opt${selOn?' sel':''}${i===inst.active?' active':''}" data-index="${i}" data-value="${escAttr(v)}"${dis?' disabled aria-disabled="true"':''}${o.hidden?' hidden':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span><svg class="icon ui-select-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>`;
       }).join('');
       const picked=opts.find(o=>o.value===cur)||opts[0];
       valueEl.textContent=picked?picked.textContent:(sel.getAttribute('placeholder')||'…');
@@ -767,37 +846,74 @@ window.addEventListener('scroll',e=>{
   closeAllUiSelects();
 },true);
 window.addEventListener('resize',()=>closeAllUiSelects());
+// Virtualized lists (History, Intruder results, Map) churn rows constantly and
+// never contain a <select>; skip their mutations instead of scanning every row.
+const UI_SELECT_SKIP='#rows,.intr-virt-body,.map-virt-body';
 new MutationObserver(muts=>{
   for(const m of muts){
+    if(m.target.closest?.(UI_SELECT_SKIP))continue;
     m.addedNodes.forEach(n=>{
       if(n.nodeType!==1)return;
       if(n.tagName==='SELECT')enhanceSelect(n);
-      else initUiSelects(n);
+      else if(n.querySelector('select'))initUiSelects(n);
     });
   }
 }).observe(document.documentElement,{childList:true,subtree:true});
 
+// apiErrorMessage turns a failed response into one short, human sentence: the
+// JSON `error` field, a short plain-text body, the status text, or "HTTP <n>"
+// (HTTP/2 has no status text). HTML bodies are never surfaced.
+async function apiErrorMessage(r) {
+  const fallback = r.statusText || 'HTTP ' + r.status;
+  let raw = '';
+  try { raw = String(await r.text()).trim(); } catch (e) { return fallback; }
+  if (!raw) return fallback;
+  try {
+    const j = JSON.parse(raw);
+    return (j && typeof j.error === 'string' && j.error) || fallback;
+  } catch (e) { /* not JSON */ }
+  if (raw[0] === '<' || raw.length > 200) return fallback;
+  return raw;
+}
+// apiFetchError wraps a rejected fetch: a caller-driven abort passes through;
+// timeouts and unreachable servers get a message the operator can act on.
+function apiFetchError(e, opts) {
+  if (opts.signal && opts.signal.aborted && !opts.defaultTimeout) return e;
+  const timedOut = e && e.name === 'TimeoutError';
+  const err = new Error(timedOut
+    ? 'The Interseptor control server did not respond in time. Retry in a moment.'
+    : 'Cannot reach the Interseptor control server. Check that it is still running, then retry.');
+  err.code = timedOut ? 'timeout' : 'network';
+  return err;
+}
 export async function api(path,opts){
-  opts=opts||{};
+  opts=Object.assign({},opts);
   // Remote (cookie-authed) sessions must carry an anti-CSRF header on mutations;
   // it is harmless on the loopback path. Safe methods (GET/HEAD) skip it.
   const method=(opts.method||'GET').toUpperCase();
   if(method!=='GET'&&method!=='HEAD'){
     opts.headers=Object.assign({'X-Interseptor-CSRF':'1'},opts.headers||{});
   }
-  const r=await fetch(path,opts);
+  // Reads should fail loudly instead of hanging a panel on "loading" forever.
+  if(method==='GET'&&!opts.signal&&typeof AbortSignal!=='undefined'&&AbortSignal.timeout){
+    opts.signal=AbortSignal.timeout(30000);opts.defaultTimeout=true;
+  }
+  const {defaultTimeout,...init}=opts;
+  let r;
+  try{r=await fetch(path,init);}
+  catch(e){throw apiFetchError(e,opts);}
   if(r.status===401){ // remote session expired / not signed in → go to login
     if(location.pathname!=='/login'){ location.href='/login'; }
     throw new Error('unauthorized');
   }
-  if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}
+  if(!r.ok){const err=new Error(await apiErrorMessage(r));err.status=r.status;throw err;}
   const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
 }
 
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
 export async function apiTry(path, opts, {toastOnError=true, label=''}={}){
   try{return await api(path, opts);}
-  catch(e){if(toastOnError)toast((label?label+': ':'')+e.message);return null;}
+  catch(e){if(toastOnError)toastError(label, e);return null;}
 }
 
 export const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
@@ -896,6 +1012,157 @@ export function dropFlowsFrom(store,index){
   return dropped;
 }
 
+/* ---- diffVisibleRows: keyed reconciliation plan for a windowed list.
+   Pure function, no DOM: given the ids currently mounted (`prevIds`, in DOM
+   order) and the ids the next render should mount (`nextIds`, in render order),
+   it returns the minimal remove/insert plan that turns one into the other —
+   so a caller can patch the two rows that actually changed instead of
+   re-serializing and re-wiring the whole visible window.
+   `reusable:false` means the two lists can't be reconciled by insert/remove
+   alone (the kept ids appear in a different relative order, or an id repeats);
+   the caller must fall back to a full re-render. Every `insert` carries the id
+   of the surviving row it must be placed before (`before:null` = at the end),
+   which is exactly what `anchor.before(el)` wants. ---- */
+export function diffVisibleRows(prevIds,nextIds){
+  const prev=prevIds||[],next=nextIds||[];
+  const prevSet=new Set(prev),nextSet=new Set(next);
+  const bail={reusable:false,remove:[],insert:[],keep:[]};
+  if(prevSet.size!==prev.length||nextSet.size!==next.length)return bail; // duplicate ids aren't keyed rows
+  const keptPrev=prev.filter(id=>nextSet.has(id));
+  const keptNext=next.filter(id=>prevSet.has(id));
+  if(keptPrev.length!==keptNext.length)return bail;
+  for(let i=0;i<keptPrev.length;i++)if(keptPrev[i]!==keptNext[i])return bail; // survivors reordered
+  const remove=prev.filter(id=>!nextSet.has(id));
+  const insert=[];
+  for(let i=0;i<next.length;i++){
+    const id=next[i];
+    if(prevSet.has(id))continue;
+    let before=null;
+    for(let j=i+1;j<next.length;j++){if(prevSet.has(next[j])){before=next[j];break;}}
+    insert.push({id,before});
+  }
+  return {reusable:true,remove,insert,keep:keptNext};
+}
+
+/* ---- client-side scope evaluation ----
+   A faithful JS mirror of internal/scope's Engine.InScope for the subset of
+   rules that can be reproduced exactly: exact hosts, `*.base` wildcards, literal
+   path prefixes, scheme and port. Regex host/path rules are deliberately NOT
+   mirrored — Go's regexp is RE2 and JS's is not, so a regex rule marks the whole
+   ruleset `evaluable:false` and the caller must keep asking the server.
+   Used by proxy.js so a live flow arriving while "in scope" is on can be placed
+   incrementally instead of forcing a full /api/flows reload per event. ---- */
+const SCOPE_REGEX_LITERALS=['.*','^','$','(',')','[',']','|','+','?','\\d','\\w','\\s'];
+// scopeLooksLikeRegex mirrors internal/scope's looksLikeRegex exactly.
+export function scopeLooksLikeRegex(s){
+  const v=String(s||'');
+  if(v.length>=2&&v[0]==='/'&&v[v.length-1]==='/')return true;
+  return SCOPE_REGEX_LITERALS.some(lit=>v.includes(lit));
+}
+// compileScopeRules mirrors Engine.SetRules: disabled rules are dropped, hosts
+// compile to exact/wildcard, paths to a literal prefix. `evaluable` is false as
+// soon as one enabled rule needs a regex (host or path) — the caller then treats
+// scope as server-only, exactly as it did before this existed.
+export function compileScopeRules(rules){
+  const out=[];let hasInclude=false,evaluable=true;
+  for(const r of rules||[]){
+    if(!r||!r.enabled)continue;
+    const include=r.action!=='exclude';
+    if(include)hasInclude=true;
+    const host=String(r.host||'').toLowerCase();
+    let hostExact='',hostWild='';
+    if(host){
+      if(host.startsWith('*.'))hostWild=host.slice(2);
+      else if(scopeLooksLikeRegex(host))evaluable=false;
+      else hostExact=host;
+    }
+    const path=String(r.path||'');
+    let pathExact='';
+    if(path){
+      if(scopeLooksLikeRegex(path))evaluable=false;
+      else pathExact=path;
+    }
+    out.push({include,hostExact,hostWild,pathExact,scheme:String(r.scheme||''),port:Number(r.port)||0});
+  }
+  return {evaluable,hasInclude,rules:out};
+}
+function scopeHostMatches(r,host){
+  if(!r.hostExact&&!r.hostWild)return true;
+  const h=String(host||'').toLowerCase();
+  if(r.hostWild)return h===r.hostWild||h.endsWith('.'+r.hostWild);
+  return h===r.hostExact;
+}
+function scopeRuleMatches(r,f){
+  return scopeHostMatches(r,f.host)&&
+    (!r.pathExact||String(f.path||'').startsWith(r.pathExact))&&
+    (!r.scheme||r.scheme.toLowerCase()===String(f.scheme||'').toLowerCase())&&
+    (!r.port||r.port===Number(f.port||0));
+}
+// flowInScope mirrors Engine.InScope: an exclude match always wins; with no
+// include rules everything is in scope; otherwise at least one include must match.
+export function flowInScope(f,compiled){
+  if(!compiled||!compiled.evaluable)return false;
+  let included=false;
+  for(const r of compiled.rules){
+    if(!scopeRuleMatches(r,f))continue;
+    if(r.include)included=true;
+    else return false;
+  }
+  return compiled.hasInclude?included:true;
+}
+
+/* ---- density: --row-h and friends follow :root[data-density] (and the coarse
+   pointer tier). Anything that measures rows listens for `densitychange`. ---- */
+export const DENSITIES=['compact','default','comfortable'];
+export function readRowHeightToken(fallback=30){
+  const h=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));
+  return h>0?h:fallback;
+}
+export function getDensity(){
+  const d=document.documentElement.getAttribute('data-density');
+  return DENSITIES.includes(d)?d:'default';
+}
+function announceDensity(){window.dispatchEvent(new CustomEvent('densitychange',{detail:{density:getDensity(),rowHeight:readRowHeightToken()}}));}
+// setDensity applies and persists the density tier, then announces it.
+export function setDensity(value){
+  const d=DENSITIES.includes(value)?value:'default';
+  document.documentElement.setAttribute('data-density',d);
+  try{localStorage.setItem('density',d);}catch(e){}
+  announceDensity();
+  return d;
+}
+try{window.matchMedia('(pointer:coarse)').addEventListener('change',announceDensity);}catch(e){}
+let rowTokenCache=0;
+const densityListeners=new Set();
+// rowHeightToken is the cached --row-h value; it is re-read after `densitychange`.
+export function rowHeightToken(){return rowTokenCache||(rowTokenCache=readRowHeightToken());}
+export function onDensityChange(fn){densityListeners.add(fn);return()=>{densityListeners.delete(fn);};}
+window.addEventListener('densitychange',()=>{
+  rowTokenCache=0;
+  densityListeners.forEach(fn=>{try{fn();}catch(e){}});
+});
+
+/* ---- extension registry: later modules register implementations that other
+   panels call through core, so panels never import each other. `openFlow` is
+   backed by the Flow Drawer; `renderFlowBody` by the shared flow body renderer. ---- */
+const hooks=new Map();
+export function registerHook(name,fn){
+  if(typeof fn!=='function')throw new Error('registerHook: '+name+' needs a function');
+  hooks.set(name,fn);
+  return ()=>{if(hooks.get(name)===fn)hooks.delete(name);};
+}
+export function getHook(name){return hooks.get(name)||null;}
+// openFlow(id, {source, tab}) opens a flow wherever the unified flow inspector is
+// mounted; it returns false when no implementation is registered yet.
+export function openFlow(id,opts){const h=hooks.get('openFlow');return h?h(id,opts||{}):false;}
+// closeFlow({updateRoute}) closes the flow inspector; the symmetric wrapper for
+// openFlow so callers never import the inspector module (and the old flowmodal
+// shim is gone). Returns false when nothing was open or no implementation exists.
+export function closeFlow(opts){const h=hooks.get('closeFlow');return h?h(opts||{}):false;}
+// renderFlowBody(flow, tab) returns the shared body markup, or null before the
+// renderer registers.
+export function renderFlowBody(flow,tab){const h=hooks.get('renderFlowBody');return h?h(flow,tab):null;}
+
 /* ---- createVirtualList: windowed-rendering helper for long rows-in-a-scroll-
    -div lists (Proxy history today; Map's table and Intruder's results are
    candidates for a later migration, not touched by this pass).
@@ -906,6 +1173,7 @@ export function dropFlowsFrom(store,index){
    helper only decides which indices are visible). ---- */
 export function createVirtualList({container,itemHeight,threshold,buffer,onScroll}){
   let active=false,scrollTick=false,scrollBound=false;
+  const rowH=()=>typeof itemHeight==='function'?itemHeight():itemHeight;
   function bindScroll(){
     if(scrollBound||!container)return;
     scrollBound=true;
@@ -925,12 +1193,128 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
     bindScroll();
     if(total<threshold){active=false;return null;}
     active=true;
-    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0;
-    const start=Math.max(0,Math.floor(scrollTop/itemHeight)-buffer);
-    const end=Math.min(total,start+Math.ceil(viewH/itemHeight)+2*buffer);
-    return {start,end,topPad:start*itemHeight,bottomPad:(total-end)*itemHeight};
+    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0,h=rowH();
+    const start=Math.max(0,Math.floor(scrollTop/h)-buffer);
+    const end=Math.min(total,start+Math.ceil(viewH/h)+2*buffer);
+    return {start,end,topPad:start*h,bottomPad:(total-end)*h};
   }
   return {computeWindow,isActive:()=>active};
+}
+
+// createDensityVirtualList is createVirtualList whose rows are measured from the
+// --row-h density token instead of a constant. When the density tier (or the
+// coarse-pointer tier) changes, core dispatches `densitychange`: the cached token
+// is dropped and an active (virtualized) list re-renders its window.
+export function createDensityVirtualList(opts){
+  const vl=createVirtualList({...opts,itemHeight:rowHeightToken});
+  const dispose=onDensityChange(()=>{
+    // A list whose container left the DOM unsubscribes itself.
+    if(!opts.container||!opts.container.isConnected){dispose();return;}
+    if(vl.isActive())opts.onScroll();
+  });
+  vl.dispose=dispose;
+  return vl;
+}
+
+/* ---- createListView: the one windowed-list renderer with container-level event
+   delegation, built on the pure computeVirtualWindow math above. It replaces the
+   per-feature "el.innerHTML = items.map(rowHTML).join(''); then
+   el.querySelectorAll(rowSel).forEach(n=>n.onclick=…)" pattern — the serialize-
+   all-then-rebind-all shape that leaks listeners, pressures GC and left big lists
+   (Intruder results, WebSocket frames, Scanner issues) unvirtualized.
+
+   With a fixed `rowHeight` and more than `threshold` rows it mounts only the
+   visible window inside a spacer (same spacer + translateY shape Intruder used,
+   so its `.intr-virt-body` DOM and CSS are preserved when it passes those class
+   names); below the threshold, or with no usable row height, it renders the whole
+   list. Either way ONE delegated listener per wired event sits on the container
+   and dispatches to the row via `e.target.closest(rowSelector)`, so rows carry no
+   per-element handlers. Handlers receive `(rowElement, event)` and read the row's
+   own dataset, exactly as the old per-row closures did.
+
+   Options: {container, rowHeight (number|()=>number; 0/omitted ⇒ never
+   virtualize), threshold=80, buffer=8, rowSelector, renderRow(item,index)->html,
+   getItems()->array, on:{click,contextmenu,keydown,dblclick,…}, containerClass,
+   bodyClass='vlist-body', spacerClass='vlist-spacer'}.
+   Returns {render, refresh, isVirtual, destroy, container}. ---- */
+export function createListView(opts){
+  const {container,rowSelector,renderRow,getItems=()=>[],on={},
+    threshold=80,buffer=8,containerClass='',bodyClass='vlist-body',spacerClass='vlist-spacer'}=opts;
+  if(!container||typeof renderRow!=='function'||typeof rowSelector!=='string')
+    throw new Error('createListView: needs {container, rowSelector, renderRow}');
+  const rowH=()=>{const h=typeof opts.rowHeight==='function'?opts.rowHeight():opts.rowHeight;return h>0?h:0;};
+  let lastWin=null,virtual=false,scrollBound=false,scrollTick=false,destroyed=false;
+  const delegates=[];
+  const items=()=>getItems()||[];
+  function windowFor(list){
+    return computeVirtualWindow({total:list.length,scrollTop:container.scrollTop,viewportH:container.clientHeight,rowH:rowH(),threshold,buffer});
+  }
+  function mountWindow(list,win){
+    let sp=container.querySelector(':scope > .'+spacerClass);
+    let body=container.querySelector(':scope > .'+bodyClass);
+    if(!sp||!body){
+      container.innerHTML='<div class="'+spacerClass+'" aria-hidden="true"></div><div class="'+bodyClass+'"></div>';
+      sp=container.querySelector(':scope > .'+spacerClass);
+      body=container.querySelector(':scope > .'+bodyClass);
+    }
+    sp.style.height=(list.length*rowH())+'px';
+    body.style.transform='translateY('+win.topPad+'px)';
+    body.innerHTML=list.slice(win.start,win.end).map((it,k)=>renderRow(it,win.start+k)).join('');
+  }
+  function bindScroll(){
+    if(scrollBound)return;scrollBound=true;
+    container.addEventListener('scroll',()=>{
+      if(!virtual||scrollTick)return;
+      scrollTick=true;
+      requestAnimationFrame(()=>{scrollTick=false;if(!destroyed)refresh();});
+    },{passive:true});
+  }
+  // render() does a full (re)paint from current items; refresh() only re-windows.
+  function render(){
+    const list=items();
+    const win=windowFor(list);
+    if(!win){
+      virtual=false;
+      if(containerClass)container.classList.remove(containerClass);
+      container.innerHTML=list.map((it,i)=>renderRow(it,i)).join('');
+      lastWin=null;
+      return;
+    }
+    virtual=true;
+    if(containerClass)container.classList.add(containerClass);
+    bindScroll();
+    mountWindow(list,win);
+    lastWin=win;
+  }
+  function refresh(){
+    if(!virtual){render();return;}
+    const list=items();
+    const win=windowFor(list);
+    if(!win){render();return;}
+    if(sameWindow(win,lastWin))return;
+    mountWindow(list,win);
+    lastWin=win;
+  }
+  for(const type of Object.keys(on)){
+    const handler=on[type];
+    if(typeof handler!=='function')continue;
+    const listener=e=>{
+      const row=e.target.closest&&e.target.closest(rowSelector);
+      if(!row||!container.contains(row))return;
+      handler(row,e);
+    };
+    container.addEventListener(type,listener);
+    delegates.push([type,listener]);
+  }
+  return {
+    render,refresh,container,
+    isVirtual:()=>virtual,
+    // suspend() lets the feature paint its own non-row state (empty, error) into
+    // the container: it stops the scroll handler from re-rendering over that
+    // markup until the next render().
+    suspend(){virtual=false;lastWin=null;},
+    destroy(){destroyed=true;for(const [type,listener] of delegates)container.removeEventListener(type,listener);delegates.length=0;},
+  };
 }
 
 /* ---- createAutosave: shared debounced-save-with-status pattern.
@@ -988,6 +1372,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
 export const FLAG_WS=32;
 export const FLAG_TLS=16;
 export const FLAG_AI=1024;
+export const FLAG_COLLECTION=512; // sent from a collection request (store.FlagCollection)
 export const FLAG_DISCOVERY=4096;
 export const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light
 export const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)
@@ -1192,73 +1577,491 @@ export function countListLines(text, ignoreComments=false){
   return parseListLines(text, {ignoreComments}).length;
 }
 
-/* ---- shared right-click context menu (#ctxmenu) ---- */
+/* ---- shared right-click context menu (#ctxmenu) ----
+   One engine renders every right-click menu in the UI. A menu is sections of
+   items; an item with `children` becomes a cascading flyout, so a surface with
+   thirty actions is seven categorised roots instead of a flat list with its own
+   scrollbar. The root panel is #ctxmenu; each open flyout is its own panel
+   appended to <body> (the root scrolls, so a nested child would be clipped).
+   See js/ctxmenu-model.js for the geometry, keyboard and menu-model rules. */
+let ctxPanels=[];          // [{el, rows, sel, depth, parentRow}] root first
+let ctxHoverTimer=null;
+let ctxReturnFocus=null;
+let ctxReturnTrigger=null;
+
+// ctxMenuContains reports whether a node sits in the open menu — root panel or
+// any flyout. Outside-click dismissal must use this, not #ctxmenu.contains().
+export function ctxMenuContains(node){
+  if(!node)return false;
+  return ctxPanels.some(p=>p.el===node||p.el.contains(node));
+}
+export function ctxMenuOpen(){return ctxPanels.length>0;}
+
+function ctxClearHoverTimer(){if(ctxHoverTimer){clearTimeout(ctxHoverTimer);ctxHoverTimer=null;}}
+
+// ctxClosePanelsFrom tears down every panel at `depth` and deeper.
+function ctxClosePanelsFrom(depth){
+  for(let i=ctxPanels.length-1;i>=Math.max(1,depth);i--){
+    const p=ctxPanels[i];
+    if(p.parentRow){p.parentRow.setAttribute('aria-expanded','false');p.parentRow.classList.remove('ctx-open');}
+    p.el.remove();
+    ctxPanels.pop();
+  }
+}
+
 export function hideCtxMenu({restoreFocus=false}={}){
   const ctx=$('#ctxmenu');if(!ctx)return;
   const wasOpen=ctx.classList.contains('show');
-  if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
+  ctxClearHoverTimer();
+  ctxClosePanelsFrom(1);
+  ctxPanels=[];
   ctx.classList.remove('show');ctx._acts=null;
   ctx.removeAttribute('data-motion-side');
-  if(ctx._returnTrigger?.isConnected)ctx._returnTrigger.setAttribute('aria-expanded','false');
-  if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
-    ctx._returnFocus?.focus({preventScroll:true});
+  if(ctxReturnTrigger?.isConnected)ctxReturnTrigger.setAttribute('aria-expanded','false');
+  if(restoreFocus&&wasOpen&&ctxReturnFocus?.isConnected&&typeof ctxReturnFocus.focus==='function'){
+    ctxReturnFocus?.focus({preventScroll:true});
   }
-  ctx._returnFocus=null;ctx._returnTrigger=null;
+  ctxReturnFocus=null;ctxReturnTrigger=null;
 }
 
+// ctxItemHTML renders one row. Labels are escaped, so markup cannot be smuggled
+// through it.label — the icon has to be its own field (it.icon names a sprite
+// symbol). A row with children gets the chevron and the menu ARIA that says so.
+function ctxItemHTML(it,i){
+  const kids=hasChildren(it);
+  const dStyle=it.danger?' style="color:var(--red)"':'';
+  const val=it.val!=null&&it.val!==''?String(it.val):(it.hint||'');
+  const right=val?`<span class="mono ctx-value"${dStyle}>${esc(val)}</span>`:'';
+  const glyph=it.icon?icon(it.icon):'';
+  const arrow=kids?`<span class="ctx-arrow" aria-hidden="true">${icon('chevron')}</span>`:'';
+  const cls=['ctx-item'];
+  if(right)cls.push('ctx-has-value');
+  if(kids)cls.push('ctx-has-sub');
+  if(it.on)cls.push('on');
+  if(it.disabled)cls.push('ctx-disabled');
+  const aria=kids?' aria-haspopup="menu" aria-expanded="false"':'';
+  const dis=it.disabled?' aria-disabled="true"':'';
+  return `<div class="${cls.join(' ')}" role="menuitem" tabindex="-1" data-i="${i}"${aria}${dis}${it.danger&&!right?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}${arrow}</div>`;
+}
+
+// ctxPaintPanel fills a panel element and returns its focusable rows, each
+// carrying the item it renders (`row._item`).
+function ctxPaintPanel(el,sections){
+  let html='';let i=0;
+  for(const sec of sections){
+    if(sec.head)html+=`<div class="ctx-head">${esc(sec.head)}</div>`;
+    for(const it of sec.items){
+      if(it.sep){html+='<div class="ctx-sep"></div>';continue;}
+      html+=ctxItemHTML(it,i++);
+    }
+  }
+  el.innerHTML=html;
+  const items=menuRows(sections);
+  const rows=Array.from(el.querySelectorAll('.ctx-item'));
+  rows.forEach((row,n)=>{row._item=items[n];});
+  return rows;
+}
+
+function ctxViewport(){
+  const vv=window.visualViewport;
+  return {width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+}
+
+// ctxPaintSel highlights the current row of one panel. Focus moves only when
+// asked, so hovering does not steal it from a keyboard walk.
+function ctxPaintSel(depth,moveFocus=false){
+  const p=ctxPanels[depth];if(!p)return;
+  p.rows.forEach((el,i)=>{const on=i===p.sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});
+  const cur=p.rows[p.sel];
+  if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}
+}
+
+// ctxOpenSubmenu renders the flyout for row `idx` of panel `depth`, beside its
+// parent and flipped to the left when the right edge is too close.
+function ctxOpenSubmenu(depth,idx,{focus=false}={}){
+  const parent=ctxPanels[depth];if(!parent)return;
+  const row=parent.rows[idx];const it=row&&row._item;
+  if(!it||it.disabled||!hasChildren(it))return;
+  const open=ctxPanels[depth+1];
+  if(open&&open.parentRow===row){if(focus)ctxFocusRow(depth+1,0);return;}
+  ctxClosePanelsFrom(depth+1);
+  const sections=childSections(it);
+  if(!sections.length)return;
+  const el=document.createElement('div');
+  el.className='ctx-submenu';
+  el.setAttribute('role','menu');
+  el.setAttribute('aria-label',it.label||'Submenu');
+  document.body.appendChild(el);
+  const rows=ctxPaintPanel(el,sections);
+  // Measure at natural width before placing, exactly as the root does.
+  el.style.left='0px';el.style.top='0px';el.style.width='max-content';el.style.maxHeight='none';
+  el.classList.add('show');
+  const box=el.getBoundingClientRect();
+  const place=submenuPlacement({parent:parent.el.getBoundingClientRect(),item:row.getBoundingClientRect(),width:box.width,height:box.height,viewport:ctxViewport()});
+  el.style.left=place.left+'px';el.style.top=place.top+'px';el.style.width=place.width+'px';el.style.maxHeight=place.maxHeight+'px';
+  el.dataset.ctxSide=place.side;
+  row.setAttribute('aria-expanded','true');row.classList.add('ctx-open');
+  ctxPanels.push({el,rows,sel:0,depth:depth+1,parentRow:row});
+  // A flyout is a fresh element every time it opens, so it is wired here; the
+  // root is wired once because it is the one panel that outlives a menu.
+  ctxWirePanel(depth+1,el);
+  ctxPaintSel(depth+1,focus);
+}
+
+function ctxFocusRow(depth,idx){
+  const p=ctxPanels[depth];if(!p||!p.rows.length)return;
+  p.sel=Math.max(0,Math.min(p.rows.length-1,idx));
+  ctxPaintSel(depth,true);
+}
+
+// ctxRunRow executes a row's action. The menu closes first so the action can
+// open its own modal or menu without being torn down by the dismissal.
+function ctxRunRow(depth,idx){
+  const p=ctxPanels[depth];if(!p)return;
+  const row=p.rows[idx];const it=row&&row._item;
+  if(!it||it.disabled)return;
+  if(hasChildren(it)){ctxOpenSubmenu(depth,idx,{focus:true});return;}
+  const fn=it.act;
+  hideCtxMenu({restoreFocus:true});
+  if(fn)fn();
+}
+
+function ctxRowIndex(depth,target){
+  const p=ctxPanels[depth];if(!p)return -1;
+  const row=target&&target.closest?target.closest('.ctx-item'):null;
+  return row?p.rows.indexOf(row):-1;
+}
+
+// ctxWirePanel gives a panel its pointer behaviour: click runs or opens, and a
+// 120 ms rest opens a flyout (or closes a stale one) so a diagonal sweep towards
+// an open flyout never swaps it out from under the pointer.
+function ctxWirePanel(depth,el){
+  el.addEventListener('click',e=>{
+    const i=ctxRowIndex(depth,e.target);
+    if(i<0)return;
+    e.preventDefault();e.stopPropagation();
+    ctxRunRow(depth,i);
+  });
+  el.addEventListener('pointermove',e=>{
+    const i=ctxRowIndex(depth,e.target);
+    if(i<0)return;
+    const p=ctxPanels[depth];if(!p||p.sel===i&&ctxHoverTimer)return;
+    p.sel=i;ctxPaintSel(depth);
+    ctxClearHoverTimer();
+    const row=p.rows[i];const it=row&&row._item;
+    ctxHoverTimer=setTimeout(()=>{
+      ctxHoverTimer=null;
+      if(!ctxPanels[depth]||ctxPanels[depth].rows[i]!==row)return;
+      if(it&&hasChildren(it)&&!it.disabled)ctxOpenSubmenu(depth,i);
+      else ctxClosePanelsFrom(depth+1);
+    },SUBMENU_HOVER_MS);
+  });
+}
+
+// ctxKeyHandler is registered once, at module load, so it runs before the
+// feature modules' own Escape handlers: ArrowLeft/Escape inside a flyout must
+// close that one level, not the whole menu.
+function ctxKeyHandler(e){
+  if(!ctxPanels.length)return;
+  if(e.defaultPrevented)return;
+  const depth=ctxPanels.length-1;
+  const p=ctxPanels[depth];
+  const row=p.rows[p.sel];const it=row&&row._item;
+  const action=menuKeyAction(e.key,{children:hasChildren(it)&&!it?.disabled,depth});
+  if(!action)return;
+  // Tab keeps its meaning: focus leaves the menu, so the menu closes with it.
+  if(e.key==='Tab'){hideCtxMenu();return;}
+  e.preventDefault();e.stopImmediatePropagation();
+  switch(action){
+    case 'next':case 'prev':case 'first':case 'last':
+      p.sel=nextIndex(p.sel,p.rows.length,action);
+      ctxClosePanelsFrom(depth+1);
+      ctxPaintSel(depth,true);
+      break;
+    case 'open':ctxOpenSubmenu(depth,p.sel,{focus:true});break;
+    case 'close':
+      ctxClosePanelsFrom(depth);
+      if(ctxPanels.length)ctxPaintSel(ctxPanels.length-1,true);
+      break;
+    case 'activate':ctxRunRow(depth,p.sel);break;
+    case 'dismiss':hideCtxMenu({restoreFocus:true});break;
+  }
+}
+document.addEventListener('keydown',ctxKeyHandler);
+
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
+// An item may carry `children` (a flat item list, or [{head,items}] groups) to
+// become a cascading flyout instead of another root-level row.
 export function openCtxMenu(x,y,sections,trigger=null){
   const ctx=$('#ctxmenu');if(!ctx)return;
   closeAllUiSelects(); // ctx/Views menus and ui-select dropdowns are one mutually-exclusive group
   hideCtxMenu();
-  ctx._returnFocus=trigger||document.activeElement;
-  ctx._returnTrigger=trigger||null;
+  const secs=normalizeSections(sections);
+  if(!secs.length)return;
+  ctxReturnFocus=trigger||document.activeElement;
+  ctxReturnTrigger=trigger||null;
   if(trigger){trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','true');}
   ctx.setAttribute('role','menu');
-  const acts=[];let html='';
-  sections.forEach(sec=>{
-    const items=(sec.items||[]).filter(Boolean);
-    if(!items.length)return;
-    if(sec.head)html+=`<div class="ctx-head">${esc(sec.head)}</div>`;
-    items.forEach(it=>{
-      if(it.sep){html+='<div class="ctx-sep"></div>';return;}
-      const dStyle=it.danger?' style="color:var(--red)"':'';
-      const right=it.val!=null?`<span class="mono ctx-value"${dStyle}>${esc(it.val)}</span>`:'';
-      // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
-      // smuggled through it.label — the icon has to be its own field.
-      const glyph=it.icon?icon(it.icon):'';
-      html+=`<div class="ctx-item${right?' ctx-has-value':''}${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}</div>`;
-      acts.push(it.act);
-    });
-  });
-  if(!acts.length)return;
-  ctx.innerHTML=html;ctx._acts=acts;ctx._sel=0;
-  const items=ctx.querySelectorAll('.ctx-item');
-  items.forEach((el,i)=>el.classList.toggle('on',i===0));
-  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu({restoreFocus:true});if(fn)fn();});
+  const rows=ctxPaintPanel(ctx,secs);
+  if(!rows.length)return;
+  if(!ctx._ctxWired){ctxWirePanel(0,ctx);ctx._ctxWired=true;}
   // Measure this menu afresh: the previous menu's constrained width must not
   // squeeze the next menu, and wrapping must settle before height placement.
   ctx.style.left='0px';ctx.style.top='0px';ctx.style.width='max-content';ctx.style.maxHeight='none';ctx.classList.add('show');
   const anchor=trigger?.getBoundingClientRect?.()||{left:x,top:y,right:x,bottom:y};
-  const vv=window.visualViewport;
-  const viewport={width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+  const viewport=ctxViewport();
   ctx.style.width=Math.min(ctx.getBoundingClientRect().width,Math.max(0,viewport.width-16))+'px';
   const size=ctx.getBoundingClientRect();
   const placement=placeFloatingSurface(anchor,size.width,size.height,viewport);
   ctx.style.left=placement.left+'px';ctx.style.top=placement.top+'px';ctx.style.width=placement.width+'px';ctx.style.maxHeight=placement.maxHeight+'px';
-  const paintSel=(moveFocus=false)=>{items.forEach((el,i)=>{const on=i===ctx._sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});const cur=items[ctx._sel];if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}};
-  ctx._keyHandler=e=>{
-    if(!ctx.classList.contains('show'))return;
-    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel(true);}
-    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel(true);}
-    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu({restoreFocus:true});if(fn)fn();}
-    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu({restoreFocus:true});}
-    else if(e.key==='Tab')hideCtxMenu();
-  };
-  document.addEventListener('keydown',ctx._keyHandler);
-  paintSel();
-  if(items[0])items[0].focus();
+  ctxPanels=[{el:ctx,rows,sel:0,depth:0,parentRow:null}];
+  ctxPaintSel(0);
+  if(rows[0])rows[0].focus();
   ctx.dataset.motionSide=placement.side;
+}
+
+/* ---- universal right-click dispatcher ----
+   The native menu is suppressed app-wide, which takes Cut/Copy/Paste away from
+   every text field and leaves the views without a handler dead. This dispatcher
+   closes both holes: a feature handler that already rendered a menu calls
+   preventDefault() and wins; everything else lands on a text-field, selection or
+   workspace menu. Registered on document in the bubble phase, after load. */
+const ctxWorkspaceBuilders=[];
+// registerWorkspaceCtxSection lets a feature module contribute roots to the
+// fallback workspace menu without core.js importing it (which would cycle).
+// build(info) returns a section, an array of sections, or nothing.
+export function registerWorkspaceCtxSection(build){if(typeof build==='function')ctxWorkspaceBuilders.push(build);}
+
+const TEXT_INPUT_TYPES=new Set(['','text','search','url','tel','password','email','number']);
+// isTextField: an element whose own text the clipboard bridge can act on.
+export function isTextField(el){
+  if(!el||el.disabled)return false;
+  const tag=(el.tagName||'').toLowerCase();
+  if(tag==='textarea')return true;
+  if(tag==='input')return TEXT_INPUT_TYPES.has((el.getAttribute('type')||'').toLowerCase());
+  return !!el.isContentEditable;
+}
+
+function fieldValue(el){return el.isContentEditable?(el.innerText||''):String(el.value==null?'':el.value);}
+function fieldSelection(el){
+  if(el.isContentEditable){const s=window.getSelection?.();return s&&!s.isCollapsed&&el.contains(s.anchorNode)?String(s):'';}
+  const a=el.selectionStart,b=el.selectionEnd;
+  return a==null||b==null||a===b?'':fieldValue(el).slice(a,b);
+}
+function fieldEditable(el){return !el.readOnly&&!el.disabled&&(el.isContentEditable||'value'in el);}
+
+// replaceFieldSelection writes `text` over the selection (or at the caret) and
+// notifies the owning module through the same `input` event typing would fire.
+function replaceFieldSelection(el,text){
+  if(el.isContentEditable){
+    const s=window.getSelection?.();
+    if(s&&s.rangeCount&&el.contains(s.anchorNode)){
+      const r=s.getRangeAt(0);r.deleteContents();r.insertNode(document.createTextNode(text));
+      s.collapseToEnd();
+    }else el.append(document.createTextNode(text));
+  }else{
+    const a=el.selectionStart??el.value.length,b=el.selectionEnd??el.value.length;
+    el.value=el.value.slice(0,a)+text+el.value.slice(b);
+    el.selectionStart=a;el.selectionEnd=a+text.length;
+  }
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+
+async function clipboardWrite(text){
+  if(!text)return false;
+  try{await navigator.clipboard.writeText(text);return true;}
+  catch{toast('Clipboard write was blocked by the browser','error');return false;}
+}
+async function clipboardRead(){
+  try{return await navigator.clipboard.readText();}
+  catch{toast('Clipboard read was blocked — use the keyboard paste shortcut','error');return null;}
+}
+
+// runCodecOp transforms the selection (or the whole field) through /api/decode,
+// the same endpoint the Decoder and Repeater encode menus use.
+async function runCodecOp(el,op,label){
+  const whole=!fieldSelection(el);
+  const input=whole?fieldValue(el):fieldSelection(el);
+  if(!input){toast('nothing to '+label.toLowerCase());return;}
+  const before=fieldValue(el);
+  try{
+    const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input})});
+    if(r.error){toast(r.error);return;}
+    if(!el.isConnected||fieldValue(el)!==before)return; // the field moved on; discard
+    if(whole){
+      if(el.isContentEditable)el.textContent=r.output;
+      else el.value=r.output;
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    }else replaceFieldSelection(el,r.output);
+  }catch(e){toastError(label+' failed',e);}
+}
+
+function insertSnippet(el,id){
+  const spec=INSERT_SNIPPETS.find(s=>s.id===id);
+  if(!spec)return;
+  let text=spec.value;
+  if(id==='marker')text=PAYLOAD_MARKER;
+  else if(id==='uuid')text=randomUUID();
+  else if(id==='timestamp')text=new Date().toISOString();
+  replaceFieldSelection(el,text||'');
+}
+// randomUUID: crypto.randomUUID needs a secure context, so fall back to the
+// same v4 shape built from crypto.getRandomValues (never Math.random).
+function randomUUID(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const b=crypto.getRandomValues(new Uint8Array(16));
+  b[6]=(b[6]&0x0f)|0x40;b[8]=(b[8]&0x3f)|0x80;
+  const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
+
+// ctxDecoderOpeners lets scanner.js hand core.js the Decoder drawer without an
+// import cycle; the menu item is hidden until something registers one.
+let ctxDecoderOpener=null;
+export function registerCtxDecoder(open){if(typeof open==='function')ctxDecoderOpener=open;}
+let ctxHistorySearch=null;
+export function registerCtxHistorySearch(search){if(typeof search==='function')ctxHistorySearch=search;}
+
+// bindTextFieldActions turns the declarative model's action ids into real work.
+function bindTextFieldActions(sections,el){
+  const run=(action)=>{
+    if(action==='cut')return async()=>{const s=fieldSelection(el);if(await clipboardWrite(s))replaceFieldSelection(el,'');};
+    if(action==='copy')return()=>{clipboardWrite(fieldSelection(el));};
+    if(action==='paste')return async()=>{const t=await clipboardRead();if(t!=null)replaceFieldSelection(el,t);};
+    if(action==='select-all')return()=>{el.focus();if(el.isContentEditable)document.getSelection()?.selectAllChildren(el);else el.select?.();};
+    if(action==='clear')return()=>{if(el.isContentEditable)el.textContent='';else el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.focus();};
+    if(action==='decoder')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxDecoderOpener)ctxDecoderOpener(t);else copyText(t,'copied — open Decoder from Scanner');};
+    if(action==='search')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxHistorySearch)ctxHistorySearch(t);};
+    if(action&&action.startsWith('codec:')){const op=action.slice(6);const c=CODEC_OPS.find(x=>x.op===op);return()=>runCodecOp(el,op,c?c.label:'Transform');}
+    if(action&&action.startsWith('insert:'))return()=>insertSnippet(el,action.slice(7));
+    return null;
+  };
+  const walk=(items)=>items.map(it=>{
+    if(it.sep)return it;
+    const out={...it};
+    if(hasChildren(it))out.children=walk(it.children.filter(Boolean));
+    else if(it.action)out.act=run(it.action);
+    return out;
+  });
+  return sections.map(sec=>({head:sec.head,items:walk(sec.items||[])}));
+}
+
+// openTextFieldCtxMenu is the clipboard bridge: it gives a text field back the
+// Cut/Copy/Paste/Select-all the suppressed native menu took away, plus the
+// encoders and inserts a request editor actually needs.
+export function openTextFieldCtxMenu(e,el,opts={}){
+  const sel=fieldSelection(el);
+  const model=textFieldMenuModel({
+    selection:sel,
+    editable:fieldEditable(el),
+    empty:!fieldValue(el),
+    payloadMarker:!!opts.payloadMarker,
+    clipboardRead:typeof navigator!=='undefined'&&!!navigator.clipboard?.readText,
+  });
+  const sections=bindTextFieldActions(model,el);
+  if(sel)sections[0]={...sections[0],head:'SELECTION · '+shortLabel(sel,28)};
+  const extra=opts.sections||[];
+  openCtxMenu(e.clientX,e.clientY,[...extra,...sections]);
+}
+
+// openSelectionCtxMenu handles a live text selection outside a text field
+// (highlighted markdown, a rendered body, a table cell).
+function openSelectionCtxMenu(e,text){
+  const run=(action)=>{
+    if(action==='copy')return()=>copyText(text,'copied');
+    if(action==='decoder')return()=>{if(ctxDecoderOpener)ctxDecoderOpener(text);else copyText(text,'copied');};
+    if(action==='search')return()=>{if(ctxHistorySearch)ctxHistorySearch(text);};
+    if(action&&action.startsWith('codec:'))return()=>copyDecoded(text,action.slice(6));
+    return null;
+  };
+  const walk=(items)=>items.map(it=>{
+    const out={...it};
+    if(hasChildren(it))out.children=walk(it.children.filter(Boolean));
+    else if(it.action)out.act=run(it.action);
+    return out;
+  });
+  const model=selectionMenuModel({selection:text}).map(sec=>({head:sec.head+' · '+shortLabel(text,28),items:walk(sec.items)}));
+  openCtxMenu(e.clientX,e.clientY,model);
+}
+// copyDecoded transforms read-only text through /api/decode and copies the
+// result: a rendered pane is not editable, so the transform can only be handed
+// back as a value. Exported because the inspector panes need the same behaviour.
+export async function copyDecoded(text,op){
+  try{
+    const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:text})});
+    if(r.error){toast(r.error);return;}
+    copyText(r.output,'transformed and copied');
+  }catch(e){toastError('Transform failed',e);}
+}
+
+// openWorkspaceCtxMenu is the last resort: right-click on empty canvas, a feed,
+// a list with no menu of its own. It is never empty, so no view is a dead zone.
+function openWorkspaceCtxMenu(e){
+  const info={target:e.target};
+  const sections=[];
+  for(const build of ctxWorkspaceBuilders){
+    let out=null;
+    try{out=build(info);}catch{out=null;}
+    if(!out)continue;
+    if(Array.isArray(out))sections.push(...out);else sections.push(out);
+  }
+  if(!sections.length)return;
+  openCtxMenu(e.clientX,e.clientY,sections);
+}
+
+function documentSelectionText(){
+  const s=window.getSelection?.();
+  if(!s||s.isCollapsed)return '';
+  const t=String(s);
+  return t.trim()?t:'';
+}
+
+document.addEventListener('contextmenu',e=>{
+  // A feature handler that rendered its own menu already called preventDefault.
+  if(e.defaultPrevented)return;
+  const t=e.target instanceof Element?e.target:null;
+  const field=t&&t.closest('input,textarea,[contenteditable=""],[contenteditable="true"]');
+  if(field&&isTextField(field)){e.preventDefault();openTextFieldCtxMenu(e,field);return;}
+  const sel=documentSelectionText();
+  if(sel){e.preventDefault();openSelectionCtxMenu(e,sel);return;}
+  e.preventDefault();
+  openWorkspaceCtxMenu(e);
+});
+
+// formatHexDump returns a canonical hexdump (offset, 16 hex bytes, ASCII text).
+export function formatHexDump(strOrBytes, maxBytes=32768){
+  if(!strOrBytes) return '';
+  let bytes;
+  if(typeof strOrBytes === 'string'){
+    const encoder = new TextEncoder();
+    bytes = encoder.encode(strOrBytes);
+  } else {
+    bytes = new Uint8Array(strOrBytes);
+  }
+  const total = bytes.length;
+  const len = Math.min(total, maxBytes);
+  const lines = [];
+  for(let i = 0; i < len; i += 16){
+    const offset = i.toString(16).padStart(8, '0');
+    const chunk = bytes.subarray(i, Math.min(i + 16, len));
+    const h1 = [], h2 = [];
+    let ascii = '';
+    for(let j = 0; j < 16; j++){
+      if(j < chunk.length){
+        const b = chunk[j];
+        const hex = b.toString(16).padStart(2, '0');
+        if(j < 8) h1.push(hex); else h2.push(hex);
+        ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+      } else {
+        if(j < 8) h1.push('  '); else h2.push('  ');
+      }
+    }
+    lines.push(`${offset}  ${h1.join(' ')}  ${h2.join(' ')}  |${ascii}|`);
+  }
+  if(total > maxBytes){
+    lines.push(`... [truncated, ${fmtSize(total)} total]`);
+  }
+  return lines.join('\n');
 }
 
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
@@ -1311,10 +2114,19 @@ export function encodeKindLabel(s){
   return 'Decoded';
 }
 
+// The 4 call sites (Proxy req/res, flow-modal req/res) each own an empty
+// `<div class="sel-decode" id="…" hidden></div>` placeholder; this renders its
+// shared inner markup once here instead of hand-duplicating it at every call site.
+const SEL_DECODE_INNER_HTML=`<span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
+  <code class="sel-decode-out"></code>
+  <button type="button" class="btn sel-decode-copy" title="Copy decoded" aria-label="Copy decoded value">${icon('copy')}</button>
+  <button type="button" class="btn sel-decode-open" title="Open in Decoder">Decoder</button>
+  <button type="button" class="btn sel-decode-close" title="Dismiss" aria-label="Dismiss decoded value">${icon('close')}</button>`;
 // wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
 // (built-in smart) or matches a project message codec (when getContext provides flowId).
 export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
   if(!viewEl||!barEl)return;
+  barEl.innerHTML=SEL_DECODE_INNER_HTML;
   let timer=null,lastSel='',req=0;
   const hide=()=>{barEl.hidden=true;lastSel='';};
   const run=async()=>{
@@ -1355,7 +2167,11 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findExportModal','findDeletedModal','sessionInspectModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
+  // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
+  // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
+  'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet','collEnvSheet','collScriptsSheet','collImportSheet','collExportSheet','collRunSheet',
+  'collMatrixSheet','collCoverageSheet','collTimingSheet','collExampleDiffSheet'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];
@@ -1536,6 +2352,8 @@ export function openImageLightbox(src,caption){
   ensureImageLightbox();
   const{m,stage,img,cap}=imgLbEls();if(!m||!img||!src)return;
   if(cap)cap.textContent=caption||'Screenshot';
+  const cp=$('#imgLbCopy');
+  if(cp){const ok=isCopyableImageURL(src,location.origin);cp.hidden=!ok;cp.dataset.copySrc=ok?src:'';cp.dataset.copyName=caption||'';cp.setAttribute('aria-label','Copy image'+(caption?': '+caption:''));}
   img.removeAttribute('width');img.removeAttribute('height');
   img.alt=caption||'Screenshot';
   img.onload=()=>{requestAnimationFrame(imgLbFit);};
@@ -1641,6 +2459,108 @@ document.addEventListener('keydown',e=>{
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureImageLightbox);
 else ensureImageLightbox();
 
+// ---- Copy image (finding images and generated flow previews) ----
+// copyImageButton renders the shared compact "Copy image" control. src must be a
+// finding image or flow-preview URL (copy-image.js enforces that again on click);
+// what names the picture for assistive tech ("proof image", "flow #7 preview").
+export function copyImageButton(src, what, name, opts) {
+  const o = opts || {};
+  const label = o.ariaLabel || 'Copy image' + (what ? ': ' + what : '');
+  const extra = o.themeAware ? ' data-copy-theme' : '';
+  return `<button type="button" class="${escAttr(o.className || 'btn xs')} js-copy-image" data-copy-src="${escAttr(src)}"${extra} data-copy-name="${escAttr(name || '')}" aria-label="${escAttr(label)}" title="Copy image to the clipboard (paste into Notion or any editor)">${icon('copy')} ${esc(o.text || 'Copy image')}</button>`;
+}
+// flowCopyPngButton renders the History "Copy as PNG" control for one flow: the
+// server-rendered request+response preview, in the UI's active theme (re-read on
+// click, so a theme switch after render still applies).
+// opts: {side: both|req|res, layout: vertical|horizontal, theme: light|dark,
+// text, ariaLabel}. Without an explicit theme the control follows the UI theme
+// and re-reads it on click, so a theme switch after render still applies.
+export function flowCopyPngButton(id, className, opts) {
+  const o = opts || {};
+  const side = o.side || 'both';
+  const what = side === 'req' ? 'request' : side === 'res' ? 'response' : 'request and response';
+  const name = 'flow-' + id + '-preview' + (side === 'both' ? '' : '-' + side) + (o.layout === 'horizontal' ? '-side-by-side' : '');
+  return copyImageButton(flowPreviewPngURL(id, { side, layout: o.layout, theme: o.theme || activeFlowTheme(document.documentElement) }), '', name, {
+    className: className || 'btn btn-compact',
+    text: o.text != null ? o.text : 'Copy as PNG',
+    ariaLabel: o.ariaLabel || ('Copy flow #' + id + ' ' + what + ' as PNG'),
+    themeAware: !o.theme,
+  });
+}
+// mountFlowCopyPng paints (or clears, when id is null) the Copy as PNG control into a mount element.
+export function mountFlowCopyPng(el, id, className, opts) {
+  if (el) el.innerHTML = id == null ? '' : flowCopyPngButton(id, className, opts);
+}
+// copyPreviewPng copies a server-rendered PNG to the clipboard without a button
+// behind it, so a context-menu item can do it. It must start the clipboard write
+// inside the activating gesture, which is why it calls copyImage() directly.
+export function copyPreviewPng(src, name) {
+  const run = copyImage(src);
+  run.result.then(res => {
+    if (res.ok) { toast('Image copied', 'success'); return; }
+    const t = toast(copyFailureMessage(res.reason), 'error');
+    if (!t) return;
+    run.blob.then(blob => {
+      const dl = document.createElement('button');
+      dl.type = 'button';
+      dl.className = 'btn xs';
+      dl.setAttribute('aria-label', 'Download image as PNG');
+      dl.innerHTML = icon('download') + ' Download';
+      dl.addEventListener('click', () => { void saveFile(blob, copyImageFileName(name), 'image/png'); });
+      t.insertBefore(dl, t.querySelector('.toast-dismiss'));
+    }, () => {});
+  });
+}
+// copyFlowPng copies one flow's rendered preview. opts matches flowCopyPngButton.
+export function copyFlowPng(id, opts) {
+  const o = opts || {};
+  const side = o.side || 'both';
+  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, mask: o.mask, theme: o.theme || activeFlowTheme(document.documentElement) }),
+    'flow-' + id + '-' + side + (o.mask ? '-masked' : '') + '-preview');
+}
+// flowPngMenuItems are the "Copy as PNG" rows every flow menu shares, so the
+// Proxy row menu, the inspector menu and the Repeater menu offer the same three.
+export function flowPngMenuItems(id) {
+  if (!(Number(id) > 0)) return [];
+  return [
+    { label: 'Flow as PNG · both stacked', icon: 'image', act: () => copyFlowPng(id) },
+    { label: 'Request as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'req' }) },
+    { label: 'Response as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'res' }) },
+    { label: 'Flow as PNG · side by side', icon: 'image', act: () => copyFlowPng(id, { layout: 'horizontal' }) },
+  ];
+}
+// The click handler starts the clipboard write synchronously (Safari keeps the
+// user gesture only for a ClipboardItem built from a promise inside the handler).
+export function copyImageFromButton(btn) {
+  let src = btn.dataset.copySrc || '';
+  if (btn.hasAttribute('data-copy-theme')) src = src.replace(/([?&]theme=)\w+/, '$1' + activeFlowTheme(document.documentElement));
+  if (btn.getAttribute('aria-busy') === 'true') return;
+  btn.setAttribute('aria-busy', 'true');
+  const run = copyImage(src);
+  run.result.then(res => {
+    if (res.ok) { toast('Image copied', 'success'); return; }
+    const t = toast(copyFailureMessage(res.reason), 'error');
+    if (!t) return;
+    // Offer Download whenever the picture itself loaded (everything but fetch/blocked).
+    run.blob.then(blob => {
+      const dl = document.createElement('button');
+      dl.type = 'button';
+      dl.className = 'btn xs';
+      dl.setAttribute('aria-label', 'Download image as PNG');
+      dl.innerHTML = icon('download') + ' Download';
+      dl.addEventListener('click', () => { void saveFile(blob, copyImageFileName(btn.dataset.copyName), 'image/png'); });
+      t.insertBefore(dl, t.querySelector('.toast-dismiss'));
+    }, () => {});
+  }).finally(() => btn.removeAttribute('aria-busy'));
+}
+document.addEventListener('click', e => {
+  const btn = e.target instanceof Element ? e.target.closest('.js-copy-image') : null;
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  copyImageFromButton(btn);
+});
+
 let activePromptFinish=null;
 let activeConfirmFinish=null;
 
@@ -1703,7 +2623,8 @@ export function renderMD(src){
   s=s.replace(/\b(flow\s*#?\s*)(\d+)\b/gi,(m,label,id)=>pushFlow(id,label+id,false));
   s=s.replace(/^---+\s*$/gm,'<hr class="md-hr">');
   s=s.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>').replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>').replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>');
-  s=s.replace(/<(think|thought|reasoning)>\r?\n?([\s\S]*?)<\/\1>/gi,(m,tag,inner)=>{
+  // esc() ran first, so the tags arrive as &lt;think&gt; — match that escaped form.
+  s=s.replace(/&lt;(think|thought|reasoning)&gt;\r?\n?([\s\S]*?)&lt;\/\1&gt;/gi,(m,tag,inner)=>{
     const title = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
     return '<details class="md-think"><summary>'+title+'</summary><div class="md-think-body">'+inner.trim()+'</div></details>';
   });

@@ -82,6 +82,7 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  };
  ` + strings.ReplaceAll(workspace, "export ", "") + strings.ReplaceAll(source, "export ", "") + `
  const findingWriteQueues=new Map(),cvssApplyDraftTokens=new Map(),cvssPreviewDrafts=createFindingDraftStore(),findingDrafts=createFindingDraftStore();
+ const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
  const findings=[{id:1,cvss:'',severity:'Info'},{id:2,cvss:'B',severity:'Low'}];
  let bodyFindingId=1,selFinding=1,findingWritesInFlight=0,bodySavesInFlight=0,findEditMode=true,renders=0,guard;
  const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingAttachPending=new Set(),findingDeletesPending=new Set(),findingEvidenceWrites=new Map();
@@ -89,7 +90,7 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  const controls={findSaveState:control(''),findSaveRecovery:control(''),findSaveRetry:control(''),findToggleEdit:control('')};
  const $=s=>controls[s.slice(1)];
  const loadFindings=async()=>{},refreshDeferredFindingDetail=()=>{},renderFindingDetail=()=>renders++,toast=()=>{},captureActiveFindingTextEditor=()=>{},flushPendingBodySave=async()=>{},registerProjectSwitchGuard=fn=>guard=fn;
- ` + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "async function exportFindingsReport(") + section("registerProjectSwitchGuard(", "\n") + `
+ ` + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "export function flowFindings(") + section("registerProjectSwitchGuard(", "\n") + `
  const bindDone=()=>{const f=findings[0],edit=true;
  ` + section("  const te = $('#findToggleEdit');", "  const blurPatch") + `
  };

@@ -60,7 +60,9 @@ go install github.com/Veyal/interseptor/cmd/interseptor@latest
 interseptor
 ```
 
-Package managers (after the tap/bucket is seeded for a release — see [packaging/](packaging/README.md)):
+Package managers are **not currently current**: the Homebrew tap is pinned to v2.9.0 and the
+automated publish is disabled, so these install an old build. Use `go install` or a release binary
+until the tap and bucket are re-seeded (see [packaging/](packaging/README.md)):
 
 ```bash
 brew install Veyal/tap/interseptor
@@ -77,15 +79,32 @@ proxy, trust the CA from **Settings** to decrypt HTTPS, and you're intersep-ing.
 Prebuilt binaries, `interseptor update`, building from source, environment variables, and running
 several projects at once are all in **[Getting started](docs/getting-started.md)**.
 
+## For AI agents
+
+Give any AI agent the URL below and it knows how to install Interseptor, connect over MCP or REST, stay
+in scope, and write findings in one consistent format:
+
+```text
+Read https://veyal.github.io/interseptor/llms-full.txt and follow it.
+```
+
+The guide lives in [docs/agents.md](docs/agents.md) (published as
+[Interseptor for AI agents](https://veyal.github.io/interseptor/ai-agents/)); `llms.txt` and
+`llms-full.txt` are generated from the docs by `go run ./tools/docscheck generate`.
+
 ## Docs
 
 | | |
 |---|---|
 | **[Getting started](docs/getting-started.md)** | Install, quick start, HTTPS setup, configuration, multi-project |
-| **[Full feature list](docs/FEATURES.md)** | Every capability, in detail |
+| **[Interseptor for AI agents](docs/agents.md)** | One URL for agents: rules, install, MCP and REST setup, workflow, and the finding-writing contract |
+| **[Workspace guide](docs/workspace.md)** | Menus, captured response views, session inspection, Notes, Activity, Decoder |
+| **[Settings](docs/settings.md)** | Section map, search, saved changes, and project-switch recovery |
+| **[Full feature list](docs/FEATURES.md)** | Feature overview and guide links |
 | **[Proxy, TLS & networking](docs/proxy-and-tls.md)** | Listener auth, the `interseptor` browser prompt, CA trust, pinning, upstream proxies |
 | **[Mobile testing](docs/mobile-testing.md)** | Android/iOS USB, Wi-Fi, CA trust, and cleanup |
-| **[Findings & reporting](docs/findings-and-reporting.md)** | Pentester writing standard, evidence workflow, status, export |
+| **[Findings & reporting](docs/findings-and-reporting.md)** | Reading and editing, evidence, revisions, readiness, report export |
+| **[Collections](docs/collections.md)** | Postman migration, variables, scripts, runner, CI with JUnit, importers |
 | **[Projects & data](docs/projects-and-data.md)** | Storage, project boundaries, export formats, retention |
 | **[API & MCP](docs/api-and-mcp.md)** | Drive Interseptor from an AI agent or a script |
 | **[CLI reference](docs/cli-reference.md)** | Commands, flags, environment variables, checks, rules, vault |

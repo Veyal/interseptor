@@ -1,0 +1,66 @@
+/* panel-misc.css — Map, Notes and Activity (WP11). Loaded after app.css, so equal
+   specificity rules here win. Colour is never the only signal: every status here
+   carries an icon or text as well. This file animates nothing (only transform and
+   opacity may ever animate), so the global reduced-motion block has nothing to
+   cover. Breakpoints follow workbench.css: 1100 side-by-side Notes, 720 phone. */
+
+/* ---- Activity: timeline ---- */
+.act-chips{display:flex;flex-wrap:wrap;gap:var(--sp-2);padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--line)}
+.act-chip{display:inline-flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);padding:0 var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg);font:600 var(--fs-sm)/1 var(--ui);cursor:pointer}
+.act-chip:hover{background:var(--bg3)}
+.act-chip.on{border-width:2px;border-color:var(--accent);background:var(--accentDim)}
+.act-chip-n{font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)}
+.act-attention{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--rd-gap);background:var(--bg2);font-size:var(--fs-sm)}
+.act-attention[hidden]{display:none}
+.act-attention strong{color:var(--rd-gap)}
+.act-attention span{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
+.act-new-pill{align-self:center;margin:var(--sp-2) 0;border-radius:var(--r-pill);font-weight:700}
+.act-new-pill[hidden]{display:none}
+.act-day-h{position:sticky;top:0;z-index:var(--z-sticky);margin:0;padding:var(--sp-2) var(--sp-4);background:var(--bg1);border-bottom:1px solid var(--line2);font-size:var(--fs-sm);font-weight:700;color:var(--fg2)}
+.act-day-n{margin-left:var(--sp-2);font-family:var(--mono);font-size:var(--fs-xs);font-weight:400;color:var(--fg3)}
+.act-actor{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none;padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:700;color:var(--fg2)}
+.act-actor .icon{width:12px;height:12px}
+.act-cat{flex:none;font-size:var(--fs-xs);color:var(--fg3)}
+.act-target{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none;font-size:var(--fs-xs);color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.act-target .icon{width:12px;height:12px}
+.act-outcome{flex:none;font-size:var(--fs-xs);font-weight:700}
+.act-outcome.is-ok{color:var(--fg2)}
+.act-outcome.is-fail{color:var(--rd-block)}
+@media (max-width:720px){
+  .act-chips{padding-inline:var(--sp-4)}
+  .act-tool{min-width:0}
+  .act-sum{max-width:100%;flex:1 1 100%;white-space:normal;overflow-wrap:anywhere}
+}
+
+/* ---- Notes: status text, reference chips, promote, side-by-side layout ---- */
+.notes-status[data-state="saving"],.notes-status[data-state="saved"],.notes-status[data-state="dirty"],.notes-status[data-state="error"]{opacity:1}
+.notes-status[data-state="error"]{color:var(--rd-block)}
+.note-chip{display:inline-flex;align-items:center;gap:var(--sp-1);padding:0 var(--sp-2);border:1px solid var(--accent);border-radius:var(--r-pill);background:var(--accentDim);color:var(--fg);font:600 var(--fs-sm)/1.5 var(--mono);cursor:pointer;vertical-align:baseline}
+.note-chip:hover{background:var(--bg3)}
+.note-chip .icon{width:12px;height:12px}
+#panel-notes.notes-wide.active{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
+#panel-notes.notes-wide>.toolbar,#panel-notes.notes-wide>#notesLoadState{grid-column:1/-1}
+#panel-notes.notes-wide #notesSeg{display:none}
+#panel-notes.notes-wide #notesEdit{display:block!important;grid-column:1;min-height:0;border-right:1px solid var(--line)}
+#panel-notes.notes-wide #notesPreview,#panel-notes.notes-wide #notesPreview.u-hidden{display:block!important;grid-column:2;min-height:0;overflow:auto}
+
+/* ---- Map: coverage, auth state and the evidence column ---- */
+.map-coverage[hidden],#mapUnlinked[hidden]{display:none}
+#mapUnlinked.on{border-color:var(--accent);background:var(--accentDim)}
+.map-cov{display:inline-flex;align-items:center;gap:var(--sp-2);flex:none;font-family:var(--ui);font-size:var(--fs-xs);color:var(--fg2)}
+.map-auth,.map-pip{display:inline-flex;align-items:center;gap:var(--sp-1);white-space:nowrap}
+.map-auth .icon,.map-pip .icon{width:12px;height:12px}
+.map-auth.is-auth{color:var(--rd-gap);font-weight:700}
+.map-pip.is-on{color:var(--rd-pass);font-weight:700}
+.map-pip:not(.is-on){color:var(--fg3)}
+.map-th-evidence{width:150px}
+.map-tbl-cov{white-space:nowrap}
+.map-ep .map-cov{margin-left:auto}
+@media (max-width:720px){
+  .map-th-evidence,.map-tbl-cov{display:none}
+  .map-ep{flex-wrap:wrap;min-height:var(--hit-min)}
+  .map-ep .map-cov{flex-basis:100%;margin-left:0}
+}
+@media (pointer:coarse){
+  .map-ep,.map-tbl tr{min-height:44px}
+}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -13,12 +14,29 @@ type FindingImageProvenance struct {
 	Ingestion      string `json:"ingestion"`
 	OriginalSource string `json:"originalSource"`
 	IngestedTS     int64  `json:"ingestedTs,omitempty"`
+	SourceRef      string `json:"sourceRef,omitempty"`
 	ClassifiedBy   string `json:"classifiedBy,omitempty"`
 	ClassifiedTS   int64  `json:"classifiedTs,omitempty"`
 }
 
 func generatedFindingImage(source string) bool {
-	return source == "flow_preview" || source == "generated_image"
+	return source == "flow_preview" || source == "generated_image" || source == "evidence_render"
+}
+
+// maxSourceRefLen bounds a sourceRef such as "intruder:<runId>".
+const maxSourceRefLen = 80
+
+// validateSourceRef accepts empty or a short [a-z0-9:_-] token.
+func validateSourceRef(ref string) error {
+	if len(ref) > maxSourceRefLen {
+		return fmt.Errorf("%w: sourceRef exceeds %d characters", ErrInvalidFinding, maxSourceRefLen)
+	}
+	for _, c := range ref {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == ':' || c == '_' || c == '-') {
+			return fmt.Errorf("%w: sourceRef must match [a-z0-9:_-]", ErrInvalidFinding)
+		}
+	}
+	return nil
 }
 func capturedFindingImage(source string) bool {
 	return source == "browser_screenshot" || source == "device_screenshot"
@@ -73,7 +91,12 @@ func stampFindingImageProvenance(tx *sql.Tx, oldBody, newBody string, change Fin
 		}
 		if generatedFindingImage(p.OriginalSource) {
 			b.Source = p.OriginalSource
+			// sourceRef is immutable on generated images, like sourceFlowId.
+			if existed {
+				b.SourceRef = prev.SourceRef
+			}
 		}
+		p.SourceRef = b.SourceRef
 		if existed && prev.Provenance != nil && b.Source == prev.Source {
 			p.ClassifiedBy = prev.Provenance.ClassifiedBy
 			p.ClassifiedTS = prev.Provenance.ClassifiedTS
@@ -88,6 +111,43 @@ func stampFindingImageProvenance(tx *sql.Tx, oldBody, newBody string, change Fin
 	}
 	data, err := json.Marshal(blocks)
 	return string(data), err
+}
+
+// ClassifyFindingImage lets a reviewer relabel an already-attached image (for
+// example an operator upload that is really a browser capture) without
+// re-uploading it. Ingestion metadata is preserved; the classifier is recorded.
+// Generated images can never be relabelled as captures.
+func (s *Store) ClassifyFindingImage(findingID int64, hash, source string, change FindingChange) error {
+	source = normalizeFindingBlockSource(source)
+	switch source {
+	case "browser_screenshot", "device_screenshot", "operator_upload", "tool_output", "other":
+	default:
+		return fmt.Errorf("%w: image source must be browser_screenshot, device_screenshot, operator_upload, tool_output or other", ErrInvalidFinding)
+	}
+	f, err := s.GetFinding(findingID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range f.Blocks {
+		b := &f.Blocks[i]
+		if b.Type != "image" || b.Hash != hash {
+			continue
+		}
+		if generatedFindingImage(b.Source) || b.Provenance != nil && generatedFindingImage(b.Provenance.OriginalSource) {
+			return fmt.Errorf("%w: generated images cannot be reclassified", ErrInvalidFinding)
+		}
+		b.Source = source
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("%w: image not attached to finding", ErrInvalidFinding)
+	}
+	body, err := MarshalFindingBlocks(f.Blocks)
+	if err != nil {
+		return err
+	}
+	return s.UpdateFindingCanonical(findingID, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, FindingMetadataPatch{Change: change})
 }
 
 // Missing image mappings must agree with the referenced evidence blocks.

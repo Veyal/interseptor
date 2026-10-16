@@ -349,3 +349,23 @@ for file in internal/control/ui/js/*.js; do node --check "$file"; done
 ```
 
 The branch is additionally required to pass the no-mistakes review and repository CI before merge.
+
+## Boot smoke test (run before releasing UI changes)
+
+`scripts/ui_boot_smoke.mjs` is a fast, dependency-free check that the embedded UI still boots.
+It drives a headless Chrome over the DevTools protocol (Node 22+, global `fetch`/`WebSocket`),
+loads the given URL, records uncaught exceptions, console errors and HTTP responses of 400 or
+more, clicks every `[data-tab]`, and exits non-zero on any uncaught exception or when
+`#workspaceHydrationStatus` carries `data-workspace-boot-failed` ("Workspace scripts could not
+start in this browser"). It catches boot-time `ReferenceError`s that the Go and `node --test`
+suites cannot see, such as the one that shipped in v2.4.1 and was fixed in v2.4.2.
+
+```bash
+CGO_ENABLED=0 go build -o /tmp/isp ./cmd/interseptor
+/tmp/isp --control-port 19966 --proxy-port 18080 --data-dir "$(mktemp -d)" &
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" --no-first-run about:blank &
+node scripts/ui_boot_smoke.mjs http://127.0.0.1:19966/ --cdp http://127.0.0.1:9333
+```
+
+Always use a throwaway `--data-dir`. The script needs Chrome, so it is not part of CI.

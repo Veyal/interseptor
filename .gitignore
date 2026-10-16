@@ -30,6 +30,7 @@ scripts/fix-findings-*.ps1
 docs/SPEC-agent-pentest*.md
 *-bounty.ps1
 *.har
+!internal/collimport/har/testdata/*.har
 
 # CI workflows live in .github/workflows/ (commit with git add -f if needed).
 
@@ -44,3 +45,6 @@ docs/SPEC-agent-pentest*.md
 
 # Playwright MCP local output (console logs, browser profile) — machine-local.
 .playwright-mcp/
+
+# Documentation site build output (go run ./tools/docscheck build _site).
+/_site/

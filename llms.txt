@@ -1,0 +1,39 @@
+# Interseptor
+
+> Interseptor is a single-binary HTTP/HTTPS intercepting proxy and security-testing toolkit. AI agents drive the same engine as the web UI through an MCP server (stdio and Streamable HTTP) and a REST/SSE API. These pages explain how to install it, connect, follow the rules, and file findings in one consistent format.
+
+Fetch [llms-full.txt](https://veyal.github.io/interseptor/llms-full.txt) first: it is a single file containing the agent guide, the finding-writing contract, and the API and MCP references. Authorized testing only; read the hard rules before sending any request.
+
+## Agent guide
+
+- [Complete guide as one text file](https://veyal.github.io/interseptor/llms-full.txt): agent guide, finding contract, API and MCP reference
+- [Interseptor for AI agents](https://veyal.github.io/interseptor/ai-agents/): Rules, install, MCP and REST setup, workflow, and the finding-writing contract for AI agents
+
+## Core guides
+
+- [Getting started](https://veyal.github.io/interseptor/getting-started/): Install, start, and configure Interseptor
+- [Workspace guide](https://veyal.github.io/interseptor/workspace/): Tour of the workspace menus and response views
+- [Findings and reporting](https://veyal.github.io/interseptor/findings-and-reporting/): Finding envelope, evidence rules, readiness gates, and report export
+- [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/): MCP server, REST API, collections API, and finding endpoints
+- [MCP cookbook](https://veyal.github.io/interseptor/mcp-cookbook/): Task recipes for external agents using MCP tools
+- [Collections](https://veyal.github.io/interseptor/collections/): Request collections, environments, scripts, trust, and the runner
+- [Proxy, TLS, and networking](https://veyal.github.io/interseptor/proxy-and-tls/): Proxy listeners, CA trust, TLS interception, and upstream chaining
+- [History search](https://veyal.github.io/interseptor/history-search/): History filters, Anywhere search, and saved Starlark searches
+- [Projects and data](https://veyal.github.io/interseptor/projects-and-data/): Projects, imports, exports, archives, and retention
+- [Engagement close-out](https://veyal.github.io/interseptor/engagement-closeout/): Checklist for final delivery and cleanup
+
+## Optional
+
+- [Architecture](https://veyal.github.io/interseptor/architecture/): Architecture and security model
+- [Benchmarks](https://veyal.github.io/interseptor/benchmarks/): Performance benchmarks
+- [CLI reference](https://veyal.github.io/interseptor/cli-reference/): Command-line flags and subcommands
+- [Content discovery](https://veyal.github.io/interseptor/content-discovery/): Forced browsing through the proxy
+- [Custom checks](https://veyal.github.io/interseptor/custom-checks/): Authoring passive Starlark scanner checks
+- [Extensions](https://veyal.github.io/interseptor/extensions/): Extension points
+- [HTTP/2](https://veyal.github.io/interseptor/http2/): HTTP/2 behavior
+- [Message codecs](https://veyal.github.io/interseptor/message-codecs/): App-layer encrypt and decrypt codecs for captured bodies
+- [Mobile testing](https://veyal.github.io/interseptor/mobile-testing/): Android and iOS interception setup
+- [Rule packs](https://veyal.github.io/interseptor/rule-packs/): Building, installing, and signing rule packs
+- [Settings](https://veyal.github.io/interseptor/settings/): Where each setting lives
+- [Troubleshooting](https://veyal.github.io/interseptor/troubleshooting/): Connection, certificate, rendering, and update problems
+- [Project vault](https://veyal.github.io/interseptor/vault/): Project vault for archive backups

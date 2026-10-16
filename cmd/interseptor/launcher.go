@@ -532,8 +532,8 @@ async function refresh(){
       '<div class="meta">MCP <code>'+esc(it.mcpEnvHint)+'</code></div>'
     ) : '';
     const actions = it.running
-      ? '<a class="btn" href="'+esc(it.uiUrl)+'" target="_blank">Open</a><button onclick="stopProject(\''+esc(it.project)+'\')">Stop</button>'
-      : '<button onclick="startProject(\''+esc(it.project)+'\')">Start</button>';
+      ? '<a class="btn" href="'+esc(it.uiUrl)+'" target="_blank">Open</a><button data-action="stop" data-project="'+esc(it.project)+'">Stop</button>'
+      : '<button data-action="start" data-project="'+esc(it.project)+'">Start</button>';
     return '<div class="card"><h2>'+esc(it.project)+'</h2>'+pill+meta+'<div class="row">'+actions+'</div></div>';
   }).join('');
 }
@@ -549,5 +549,14 @@ async function stopProject(name){
 }
 refresh();
 setInterval(refresh, 3000);
+// Delegated buttons: project names never enter inline JS — inside an HTML
+// attribute esc()'s &#39; decodes back to a quote before the JS engine parses
+// the handler, so a crafted project name could break out of the string.
+document.getElementById('grid').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button[data-action]');
+  if(!btn) return;
+  if(btn.dataset.action === 'stop') stopProject(btn.dataset.project);
+  else startProject(btn.dataset.project);
+});
 </script>
 </body></html>`

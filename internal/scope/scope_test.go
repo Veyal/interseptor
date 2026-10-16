@@ -171,3 +171,27 @@ func TestValidateRuleRejectsInvalidRegex(t *testing.T) {
 		t.Fatalf("valid patterns should pass: %v", err)
 	}
 }
+
+// URLInScope applies the full rule (host, path, scheme, port) to a
+// destination, unlike HostInScope which only compares hosts.
+func TestURLInScopeHonoursPortSchemeAndPath(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "api.example.com", Port: 8443, Scheme: "https", Path: "/v1"}})
+	cases := []struct {
+		scheme, host string
+		port         int
+		path         string
+		want         bool
+	}{
+		{"https", "api.example.com", 8443, "/v1/orders", true},
+		{"https", "api.example.com", 9000, "/v1/orders", false},
+		{"http", "api.example.com", 8443, "/v1/orders", false},
+		{"https", "api.example.com", 8443, "/admin", false},
+		{"https", "other.example.com", 8443, "/v1", false},
+	}
+	for _, c := range cases {
+		if got := e.URLInScope(c.scheme, c.host, c.port, c.path); got != c.want {
+			t.Errorf("%s://%s:%d%s = %v, want %v", c.scheme, c.host, c.port, c.path, got, c.want)
+		}
+	}
+}

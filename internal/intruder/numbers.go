@@ -105,21 +105,12 @@ func expandRandom(spec NumbersSpec, r *rand.Rand) ([]string, error) {
 			}
 		}
 	} else {
-		// Full integer range — materialize only if unique needs a pool, else sample.
 		span := hi - lo + 1
 		if span <= 0 {
 			return nil, fmt.Errorf("numbers range is empty")
 		}
-		if spec.Unique {
-			if span > int64(maxRequests) {
-				span = int64(maxRequests)
-			}
-			lattice = make([]int64, 0, span)
-			for i := int64(0); i < span; i++ {
-				lattice = append(lattice, lo+i)
-			}
-		}
 	}
+
 	n := spec.Count
 	if n > maxRequests {
 		n = maxRequests
@@ -128,33 +119,58 @@ func expandRandom(spec NumbersSpec, r *rand.Rand) ([]string, error) {
 		r = rand.New(rand.NewSource(rand.Int63()))
 	}
 	out := make([]string, 0, n)
+
 	if spec.Unique {
-		if len(lattice) == 0 {
-			// Non-stepped unique: build pool up to maxRequests from range.
-			span := hi - lo + 1
-			if span > int64(maxRequests) {
-				span = int64(maxRequests)
+		if len(lattice) > 0 {
+			if n > len(lattice) {
+				n = len(lattice)
 			}
-			lattice = make([]int64, span)
+			perm := r.Perm(len(lattice))
+			for i := 0; i < n; i++ {
+				out = append(out, formatNumber(lattice[perm[i]], spec.Pad))
+			}
+			return out, nil
+		}
+
+		span := hi - lo + 1
+		if span <= 0 {
+			return nil, fmt.Errorf("numbers range is empty")
+		}
+		if int64(n) > span {
+			n = int(span)
+		}
+		if span <= int64(maxRequests) {
+			pool := make([]int64, span)
 			for i := int64(0); i < span; i++ {
-				lattice[i] = lo + i
+				pool[i] = lo + i
 			}
+			perm := r.Perm(len(pool))
+			for i := 0; i < n; i++ {
+				out = append(out, formatNumber(pool[perm[i]], spec.Pad))
+			}
+			return out, nil
 		}
-		if n > len(lattice) {
-			n = len(lattice)
-		}
-		perm := r.Perm(len(lattice))
-		for i := 0; i < n; i++ {
-			out = append(out, formatNumber(lattice[perm[i]], spec.Pad))
+
+		seen := make(map[int64]struct{}, n)
+		for len(out) < n {
+			v := lo + r.Int63n(span)
+			if _, ok := seen[v]; !ok {
+				seen[v] = struct{}{}
+				out = append(out, formatNumber(v, spec.Pad))
+			}
 		}
 		return out, nil
 	}
+
 	for i := 0; i < n; i++ {
 		var v int64
 		if len(lattice) > 0 {
 			v = lattice[r.Intn(len(lattice))]
 		} else {
 			span := hi - lo + 1
+			if span <= 0 {
+				return nil, fmt.Errorf("numbers range is empty")
+			}
 			v = lo + r.Int63n(span)
 		}
 		out = append(out, formatNumber(v, spec.Pad))

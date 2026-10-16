@@ -1,0 +1,63 @@
+/* panel-tools.css — Repeater and Intruder (WP9). Owned by the tools package.
+   Breakpoints: 900 (Intruder stepper), 720 (Repeater Request|Response). No
+   transitions or animations live here, so reduced motion needs nothing extra;
+   state is always conveyed by text or an icon as well as colour. */
+
+/* ---- shared ---- */
+.rep-diff{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg1)}
+.rep-diff[hidden],#repResView[hidden],#intrResults[hidden],.intr-head[hidden]{display:none}
+.rep-diff-head{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)}
+.rep-diff-head strong{margin-right:auto;font-size:var(--fs-sm)}
+.rep-diff-note{flex:none;margin:0;padding:var(--sp-1) var(--sp-3)}
+.rep-diff-body{flex:1;min-height:0;overflow:auto}
+#repAttach,#repProof,#repDiffBtn,#repCopyAs,#intrAttach,#intrDiffBtn,
+.rep-diff-head .btn,.intr-confirm .btn,.rep-phone-seg button,.intr-stepper button{min-height:var(--hit-min)}
+
+/* ---- Repeater ---- */
+.rep-attached{display:inline-flex;align-items:center;gap:var(--sp-1);height:24px;padding:0 var(--sp-2);border:1px solid var(--rd-pass);border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;color:var(--fg)}
+.rep-attached[hidden]{display:none}
+.rep-attached .icon{color:var(--rd-pass)}
+.rep-phone-seg{display:none}
+
+/* ---- Intruder ---- */
+.intr-stepper{display:none}
+.intr-config>textarea{flex:1;min-height:120px}
+.intr-payload-pane{flex:1}
+.intr-payload-pane .intr-payloads{flex:1;height:auto;min-height:130px}
+.intr-progbar{display:none!important}
+.intr-summary{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-3);border-bottom:1px solid var(--line);background:var(--bg1)}
+.intr-summary[hidden]{display:none}
+.intr-progress{width:160px;max-width:100%;height:12px;accent-color:var(--accent)}
+.intr-summary-text{min-width:0;font-size:var(--fs-xs);color:var(--fg2);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.intr-confirm{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--rd-gap);background:var(--bg2);font-size:var(--fs-sm)}
+.intr-confirm[hidden]{display:none}
+.intr-row .pl{display:flex;align-items:center;gap:var(--sp-1);min-width:0}
+.intr-row .pl-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.intr-row .intr-id{color:var(--fg3)}
+.intr-chip{--chip-c:var(--fg3);display:inline-flex;align-items:center;gap:3px;flex:none;height:18px;padding:0 var(--sp-1);border:1px solid var(--chip-c);border-radius:var(--r-pill);background:var(--bg3);color:var(--fg);font-size:var(--fs-xs);font-weight:600;line-height:1;white-space:nowrap}
+.intr-chip .icon{width:11px;height:11px;color:var(--chip-c)}
+.intr-chip-error,.intr-chip-status{--chip-c:var(--rd-block)}
+.intr-chip-length,.intr-chip-time,.intr-chip-flag{--chip-c:var(--rd-gap)}
+.intr-chip-match{--chip-c:var(--rd-pass)}
+
+/* ---- Intruder: stepper below 900px (three columns above) ---- */
+@media (max-width:899px){
+  .intr-stepper{display:flex;margin:var(--sp-2) var(--sp-4)}
+  .intr-stepper button{flex:1}
+  .intr-work[data-step="positions"]>.pane:not([data-step-pane="positions"]),
+  .intr-work[data-step="payloads"]>.pane:not([data-step-pane="payloads"]),
+  .intr-work[data-step="results"]>.pane:not([data-step-pane="results"]){display:none}
+}
+
+/* ---- phone: Repeater Request | Response, sticky send row ---- */
+@media (max-width:720px){
+  .rep-phone-seg{display:flex;margin:var(--sp-2) var(--sp-4)}
+  .rep-phone-seg button{flex:1}
+  .rep-work[data-phone-view="req"]>.rep-res,
+  .rep-work[data-phone-view="res"]>.rep-req{display:none}
+  #panel-repeater .rep-line{position:sticky;top:0;z-index:var(--z-sticky)}
+  #repSend{min-height:48px}
+  .rep-res>.pane-head{position:sticky;top:0;z-index:var(--z-sticky);background:var(--bg1)}
+  .rep-actions{flex-wrap:wrap}
+  .rep-diff-head .btn{flex:1 1 40%}
+}

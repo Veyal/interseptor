@@ -1,31 +1,33 @@
 # Findings and reporting
 
-Findings are durable vulnerability records, not scanner alerts or prose notes. One canonical record is
-used by the Findings UI, REST API, MCP tools, JSON export, and human-readable reports. A draft may be
-incomplete; a report-ready finding must connect every material claim to reproducible evidence.
+Findings keep a reviewed claim, affected targets, evidence, remediation, and review state in one
+project record. The same record appears in the app, API, and exported reports. A draft can remain
+incomplete; a Final report requires the relevant readiness checks to pass.
 
-## Why the format changed
+## Read and edit a finding
 
-`Before → Action → After` is useful for differential authorization, privilege, and state-change
-findings. It is not a universal reporting structure. It makes passive misconfiguration, exposure,
-SSRF/OOB, and browser-execution findings harder to describe and encourages agents to manufacture
-irrelevant “before” steps.
+Open **Report → Findings**, search or filter the list, and select a record. Its sections stay linked
+within the workspace:
 
-Interseptor therefore uses a universal evidence-first envelope and optional reproduction presets:
+- **Overview** — the claim, risk, affected targets, environment, and classification.
+- **Evidence** — ordered steps, captured HTTP, and attached images with proof annotations.
+- **Remediation** — the proposed fix and retest guidance.
+- **Review** — verification state, readiness gaps, CVSS, and revision history.
 
-1. **Claim** — title and concise summary.
-2. **Risk** — attacker impact and the failed security boundary or root cause.
-3. **Affected target** — exact component, environment, CWE, CVSS, and scope tags.
-4. **Reproduction** — ordered steps with explicit semantic roles.
-5. **Evidence** — captured flows and images, each tied to the claim it proves.
-6. **Fix and retest** — remediation, expected secure behavior, and a negative test.
-7. **Review** — status, confidence, source, and verification state.
+Use the edit action for the section you want to change. Attached HTTP evidence opens inline so you
+can read the request and response without leaving the finding. **Done** returns to reading mode.
+A failed save keeps the draft with **Retry**; resolve it before exporting, restoring a revision,
+or switching projects.
 
-This follows OWASP guidance that a finding must be understandable, reproducible, actionable, and
-supported by images or other artifacts. OWASP's emerging autonomous-testing guidance additionally
-calls for raw evidence, provenance, and a clear separation between machine interpretation and the
-underlying proof. See the [OWASP WSTG reporting structure](https://owasp.org/www-project-web-security-testing-guide/latest/5-Reporting/01-Reporting_Structure)
-and [OWASP APTS evidence guidance](https://owasp.org/APTS/standard/8_Reporting/Implementation_Guide.html).
+For a report, open **Export** and choose **Final** or **Draft**. Final checks apply to the findings
+included in the export. Draft remains available for incomplete work. Readiness checks assess
+record completeness and declared review state; they do not independently prove a vulnerability.
+
+Continue with [readiness](#capability-based-report-readiness),
+[multiple targets](#multiple-affected-targets), [screenshot provenance](#screenshot-provenance),
+[PDF export](#pdf-export), [tracker adapters](#issue-tracker-and-bug-bounty-adapters),
+[white-label metadata](#white-label-metadata), [retest](#retest-a-finding),
+or [revision recovery](#revision-history-and-recovery).
 
 ## Canonical finding envelope
 
@@ -122,10 +124,10 @@ visual-only target can be supported by declared browser or device captures. Repl
 removes all targets; omitted fields are retained by PATCH. Old scalar targets appear as one target
 without losing their original text. Legacy primary-target edits preserve the other targets.
 
-Markdown, self-contained HTML, JSON reports, and full project archives preserve every target.
-**PDF uses the existing print-to-PDF workflow from the HTML report**; there is no direct PDF API
-format. Full archive merges remap evidence references and retain missing references as missing.
-The portable project-settings JSON is not a full findings backup; use the full project archive.
+Markdown, self-contained HTML, PDF, JSON reports, and full project archives preserve every target.
+PDF is the HTML report printed by a headless Chrome; see [PDF export](#pdf-export). Full archive
+merges remap evidence references and retain missing references as missing. The portable
+project-settings JSON is not a full findings backup; use the full project archive.
 
 Environment values are `production`, `staging`, `development`, `testing`, and `local`; legacy `prod`
 is retained. Aliases `dev`, `stage`, and `stg` resolve to `development`, `staging`, and `staging`.
@@ -153,10 +155,31 @@ record to become reproducible.
 organize steps; the action/result/control readiness checks require annotated artifacts or explicit
 evidence mappings.
 
+### Report proof
+
+Agents that file findings write this story every time, in this order, in language a non-technical
+reader and a developer can both follow:
+
+1. **Normal behavior** (`baseline`) — what the application does for an ordinary authorized user.
+2. **What we changed** (`action`) — the exact difference that triggers the issue.
+3. **What changed** (`result`) — how the response or behavior differs, and the practical impact.
+
+Put that explanation in each block's `proof` field. Attach the captured request when it exists.
+Screenshots and generated HTTP previews belong with the part they illustrate. `setup`, `control`,
+`observation`, and `retest` may follow; they do not replace the three parts. Readiness still
+requires a separate negative or normal control before a finding is report-ready.
+
+When a finding lists more than one affected target, the overview, evidence read view, and report
+show **Proof of** that target. Link the captured flow or screenshot with the target's `flow_ids`
+or `image_hashes`. Text that is not linked to one target stays in a shared explanation. Repeat the
+three-part proof for each target you tested. A target you did not test may be listed without its
+own proof; do not invent a request to fill the gap. Report-ready still asks for retained evidence
+on each affected target that has no setup or chain exception.
+
 ### Presets
 
-- **Differential proof** — baseline → action → result. Use for IDOR/BOLA, privilege changes, and
-  state transitions.
+- **Report proof / Differential proof** — baseline → action → result. This is the story above.
+  Use it for every filed finding, including IDOR/BOLA, privilege changes, and state transitions.
 - **Input → Result** — action → result. Use for injection, reflection, and request-driven behavior.
 - **Exposure proof** — observation → result. Use for public data, missing controls, and passive issues.
 - **Control failure** — setup or baseline → observation → control/result. Use for configuration and
@@ -165,12 +188,37 @@ evidence mappings.
 
 Presets are authoring shortcuts. They do not change the stored schema or the exported format.
 
+### Capability checklist before report-ready
+
+Readiness reports these separately (`readiness.capabilities`):
+
+- **Action** — the exact triggering request or flow.
+- **Result** — the observed outcome.
+- **Control** — a negative or normal-behavior request that distinguishes vulnerable behavior.
+- **Visual** — a real browser/device screenshot of the executed result for browser findings. An
+  operator-uploaded image counts only after a reviewer classifies it
+  (`POST /api/findings/{id}/images/{hash}/classify` or MCP `classify_finding_image`); generated flow
+  previews never qualify. Readiness counts `uploadedImageCount` and `generatedImageCount` apart from
+  `screenshotCount`.
+
+Test the claimed impact end to end when it is safe and in scope. When a step was not executed, set
+`proofReview.execution` to `not_executed` with a `proofReview.reason`, keep the status
+`needs_verification`, or narrow the impact. Keep secrets out of evidence: a length, stable hash, or
+redacted prefix is enough to show access.
+
 ## Evidence rules
 
-Every report-ready finding needs at least one non-missing evidence artifact. Screenshot evidence is
-preferred when the visual state itself proves the issue. When the behavior passed through
-Interseptor, attach the captured flow as well so a reviewer can inspect the actual request and
-response.
+**Always attach evidence.** Every finding needs at least one captured flow or image, attached in the
+same run that files it — an attached flow, a real browser or device screenshot, or a generated HTTP
+preview all satisfy this. A title-only stub is an intermediate step, never a finished finding: create
+it, then attach. If nothing could be captured, record why in `proofReview.reason` and keep
+`status=needs_verification` rather than filing a bare claim.
+
+What each artifact is *worth* as proof is a separate question. Report-readiness needs at least one
+non-missing artifact, and only a real browser or device screenshot counts as visual proof; generated
+previews and evidence renders never do. Screenshot evidence is preferred when the visual state itself
+proves the issue. When the behavior passed through Interseptor, attach the captured flow as well so a
+reviewer can inspect the actual request and response.
 
 Each flow or image needs a short `proof` statement. A caption says what the artifact is; proof says
 what it establishes. “Response screenshot” is a caption. “The response contains another tenant's
@@ -183,6 +231,7 @@ Image provenance is explicit:
 | `browser_screenshot` | Operator-declared capture of real browser state; not independently authenticated. |
 | `device_screenshot` | Operator-declared capture of real device state; not independently authenticated. |
 | `flow_preview` | Generated Interseptor rendering of HTTP evidence; retains `sourceFlowId`. |
+| `evidence_render` | Generated render of recorded Intruder, authz, diff, waterfall or chain data; carries `sourceRef` (for example `intruder:<runId>`), is labelled "generated evidence render from recorded data; not browser proof" in reports, and never qualifies as real visual proof. A render's PNG carries a generated-render marker, so it cannot be re-uploaded as a browser or device screenshot. |
 | `generated_image` | Generated illustration or synthetic image; never qualifies as real visual proof. |
 | `operator_upload` | Operator-supplied image whose capture mechanism is not otherwise recorded. |
 | `tool_output` | Visual output produced by another local testing tool. |
@@ -190,6 +239,14 @@ Image provenance is explicit:
 
 A generated flow preview must never be presented as a browser screenshot. It improves report
 readability; the attached flow remains the raw evidence.
+
+Every finding image, and the generated request and response preview of an attached flow, has a
+**Copy image** button in the finding editor and in the report-ready proof view; the image viewer has
+one too. It puts a PNG on the clipboard so you can paste the picture straight into Notion or any
+editor (JPEG, WebP, GIF, AVIF and BMP sources are converted to PNG first). The clipboard needs https
+or localhost: over plain http on a Tailscale address, or when the browser blocks clipboard access,
+the toast explains why and offers **Download** for the same PNG instead. Only the finding's own
+images are fetched.
 
 Redact passwords, tokens, API keys, unrelated personal information, and third-party data from images
 and prose. Keep original request/response evidence inside the protected project when an engagement
@@ -245,8 +302,65 @@ or image references remain visible rather than being silently removed.
 3. Use `create_finding` or `update_finding` with the report envelope, ordered `targets`, `proofReview`, and a structured `blocks` array.
 4. Use `add_finding_poc` for captured flows; set `role`, `note`, and `proof`.
 5. Use `add_finding_image` for real screenshots, choosing the accurate [image source classification](#evidence-rules).
-6. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
+6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
+
+### Rating what you proved
+
+Severity is the outcome you demonstrated, not the worst case the flaw could enable.
+
+If the impact sentence needs a precondition you did not demonstrate — "given any injection in that
+origin", "if an attacker already holds a token", "once chained with a stored XSS" — either demonstrate
+that precondition or rate the finding at what you actually proved and describe the chain as the
+escalation it would allow. A High that rests on an undemonstrated step is a Low with a story attached,
+and a reviewer will find the gap before the client does. Writing a finding at Critical or High with a
+conditional impact raises a format warning.
+
+A configuration observation with no demonstrated exploitation — a missing header, a weak cipher, a
+verbose banner, an absent hardening flag — is Low or Info. It rises only when you attach the step that
+uses it. A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+
+### When the finding is not an HTTP exchange
+
+Interseptor captures traffic, so the natural evidence is a flow. Plenty of real findings live outside
+that: on-device storage, application logs, a manifest or build artefact, client-side enforcement, a
+debugging socket. A captured flow cannot prove any of them, and attaching a loosely related flow is
+worse than attaching nothing — it looks like proof and is not.
+
+Attach what does prove the claim, and keep the same action / result / control structure:
+
+| The claim is about | Attach |
+| --- | --- |
+| Device or app state | A real device screenshot (`add_finding_image`), plus the exact path and how you read it in the action block |
+| File or log contents | The smallest excerpt that shows it, as a text block naming the file and the command that produced it; redact the value and keep a length or digest |
+| A static or build fact | The file, the line, and the build or package the artefact came from |
+| Rendered browser behaviour | A real browser screenshot of the observed result; a generated preview never qualifies |
+
+The control is what makes it a finding rather than a note: the same read on a hardened build, the same
+request as a different role, or the documented expectation it contradicts. A finding with no flow and no
+image raises a format warning at every severity, not just High.
+
+### One finding per root cause
+
+The same failed control on five endpoints is one finding with five affected targets, not five findings.
+Split only when the fix differs. Before filing, list the existing findings: if the cause is one you have
+already filed, add the endpoint and its flows to that finding as another target. Fragmenting one issue
+across endpoints inflates the count, buries the real story, and makes the report read as noise.
+
+### House style
+
+The reader is a working pentester triaging a list. They already know the vulnerability class: say where it
+is and what you proved, nothing else. Targets: `title` <=70 chars (`<flaw> on <endpoint or parameter>`,
+no "Vulnerability:" prefix, no severity word); `summary` one sentence <=140; `impact` one sentence <=120;
+`why` <=100 (omit when the CWE already says it); each `blocks[].text` <=100, imperative, about 6 blocks
+at most; `fix` <=160, imperative; `retest` one sentence <=100 (the observable pass condition). 180
+characters per unstructured field remains the hard reject; the budgets above are the house style.
+
+**Never write:** background or theory ("IDOR occurs when..."); a summary that restates the title; hedging
+("could potentially", "may be possible", "it appears"), state what the evidence shows; narration ("we then
+proceeded to"); raw HTTP, headers or payloads in prose, attach the flow; severity adjectives (severity is a
+field); anything already visible in an attached flow or screenshot; padding an empty field to look
+complete, leave it blank and readiness reports the gap.
 
 AI-generated interpretation must remain distinguishable from attached raw evidence. If browser
 execution, OOB interaction, or a state change was not observed, record the status as
@@ -271,12 +385,183 @@ bound. Collaboration imports preflight table-only attachments before publishing 
 raw HTTP is capped at 64 KiB per side after decoding, with compressed decoder windows and memory
 bounded before bytes are read.
 
+### Export a subset or a single finding
+
+By default the report covers every finding in the status set (`open`, `verified`, `fixed`). To
+deliver only part of an engagement, pass `?ids=` a comma-separated list of finding ids:
+`GET /api/findings/report?ids=41` exports one finding, and `?ids=12,41,53` exports those three. The
+selection works in every format (Markdown, HTML, PDF, JSON and SARIF) and keeps the report's own
+order regardless of the order the ids are listed. A malformed id is a `400` and a selection that
+matches no finding is a `404`, so a mistyped id never falls back to exporting the whole project. When
+`mode=final`, the readiness gate applies to the selected findings only. `?ids=` composes with
+`?tag=`, `?statuses=`, `?maskHeaders=1` and the rest. To hand a single finding to an external tracker
+in that system's own shape instead, use `GET /api/finding-export/{id}`.
+
 Exports can contain credentials, session material, and personal data from captured traffic. Review
 and secure them as sensitive engagement artifacts. Follow the
 [engagement close-out checklist](engagement-closeout.md) for final delivery and cleanup.
 
+### Mask credential headers
+
+`?maskHeaders=1` on `GET /api/findings/report` and `GET /api/finding-export/{id}` replaces the value
+of every credential header in attached raw evidence with the same length-and-digest placeholder the
+rest of Interseptor uses: `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`,
+`X-API-Key`, `X-Auth-Token`, `X-Access-Token`, `X-CSRF-Token` and `X-XSRF-Token`. It applies to
+every format — Markdown, HTML, PDF, JSON and the tracker adapters — and a masked response carries
+`X-Interseptor-Report-Masked: 1`.
+
+It is off by default. Without it an export carries evidence exactly as captured, which is what a
+report is for. Masking is an export-time pass: the stored finding is never rewritten, so a later
+unmasked export is unchanged.
+
+Only the header block of a raw message is rewritten. The request line, every other header and the
+whole body stay as captured, because rewriting a body would damage the proof the finding rests on.
+A credential that appears in a body, a URL, or finding prose is **not** masked here; the secret-lint
+notice at the top of the HTML report reports those instead.
+
+The placeholder keeps the value's byte length and a 12-character SHA-256 prefix, so a reader can
+still tell whether two requests carried the same credential. That digest is a correlation handle,
+not a safe publication: a short or low-entropy credential could be confirmed by guessing against it.
+Treat a masked export as sanitised for a client deliverable, not as anonymised for an untrusted
+audience.
+
+### PDF export
+
+`?format=pdf` prints the self-contained HTML report with a headless Chrome and returns
+`application/pdf`. It is the HTML document printed, not a second rendering, so the two cannot drift.
+The same readiness gate, tag grouping, branding and masking options apply.
+
+Chrome is an optional external dependency, like `adb` or `cloudflared`. Interseptor looks for it in
+this order:
+
+1. `INTERSEPTOR_CHROME`, if set. A path that is not an executable file fails with that path named —
+   it never falls back, because an operator who pointed at a browser should be told it was not used.
+2. `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, `chrome`,
+   `microsoft-edge`, `msedge` on `PATH`.
+3. The usual install locations for the platform (`/Applications/Google Chrome.app/…` on macOS,
+   `/usr/bin/google-chrome` and friends on Linux, the Program Files paths on Windows).
+
+With no browser the request returns **503** naming `INTERSEPTOR_CHROME` and the binaries it looked
+for. A browser that fails returns **500** with the tail of what the browser printed. There is no
+fallback to another format and no partially written file: a report that silently arrives as HTML, or
+arrives truncated, is worse than one that did not arrive.
+
+The print runs in a throwaway profile inside a temporary directory, with background networking,
+component updates, sync, metrics and crash reporting switched off, so exporting a report does not
+touch the operator's own Chrome profile or phone home. Chrome's default page header and footer are
+suppressed — they would print the local temporary path into the deliverable. The sandbox stays on;
+set `INTERSEPTOR_CHROME_NO_SANDBOX=1` only where it cannot start, such as a container running as
+root.
+
+Interseptor waits for the PDF, not for the browser to exit. Chrome writes the file in about a second
+and then keeps running — on macOS its updater and background services outlive the print — so the
+export polls for a complete PDF (`%PDF-` header, `%%EOF` trailer, a size that has stopped changing),
+reads it, and then terminates the browser and every process it started.
+
+`internal/pdfexport` is the only part of Interseptor that runs a browser. `internal/report` stays a
+pure transform, and `go test ./...` never starts one; `INTERSEPTOR_PDF_LIVE_TEST=1` opts into the one
+test that does.
+
+### Issue-tracker and bug-bounty adapters
+
+`GET /api/finding-export/{id}?format=hackerone|bugcrowd|jira|sarif` returns one finding shaped for
+that system, and `GET /api/findings/report?format=sarif` returns the whole project as a SARIF 2.1.0
+log. `format` is required on the per-finding endpoint: a one-click export should not land in the
+wrong shape because a parameter was forgotten. A `false_positive` finding returns 409.
+
+Each narrative is rendered by the same function that writes the engagement report, so the evidence
+roles, proof statements and provenance labels — including "generated evidence render from recorded
+data; not browser proof" — travel with the ticket. `?mode=final` applies the same readiness gate as
+a final report, and `?maskHeaders=1` masks credential headers.
+
+A field with no honest equivalent is left out rather than guessed, because a wrong identifier files
+the report against the wrong thing:
+
+| Target | Carried | Omitted, and why |
+|---|---|---|
+| HackerOne | `title`, `vulnerability_information`, `impact`, `severity_rating` | `weakness_id` (HackerOne's own numeric id for a CWE — the CWE itself is stated in the narrative), `structured_scope_id` (the programme's asset id), a CVSS vector (HackerOne's severity object takes v3.1; Interseptor records v4.0, so the v4 vector and score are stated in the narrative where they cannot be read as a v3 score) |
+| Bugcrowd | `title`, `description`, `bug_url`, `extra_info`, `severity` as P1–P5 (Critical=1 … Info=5) | `vrt_id` (Bugcrowd's own taxonomy, not derivable from a CWE, and a wrong VRT id changes triage and payout) |
+| Jira | `fields.summary`, `fields.description`, `fields.issuetype` (`Bug`), `fields.priority` (Highest…Lowest), `fields.labels` | `fields.project` — add `{"project":{"key":"ABC"}}` before posting — plus reporter, assignee, components and custom fields. `issuetype` and the default priority scheme are assumptions; rewrite them for an instance with its own scheme. Post to `/rest/api/2/issue`: `description` is Markdown, and Jira Cloud's v3 endpoint expects Atlassian Document Format, which Interseptor does not generate |
+| SARIF 2.1.0 | one run, one rule and one result per finding, `locations` per affected target, `partialFingerprints`, and the finding's evidence with its role, kind, source classification and proof statement in `properties` | `result.kind` — SARIF's kind describes a check's outcome (pass/fail/review), Interseptor's status describes where a reviewed finding sits in a workflow; they are different questions, so status is reported in `properties` instead. Raw captured bytes: a SARIF log is an index of findings, not an evidence bundle |
+
+SARIF severity maps to the three usable levels (Critical/High → `error`, Medium → `warning`,
+Low/Info → `note`), with the exact severity, the CVSS vector and the calculated score in
+`properties`. A CWE travels as `properties.cwe` and an `external/cwe/cwe-NNN` tag. A target that is
+not an absolute URI becomes a location message rather than an `artifactLocation.uri`, because a load
+balancer or a device path is not a URI. False positives are excluded, as they are from the report
+body.
+
+### White-label metadata
+
+`GET`/`PUT /api/report-branding` holds the project's report identity: `reportTitle`, `companyName`,
+`clientName`, `companyLogo`, `clientLogo`, `engagementName`, `assessmentStart`, `assessmentEnd`,
+`leadAssessor`, `contact`, `classification`, and a `coverPage` of operator-authored Markdown. Like
+the engagement brief, the version increments only when content changes, and a JSON export cites it
+as `reportBrandingVersion`.
+
+Every field is optional. Unset, the export is byte-identical to the one Interseptor produced before
+white-label existed — including the `Interseptor — Engagement Report` title and no brand stylesheet.
+Set, `reportTitle` replaces the title in every format, and the cover block sits directly beneath it,
+above the engagement context. `coverPage` replaces the generated cover; the generated one states the
+parties, engagement, assessment period, lead assessor, contact and classification, and renders only
+the fields that are set.
+
+Logos must be `data:` image URIs (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, 512 KiB
+each). A remote URL is refused: a delivered report must fetch nothing, and an image that loads from
+the network is also a read receipt. SVG is refused because it is a document format that can carry
+script. Logos appear in the HTML and PDF renders; a Markdown export omits them rather than carrying
+hundreds of kilobytes of base64 in a line nobody can read. Assessment dates are ISO `YYYY-MM-DD` and
+are rendered as stored, because a date in a client deliverable must not be ambiguous; a half-open
+window is written as half-open rather than filled in.
+
+## Retest a finding
+
+`POST /api/findings/{id}/retest` replays the finding's attached evidence and reports what the
+application does now. Body: `{flowIds?, session?, allowUnsafeMethods?, attach?}`. By default it
+replays every retained attached flow, oldest first and at most ten, exactly as captured
+(`session: "flow"`); `session: "current"` applies the active session headers.
+
+A non-idempotent request is **skipped** unless `allowUnsafeMethods` is set. Re-sending the `POST`
+that created an order, or the `DELETE` that removed a record, is not a retest — it is a second
+attack — and the response says which flows were skipped and how to override it.
+
+The result is an observation, never a verdict about remediation:
+
+| `observation` | Meaning |
+|---|---|
+| `unchanged` | Every replayed request returned the same status and an identical response body as the recorded evidence. The observed behaviour has not changed. This is a replay result, not a fresh verification of the claimed impact. |
+| `changed` | At least one status or response body differs. The response states exactly what differed and that a differing response is **not** proof of remediation: it may reflect a different session, a changed precondition, a rate limit, or an unrelated deployment. |
+| `inconclusive` | Something could not be replayed — a purged flow, a missing request body, an unreachable target, a skipped method. Nothing is established about the current behaviour. |
+
+Each flow result carries the `recorded` and `observed` status, body size and body hash side by side,
+so a reviewer judges the comparison instead of trusting a verdict. A body-hash difference is
+reported as a byte-level difference, not a behavioural one: a timestamp in a response changes the
+hash too.
+
+A retest never changes the finding's status, and it never edits the evidence it replayed. Each
+replay is attached as a new `retest` evidence block carrying the new flow, with `sourceFlowId`
+pointing at the evidence it replayed, which appends a finding revision. An earlier retest's own flow
+stays attached as evidence but is excluded from the next retest's default set, so repeated retests
+do not compound into more traffic at the target; naming it in `flowIds` still replays it. Revisions are immutable, and
+a retest is a later observation rather than a correction of the earlier one. Pass `attach: false` to
+observe without recording. Closing a finding stays a reviewer's decision, taken against the attached
+retest flow and the `retest` pass condition the finding already states.
+
 
 ## Review, final export, and capability claims
+
+`GET /api/findings/readiness` also returns a project-wide `board` (id, title, severity, status, ready,
+blocking gaps; sorted by severity) and, per finding, `issues` as `{rule, field, capability, message}`.
+`GET /api/finding-quality/{id}` and MCP `finding_readiness` (with `id`) return the same issues for one
+finding. The final gate requires a CVSS v4.0 vector; it never modifies or redacts evidence. The Export
+dialog's **Check readiness** button shows the board in the UI.
+
+`GET /api/project/readiness` is the compact aggregate behind the engagement strip (counts only, no
+bodies or titles): `scope` `{enabled, in, out}` (enabled = at least one enabled include rule), `brief`
+`{target, ok}`, `evidence` `{flows, shots, ws}`, `findings` `{total, ready, items, truncated}` (at most
+200 `{id, stage, gaps}` items) and `blockers`. Blockers are the project-level codes `brief_target` and
+`scope` (same id as the readiness checklist) followed by the distinct server-computed finding gap codes.
+It sits behind the same guard as every other `/api` route.
 
 The export dialog defaults to **Final**, which requires every included finding to pass the same
 checks returned by `GET /api/findings/readiness` and MCP `finding_readiness`. Select **Draft** to
@@ -322,6 +607,14 @@ associations remain attached to each resulting target and should be reviewed.
 Numeric and UUID path segments may be proposed as `{id}`. A template is applied only after the reviewer
 selects it and chooses **Apply cleaned targets**. Preview and Cancel never mutate the finding. The
 same preview is available through `POST /api/finding-targets/preview` and MCP `preview_finding_targets`.
+
+## Delete a finding
+
+Open the finding and choose **Delete** in the header. Confirm the prompt. The finding leaves the
+list. **Deleted** in the Findings toolbar restores it with its targets, tags, evidence relationships,
+and verification record.
+
+`DELETE /api/findings/{id}` and MCP `delete_finding` do the same removal.
 
 ## Revision history and recovery
 

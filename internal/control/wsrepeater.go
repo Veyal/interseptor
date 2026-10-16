@@ -2,6 +2,7 @@ package control
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/wsrepeater"
 )
@@ -31,10 +32,24 @@ func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 	for _, hh := range parseSessionHeaders(in.Headers) {
 		hdrs[hh.Key] = hh.Value
 	}
+	started := time.Now()
 	res, err := wsrepeater.Send(wsrepeater.Request{URL: in.URL, Message: in.Message, Binary: in.Binary, Headers: hdrs})
+	// Record the exchange (handshake + frames) as a flow so it can be cited as
+	// evidence. Best-effort and after the send: never affects the result.
+	flowID := h.recordWSExchange(in.URL, res, err, started, aiSourceFlag(r))
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, err.Error())
+		reply := map[string]any{"error": err.Error()}
+		if res != nil {
+			reply["status"] = res.Status
+		}
+		if flowID != 0 {
+			reply["flowId"] = flowID
+		}
+		writeJSON(w, http.StatusBadGateway, reply)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, struct {
+		*wsrepeater.Result
+		FlowID int64 `json:"flowId,omitempty"`
+	}{res, flowID})
 }

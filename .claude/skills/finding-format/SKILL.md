@@ -23,6 +23,15 @@ A report-ready finding contains:
 Title-only drafts remain valid. Read `readiness.stage` and `readiness.gaps`; do not treat legacy
 `ready` as proof that the vulnerability is true.
 
+## House style
+
+Reader: a working pentester triaging a list. Say where the flaw is and what you proved, nothing else.
+Budgets: `title` <=70 (`<flaw> on <endpoint or parameter>`), `summary` 1 sentence <=140 (no title
+restatement), `impact` 1 sentence <=120, `why` <=100 (omit if the CWE says it), `blocks[].text` <=100
+imperative (~6 blocks), `fix` <=160, `retest` 1 sentence <=100. 180 stays the hard reject.
+Never write: background or theory, hedging, narration, raw HTTP in prose, severity adjectives, anything
+already visible in an attached flow or screenshot, or filler in an empty field.
+
 ## Blocks
 
 Prefer the structured `blocks` array. Legacy `body` is a JSON string kept for old clients. Never send
@@ -31,18 +40,31 @@ both.
 Allowed roles are `context`, `setup`, `baseline`, `action`, `result`, `control`, `observation`, and
 `retest`. `before` maps to `baseline`; `after`/`proof` map to `result`. Unknown roles are errors.
 
-`Before → Action → After` is only the **Differential proof** preset. Choose roles that match the
-actual issue:
+Agents that file findings always write the report proof, in order, in plain language:
 
-- authorization/state change: baseline → action → result;
-- injection/reflection: action → result;
-- exposure/misconfiguration: observation → result;
-- custom multi-step cases: the smallest accurate ordered sequence.
+- `baseline`: what the application normally does for an ordinary authorized user;
+- `action`: what we changed or sent to trigger the issue;
+- `result`: what the response did differently, and the practical impact.
+
+`Before → Action → After` is that same Differential proof, and it is the required story rather than
+one optional preset. `setup`, `control`, `observation`, and `retest` may follow. They do not replace
+the three parts. Readiness still requires a separate negative or normal control before report-ready.
+
+When a finding lists more than one affected target, repeat that proof for each affected target you
+tested and link it through that target's `flow_ids` or `image_hashes`. One capture may be linked to
+several targets when it proves each of them. A target you did not test may be listed without its own
+proof. Do not invent a request to fill it. The UI and report then show "Proof of" each target, with
+unlinked explanation kept once as a shared explanation.
 
 ## Evidence
 
-Every report-ready finding needs non-missing flow or image evidence. Every evidence block needs a
-string `proof` explaining the exact claim it establishes.
+Always attach evidence: every finding needs at least one captured flow or image, attached in the same
+run that files it. A title-only stub is an intermediate step, never a finished finding. If nothing
+could be captured, record why in `proofReview.reason` and keep `status=needs_verification`.
+
+Report-readiness then needs non-missing flow or image evidence, and only a real browser or device
+screenshot counts as visual proof. Every evidence block needs a string `proof` explaining the exact
+claim it establishes.
 
 - Attach an Interseptor flow whenever the relevant request was captured.
 - Prefer a real `browser_screenshot` when visual state proves the issue.

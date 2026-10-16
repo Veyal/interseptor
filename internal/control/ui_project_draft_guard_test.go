@@ -39,7 +39,7 @@ func TestUIProjectSwitchIgnoresNavigationButGuardsSettingsDrafts(t *testing.T) {
 const controls=new Map();const $=id=>controls.get(id);
 const dirty=id=>controls.set('#'+id,{dataset:{settingsDirty:'1'}});
 ` + src[start:start+end] + `
-['setSearch','settingsSectionSelect','projSelect','projNew','projNewPath'].forEach(dirty);
+['setSearch','projSelect','projNew','projNewPath'].forEach(dirty);
 if(hasUnsavedSettingsFields())throw Error('navigation or project form blocked a clean switch');
 for(const id of ['setSessionHeaders','hostHdrList','setUpstreamHost','proxyListenersList','retMaxFlows']){
  dirty(id);if(!hasUnsavedSettingsFields())throw Error(id+' draft would be discarded');controls.delete('#'+id);
@@ -91,13 +91,13 @@ if(!projectSwitchBlocker())throw new Error('failed guard allowed destructive rel
 }
 
 func TestUICommandPaletteCannotBypassActiveModal(t *testing.T) {
-	src := readUIAsset(t, "js/app.js")
-	start := strings.Index(src, "function cmdkOpen()")
-	end := strings.Index(src[start:], "function cmdkClose()")
-	script := `let blocked=true,opened=0;const projectScopedUIReady=true;
-const workflowShortcutBlocked=()=>blocked,toast=()=>{},cmdkRender=()=>{},cmdkClose=()=>{};
+	src := readUIAsset(t, "js/cmdk.js")
+	start := strings.Index(src, "export function cmdkOpen()")
+	end := strings.Index(src[start:], "export function cmdkClose()")
+	script := `let blocked=true,opened=0;
+const cmdkEnv={blocked:()=>blocked,ready:()=>true},toast=()=>{},cmdkRender=()=>{},cmdkClose=()=>{};
 const cmdk={el:{},input:{value:'preserve'},open:false};const openModal=()=>opened++;
-` + src[start:start+end] + `
+` + strings.TrimPrefix(src[start:start+end], "export ") + `
 cmdkOpen();
 if(opened||cmdk.open||cmdk.input.value!=='preserve')throw Error('command palette bypassed active project dialog');
 blocked=false;cmdkOpen();
@@ -121,5 +121,35 @@ const authored=makeDialog(0);registerModal(wrap(authored));
 if(authored.tabIndex!==0)throw Error('authored focus behavior was overwritten');`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("disabled dialog focus fallback: %v\n%s", err, out)
+	}
+}
+
+func TestUIProjectTreeGroupsNestedFolders(t *testing.T) {
+	src := readUIAsset(t, "js/settings.js")
+	start := strings.Index(src, "function formatProjectStamp(")
+	end := strings.Index(src, "function projectMatchesQuery(")
+	if start < 0 || end <= start {
+		t.Fatal("project tree helpers missing")
+	}
+	script := src[start:end] + `
+const tree=groupProjectTree([
+  {name:'web',category:'Clients/Acme',openedAt:10,createdAt:1},
+  {name:'api',category:'Clients/Acme',openedAt:30,createdAt:2},
+  {name:'notes',category:'',openedAt:5,createdAt:3},
+]);
+if(tree.items[0].name!=='notes')throw Error('ungrouped project was not kept at the root');
+const clients=tree.folders.find(folder=>folder.name==='Clients');
+const acme=clients&&clients.folders.find(folder=>folder.name==='Acme');
+if(!acme||acme.items.map(item=>item.name).join()!=='api,web')throw Error('folder did not nest or sort by last opened');
+if(clients.count!==2)throw Error('folder count ignored nested projects');
+if(formatProjectStamp(Math.floor(Date.now()/1000)-120, Date.now())!=='2m ago')throw Error('recent open time was not relative');`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("project tree: %v\n%s", err, out)
+	}
+	index := readUIAsset(t, "index.html")
+	for _, want := range []string{`id="pmFilter"`, `class="pm-list"`, `id="pmNewFolder"`} {
+		if !strings.Contains(index, want) {
+			t.Errorf("project dialog missing %s", want)
+		}
 	}
 }

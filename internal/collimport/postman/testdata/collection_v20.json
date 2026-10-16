@@ -1,0 +1,6 @@
+{
+  "info": {"_postman_id": "99999999-0000-0000-0000-000000000009", "name": "Legacy v2.0", "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"},
+  "item": [
+    {"name": "Old", "request": {"method": "GET", "header": "Accept: text/plain\nX-A: b", "url": "https://example.com/old"}}
+  ]
+}

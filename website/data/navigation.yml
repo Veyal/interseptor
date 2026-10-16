@@ -1,0 +1,103 @@
+# Docs navigation: sidebar, drawer, breadcrumbs and previous/next order.
+# Each group keeps one candy colour (DESIGN.md section 2) and each link a
+# lucide icon from website/assets/icons/ that names what the page is about.
+- title: Start here
+  id: start-here
+  color: pink
+  links:
+    - title: Overview
+      url: /
+      icon: house
+    - title: Getting started
+      url: /getting-started/
+      icon: play
+    - title: For AI agents
+      url: /ai-agents/
+      icon: bot
+    - title: Workspace guide
+      url: /workspace/
+      icon: panels-top-left
+    - title: All features
+      url: /features/
+      icon: layout-grid
+    - title: Compared to Burp, ZAP & Caido
+      url: /compare/
+      icon: scale
+- title: Use Interseptor
+  id: use-interseptor
+  color: sky
+  links:
+    - title: Proxy, TLS & networking
+      url: /proxy-and-tls/
+      icon: plug
+    - title: History & search
+      url: /history-search/
+      icon: history
+    - title: Findings & reports
+      url: /findings-and-reporting/
+      icon: flag
+    - title: Collections
+      url: /collections/
+      icon: folders
+    - title: Projects & data
+      url: /projects-and-data/
+      icon: database
+    - title: Settings
+      url: /settings/
+      icon: settings
+    - title: Mobile devices
+      url: /mobile-testing/
+      icon: smartphone
+    - title: Content discovery
+      url: /content-discovery/
+      icon: folder-search
+    - title: Project vault
+      url: /vault/
+      icon: vault
+    - title: Engagement close-out
+      url: /engagement-closeout/
+      icon: clipboard-check
+- title: Extend
+  id: extend
+  color: mint
+  links:
+    - title: API & MCP
+      url: /api-and-mcp/
+      icon: cable
+    - title: Custom checks
+      url: /custom-checks/
+      icon: square-code
+    - title: Rule packs
+      url: /rule-packs/
+      icon: package
+    - title: Message codecs
+      url: /message-codecs/
+      icon: binary
+    - title: Extensions
+      url: /extensions/
+      icon: puzzle
+- title: Reference
+  id: reference
+  color: grape
+  links:
+    - title: CLI reference
+      url: /cli-reference/
+      icon: terminal
+    - title: Architecture & security
+      url: /architecture/
+      icon: shield
+    - title: HTTP/2
+      url: /http2/
+      icon: network
+    - title: Troubleshooting
+      url: /troubleshooting/
+      icon: life-buoy
+    - title: Benchmarks
+      url: /benchmarks/
+      icon: gauge
+    - title: MCP cookbook
+      url: /mcp-cookbook/
+      icon: chef-hat
+    - title: Project reference
+      url: /reference/
+      icon: book-marked

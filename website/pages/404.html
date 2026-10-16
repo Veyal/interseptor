@@ -1,0 +1,29 @@
+---
+layout: notfound
+title: Page not found
+heading: This request was dropped.
+eyebrow: Error 404
+description: This link moved or never existed. Search documentation or return to the overview.
+permalink: /404.html
+noindex: true
+css: [css/pages.css]
+js: [js/pages.js]
+---
+<p class="lede">The link you followed has moved, or it never existed.</p>
+<p class="nf-request" data-request-line hidden><span class="nf-method">GET</span> <code data-request-path></code> <span class="nf-status">404 dropped</span></p>
+<a class="nf-search" href="{{ url "/features/" }}" data-search-open aria-keyshortcuts="/ Control+K Meta+K">{{ icon "search" }}<span>Search the documentation</span><kbd aria-hidden="true">/</kbd></a>
+<div class="nf-popular">
+  <p class="nf-popular-title" id="nf-popular">Popular pages</p>
+  <ul class="nf-chips" aria-labelledby="nf-popular">
+    <li><a class="chip chip-pink" href="{{ url "/getting-started/" }}">{{ icon "rocket" }}Getting started</a></li>
+    <li><a class="chip chip-yellow" href="{{ url "/proxy-and-tls/" }}">{{ icon "lock" }}Proxy and TLS</a></li>
+    <li><a class="chip chip-mint" href="{{ url "/findings-and-reporting/" }}">{{ icon "bug" }}Findings and reporting</a></li>
+    <li><a class="chip chip-sky" href="{{ url "/ai-agents/" }}">{{ icon "bot" }}For AI agents</a></li>
+    <li><a class="chip chip-grape" href="{{ url "/features/" }}">{{ icon "layout-grid" }}All features</a></li>
+    <li><a class="chip chip-pink" href="{{ url "/compare/" }}">{{ icon "scale" }}Compare</a></li>
+  </ul>
+</div>
+<div class="nf-actions">
+  <a class="btn-primary" href="{{ url "/" }}">{{ icon "house" }}Home</a>
+  <a class="btn-ghost" href="{{ .Site.Parent }}">{{ icon "arrow-left" }}Back to veyal.land</a>
+</div>

@@ -1,0 +1,37 @@
+{{- /*
+  "outline" is the sticky "On this page" column (1200px and up); "outline-disclosure"
+  is the same list as a <details> at the top of the article below 1200px. site.js marks
+  the section being read with aria-current="location" in both and fills the progress bar.
+  Both render nothing when a page has fewer than two h2/h3 headings.
+*/ -}}
+{{define "outline" -}}
+{{- if ge (len .Page.Headings) 2}}
+<nav class="outline" aria-label="On this page">
+  <p class="outline-title">{{icon "list"}}<span>On this page</span></p>
+  <div class="outline-progress" aria-hidden="true"><span class="outline-progress-bar"></span></div>
+  <div class="outline-scroll">
+    {{template "outline-links" .Page.Headings}}
+  </div>
+  <a class="outline-top" href="#top">{{icon "arrow-up"}}<span>Back to top</span></a>
+</nav>
+{{- end}}
+{{- end}}
+
+{{define "outline-disclosure" -}}
+{{- if ge (len .Page.Headings) 2}}
+<details class="outline-disclosure">
+  <summary><span class="outline-disclosure-label">{{icon "list"}}<span>On this page</span></span><span class="outline-disclosure-count">{{len .Page.Headings}} sections</span>{{icon "chevron-down" "outline-disclosure-chevron"}}</summary>
+  <nav aria-label="On this page">
+    {{template "outline-links" .Page.Headings}}
+  </nav>
+</details>
+{{- end}}
+{{- end}}
+
+{{define "outline-links" -}}
+<ol class="outline-list">
+  {{- range .}}
+  <li class="outline-h{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>
+  {{- end}}
+</ol>
+{{- end}}

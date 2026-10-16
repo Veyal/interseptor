@@ -1,5 +1,13 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey, prettify } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope, wireRowKey } from './core.js';
+import { sendRawToRepeater } from './tools.js';
+import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
+import { createSplitPane } from './split.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
+import { showDropToast } from './held-undo.js';
+import { registerSseHandler } from './shell-hooks.js';
+import { on as busOn, EVENTS } from './bus.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
@@ -13,8 +21,19 @@ let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
 let heldDecodeEpoch=0;
+// Deferred drops (key -> true) and the shared context shown in the held header.
+// There is no server-side undo, so a drop waits DROP_DELAY_MS on the client.
+const dropMarks=new Set();
+let forwardAllBusy=false;
+const icptCtx={scope:null,identity:'',pane:null};
 let interceptStateEpoch=0;
 let interceptSummaryEpoch=0;
+// Generation of the hold queue the client currently mirrors (see intercept-delta.js).
+// SEQ_UNKNOWN until the first authoritative snapshot, and again after a detected
+// gap until the resnapshot rebases it. interceptResnapshotPending dedupes the
+// on-demand snapshot fetch so a burst of dropped deltas triggers only one.
+let interceptSeq=SEQ_UNKNOWN;
+let interceptResnapshotPending=false;
 // Toggle mutations can change the held queues and are kept on their own lane.
 // Filter persistence is deliberately separate: the filter endpoint does not
 // emit an intercept.update event, and a stalled request must never make the
@@ -79,6 +98,17 @@ function commitInterceptState(next,filterAuthoritative){
   if(filterAuthoritative)acknowledgedFilterConfig=currentFilterConfig(next||{});
   const merged=mergeIncomingInterceptState(next);
   state.intercept=merged;interceptStateEpoch++;interceptSummaryEpoch++;
+  // Any authoritative full snapshot (replaceInterceptState) rebases the delta
+  // generation; a local optimistic edit (replaceLocalInterceptState) must not.
+  if(filterAuthoritative)noteSnapshotSeq(merged);
+}
+// noteSnapshotSeq rebases the delta generation whenever an authoritative full
+// snapshot is applied (SSE intercept.state/intercept.update, a toggle/filter
+// response, or the REST resync). An older server that omits seq leaves the
+// client on SEQ_UNKNOWN, which keeps it on the full-render path.
+function noteSnapshotSeq(snapshot){
+  const s=snapshotSeq(snapshot);
+  if(s!==SEQ_UNKNOWN){interceptSeq=s;interceptResnapshotPending=false;}
 }
 export function replaceInterceptState(next){commitInterceptState(next,true);}
 function replaceLocalInterceptState(next){commitInterceptState(next,false);}
@@ -127,7 +157,7 @@ function allowHeldSignal(){
   heldSignalCount++;
   return !document.hidden&&heldSignalCount<=4;
 }
-function heldKey(side,id){return side+':'+id;}
+function heldItems(){const ic=state.intercept||{};return [...(ic.queue||[]).map(h=>({...h,side:'req'})),...(ic.responseQueue||[]).map(h=>({...h,side:'resp'}))];}
 function heldDecodeCurrent(epoch,selectionKey,raw){
   return epoch===heldDecodeEpoch&&!!state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id)===selectionKey&&$('#heldRaw').value===raw;
 }
@@ -146,9 +176,86 @@ function setHeldModified(raw, original){
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
 }
 
+/* ---- Raw | Pretty (read-only) ----
+   Beautify rewrites the bytes that will be forwarded and marks the message
+   MODIFIED. Reviewing a held message must not require that, so Pretty is a
+   separate read-only presentation: it indents and highlights a copy of the
+   editor's current text and never writes back to #heldRaw. */
+let heldView='raw';
+function heldPrettyEl(){return $('#heldPretty');}
+// heldBeautified indents a held message's body. core.js's prettify() splits the
+// head from the body on CRLF, but a <textarea>'s API value normalizes CRLF to LF
+// (HTML spec), so the editor's text never matches it — this accepts both.
+function heldBeautified(raw){
+  const sep=/\r?\n\r?\n/.exec(raw);
+  if(!sep)return raw;
+  const head=raw.slice(0,sep.index).replace(/\r\n/g,'\n');
+  const body=raw.slice(sep.index+sep[0].length);
+  return body?head+'\n\n'+beautifyBody(body):raw;
+}
+// renderHeldPretty paints the current editor text, indented and highlighted. It
+// writes to its own <pre>, never back to #heldRaw: reading a held message must
+// not change the bytes that will be forwarded.
+function renderHeldPretty(){
+  const pre=heldPrettyEl(),ta=$('#heldRaw');
+  if(!pre||!ta)return;
+  const raw=ta.value||'';
+  pre.innerHTML=raw?highlightHTTP(heldBeautified(raw),true,contentTypeFromRaw(raw)):'<span class="u-fg3">Nothing held to show.</span>';
+}
+function syncHeldViewSeg(){
+  const seg=$('#heldViewSeg');if(!seg)return;
+  seg.querySelectorAll('[data-held-view]').forEach(b=>{
+    const on=b.dataset.heldView===heldView;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+  });
+}
+// setHeldView switches presentation only. The Decoded pane is a third, mutually
+// exclusive view, so entering Pretty leaves it the same way Raw does.
+function setHeldView(view,{focus=false}={}){
+  const pre=heldPrettyEl(),ta=$('#heldRaw'),dec=$('#heldDecoded');
+  heldView=view==='pretty'?'pretty':'raw';
+  if(dec&&dec.style.display&&dec.style.display!=='none'){
+    heldDecodeEpoch++;
+    dec.style.display='none';dec.hidden=true;setHeldDecodeState(false);
+  }
+  if(heldView==='pretty'){
+    renderHeldPretty();
+    if(pre){pre.hidden=false;pre.style.display='block';}
+    if(ta)ta.style.display='none';
+    if(focus&&pre)pre.focus({preventScroll:true});
+  }else{
+    if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}
+    if(ta){ta.style.display='block';if(focus)ta.focus({preventScroll:true});}
+  }
+  syncHeldViewSeg();
+}
+function resetHeldView(){heldView='raw';const pre=heldPrettyEl();if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}syncHeldViewSeg();}
+
+// Intercept must not be a dead end: "Repeater" copies the (edited) held request
+// into a new Repeater tab without forwarding or dropping it.
+function ensureHeldRepeaterButton(){
+  let b=$('#heldRepeaterBtn');if(b)return b;
+  const forward=$('#forwardBtn');if(!forward)return null;
+  b=document.createElement('button');
+  b.type='button';b.className='btn';b.id='heldRepeaterBtn';b.textContent='Repeater';
+  b.title='Open this request in Repeater (it stays held)';
+  b.onclick=()=>{
+    const sel=state.heldSel,h=sel&&sel.side==='req'&&heldItem(sel.id,sel.side);
+    if(!h)return;
+    sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value});
+  };
+  forward.parentNode.insertBefore(b,forward);
+  return b;
+}
+function syncHeldRepeaterButton(side){
+  const b=ensureHeldRepeaterButton();if(b)b.hidden=side==='resp';const fr=$('#forwardRepeaterBtn');if(fr)fr.hidden=side==='resp';
+}
 function setHeldControlsDisabled(disabled){
-  ['#heldRaw','#forwardBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn']
-    .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight;});
+  const dropping=selectionDropping();
+  ['#heldRaw','#forwardBtn','#forwardRepeaterBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldViewRaw','#heldViewPretty','#heldRepeaterBtn']
+    .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight||dropping;});
+  const all=$('#forwardAllBtn');if(all)all.disabled=!!heldActionInFlight||forwardAllBusy||!heldItems().some(h=>!dropMarks.has(heldKey(h.side,h.id)));
 }
 
 function clearHeldLoadMessage(){
@@ -161,11 +268,11 @@ function showHeldLoadState(h,text,retry){
   const main=document.querySelector('.icpt-main');
   if(!main)return;
   const el=document.createElement('div');
-  el.id='heldLoadState';el.className='hint';el.setAttribute('role',retry?'alert':'status');
-  el.style.cssText='padding:10px 14px;border-bottom:1px solid var(--line);color:'+(retry?'var(--red)':'var(--fg2)');
+  el.id='heldLoadState';el.setAttribute('role',retry?'alert':'status');
+  el.className=retry?'hint held-load-state state-error-msg':'hint held-load-state';
   el.textContent=text;
   if(retry){
-    const b=document.createElement('button');b.type='button';b.className='btn';b.style.marginLeft='10px';b.textContent='Retry loading held message';
+    const b=document.createElement('button');b.type='button';b.className='btn';b.textContent='Retry loading held message';
     b.onclick=()=>selectHeld(h.id,h.side);el.appendChild(b);
   }
   main.insertBefore(el,main.firstChild);
@@ -175,7 +282,9 @@ function showHeldLoading(h){
   heldLoadingKey=heldKey(h.side,h.id);
   clearHeldLoadMessage();
   const head=$('#heldEditor'),empty=$('#heldEmpty'),ta=$('#heldRaw'),dec=$('#heldDecoded');
+  resetHeldView();
   if(head)head.style.display='flex';
+  setHeldChrome(true);
   if(empty)empty.style.display='none';
   if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
   setHeldDecodeState(false);
@@ -192,10 +301,39 @@ function showHeldLoadError(h,error){
   showHeldLoadState(h,'Unable to load held message: '+(error?.message||'request failed'),true);
 }
 
+// heldRowMarkup is the single source of a hold-queue row's markup, shared by the
+// full render and the incremental delta path so the two never drift. h carries a
+// `side` ('req'|'resp') on top of the stored heldJSON fields.
+function heldRowMarkup(h){
+  return `<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}${dropMarks.has(heldKey(h.side,h.id))?' is-dropping':''}" data-id="${h.id}" data-side="${h.side}" aria-selected="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
+    <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
+    ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
+    <span class="u">${esc(h.host)}${esc(h.path)}</span>${dropMarks.has(heldKey(h.side,h.id))?'<span class="icpt-dropping-tag">Dropping</span>':''}</div>`;
+}
+// syncInterceptBanner reflects the current total into the danger banner, the
+// nav badge and the queue-total chip. Shared so a single delta updates them in
+// O(1) without a full list rebuild.
+function syncInterceptBanner(){
+  const ic=state.intercept||{};
+  const total=(ic.queue||[]).length+(ic.responseQueue||[]).length;
+  const danger=$('#interceptWarning');
+  const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
+  document.documentElement.classList.toggle('intercept-danger',interceptDanger);
+  if(danger){
+    danger.style.display=interceptDanger?'block':'none';
+    danger.textContent=total
+      ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you Forward or Drop. Off after restart (session-only).`
+      :'INTERCEPT ACTIVE — matching traffic will be held until you Forward or Drop. Off after restart (session-only).';
+  }
+  const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
+  const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
+}
 export function renderIntercept(){
   const ic=state.intercept||{};
+  autoFwd.sync(!!ic.enabled);
+  renderAutoForwarded();
   const hint=$('#heldEmptyHint');
-  if(hint)hint.textContent=ic.enabled||ic.responseEnabled?'Waiting for matching '+(ic.enabled&&ic.responseEnabled?'requests or responses':ic.enabled?'requests':'responses')+'.':'Enable Requests or Responses to hold traffic.';
+  if(hint)hint.textContent=ic.enabled||ic.responseEnabled?'Waiting for matching '+(ic.enabled&&ic.responseEnabled?'requests or responses':ic.enabled?'requests':'responses')+'. '+scopeNote(icptCtx.scope).text:'Enable Requests or Responses to hold traffic.';
   const rq=ic.queue||[], rrq=ic.responseQueue||[];
   const focusedHeld=document.activeElement?.closest?.('#heldList .icpt-item[data-id][data-side]');
   const heldFocus=focusedHeld?{id:focusedHeld.dataset.id,side:focusedHeld.dataset.side}:null;
@@ -219,24 +357,17 @@ export function renderIntercept(){
   knownHeldKeys=nextHeldKeys;
   heldKeysReady=true;
   const total=items.length;
-  const danger=$('#interceptWarning');
-  const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
-  document.documentElement.classList.toggle('intercept-danger',interceptDanger);
-  if(danger){
-    danger.style.display=interceptDanger?'block':'none';
-    danger.textContent=total
-      ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you Forward or Drop. Off after restart (session-only).`
-      :'INTERCEPT ACTIVE — matching traffic will be held until you Forward or Drop. Off after restart (session-only).';
-  }
-  const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
-  const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
+  syncInterceptBanner();
   const list=$('#heldList');
-  if(!total){list.innerHTML='';state.heldSel=null;showEditor(null);return;}
-  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}" data-id="${h.id}" data-side="${h.side}" aria-current="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
-    <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
-    ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
-    <span class="u">${esc(h.host)}${esc(h.path)}</span></div>`).join('');
-  $$('#heldList .icpt-item').forEach(el=>{el.onclick=()=>selectHeld(Number(el.dataset.id),el.dataset.side);wireRowKey(el,()=>selectHeld(Number(el.dataset.id),el.dataset.side));});
+  if(!total){list.innerHTML='';list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
+  list.innerHTML=items.map(heldRowMarkup).join('');
+  // The hold queue is a single-select list: one listbox, one Tab stop, arrows
+  // move the selection because selecting *is* what shows the item in the editor.
+  wireListbox(list,list.querySelectorAll('.icpt-item'),{
+    label:'Held requests and responses',
+    selectionFollowsFocus:true,
+    activate:el=>selectHeld(Number(el.dataset.id),el.dataset.side),
+  });
   arrivals.forEach(h=>{
     const el=list.querySelector(`.icpt-item[data-id="${h.id}"][data-side="${h.side}"]`);
     animateOnce(el,[
@@ -263,6 +394,8 @@ function showEditor(h){
   if(!h){
     heldLoadingKey=null;
     if(head)head.style.display='none';
+    setHeldChrome(false);
+    resetHeldView();
     if(ta){ta.style.display='none';ta.disabled=false;ta.removeAttribute('placeholder');}
     if(empty)empty.style.display='flex';
     const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
@@ -271,12 +404,16 @@ function showEditor(h){
     return;
   }
   if(head)head.style.display='flex';
+  setHeldChrome(true);
+  renderHeldContext();
   if(empty)empty.style.display='none';
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
   setHeldDecodeState(false);
   const original=heldOriginal(h);
+  resetHeldView();
   if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
   setHeldControlsDisabled(false);
+  syncHeldRepeaterButton(h.side);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
@@ -289,7 +426,8 @@ export async function selectHeld(id,side,opts={}){
   if(previousKey!==nextKey){
     if(!heldActionInFlight)restoreHeldActionControls();
   }
-  $$('#heldList .icpt-item').forEach(el=>{const selected=Number(el.dataset.id)===id&&el.dataset.side===side;el.classList.toggle('sel',selected);el.setAttribute('aria-current',selected?'true':'false');});
+  $$('#heldList .icpt-item').forEach(el=>{el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side);});
+  setListboxSelection($$('#heldList .icpt-item'),el=>Number(el.dataset.id)===id&&el.dataset.side===side);
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
    let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
@@ -323,6 +461,90 @@ export async function selectHeld(id,side,opts={}){
   }
   heldLoadingKey=null;
   showEditor({...h,side,raw});
+}
+
+// ---- per-item delta application (intercept.held / intercept.released) ----
+// A delta mutates one queue and advances the generation; #heldList is updated in
+// place (add or remove one row) rather than rebuilt. The incremental path defers
+// to the full renderIntercept for the transitions it does not own — an
+// empty<->non-empty flip, removing the selected row, or an action in flight — and
+// a gap or unknown baseline triggers exactly one snapshot refresh so a dropped or
+// out-of-order frame can never leave the queue wrong.
+export function applyInterceptDelta(message,resnapshot){
+  const kind=deltaType(message);
+  if(!kind)return;
+  const delta={type:kind,side:message.side==='resp'?'resp':'req',id:message.id,item:message.item,seq:message.seq};
+  const res=applyDelta(state.intercept||{},interceptSeq,delta);
+  if(res.status==='duplicate')return;
+  if(res.status==='gap'){
+    interceptSeq=SEQ_UNKNOWN; // stop applying deltas until a snapshot rebases us
+    if(!interceptResnapshotPending&&typeof resnapshot==='function'){
+      interceptResnapshotPending=true;
+      Promise.resolve(resnapshot()).catch(()=>{}).finally(()=>{interceptResnapshotPending=false;});
+    }
+    return;
+  }
+  state.intercept=res.state;
+  interceptSeq=res.seq;
+  renderHeldDelta(kind,delta.side,delta.id,delta.item);
+}
+function renderHeldDelta(kind,side,id,item){
+  const list=$('#heldList');
+  if(!list)return;
+  if(heldActionInFlight||forwardAllBusy){renderIntercept();return;}
+  const total=(state.intercept.queue||[]).length+(state.intercept.responseQueue||[]).length;
+  if(kind==='held'){
+    if(total<=1){renderIntercept();return;}   // empty -> non-empty: full render selects + opens the editor
+    addHeldRow(side,item);
+  }else{
+    if(total===0){renderIntercept();return;}  // non-empty -> empty: full render clears + hides the editor
+    if(state.heldSel&&state.heldSel.id===id&&state.heldSel.side===side){renderIntercept();return;} // selected row removed
+    removeHeldRow(side,id);
+  }
+}
+function heldRowEl(h){
+  const tmp=document.createElement('div');
+  tmp.innerHTML=heldRowMarkup(h);
+  return tmp.firstElementChild;
+}
+// wireHeldRow gives one incrementally-added row the same listbox semantics
+// wireListbox gives a rendered row: an option in the roving tab order with click
+// and Enter/Space activation. Arrow traversal across rows is refreshed by the
+// next full render (every Forward/Drop reconcile triggers one).
+function wireHeldRow(el){
+  el.setAttribute('role','option');
+  if(!el.hasAttribute('aria-selected'))el.setAttribute('aria-selected','false');
+  el.tabIndex=-1;
+  const go=()=>selectHeld(Number(el.dataset.id),el.dataset.side);
+  el.onclick=go;
+  wireRowKey(el,go);
+}
+function heldSelectionPredicate(el){return !!state.heldSel&&Number(el.dataset.id)===state.heldSel.id&&el.dataset.side===state.heldSel.side;}
+function addHeldRow(side,item){
+  const list=$('#heldList');if(!list)return;
+  const h={...item,side};
+  if(list.querySelector(`.icpt-item[data-id="${h.id}"][data-side="${side}"]`)){syncInterceptBanner();return;}
+  const el=heldRowEl(h);
+  wireHeldRow(el);
+  // Requests sort before responses: a new request goes before the first response
+  // row (insertBefore(null) appends), a new response at the very end.
+  if(side==='req')list.insertBefore(el,list.querySelector('.icpt-item[data-side="resp"]'));
+  else list.appendChild(el);
+  knownHeldKeys.add(heldKey(side,h.id));
+  setListboxSelection($$('#heldList .icpt-item'),heldSelectionPredicate);
+  if(allowHeldSignal())animateOnce(el,[
+    {opacity:.45,transform:'translateX(-4px)',backgroundColor:'var(--accentDim)'},
+    {opacity:1,transform:'translateX(0)',backgroundColor:'transparent'},
+  ],{duration:MOTION.base,easing:MOTION.enter});
+  syncInterceptBanner();
+}
+function removeHeldRow(side,id){
+  const list=$('#heldList');if(!list)return;
+  knownHeldKeys.delete(heldKey(side,id));
+  const el=list.querySelector(`.icpt-item[data-id="${id}"][data-side="${side}"]`);
+  if(el)el.remove();
+  setListboxSelection($$('#heldList .icpt-item'),heldSelectionPredicate);
+  syncInterceptBanner();
 }
 $('#respInterceptToggle').onclick=async()=>{
   try{await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}
@@ -376,6 +598,8 @@ function reconcileHeldRemoval(sel){
   heldActionInFlight=null;
   restoreHeldActionControls();
   renderIntercept();
+  // Phones show one pane at a time: after Forward or Drop go back to the queue.
+  if(icptCtx.pane&&icptCtx.pane.mode()==='stack')icptCtx.pane.showList();
 }
 function releaseHeldAction(){
   const deferred=!!heldActionInFlight?.deferred;
@@ -404,6 +628,7 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const sel=state.heldSel;if(!sel)return;
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
   if(!rawEl||!decEl)return;
+  if(heldView==='pretty')setHeldView('raw');
   if(decEl.style.display&&decEl.style.display!=='none'){
     heldDecodeEpoch++;
     decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';setHeldDecodeState(false);return;
@@ -434,22 +659,45 @@ $('#heldRaw').addEventListener('input',()=>{
 });
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
   const ta=$('#heldRaw');if(!ta)return;
-  ta.value=prettify(ta.value);ta.dispatchEvent(new Event('input'));ta.focus();
+  setHeldView('raw');
+  ta.value=heldBeautified(ta.value);ta.dispatchEvent(new Event('input'));ta.focus();
 });
+// Raw | Pretty: presentation only, so switching never touches the held bytes.
+{
+  const seg=$('#heldViewSeg');
+  if(seg){
+    seg.addEventListener('click',e=>{
+      const b=e.target.closest&&e.target.closest('[data-held-view]');
+      if(!b||b.disabled)return;
+      setHeldView(b.dataset.heldView,{focus:true});
+    });
+    seg.addEventListener('keydown',e=>{
+      if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+      e.preventDefault();
+      const next=e.key==='ArrowRight'?'pretty':'raw';
+      setHeldView(next);
+      seg.querySelector(`[data-held-view="${next}"]`)?.focus();
+    });
+  }
+}
 $('#heldResetBtn')&&($('#heldResetBtn').onclick=()=>{
   const sel=state.heldSel,ta=$('#heldRaw');if(!sel||!ta)return;
+  setHeldView('raw');
   const original=heldOriginalCache.get(heldKey(sel.side,sel.id));if(original==null)return;
   ta.value=original;ta.dispatchEvent(new Event('input'));ta.focus();
 });
 
-$('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
+// performDrop is the real, irreversible drop. It only runs after the 5 s undo
+// window (see scheduleDrop), so it must work for an item that is no longer the
+// selected one: visual state is applied only while the selection owns the key.
+async function performDrop(sel){
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
   const button=$('#dropBtn');
   const row=document.querySelector(`#heldList .icpt-item[data-id="${sel.id}"][data-side="${sel.side}"]`);
   const epoch=++heldActionEpoch;
   const actionKey=heldKey(sel.side,sel.id);
   heldActionInFlight={key:actionKey,deferred:false};
-  setHeldActionState(button,'pending','Dropping…');
+  if(heldSelectionOwns(actionKey))setHeldActionState(button,'pending','Dropping…');
   try{await api(base+sel.id+'/drop',{method:'POST'});
     await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
@@ -458,7 +706,7 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     setHeldActionResult(button,actionKey,'success','Dropped');
     resetHeldAction(button,'Drop',600,epoch,actionKey);
     toast(sel.side==='resp'?'response dropped':'dropped');
-  }catch(e){releaseHeldAction();setHeldActionResult(button,actionKey,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch,actionKey);toast(e.message);}};
+  }catch(e){releaseHeldAction();setHeldActionResult(button,actionKey,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch,actionKey);toast(e.message);}}
 export async function applyInterceptFilter(draft=pendingFilterMutation||stageInterceptFilter()){
   if(draft.started)return draft.promise;
   draft.started=true;
@@ -495,6 +743,7 @@ function scheduleInterceptFilter(){
 let rulesLoadEpoch=0,ruleMutationEpoch=0,ruleMutationLanes=new Map(),ruleMutationRevision=new Map(),ruleDrafts=new Map();
 export function renderRules(){
   const body=$('#rulesBody');
+  syncRulesCount();
   const active=document.activeElement;
   const activeRow=active?.closest?.('#rulesBody tr[data-id]');
   const focus={id:activeRow?.dataset.id||'',key:active?.dataset?.k||'',start:active?.selectionStart,end:active?.selectionEnd};
@@ -518,7 +767,23 @@ export function renderRules(){
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteRule(Number(b.dataset.del)));
   if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
 }
-export async function loadRules(){const epoch=++rulesLoadEpoch,mutationSnapshot=ruleMutationEpoch;try{const d=await api('/api/rules');if(epoch!==rulesLoadEpoch||mutationSnapshot!==ruleMutationEpoch||ruleMutationLanes.size)return;state.rules=d.rules||[];renderRules();}catch(e){if(epoch===rulesLoadEpoch&&!ruleMutationLanes.size)toast(e.message);}}
+export async function loadRules(){const epoch=++rulesLoadEpoch,mutationSnapshot=ruleMutationEpoch;try{const d=await api('/api/rules');if(epoch!==rulesLoadEpoch||mutationSnapshot!==ruleMutationEpoch||ruleMutationLanes.size)return;state.rules=d.rules||[];renderRules();}catch(e){if(epoch!==rulesLoadEpoch||ruleMutationLanes.size)return;
+  // A bare toast left the table showing stale rows with no way back. Surface the
+  // failure in the table itself, with a Retry, and keep the toast for the nudge.
+  const body=$('#rulesBody');
+  if(body){
+    const cell=document.createElement('td');
+    cell.colSpan=5;
+    // renderLoadError sets display:block on its target, which would pull a <td>
+    // out of table layout and void the colspan — give it an inner slot instead.
+    const slot=document.createElement('div');
+    cell.appendChild(slot);
+    const row=document.createElement('tr');
+    row.appendChild(cell);
+    body.replaceChildren(row);
+    renderLoadError(slot,'Interception rules',e,loadRules,state.rules.length>0);
+  }
+  toast(e.message);}}
 function ruleMutation(id,work){
   ruleMutationEpoch++;const rev=(ruleMutationRevision.get(id)||0)+1;ruleMutationRevision.set(id,rev);
   const prior=ruleMutationLanes.get(id)||Promise.resolve();const next=prior.catch(()=>{}).then(work);ruleMutationLanes.set(id,next);
@@ -527,7 +792,7 @@ function ruleMutation(id,work){
 function rememberRuleDraft(id,tr){
   const r=state.rules.find(x=>x.id===id);if(!r)return null;
   const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const draft={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
+  const draft={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value,bigBody:!!r.bigBody};
   ruleDrafts.set(id,draft);return draft;
 }
 export async function updateRule(id,tr){
@@ -557,3 +822,147 @@ $('#addRuleBtn').onclick=async()=>{
     $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
   finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };
+
+/* ---- workbench additions: deferred drop, forward-all, context, split ---- */
+function selectionDropping(){const sel=state.heldSel;return !!sel&&dropMarks.has(heldKey(sel.side,sel.id));}
+function setHeldChrome(visible){
+  ['#heldActions','#heldCtx'].forEach(sel=>{const el=$(sel);if(el)el.style.display=visible?'flex':'none';});
+}
+// Out-of-scope auto-forward tally (see intercept-model.js). Hidden while the
+// client cannot decide scope exactly or interception is off.
+const autoFwd=createAutoForwardTally();
+let autoFwdSource=null,autoFwdCompiled=null;
+function autoFwdScope(){
+  if(autoFwdSource!==state.scope){autoFwdSource=state.scope;autoFwdCompiled=compileScopeRules(state.scope);}
+  return autoFwdCompiled;
+}
+function renderAutoForwarded(){
+  const el=$('#heldAutoFwd');if(!el)return;
+  const c=autoFwdScope();
+  const show=!!(state.intercept&&state.intercept.enabled)&&c.hasInclude&&c.evaluable;
+  el.hidden=!show;
+  if(show)el.textContent=autoForwardText(autoFwd.count());
+}
+registerSseHandler('flow.new',m=>{
+  if(!m||!m.flow)return;
+  const on=!!(state.intercept&&state.intercept.enabled);
+  if(!isAutoForwarded(m.flow,{interceptOn:on,compiled:autoFwdScope(),flowInScope}))return;
+  autoFwd.add();renderAutoForwarded();
+});
+function renderHeldContext(){
+  const sc=$('#heldScopeText'),idn=$('#heldIdentityText'),note=$('#heldScopeNote');
+  if(sc)sc.textContent=scopeBadgeText(icptCtx.scope);
+  if(idn)idn.textContent=identityText(icptCtx.identity);
+  if(note)note.textContent=scopeNote(icptCtx.scope).text;
+  const chip=$('#heldIdentity');if(chip)chip.hidden=!icptCtx.identity;
+}
+function syncRulesCount(){
+  const el=$('#rulesCount');if(!el)return;
+  const r=rulesSummary(state.rules);
+  el.textContent=r.total;
+  el.setAttribute('aria-label',r.total?'Match and replace rules: '+r.label:'No match and replace rules');
+}
+function syncDropMarks(){
+  document.querySelectorAll('#heldList .icpt-item').forEach(row=>{
+    const on=dropMarks.has(heldKey(row.dataset.side,Number(row.dataset.id)));
+    row.classList.toggle('is-dropping',on);
+    const tag=row.querySelector('.icpt-dropping-tag');
+    if(on&&!tag){const t=document.createElement('span');t.className='icpt-dropping-tag';t.textContent='Dropping';row.appendChild(t);}
+    else if(!on&&tag)tag.remove();
+  });
+  if(!heldActionInFlight)setHeldControlsDisabled(false);
+}
+const dropToasts=new Map();
+const dropScheduler=createDropScheduler({
+  // A due drop waits while a Forward or another Drop is in flight: performDrop
+  // owns heldActionInFlight/heldActionEpoch and must not clobber the other's.
+  busy:()=>!!heldActionInFlight,
+  commit:entry=>{
+    dropToasts.get(heldKey(entry.side,entry.id))?.dismiss();dropToasts.delete(heldKey(entry.side,entry.id));
+    // The server may have released it meanwhile (timeout, another client).
+    if(!heldItem(entry.id,entry.side)){dropMarks.delete(heldKey(entry.side,entry.id));syncDropMarks();return;}
+    dropMarks.delete(heldKey(entry.side,entry.id));
+    performDrop(entry);
+  },
+  onChange:(key,what)=>{
+    if(what==='pending')dropMarks.add(key);
+    else if(what==='undone')dropMarks.delete(key);
+    syncDropMarks();
+  },
+});
+// Drop never shows a confirm dialog. It is deferred instead: the request stays
+// held while the Undo toast is up, and only then does the irreversible API call
+// run. Undo therefore just cancels a timer; it never "restores" a sent drop.
+function scheduleDrop(){
+  const sel=state.heldSel;if(!sel||selectionDropping()||heldActionInFlight)return;
+  const key=heldKey(sel.side,sel.id);
+  if(!dropScheduler.schedule(key,{side:sel.side,id:sel.id}))return;
+  const t=showDropToast(dropToastText(sel.side),{
+    onUndo:()=>{dropToasts.delete(key);if(dropScheduler.undo(key))toast(sel.side==='resp'?'response kept on hold':'request kept on hold','success');},
+    onPause:()=>dropScheduler.pause(key),
+    onResume:()=>dropScheduler.resume(key),
+  });
+  dropToasts.set(key,t);
+}
+$('#dropBtn').onclick=scheduleDrop;
+
+$('#forwardRepeaterBtn')&&($('#forwardRepeaterBtn').onclick=async()=>{
+  const sel=state.heldSel,h=sel&&sel.side==='req'&&heldItem(sel.id,sel.side);
+  if(!h)return;
+  const sent={scheme:h.scheme,host:h.host,raw:$('#heldRaw').value};
+  await $('#forwardBtn').onclick();
+  // Forward reports failure with a toast and leaves the item held: only open
+  // Repeater when the request really left the queue.
+  if(!heldItem(sel.id,'req'))sendRawToRepeater(sent);
+});
+
+async function forwardAll(){
+  if(forwardAllBusy||heldActionInFlight)return;
+  const plan=forwardAllPlan(heldItems(),{dropping:dropMarks,rawCache:heldRawCache,originalCache:heldOriginalCache});
+  if(!plan.length)return;
+  if(!await uiConfirm('Forward all held items?','Forward <b>'+plan.length+'</b> held item'+(plan.length===1?'':'s')+' now? Edits you made are kept. Items waiting to be dropped are skipped.','Forward all','btn btn-primary'))return;
+  forwardAllBusy=true;setHeldControlsDisabled(false);
+  const status=$('#heldActionStatus');
+  let done=0,failure='';
+  for(const step of plan){
+    if(!heldItem(step.id,step.side)){done++;continue;}
+    try{
+      await api(forwardPath(step.side,step.id),step.raw!=null?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:step.raw})}:{method:'POST'});
+      heldRawCache.delete(heldKey(step.side,step.id));heldOriginalCache.delete(heldKey(step.side,step.id));
+      reconcileHeldRemoval({side:step.side,id:step.id});
+      done++;
+      if(status)status.textContent=forwardAllProgress(done,plan.length);
+    }catch(e){failure=e.message||'request failed';break;}
+  }
+  forwardAllBusy=false;
+  if(status)status.textContent=forwardAllProgress(done,plan.length,failure);
+  if(failure)toast(forwardAllProgress(done,plan.length,failure),'error');else toast(forwardAllProgress(done,plan.length));
+  setHeldControlsDisabled(false);
+}
+$('#forwardAllBtn')&&($('#forwardAllBtn').onclick=forwardAll);
+
+// Held header context: scope and identity come from the shared project state.
+import('./project-state.js').then(m=>{
+  const apply=ps=>{icptCtx.scope=ps&&ps.scope;icptCtx.identity=(ps&&ps.activeIdentity)||'';renderHeldContext();};
+  m.projectState.subscribe(apply);apply(m.projectState.get());
+}).catch(()=>{});
+
+// Hold queue | editor as a SplitPane. On phones it stacks: choosing an item
+// opens the editor, Back returns to the queue.
+try{
+  const root=$('#icptWork');
+  if(root){
+    icptCtx.pane=createSplitPane({
+      root,key:'intercept.split',orientation:'right',min:[220,320],default:30,stackBelow:720,scopeKey:projectStorageKey,
+      label:'Resize hold queue and editor',backLabel:'Hold queue',
+      onView:view=>{if(view==='list')requestAnimationFrame(()=>($('#heldList .icpt-item.sel')||$('#heldList .icpt-item'))?.focus({preventScroll:true}));},
+    });
+    const open=e=>{const row=e.target.closest?.('.icpt-item');if(row&&icptCtx.pane.mode()==='stack')icptCtx.pane.showDetail(row);};
+    $('#heldList').addEventListener('click',open);
+    $('#heldList').addEventListener('keydown',e=>{if(e.key==='Enter')open(e);});
+  }
+}catch(e){/* the plain two-column layout still works without the split */}
+
+// Settings' import/restore asks the intercept rule list to reload over the bus
+// instead of importing it from settings.js (part of breaking the settings cycle).
+busOn(EVENTS.INTERCEPT_RELOAD_RULES, () => { loadRules(); });

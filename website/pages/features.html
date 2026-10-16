@@ -1,0 +1,130 @@
+---
+layout: page
+title: Feature index
+heading: All features
+eyebrow: Collected abilities
+description: Find the part of Interseptor you need. Each capability below links to its guide; the workspace tour follows the app's menus.
+permalink: /features/
+css: [css/pages.css]
+js: [js/pages.js]
+---
+{{- /*
+  Every feature gets an icon and a topic here, keyed by its id in website/data/features.yml. A
+  feature that is not listed falls back to a neutral sticker under "Extend & manage", so adding a
+  33rd feature never breaks the page. Topics map to candy colours: sky for capture, pink for test,
+  mint for prove, grape for agents and butter for the rest. The topic name is printed on every card.
+*/ -}}
+{{- $topics := dict
+  "capture" (dict "label" "Capture" "color" "sky")
+  "test" (dict "label" "Test" "color" "pink")
+  "prove" (dict "label" "Prove & report" "color" "mint")
+  "agents" (dict "label" "Agents" "color" "grape")
+  "manage" (dict "label" "Extend & manage" "color" "yellow") -}}
+{{- $order := dict "1" "capture" "2" "test" "3" "prove" "4" "agents" "5" "manage" -}}
+{{- $meta := dict
+  "intercepting-proxy" (dict "icon" "arrow-left-right" "topic" "capture")
+  "live-history" (dict "icon" "history" "topic" "capture")
+  "intercept-workflow" (dict "icon" "hand" "topic" "capture")
+  "repeater" (dict "icon" "repeat" "topic" "test")
+  "intruder" (dict "icon" "crosshair" "topic" "test")
+  "authorization" (dict "icon" "key-round" "topic" "test")
+  "agent-orchestration" (dict "icon" "bot" "topic" "agents")
+  "mobile" (dict "icon" "smartphone" "topic" "capture")
+  "collaboration" (dict "icon" "users" "topic" "manage")
+  "launcher" (dict "icon" "layout-dashboard" "topic" "manage")
+  "external-ai" (dict "icon" "sparkles" "topic" "agents")
+  "scanner" (dict "icon" "radar" "topic" "test")
+  "checks" (dict "icon" "list-checks" "topic" "manage")
+  "codecs" (dict "icon" "binary" "topic" "manage")
+  "signed-packs" (dict "icon" "package-check" "topic" "manage")
+  "discovery" (dict "icon" "folder-search" "topic" "test")
+  "http2" (dict "icon" "zap" "topic" "capture")
+  "scope" (dict "icon" "target" "topic" "capture")
+  "websockets" (dict "icon" "plug" "topic" "capture")
+  "session-auth" (dict "icon" "cookie" "topic" "test")
+  "import-export" (dict "icon" "arrow-down-up" "topic" "manage")
+  "vault" (dict "icon" "vault" "topic" "manage")
+  "model-free" (dict "icon" "cpu" "topic" "agents")
+  "findings" (dict "icon" "bug" "topic" "prove")
+  "api-mcp" (dict "icon" "webhook" "topic" "agents")
+  "notes" (dict "icon" "sticky-note" "topic" "prove")
+  "activity" (dict "icon" "activity" "topic" "agents")
+  "decoder" (dict "icon" "scan-text" "topic" "test")
+  "map" (dict "icon" "map" "topic" "capture")
+  "settings" (dict "icon" "settings" "topic" "manage")
+  "session-inspector" (dict "icon" "microscope" "topic" "prove")
+  "collections" (dict "icon" "folder-tree" "topic" "test") -}}
+{{- $fallback := dict "icon" "sparkles" "topic" "manage" -}}
+{{- $total := len .Site.Features -}}
+<div class="features-page">
+  <p class="lede">Find the part of Interseptor you need. Each capability below links to its guide; the <a href="{{ url "/workspace/" }}">workspace tour</a> follows the app's menus.</p>
+
+  <div class="ability-tools" role="group" aria-label="Filter abilities" data-ability-tools>
+    <div class="ability-search">
+      <div class="ability-search-main">
+        <label class="ability-search-label" for="ability-filter">Filter abilities</label>
+        <div class="ability-field">
+          {{ icon "search" }}
+          <input class="field-input" id="ability-filter" type="search" name="q" placeholder="Try proxy, scanner or report" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-controls="ability-grid">
+          <button class="icon-btn ability-clear" type="button" data-ability-clear hidden aria-label="Clear filter">{{ icon "x" }}</button>
+        </div>
+      </div>
+      <p class="ability-count" aria-hidden="true">Showing <strong data-ability-shown>{{ $total }}</strong> of {{ $total }} abilities</p>
+    </div>
+    <fieldset class="ability-themes">
+      <legend class="sr-only">Show abilities by topic</legend>
+      <label class="ability-chip" data-theme-chip="all">
+        <input type="radio" name="ability-theme" value="all" checked>
+        <span class="chip">{{ icon "check" }}All <span class="ability-chip-count">{{ $total }}<span class="sr-only"> abilities</span></span></span>
+      </label>
+      {{- range $key, $id := $order }}
+      {{- $info := index $topics $id }}
+      {{- $n := 0 }}
+      {{- range $.Site.Features }}{{ $m := or (index $meta .ID) $fallback }}{{ if eq (index $m "topic") $id }}{{ $n = add $n 1 }}{{ end }}{{ end }}
+      <label class="ability-chip" data-color="{{ index $info "color" }}">
+        <input type="radio" name="ability-theme" value="{{ $id }}">
+        <span class="chip">{{ icon "check" }}<span class="theme-dot" aria-hidden="true"></span>{{ index $info "label" }} <span class="ability-chip-count">{{ $n }}<span class="sr-only"> abilities</span></span></span>
+      </label>
+      {{- end }}
+    </fieldset>
+    <p class="sr-only" id="ability-status" role="status" aria-live="polite" aria-atomic="true"></p>
+  </div>
+
+  <div class="ability-wrap">
+    <div class="ability-grid" id="ability-grid">
+      {{- range .Site.Features }}
+      {{- $m := or (index $meta .ID) $fallback }}
+      {{- $topic := index $m "topic" }}
+      {{- $info := index $topics $topic }}
+      <article class="ability card-surface card-hover" id="{{ .ID }}" data-topic="{{ $topic }}" data-color="{{ index $info "color" }}" aria-labelledby="{{ .ID }}-heading">
+        <div class="ability-head">
+          <span class="sticker-icon ability-icon">{{ icon (index $m "icon") }}</span>
+          <span class="ability-num"><span class="sr-only">Ability </span>{{ .Number }}</span>
+        </div>
+        <h2 id="{{ .ID }}-heading">{{ .Title }}</h2>
+        <p class="ability-text">{{ .Text }}</p>
+        <div class="ability-foot">
+          <span class="ability-theme"><span class="theme-dot" aria-hidden="true"></span>{{ index $info "label" }}</span>
+          <a class="ability-link" href="{{ url .Link }}">Read the guide<span class="sr-only"> for {{ .Title }}</span></a>
+        </div>
+      </article>
+      {{- end }}
+      <aside class="ability-cap" aria-label="Beyond the feature list" data-ability-cap>
+        <p class="ability-cap-title">Looking for the limits?</p>
+        <p class="ability-cap-text">The comparison starts with what Interseptor does not do.</p>
+        <a class="btn-ghost btn-sm" href="{{ url "/compare/" }}">Read the comparison</a>
+      </aside>
+    </div>
+    <div class="ability-empty card-surface" data-ability-empty hidden>
+      <img class="ability-empty-art" src="{{ asset "img/mascot/frog-search-512.webp" }}" alt="" width="112" height="112" loading="lazy" decoding="async">
+      <div>
+        <p class="ability-empty-title">No ability matches “<span data-ability-query></span>”.</p>
+        <p class="ability-empty-text">Try a shorter word, such as proxy or report, or search the whole documentation.</p>
+        <div class="ability-empty-actions">
+          <button class="btn-primary btn-sm" type="button" data-ability-reset>Clear filter</button>
+          <button class="btn-ghost btn-sm" type="button" data-search-open data-search-query="">{{ icon "search" }}Search the docs</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,484 @@
+---
+layout: landing
+permalink: /
+title: Interseptor — an intercepting proxy that makes you prove it
+description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 133-tool MCP server for agent-assisted testing.
+image: /website/assets/img/social-card.png
+image_alt: "Interseptor: the interception workspace for web and API pentests, beside a screenshot of captured requests and a decoded response."
+css: [css/landing.css]
+js: [js/landing.js]
+sections:
+  - title: Demo
+    id: demo
+  - title: Workflow
+    id: workflow
+  - title: What it does
+    id: capabilities
+  - title: For agents
+    id: agents
+  - title: Honestly
+    id: honestly
+  - title: Questions
+    id: questions
+---
+<section class="lp-hero" id="hero" aria-labelledby="hero-title">
+  <div class="wrap lp-hero-grid">
+    <div class="lp-hero-copy">
+      <p class="mono-label">One static binary · v{{.Site.Release.Version}} · MIT</p>
+      <h1 class="lp-hero-title" id="hero-title">Finding the bug is the <span class="squiggle">easy half<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="M3 9C40 3 80 3 197 8"/></svg></span>.</h1>
+      <p class="lede lp-hero-lede">Interseptor intercepts, replays and fuzzes the way you would expect. Then it refuses to call a report final until the evidence is attached. One Go binary, no JVM, no licence tier.</p>
+      <div class="lp-actions">
+        <a class="btn-primary btn-lg" href="{{url "/getting-started/"}}">Get started</a>
+        <a class="btn-ghost btn-lg" href="{{url "/compare/"}}">Compare with Burp and ZAP</a>
+      </div>
+      <div class="window lp-cmd">
+        <div class="window-bar">
+          <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="window-title">install</span>
+          <button class="copy-button chip" type="button" data-copy="#hero-install" aria-label="Copy the install command">Copy</button>
+        </div>
+        <div class="lp-cmd-body"><code id="hero-install"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>go install github.com/<wbr>Veyal/<wbr>interseptor/<wbr>cmd/<wbr>interseptor<wbr>@latest</code></div>
+      </div>
+      <p class="lp-hero-meta">Needs Go 1.25 or later. Or grab a <a href="https://github.com/Veyal/interseptor/releases">prebuilt binary</a> for macOS, Linux or Windows.</p>
+    </div>
+
+    <div class="lp-hero-toy">
+      <div class="tray-frame">
+        <span class="ribbon">Try it</span>
+        <div class="window tray" data-tray data-phase="idle" data-intercept="off" data-result="none" data-finding="off">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window-title">intercept · hold tray</span>
+          </div>
+          <div class="window-body tray-body">
+            <div class="tray-head">
+              <button class="tray-switch" type="button" aria-pressed="false" data-tray-switch>
+                <span class="tray-switch-track" aria-hidden="true"><span class="tray-switch-knob"></span></span>
+                <span class="tray-switch-text">Intercept <span class="tray-switch-state" aria-hidden="true" data-tray-switch-state>off</span></span>
+              </button>
+              <p class="tray-note">A toy version of the real flow <a href="#demo">recorded below</a>. Nothing leaves your browser.</p>
+            </div>
+
+            <div class="tray-wire" aria-hidden="true" data-tray-wire>
+              <span class="tray-end tray-end-client">{{icon "app-window"}}<span class="tray-end-text">browser</span></span>
+              <span class="tray-frog" data-tray-frogbox>
+                <img class="tray-frog-img tray-frog-live" data-tray-frog src="{{asset "img/mascot/frog-search-512.webp"}}" srcset="{{asset "img/mascot/frog-search-512.webp"}} 512w, {{asset "img/mascot/frog-search-1024.webp"}} 1024w" sizes="(min-width: 640px) 76px, 60px" width="512" height="512" alt="" decoding="async" data-pose-search="{{asset "img/mascot/frog-search-512.webp"}}|{{asset "img/mascot/frog-search-1024.webp"}}" data-pose-catch="{{asset "img/mascot/frog-catch-512.webp"}}|{{asset "img/mascot/frog-catch-1024.webp"}}" data-pose-drop="{{asset "img/mascot/frog-drop-512.webp"}}|{{asset "img/mascot/frog-drop-1024.webp"}}">
+                <img class="tray-frog-img tray-frog-nojs" src="{{asset "img/mascot/frog-catch-512.webp"}}" srcset="{{asset "img/mascot/frog-catch-512.webp"}} 512w, {{asset "img/mascot/frog-catch-1024.webp"}} 1024w" sizes="(min-width: 640px) 76px, 60px" width="512" height="512" alt="" loading="lazy" decoding="async">
+              </span>
+              <span class="tray-track" data-tray-track>
+                <span class="tray-chip tray-chip-static"><b>GET</b> /api/v1/products</span>
+              </span>
+              <span class="tray-end tray-end-server">{{icon "server"}}<span class="tray-end-text">*.example.com</span></span>
+              <span class="tray-tongue" data-tray-tongue><span class="tray-tongue-inner"></span></span>
+            </div>
+
+            <div class="tray-hold" data-tray-hold>
+              <div class="tray-howto">
+                <p class="tray-howto-title">The tray is empty.</p>
+                <ol class="tray-howto-steps">
+                  <li>Turn on Intercept to hold the next request.</li>
+                  <li>Change the order id in its path.</li>
+                  <li>Forward it and read the answer.</li>
+                </ol>
+              </div>
+              <div class="tray-msg" role="group" aria-label="Held request" data-tray-msg>
+                <p class="tray-label"><span>Held request</span><span class="tray-hint" id="tray-id-hint">Try 1043</span></p>
+                <div class="tray-raw tray-request" data-tray-request>
+                  <span class="tray-line tray-line-start"><span class="tok-number">GET</span> /api/v1/orders/<input class="tray-id" data-tray-id type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="6" value="1042" aria-label="Order id" aria-describedby="tray-id-hint"><span class="tray-id-static">1042</span> <span class="tok-comment">HTTP/1.1</span></span>
+                  <span class="tray-line"><span class="tok-key">Host:</span> api.example.com</span>
+                  <span class="tray-line"><span class="tok-key">Authorization:</span> Bearer demo-token-ana</span>
+                  <span class="tray-line"><span class="tok-key">Accept:</span> application/json</span>
+                </div>
+                <div class="tray-res">
+                  <p class="tray-label"><span>Response</span><span class="tray-code" data-tray-code></span></p>
+                  <div class="tray-raw tray-res-stack">
+                    <span class="tray-line tray-wait" data-tray-wait>Waiting for Forward or Drop.</span>
+                    <span class="tray-res-body" data-tray-res><span class="tray-line">&nbsp;</span><span class="tray-line">&nbsp;</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tray-actions">
+              <button class="btn-primary" type="button" data-tray-action="forward" aria-disabled="true">{{icon "send"}}Forward</button>
+              <button class="btn-ghost" type="button" data-tray-action="drop" aria-disabled="true">{{icon "ban"}}Drop</button>
+              <button class="btn-ghost btn-sm tray-reset" type="button" data-tray-action="reset" aria-disabled="true">{{icon "rotate-ccw"}}Reset</button>
+            </div>
+            <p class="tray-status" data-tray-status>Intercept is off, so requests pass straight through.</p>
+
+            <div class="tray-report" data-tray-report>
+              <p class="tray-report-draft"><span class="tray-report-tag">Report</span>Draft. Nothing proven yet.</p>
+              <div class="tray-finding" data-tray-finding>
+                <p class="tray-finding-head"><span class="chip chip-pink">Finding</span><span class="tray-finding-title">Orders API answers any customer (IDOR)</span></p>
+                <ul class="tray-finding-checks">
+                  <li>{{icon "check"}}<span>Evidence: this flow, attached</span></li>
+                  <li>{{icon "check"}}<span>Report can go final</span></li>
+                </ul>
+              </div>
+            </div>
+
+            <p class="tray-nojs">This toy needs JavaScript. The <a href="#demo">recording below</a> shows the real flow, from this held request to the finding.</p>
+            <p class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-tray-live></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section lp-demo" id="demo" aria-labelledby="demo-title">
+  <div class="wrap">
+    <div class="lp-head">
+      <h2 id="demo-title">Now the real thing.</h2>
+      <p class="lede">The same catch in the real app: a silent 35-second recording of Interseptor v{{.Site.Release.Version}} against a demo shop on example.com. Every click is real; the pointer is drawn on top so you can follow it.</p>
+    </div>
+    <div class="demo-frame">
+      <span class="ribbon">Real recording</span>
+      <div class="window demo-window">
+        <div class="window-bar">
+          <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="window-title">interseptor v{{.Site.Release.Version}} · example-shop</span>
+        </div>
+        <div class="window-body demo-body">
+          <video class="demo-video" data-demo-video controls muted playsinline loop preload="none" width="1440" height="900" poster="{{asset "media/demo-light-poster.webp"}}" aria-label="Screen recording of Interseptor: a captured HTTP history, a request held in Intercept and edited from order 1042 to 1043, the forwarded response returning another customer's order, and that flow attached as evidence to a High-severity IDOR finding." data-poster-light="{{asset "media/demo-light-poster.webp"}}" data-poster-dark="{{asset "media/demo-dark-poster.webp"}}" data-webm-light="{{asset "media/demo-light.webm"}}" data-mp4-light="{{asset "media/demo-light.mp4"}}" data-webm-dark="{{asset "media/demo-dark.webm"}}" data-mp4-dark="{{asset "media/demo-dark.mp4"}}">
+            <source src="{{asset "media/demo-light.webm"}}" type="video/webm">
+            <source src="{{asset "media/demo-light.mp4"}}" type="video/mp4">
+          </video>
+        </div>
+        <div class="demo-controls" data-demo-controls hidden>
+          <button class="btn-ghost btn-sm demo-toggle" type="button" data-demo-toggle data-state="paused">{{icon "play" "demo-icon-play"}}{{icon "pause" "demo-icon-pause"}}<span data-demo-toggle-label>Play</span></button>
+          <span class="demo-progress" aria-hidden="true"><span data-demo-progress></span></span>
+          <span class="demo-clock" data-demo-clock>0:00 / 0:35</span>
+        </div>
+      </div>
+    </div>
+    <h3 class="demo-chapters-title" id="demo-chapters-title">Chapters</h3>
+    <ol class="demo-chapters" data-demo-chapters aria-labelledby="demo-chapters-title">
+      <li data-start="0"><span class="demo-time">0:00</span><span class="demo-text">History holds 28 flows captured from a demo shop on example.com.</span></li>
+      <li data-start="3"><span class="demo-time">0:03</span><span class="demo-text">GET /api/v1/orders/1042 opens: the customer's own order, sent with her bearer token.</span></li>
+      <li data-start="7"><span class="demo-time">0:07</span><span class="demo-text">Intercept goes on, and the next request is held before it leaves.</span></li>
+      <li data-start="11"><span class="demo-time">0:11</span><span class="demo-text">The raw path is edited from 1042 to 1043.</span></li>
+      <li data-start="17"><span class="demo-time">0:17</span><span class="demo-text">Forward sends the edited request on.</span></li>
+      <li data-start="19"><span class="demo-time">0:19</span><span class="demo-text">A new History row: 200 OK with another customer's order, cust_8812.</span></li>
+      <li data-start="24"><span class="demo-time">0:24</span><span class="demo-text">Attach as evidence puts that flow on the IDOR finding.</span></li>
+      <li data-start="29"><span class="demo-time">0:29</span><span class="demo-text">The finding: setup, control and action steps, each with the flow that proves it.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section class="lp-section lp-band" id="workflow" aria-labelledby="workflow-title">
+  <div class="wrap">
+    <div class="lp-head">
+      <h2 id="workflow-title">One process, from first request to final report.</h2>
+      <p class="lede">Nothing to install alongside it. No JVM, no Python, no Node at runtime, and nothing phoning home except a release check you can switch off.</p>
+    </div>
+    <div class="stages" data-stages>
+      <ol class="stage-path" data-stage-list aria-label="Workflow stages">
+        <li><a class="stage-tab stage-sky" href="#stage-capture" id="stage-tab-capture" data-stage-tab><span class="stage-num">1</span><span class="stage-name">Capture</span></a></li>
+        <li><a class="stage-tab stage-yellow" href="#stage-replay" id="stage-tab-replay" data-stage-tab><span class="stage-num">2</span><span class="stage-name">Replay</span></a></li>
+        <li><a class="stage-tab stage-pink" href="#stage-fuzz" id="stage-tab-fuzz" data-stage-tab><span class="stage-num">3</span><span class="stage-name">Fuzz</span></a></li>
+        <li><a class="stage-tab stage-mint" href="#stage-prove" id="stage-tab-prove" data-stage-tab><span class="stage-num">4</span><span class="stage-name">Prove</span></a></li>
+        <li><a class="stage-tab stage-grape" href="#stage-report" id="stage-tab-report" data-stage-tab><span class="stage-num">5</span><span class="stage-name">Report</span></a></li>
+      </ol>
+      <div class="stage-panels">
+        <section class="stage-panel" id="stage-capture" aria-labelledby="stage-capture-title" data-stage-panel>
+          <div class="window stage-shot">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">Proxy · History</span></div>
+            <div class="window-body lp-shot">
+              <img class="lp-theme-light" src="{{asset "img/history-list-light.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Proxy History list showing captured requests to shop.example.com, api.example.com and auth.example.com with method, path, status, size and time columns.">
+              <img class="lp-theme-dark" src="{{asset "img/history-list-dark.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Proxy History list showing captured requests to shop.example.com, api.example.com and auth.example.com with method, path, status, size and time columns.">
+            </div>
+          </div>
+          <div class="stage-copy">
+            <p class="stage-step">Stage 1 of 5</p>
+            <h3 id="stage-capture-title">Capture</h3>
+            <p>Point a browser, a phone or a CLI at the proxy and every exchange lands in History. Metadata goes to SQLite and bodies stream to disk, so you can search headers, tags and bodies, or save a Starlark predicate for the next engagement.</p>
+            <a class="stage-link" href="{{url "/proxy-and-tls/"}}">Proxy and TLS guide</a>
+          </div>
+        </section>
+        <section class="stage-panel" id="stage-replay" aria-labelledby="stage-replay-title" data-stage-panel>
+          <div class="window stage-shot">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">Repeater</span></div>
+            <div class="window-body lp-shot">
+              <img class="lp-theme-light" src="{{asset "img/repeater-light.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Repeater: GET /api/v1/orders/1042 with a demo bearer token, and its 200 OK JSON response with Attach as evidence and Save as proof above it.">
+              <img class="lp-theme-dark" src="{{asset "img/repeater-dark.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Repeater: GET /api/v1/orders/1042 with a demo bearer token, and its 200 OK JSON response with Attach as evidence and Save as proof above it.">
+            </div>
+          </div>
+          <div class="stage-copy">
+            <p class="stage-step">Stage 2 of 5</p>
+            <h3 id="stage-replay-title">Replay</h3>
+            <p>Send any captured request to Repeater, change it and send it again. Every tab keeps its own send history, and a response opens as raw, pretty, decoded or a sandboxed HTML render.</p>
+            <a class="stage-link" href="{{url "/workspace/#repeater-response-views"}}">Repeater in the workspace guide</a>
+          </div>
+        </section>
+        <section class="stage-panel" id="stage-fuzz" aria-labelledby="stage-fuzz-title" data-stage-panel>
+          <div class="window stage-shot">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">Intruder</span></div>
+            <div class="window-body lp-shot">
+              <img class="lp-theme-light" src="{{asset "img/intruder-light.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Intruder after a Sniper run over order ids 1038 to 1058: 21 requests sent, with the ids that answered 200 instead of 404 flagged as status differs.">
+              <img class="lp-theme-dark" src="{{asset "img/intruder-dark.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Intruder after a Sniper run over order ids 1038 to 1058: 21 requests sent, with the ids that answered 200 instead of 404 flagged as status differs.">
+            </div>
+          </div>
+          <div class="stage-copy">
+            <p class="stage-step">Stage 3 of 5</p>
+            <h3 id="stage-fuzz-title">Fuzz</h3>
+            <p>Mark positions, load payloads and run Sniper, Pitchfork or Race with your own threads and delays. There is no throttle, because there is no tier to upsell. Anomalies are flagged, and a recorded run renders as a report-ready PNG.</p>
+            <a class="stage-link" href="{{url "/workspace/#other-workspace-tools"}}">Intruder in the workspace guide</a>
+          </div>
+        </section>
+        <section class="stage-panel" id="stage-prove" aria-labelledby="stage-prove-title" data-stage-panel>
+          <div class="window stage-shot">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">Attach as evidence</span></div>
+            <div class="window-body lp-shot">
+              <img class="lp-theme-light" src="{{asset "img/attach-evidence-light.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Attach as evidence popover listing 'New finding from selection' and the existing finding #1, Order API returns other customers' orders (IDOR), rated High.">
+              <img class="lp-theme-dark" src="{{asset "img/attach-evidence-dark.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Attach as evidence popover listing 'New finding from selection' and the existing finding #1, Order API returns other customers' orders (IDOR), rated High.">
+            </div>
+          </div>
+          <div class="stage-copy">
+            <p class="stage-step">Stage 4 of 5</p>
+            <h3 id="stage-prove-title">Prove</h3>
+            <p>Attach the captured flow to a finding, and each reproduction step carries the exchange that proves it. Only a real browser or device screenshot counts as visual proof: generated previews carry a marker, and the store refuses them as screenshots.</p>
+            <a class="stage-link" href="{{url "/findings-and-reporting/#evidence-rules"}}">Evidence rules</a>
+          </div>
+        </section>
+        <section class="stage-panel" id="stage-report" aria-labelledby="stage-report-title" data-stage-panel>
+          <div class="window stage-shot">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">Findings · Report preflight</span></div>
+            <div class="window-body lp-shot">
+              <img class="lp-theme-light" src="{{asset "img/report-preflight-light.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Report preflight with no blockers, both findings in the report marked Ready, and a Download report button with Markdown selected.">
+              <img class="lp-theme-dark" src="{{asset "img/report-preflight-dark.webp"}}" width="1440" height="900" loading="lazy" decoding="async" alt="Interseptor's Report preflight with no blockers, both findings in the report marked Ready, and a Download report button with Markdown selected.">
+            </div>
+          </div>
+          <div class="stage-copy">
+            <p class="stage-step">Stage 5 of 5</p>
+            <h3 id="stage-report-title">Report</h3>
+            <p>Preflight names every blocker before you export. Ask for a final report with a gap still open and you get a 409 listing the failing checks, not a polished document with a hole in it. Out come Markdown, self-contained HTML or JSON.</p>
+            <a class="stage-link" href="{{url "/findings-and-reporting/#export-and-close-out"}}">Export and close-out</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section" id="capabilities" aria-labelledby="capabilities-title">
+  <div class="wrap">
+    <div class="lp-head">
+      <h2 id="capabilities-title">Collected abilities</h2>
+      <p class="lede">What the one binary does today. Each card opens its guide.</p>
+    </div>
+    <ul class="lp-abilities">
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-pink" aria-hidden="true">{{icon "hand"}}</span>
+        <h3 class="lp-ability-title">Intercepting proxy</h3>
+        <p class="lp-ability-text">Hold, edit, forward or drop requests and responses through a local CA, with ordered match-and-replace rules.</p>
+        <a class="lp-ability-link" href="{{url "/proxy-and-tls/"}}">Proxy and TLS guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-sky" aria-hidden="true">{{icon "history"}}</span>
+        <h3 class="lp-ability-title">History you can search</h3>
+        <p class="lp-ability-text">Metadata in SQLite, bodies content-addressed on disk. Search headers, tags and bodies, or save a Starlark predicate.</p>
+        <a class="lp-ability-link" href="{{url "/history-search/"}}">History search guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-yellow" aria-hidden="true">{{icon "repeat"}}</span>
+        <h3 class="lp-ability-title">Repeater and Intruder</h3>
+        <p class="lp-ability-text">Hand-replay anything, then fuzz it with Sniper, Pitchfork and Race, payload processing and anomaly flagging.</p>
+        <a class="lp-ability-link" href="{{url "/workspace/"}}">Workspace guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-mint" aria-hidden="true">{{icon "flag"}}</span>
+        <h3 class="lp-ability-title">Findings and reports</h3>
+        <p class="lp-ability-text">Evidence required and graded by provenance. CVSS v4, immutable revisions, and Markdown, self-contained HTML or JSON out.</p>
+        <a class="lp-ability-link" href="{{url "/findings-and-reporting/"}}">Findings guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-yellow" aria-hidden="true">{{icon "folder-tree"}}</span>
+        <h3 class="lp-ability-title">Collections</h3>
+        <p class="lp-ability-text">Import Postman, OpenAPI, curl, Insomnia, Bruno, HAR, Burp, GraphQL, <code>.http</code> and WSDL, then run them as several identities.</p>
+        <a class="lp-ability-link" href="{{url "/collections/"}}">Collections guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-pink" aria-hidden="true">{{icon "smartphone"}}</span>
+        <h3 class="lp-ability-title">Mobile devices</h3>
+        <p class="lp-ability-text">Android CA and proxy over <code>adb</code>, iOS Simulator via <code>simctl</code>, physical devices by profile. It detects pinning; it does not defeat it.</p>
+        <a class="lp-ability-link" href="{{url "/mobile-testing/"}}">Mobile testing guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-grape" aria-hidden="true">{{icon "bot"}}</span>
+        <h3 class="lp-ability-title">MCP server</h3>
+        <p class="lp-ability-text">133 tools over stdio and Streamable HTTP, built into the binary. Nothing to install, nothing to keep in version lockstep.</p>
+        <a class="lp-ability-link" href="{{url "/api-and-mcp/"}}">API and MCP guide</a>
+      </li>
+      <li class="lp-ability card-surface card-hover">
+        <span class="lp-ability-icon lp-fill-sky" aria-hidden="true">{{icon "shield-check"}}</span>
+        <h3 class="lp-ability-title">Scope and safety rails</h3>
+        <p class="lp-ability-text">Collection runs block out-of-scope hosts by default, imported scripts stay quarantined until you trust their exact hash, and a run that changes state asks you to type RUN.</p>
+        <a class="lp-ability-link" href="{{url "/collections/#quarantine-and-trust"}}">Quarantine and trust</a>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="lp-section lp-band" id="agents" aria-labelledby="agents-title">
+  <div class="wrap lp-agents">
+    <div class="lp-agents-main">
+      <h2 id="agents-title">Point your agent at one URL.</h2>
+      <p class="lede">Paste this line into any MCP client. The file covers install, the REST and MCP surfaces, the hard rules, and how to write a finding, so every agent files the same kind of report. It is generated from these docs, and CI fails if it drifts.</p>
+      <div class="window lp-cmd lp-prompt-window">
+        <div class="window-bar">
+          <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="window-title">prompt</span>
+          <button class="copy-button chip" type="button" data-copy="#agent-prompt" aria-label="Copy the agent prompt">Copy</button>
+        </div>
+        <div class="lp-cmd-body lp-cmd-wrap"><code id="agent-prompt">Read <span class="lp-url">{{abs "/llms-full.txt"}}</span> and follow it.</code></div>
+      </div>
+      <ul class="lp-points">
+        <li>{{icon "check"}}<span>It can recon, replay, fuzz, run an authorization matrix and file the finding, through the same control plane the UI uses.</span></li>
+        <li>{{icon "check"}}<span>Its calls are stamped, so you can tell its traffic from yours in History.</span></li>
+        <li>{{icon "check"}}<span>It can pause and ask you before anything with real blast radius.</span></li>
+        <li>{{icon "check"}}<span>Scope policy and script trust are refused to AI callers outright. An agent cannot loosen either.</span></li>
+      </ul>
+      <p class="lp-agents-core"><strong>The core is model-free:</strong> no provider keys, no built-in chat, no autonomous loop. You bring the agent; Interseptor supplies deterministic tools and keeps the receipts.</p>
+      <div class="lp-actions">
+        <a class="btn-primary" href="{{url "/ai-agents/"}}">Read the agent guide</a>
+        <a class="btn-ghost" href="{{url "/api-and-mcp/"}}">API and MCP reference</a>
+      </div>
+    </div>
+    <div class="lp-agents-side">
+      <img class="lp-agents-frog" src="{{asset "img/mascot/frog-agent-512.webp"}}" srcset="{{asset "img/mascot/frog-agent-512.webp"}} 512w, {{asset "img/mascot/frog-agent-1024.webp"}} 1024w" sizes="(min-width: 960px) 240px, 168px" width="512" height="512" alt="" loading="lazy" decoding="async">
+      <div class="lp-belt card-surface">
+        <h3 class="lp-belt-title">On its tool belt</h3>
+        <p class="lp-belt-note">16 of the 133 MCP tools, by their real names, in the order an engagement uses them.</p>
+        <ul class="lp-belt-list">
+          <li><code>check_readiness</code></li>
+          <li><code>list_flows</code></li>
+          <li><code>get_flow</code></li>
+          <li><code>set_intercept</code></li>
+          <li><code>forward_request</code></li>
+          <li><code>send_request</code></li>
+          <li><code>start_intruder</code></li>
+          <li><code>authz_differential</code></li>
+          <li><code>collection_identity_matrix</code></li>
+          <li><code>run_scanner</code></li>
+          <li><code>redact_value</code></li>
+          <li><code>request_human_input</code></li>
+          <li><code>create_finding</code></li>
+          <li><code>add_finding_poc</code></li>
+          <li><code>finding_readiness</code></li>
+          <li><code>export_report</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section" id="honestly" aria-labelledby="honestly-title">
+  <div class="wrap">
+    <div class="lp-head">
+      <h2 id="honestly-title">What it does not do.</h2>
+      <p class="lede">Worth knowing before you download it rather than after.</p>
+    </div>
+    <div class="lp-honest">
+      <div class="lp-boss card-surface">
+        <div class="lp-boss-id">
+          <img class="lp-boss-avatar" src="{{asset "img/mascot/frog-boss-512.webp"}}" srcset="{{asset "img/mascot/frog-boss-512.webp"}} 512w, {{asset "img/mascot/frog-boss-1024.webp"}} 1024w" sizes="80px" width="512" height="512" alt="" loading="lazy" decoding="async">
+          <div>
+            <p class="lp-boss-name">Interseptor</p>
+            <p class="lp-boss-handle">v{{.Site.Release.Version}}, MIT</p>
+            <p class="lp-boss-tag">the boss of veyal.land</p>
+          </div>
+        </div>
+        <div class="lp-stats">
+          <h3 class="lp-stats-title">{{icon "star"}}Boss stats</h3>
+          <ul class="lp-stat-rows">
+            <li class="lp-stat"><span class="lp-stat-name">Intercept and replay<small>requests and responses, no throttle</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Evidence discipline<small>final export returns 409 until it is proven</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Agent tooling<small>133 MCP tools in the binary</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Extension ecosystem<small>Starlark checks and signed packs, no marketplace</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Maturity<small>first commit June 2026</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Active scanning<small>passive checks only; use ZAP</small></span><span class="lp-stars" aria-hidden="true">{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 0 of 5.</span></li>
+          </ul>
+          <p class="lp-stats-foot">* stars are self-assessed; the <a href="{{url "/compare/"}}">comparison page</a> has the sources</p>
+        </div>
+      </div>
+      <div class="lp-weak">
+        <h3 class="lp-weak-title">Weak points</h3>
+        <ul class="lp-weak-list">
+          <li><strong>No active scanner.</strong> 31 passive checks over traffic you already captured, extensible in sandboxed Starlark. If you want an automated active scan, ZAP is free and good at it.</li>
+          <li><strong>It is new.</strong> First commit June 2026. Burp's lineage goes back to 2003, ZAP's to 2010. It is MIT, so read the code: roughly 100k lines of source against 88k of tests.</li>
+          <li><strong>No extension marketplace.</strong> Starlark checks and signed rule packs, and that is all. Burp has 300+ BApps from 250+ authors; that gap is real.</li>
+          <li><strong>No hosted out-of-band service.</strong> There is a self-hosted catcher, off by default, and it needs your own tunnel to be reachable. It is not Burp Collaborator.</li>
+          <li><strong>No HTTP/3.</strong> HTTP/2 upstream with an HTTP/1.1 client leg on the MITM path. mitmproxy does HTTP/3 today.</li>
+          <li><strong>Data at rest is not encrypted.</strong> Captured traffic sits unencrypted under your data directory, by design. Secure the machine it runs on.</li>
+        </ul>
+        <p class="lp-weak-note">The architecture page also lists where the build deviates from its own spec, including a control left out of the UI because it could not be honest about what the server would do.</p>
+        <a class="btn-ghost" href="{{url "/compare/"}}">Read the full comparison</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section lp-band" id="questions" aria-labelledby="questions-title">
+  <div class="wrap lp-faq-grid">
+    <div class="lp-head">
+      <h2 id="questions-title">The ones worth asking first.</h2>
+      <p class="lede">The rest is in <a href="{{url "/troubleshooting/"}}">Troubleshooting</a> and the <a href="{{url "/features/"}}">feature list</a>.</p>
+    </div>
+    <div class="lp-faq">
+      <details class="lp-faq-item">
+        <summary><span>Does this replace Burp Professional?</span>{{icon "plus" "lp-faq-icon"}}</summary>
+        <div class="lp-faq-body"><p>Not its scanner, and not Collaborator. What it replaces is paying $499 a year for manual tooling you already know how to drive: unthrottled fuzzing, projects that persist, authorization differentials and reporting. Run it next to whatever you already use. Projects export as JSON or a full archive, so trying it is reversible.</p></div>
+      </details>
+      <details class="lp-faq-item">
+        <summary><span>Burp and ZAP have MCP too. Why does yours matter?</span>{{icon "plus" "lp-faq-icon"}}</summary>
+        <div class="lp-faq-body"><p>They do, and anyone saying otherwise is selling you something. There are three honest differences. Ours is in the binary rather than an extension you install and version-match. It is 133 first-party tools covering the workflow end to end, including findings and reporting. And <code>create_finding</code> makes the agent attach evidence before the finding counts. None of the tools on the comparison page has an equivalent of that last one.</p></div>
+      </details>
+      <details class="lp-faq-item">
+        <summary><span>Is my captured traffic going anywhere?</span>{{icon "plus" "lp-faq-icon"}}</summary>
+        <div class="lp-faq-body"><p>No analytics, no telemetry endpoints, no provider keys in the binary. The only host it contacts on its own is GitHub, to check whether a newer release exists, and you can turn that off. Everything else leaves only if you deliberately open a tunnel. Note that data at rest is unencrypted.</p></div>
+      </details>
+      <details class="lp-faq-item">
+        <summary><span>Can I use it headless, over SSH?</span>{{icon "plus" "lp-faq-icon"}}</summary>
+        <div class="lp-faq-body"><p>Yes. It is one binary with a loopback control API, and <code>interseptor run</code> drives a collection from CI and emits JUnit. The UI is served over HTTP, so forward a port and use a browser wherever you are.</p></div>
+      </details>
+      <details class="lp-faq-item">
+        <summary><span>Will it defeat certificate pinning?</span>{{icon "plus" "lp-faq-icon"}}</summary>
+        <div class="lp-faq-body"><p>No, and neither will any other proxy. It detects pinning and tells you which instrumentation path you need.</p></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section lp-install-section" id="install" aria-labelledby="install-title">
+  <div class="wrap">
+    <div class="lp-install card-surface">
+      <span class="ribbon">Press start</span>
+      <h2 id="install-title">Install it and point a browser at it.</h2>
+      <p class="lede">Two commands and a certificate. If it is not useful inside ten minutes, nothing was lost but a download.</p>
+      <div class="lp-install-steps">
+        <div class="window lp-cmd">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window-title">install</span>
+            <button class="copy-button chip" type="button" data-copy="#install-go" aria-label="Copy the install command">Copy</button>
+          </div>
+          <div class="lp-cmd-body"><code id="install-go"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>go install github.com/<wbr>Veyal/<wbr>interseptor/<wbr>cmd/<wbr>interseptor<wbr>@latest</code></div>
+        </div>
+        <div class="window lp-cmd">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window-title">run</span>
+            <button class="copy-button chip" type="button" data-copy="#install-run" aria-label="Copy the run command">Copy</button>
+          </div>
+          <div class="lp-cmd-body"><code id="install-run"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>interseptor<span class="tok-comment" data-copy-skip>  # proxy on 127.0.0.1:8080, UI on http://127.0.0.1:9966</span></code></div>
+        </div>
+      </div>
+      <div class="lp-actions lp-install-actions">
+        <a class="btn-primary btn-lg" href="{{url "/getting-started/"}}">{{icon "book-open"}}Get started</a>
+        <a class="btn-ghost btn-lg" href="{{url "/ai-agents/"}}">For AI agents</a>
+        <a class="btn-ghost btn-lg" href="https://github.com/Veyal/interseptor/releases">{{icon "download"}}Prebuilt binaries</a>
+      </div>
+    </div>
+  </div>
+</section>

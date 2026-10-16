@@ -148,3 +148,14 @@ func TestBuildFormatsIPv6URLAuthority(t *testing.T) {
 		t.Fatalf("IPv6 URL = %q", entries[0].URL)
 	}
 }
+
+func TestBuildEmptyHARRoundTripsThroughParse(t *testing.T) {
+	data := Build(nil, func(string) []byte { return nil })
+	if !strings.Contains(string(data), `"entries": []`) {
+		t.Fatalf("empty HAR must emit an empty entries array: %s", data)
+	}
+	got, err := Parse(data)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("Parse(empty Build) = %v, %v", got, err)
+	}
+}

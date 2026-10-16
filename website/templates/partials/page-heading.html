@@ -1,0 +1,5 @@
+{{- /* The page's one h1, with an optional front matter `eyebrow` label above it. */ -}}
+{{define "page-heading" -}}
+{{with .Page.Params.eyebrow}}<p class="mono-label page-eyebrow">{{.}}</p>{{end -}}
+<h1{{with .Page.HeadingID}} id="{{.}}"{{end}}>{{.Page.Heading}}</h1>
+{{- end}}

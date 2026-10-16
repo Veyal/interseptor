@@ -20,6 +20,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: go vet ./...
       - run: go test ./...
       - run: CGO_ENABLED=1 go test -race ./...

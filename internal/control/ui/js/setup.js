@@ -2,12 +2,14 @@
 // (point at the proxy → trust the CA → set target scope → done) instead of making
 // them hunt across the Settings sections. Shown once on boot unless skipped, and
 // reopenable from Settings → Project & data.
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, projectStorageKey } from './core.js';
+import { $, esc, escAttr, state, toast, toastError, api, openModal, closeModal, copyText, projectStorageKey, renderLoadError } from './core.js';
 import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
+import { projectState } from './project-state.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
-const LAST = 3;
+const LAST = 4;
+let setupLastScopeHost = '';
 let setupActionBusy = false;
 let setupSystemProxyEpoch = 0;
 let setupReadinessEpoch = 0;
@@ -92,12 +94,11 @@ async function setupReadiness(){
     if(!ownsReadiness())return null;
     const ids=['proxy','tls_intercept','traffic'];
     const checks=ids.map(id=>(report.checks||[]).find(c=>c.id===id)).filter(Boolean);
-    box.innerHTML=checks.map(c=>`<div style="color:${c.ok?'var(--accent)':'var(--amber)'}">${c.ok?'✓':'!'} ${esc(c.detail)}${!c.ok&&c.fix?' — '+esc(c.fix):''}</div>`).join('');
+    box.innerHTML=checks.map(c=>`<div class="${c.ok?'u-accent':'u-warn'}">${c.ok?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-status-done"/></svg>':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>'} ${esc(c.detail)}${!c.ok&&c.fix?' — '+esc(c.fix):''}</div>`).join('');
     return report;
   }catch(e){
     if(!ownsReadiness())return null;
-    box.innerHTML=`<span style="color:var(--red)">Readiness check failed: ${esc(e.message)}</span> <button class="btn xs" id="setupRetryReadiness">Retry</button>`;
-    $('#setupRetryReadiness').onclick=setupReadiness;
+    renderLoadError(box,'Readiness check',e,setupReadiness,false);
     return null;
   }
 }
@@ -111,19 +112,20 @@ function renderStep() {
   // The CA step owns its trust gate. Never carry that disabled state into a
   // different step when the operator navigates Back or forward again.
   next.disabled=false;
-  next.textContent = step === LAST ? 'Finish ✓' : 'Next ▸';
+  next.textContent = step === LAST ? 'Finish' : 'Next ▸';
   const b = $('#setupBody');
   if (step === 0) {
     const addr = esc(state.proxyAddr || '127.0.0.1:8080');
-    b.innerHTML = `<p style="margin:0 0 10px">Choose the correct project before capture so engagement data stays separated. <button class="btn xs" id="setupChooseProject">Choose project…</button></p>
-      <p style="margin:0 0 10px">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
-      <div class="row" style="gap:8px;margin-bottom:14px">
-        <code class="evidence" style="flex:1;margin:0;font-size:var(--fs-md)">${addr}</code>
-        <button class="btn" id="setupCopyAddr">⧉ Copy</button>
+    b.innerHTML = `<p class="u-m-0 u-mb-3">Choose the correct project before capture so engagement data stays separated. <button class="btn xs" id="setupChooseProject">Choose project…</button></p>
+      <p class="u-m-0 u-mb-3">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
+      <div class="row u-gap-2 u-mb-4">
+        <code class="evidence u-flex-1 u-m-0 u-fs-md">${addr}</code>
+        <button class="btn" id="setupCopyAddr">Copy</button>
       </div>
-       <button class="btn" id="setupSysProxy" style="margin-bottom:10px">Set as system proxy</button>
-      <p class="hint" style="margin:0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
-      <div id="setupReadiness" class="evidence" role="status" aria-live="polite" aria-atomic="true" style="margin-top:10px"></div>`;
+       <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
+       <button class="btn u-mb-3" id="setupTestBrowser" hidden>Launch test browser</button>
+      <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
+      <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
      $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
      const systemProxyEpoch=setupSystemProxyEpoch;
@@ -147,7 +149,7 @@ function renderStep() {
         acknowledged=st.enabled?st:await setSystemProxyEnabled(true);
         toast('system proxy on — point your browser at the proxy now');
       } catch (e) {
-        toast(e.message,'error');
+        toastError('Setup action failed', e);
         try{acknowledged=await getSystemProxyStatus({render:false,throwOnError:true});}
         catch(statusErr){statusError=statusErr;}
       }
@@ -159,30 +161,46 @@ function renderStep() {
         }
       }
     };
+    const testBrowserButton=$('#setupTestBrowser');
+    if(testBrowserButton){
+      api('/api/test-browser')
+        .then(st=>{ if(step===0&&testBrowserButton.isConnected) testBrowserButton.hidden=!st?.available; })
+        .catch(()=>{});
+      testBrowserButton.onclick=async()=>{
+        if(setupActionBusy)return;
+        const label=testBrowserButton.textContent;
+        setSetupActionBusy(testBrowserButton,true,'Launching…');
+        try{
+          const res=await api('/api/test-browser/launch',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+          toast(res?.message||'test browser launched in an isolated profile');
+        }catch(e){ toastError('Could not launch test browser',e); }
+        finally{ setSetupActionBusy(testBrowserButton,false,label); }
+      };
+    }
     setupReadiness();
   } else if (step === 1) {
     const os = osHint();
     const trust = TRUST_STEPS[os] || `<li>Install the CA into your OS/browser root trust store.</li>`;
     const cmd = TRUST_COMMANDS[os];
-    const cmdBox = cmd ? `<div class="row" style="gap:8px;margin:10px 0 0"><code class="evidence" style="flex:1;margin:0;font-size:var(--fs-xs);white-space:pre-wrap;word-break:break-all">${esc(cmd)}</code><button class="btn" id="setupCopyCmd" aria-label="Copy trust command" title="Copy trust command">⧉</button></div><p class="hint" style="margin:4px 0 0">…or paste this one-liner into a terminal after downloading.</p>` : '';
-    b.innerHTML = `<p style="margin:0 0 10px">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
-      <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block;margin-bottom:14px">⤓ Download CA certificate</a>
-      <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol style="margin:8px 0 4px;padding-left:22px;color:var(--fg2)">${trust}</ol></details>
+    const cmdBox = cmd ? `<div class="row u-gap-2 u-mt-3"><code class="evidence u-flex-1 u-m-0 u-fs-xs u-prewrap u-break">${esc(cmd)}</code><button class="btn" id="setupCopyCmd" aria-label="Copy trust command" title="Copy trust command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div><p class="hint u-m-0 u-mt-1">…or paste this one-liner into a terminal after downloading.</p>` : '';
+    b.innerHTML = `<p class="u-m-0 u-mb-3">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
+      <a class="btn accent u-no-underline u-inline-block u-mb-4" href="/api/ca.crt" download><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download CA certificate</a>
+      <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol class="setup-steps u-fg2">${trust}</ol></details>
       ${cmdBox}
-      <label class="icpt-chk" style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setupTrusted"> I've installed &amp; trusted the CA</label>
-      <p class="hint" style="margin:8px 0 0">This is a one-time manual step — Interseptor never modifies your OS trust store itself.</p>
-      <p class="hint" style="margin:10px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg2)"><b>Mobile apps:</b> installing the CA is not enough for most Android/iOS apps. SSL <b>pinning</b> must be bypassed on the device (Frida, patched APK) — Interseptor only detects when pinning blocks traffic (red <b>PIN</b> rows).</p>`;
+      <label class="icpt-chk u-flex u-gap-2 u-mt-3 u-cursor u-fg2"><input type="checkbox" id="setupTrusted"> I've installed &amp; trusted the CA</label>
+      <p class="hint u-m-0 u-mt-2">This is a one-time manual step — Interseptor never modifies your OS trust store itself.</p>
+      <p class="hint panel-card u-m-0 u-mt-3"><b>Mobile apps:</b> installing the CA is not enough for most Android/iOS apps. SSL <b>pinning</b> must be bypassed on the device (Frida, patched APK) — Interseptor only detects when pinning blocks traffic (red <b>PIN</b> rows).</p>`;
     next.disabled = true;
     $('#setupTrusted').onchange = e => { next.disabled = !e.target.checked; };
     if (cmd) $('#setupCopyCmd').onclick = () => copyText(cmd, 'trust command copied');
   } else if (step === 2) {
-    b.innerHTML = `<p style="margin:0 0 6px">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
-      <p class="hint" style="margin:0 0 12px">e.g. <code>*.example.com</code>, <code>api.example.com</code>, or regex <code>.*example\\.com</code>. You can skip this and add it later from Settings → Target scope.</p>
-      <div class="row" style="gap:8px">
-        <input id="setupScopeHost" class="btn" aria-label="Scope host" style="flex:1;background:var(--bg3);font-family:var(--mono)" placeholder="*.example.com" spellcheck="false">
+    b.innerHTML = `<p class="u-m-0 u-mb-2">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
+      <p class="hint u-m-0 u-mb-3">e.g. <code>*.example.com</code>, <code>api.example.com</code>, or regex <code>.*example\\.com</code>. You can skip this and add it later from Settings → Scope.</p>
+      <div class="row u-gap-2">
+        <input id="setupScopeHost" class="btn u-bg3 u-mono u-flex-1" aria-label="Scope host" placeholder="*.example.com" spellcheck="false">
         <button class="btn" id="setupScopeAdd">+ Add to scope</button>
       </div>
-      <div id="setupScopeMsg" class="hint" role="status" aria-live="polite" style="margin-top:8px"></div>`;
+      <div id="setupScopeMsg" class="hint u-mt-2" role="status" aria-live="polite"></div>`;
     $('#setupScopeAdd').onclick = async () => {
       if (setupActionBusy) return;
       const host = $('#setupScopeHost').value.trim();
@@ -199,9 +217,10 @@ function renderStep() {
         const msg = $('#setupScopeMsg');
         if (msg) {
           msg.setAttribute('role', 'status');
-          msg.innerHTML = '<span style="color:var(--accent)">✓ added ' + esc(host) + ' to scope</span>';
+          msg.innerHTML = '<span class="u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> added ' + esc(host) + ' to scope</span>';
         }
         const input = $('#setupScopeHost');
+        setupLastScopeHost = host;
         if (input && input.value.trim() === host) input.value = '';
       } catch (e) {
         if (step !== actionStep || !button.isConnected) return;
@@ -210,7 +229,7 @@ function renderStep() {
           msg.setAttribute('role', 'alert');
           msg.textContent = 'Could not add '+host+' to scope: '+(e.message || 'request failed');
         }
-        toast(e.message,'error');
+        toastError('Setup action failed', e);
       }
       finally {
         // Navigation and the input remain locked for the complete request,
@@ -218,16 +237,69 @@ function renderStep() {
         setSetupActionBusy(button, false, label);
       }
     };
+  } else if (step === 3) {
+    b.innerHTML = `<p class="u-m-0 u-mb-2">Set the authorised target and turn scope on, so findings and the readiness meter know what you are allowed to test.</p>
+      <p class="hint u-m-0 u-mb-3">This saves the target in the engagement brief and adds an include rule if none covers it yet. Add the rest of the brief later from the Target row of the readiness ring in the top bar.</p>
+      <div class="row u-gap-2">
+        <input id="setupTargetInput" class="btn u-bg3 u-mono u-flex-1" aria-label="Authorised target" aria-describedby="setupTargetMsg" placeholder="*.example.com" spellcheck="false" value="${escAttr(setupLastScopeHost)}">
+        <button class="btn" id="setupTargetSave">Set target and enable scope</button>
+      </div>
+      <div id="setupTargetMsg" class="hint u-mt-2" role="status" aria-live="polite"></div>
+      <label class="icpt-chk u-flex u-gap-2 u-mt-3 u-cursor u-fg2"><input type="checkbox" id="setupDropScope" checked> Drop out-of-scope bodies — don't write traffic outside scope to disk</label>
+      <p class="hint u-m-0 u-mt-1">Recommended once a target is set, so background traffic isn't stored. Change it later in Settings.</p>`;
+    $('#setupTargetSave').onclick = () => saveSetupTarget();
   } else {
-    b.innerHTML = `<p style="margin:0 0 10px">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
-      <ul style="margin:0 0 14px;padding-left:20px;color:var(--fg2);line-height:1.7">
+    b.innerHTML = `<p class="u-m-0 u-mb-3">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
+      <ul class="u-m-0 u-mb-4 u-fg2 u-list-pad">
         <li><b>Repeater</b> / <b>Intruder</b> to replay & fuzz requests</li>
         <li><b>Scanner</b> for passive checks, <b>Findings</b> to curate vulns</li>
         <li><b>Ctrl/⌘+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
       </ul>
 
-      <div id="setupReadiness" class="evidence" role="status" aria-live="polite" aria-atomic="true" style="margin-top:10px"></div>`;
+      <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     setupReadiness();
+  }
+}
+
+// The brief's `scope` field is the authorised-target list; keep every other field
+// and any lines already there, then make sure an enabled include rule covers it.
+async function saveSetupTarget() {
+  if (setupActionBusy) return;
+  const target = ($('#setupTargetInput')?.value || '').trim();
+  const dropScopeEl = $('#setupDropScope');
+  const dropScope = dropScopeEl ? !!dropScopeEl.checked : null;
+  const msg = $('#setupTargetMsg');
+  const say = (text, role) => { if (msg) { msg.setAttribute('role', role); msg.textContent = text; } };
+  if (!target || /\s/.test(target)) { say('Enter one host or wildcard, for example *.example.com.', 'alert'); return; }
+  const button = $('#setupTargetSave');
+  const label = button.textContent;
+  const actionStep = step;
+  setSetupActionBusy(button, true, 'Saving…');
+  try {
+    const brief = await api('/api/engagement-brief');
+    const fields = ['scope', 'authorisation', 'conductRules', 'rateLimits', 'doNotTouch', 'credentialPolicy'];
+    const next = {};
+    fields.forEach(f => { next[f] = brief[f] || ''; });
+    const lines = next.scope.split(/\r?\n/).map(l => l.trim());
+    if (!lines.includes(target)) next.scope = lines.filter(Boolean).concat(target).join('\n');
+    await api('/api/engagement-brief', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(next) });
+    const scope = await api('/api/scope');
+    const covered = (scope.rules || []).some(r => r.action === 'include' && r.enabled !== false && r.host === target);
+    if (!covered) await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host: target, enabled: true }) });
+    // Persist the operator's out-of-scope-body choice so capture matches scope.
+    if (dropScope !== null) {
+      try { await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ captureScopeOnly: dropScope }) }); }
+      catch (e) { toastError('Could not update out-of-scope capture', e); }
+    }
+    projectState.refresh({ reason: 'setup.target' });
+    if (step !== actionStep || !button.isConnected) return;
+    say('Target ' + target + ' saved and scope is on.', 'status');
+  } catch (e) {
+    if (step !== actionStep || !button.isConnected) return;
+    say('Could not set the target: ' + (e.message || 'request failed'), 'alert');
+    toastError('Setup action failed', e);
+  } finally {
+    setSetupActionBusy(button, false, label);
   }
 }
 

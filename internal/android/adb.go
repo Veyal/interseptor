@@ -415,6 +415,20 @@ func RemoveSystemCA(d Device, certPEM []byte) error {
 }
 
 func systemCAPath(certPEM []byte) (string, error) {
+	name, err := systemCAFilename(certPEM)
+	if err != nil {
+		return "", err
+	}
+	return systemCACertsDir + "/" + name, nil
+}
+
+// systemCADir is the on-device system trust store. Android loads a CA from here
+// when the file is named by the OpenSSL subject hash with a .0 suffix.
+const systemCACertsDir = "/system/etc/security/cacerts"
+
+// systemCAFilename returns the <hash>.0 filename Android expects for certPEM in
+// its system trust store.
+func systemCAFilename(certPEM []byte) (string, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
 		return "", errors.New("invalid CA certificate PEM")
@@ -423,8 +437,17 @@ func systemCAPath(certPEM []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse CA certificate: %w", err)
 	}
-	hash := subjectHashOld(cert.RawSubject)
-	return "/system/etc/security/cacerts/" + hash + ".0", nil
+	return subjectHashOld(cert.RawSubject) + ".0", nil
+}
+
+// systemCADER returns the DER bytes written into a system cacerts file, matching
+// what InstallSystemCA pushes today.
+func systemCADER(certPEM []byte) ([]byte, error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, errors.New("invalid CA certificate PEM")
+	}
+	return block.Bytes, nil
 }
 
 // SetupOpts configures a one-click Android intercept setup.

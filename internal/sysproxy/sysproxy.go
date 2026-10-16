@@ -1,114 +1,62 @@
 // Package sysproxy points the operating system's HTTP/HTTPS proxy at Interseptor
 // (and turns it back off). It only ever acts on an explicit user request — it is
-// never enabled automatically. macOS is supported via `networksetup`; on other
-// platforms callers should set the proxy (127.0.0.1:8080) manually.
+// never enabled automatically.
+//
+// Each operating system has its own backend, selected at init() by a
+// build-tagged file: macOS via `networksetup` (sysproxy_darwin.go), Windows via
+// the WinINet registry values under HKCU (sysproxy_windows.go), and Linux via
+// GNOME `gsettings org.gnome.system.proxy` (sysproxy_linux.go). Any other OS —
+// or a Linux desktop without gsettings — falls back to the unsupported backend,
+// which reports Supported()==false and tells the caller to set 127.0.0.1:8080
+// manually.
+//
+// The side-effecting layer (exec, registry, gsettings) is isolated behind small
+// seams so the command/registry construction and the enable/disable/restore
+// state machine are unit-testable on any OS without touching the real system.
 package sysproxy
 
 import (
 	"fmt"
-	"os/exec"
 	"runtime"
-	"strconv"
-	"strings"
 )
 
-// networkSetup is the runner for networksetup commands. It is a package-level
-// variable so tests can inject a stub without changing external behaviour.
-var networkSetup = func(args ...string) ([]byte, error) {
-	return exec.Command("networksetup", args...).CombinedOutput()
+// backend is the per-OS implementation. Exactly one is installed into active by
+// a build-tagged init(); platforms with no automation keep the unsupported one.
+type backend interface {
+	supported() bool
+	enable(host string, port int) error
+	disable() error
+	status() (bool, error)
 }
+
+// active is the platform backend. The default is the unsupported fallback; the
+// per-OS file for darwin/windows/linux replaces it in init().
+var active backend = unsupportedBackend{}
 
 // Supported reports whether automatic configuration is available on this OS.
-func Supported() bool { return runtime.GOOS == "darwin" }
+func Supported() bool { return active.supported() }
 
-// Enable routes the active network services through host:port (web + secure web).
-func Enable(host string, port int) error {
-	if !Supported() {
-		return fmt.Errorf("automatic system-proxy config is only supported on macOS; set your OS proxy to %s:%d manually", host, port)
-	}
-	svcs, err := activeServices()
-	if err != nil {
-		return err
-	}
-	p := strconv.Itoa(port)
-	for _, s := range svcs {
-		for _, args := range [][]string{
-			{"-setwebproxy", s, host, p},
-			{"-setsecurewebproxy", s, host, p},
-			{"-setwebproxystate", s, "on"},
-			{"-setsecurewebproxystate", s, "on"},
-		} {
-			if err := run(args...); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+// Enable routes the OS HTTP/HTTPS proxy through host:port.
+func Enable(host string, port int) error { return active.enable(host, port) }
+
+// Disable turns the OS proxy back off (restoring the prior setting where the
+// backend tracked one).
+func Disable() error { return active.disable() }
+
+// Status reports whether the OS proxy is currently on (best-effort).
+func Status() (bool, error) { return active.status() }
+
+// unsupportedBackend is used on any OS without proxy automation. Enable fails
+// with a manual-configuration hint; Disable and Status are no-ops so callers can
+// invoke them unconditionally.
+type unsupportedBackend struct{}
+
+func (unsupportedBackend) supported() bool { return false }
+
+func (unsupportedBackend) enable(host string, port int) error {
+	return fmt.Errorf("automatic system-proxy config is not supported on %s; set your OS proxy to %s:%d manually", runtime.GOOS, host, port)
 }
 
-// Disable turns the system web/secure-web proxy off on the active services.
-func Disable() error {
-	if !Supported() {
-		return nil
-	}
-	svcs, err := activeServices()
-	if err != nil {
-		return err
-	}
-	for _, s := range svcs {
-		_ = run("-setwebproxystate", s, "off")
-		_ = run("-setsecurewebproxystate", s, "off")
-	}
-	return nil
-}
+func (unsupportedBackend) disable() error { return nil }
 
-// Status reports whether the system web proxy is currently on (best-effort: the
-// first active service).
-func Status() (bool, error) {
-	if !Supported() {
-		return false, nil
-	}
-	svcs, err := activeServices()
-	if err != nil || len(svcs) == 0 {
-		return false, err
-	}
-	out, err := networkSetup("-getwebproxy", svcs[0])
-	if err != nil {
-		return false, err
-	}
-	return strings.Contains(string(out), "Enabled: Yes"), nil
-}
-
-func run(args ...string) error {
-	out, err := networkSetup(args...)
-	if err != nil {
-		return fmt.Errorf("networksetup %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func activeServices() ([]string, error) {
-	out, err := networkSetup("-listallnetworkservices")
-	if err != nil {
-		return nil, err
-	}
-	return parseServices(string(out)), nil
-}
-
-// parseServices extracts the enabled network services from
-// `networksetup -listallnetworkservices` output (skipping the header and any
-// service prefixed with "*", which marks it disabled).
-func parseServices(output string) []string {
-	var svcs []string
-	for i, line := range strings.Split(output, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if i == 0 || strings.TrimSpace(line) == "" { // first line is a header
-			continue
-		}
-		if strings.HasPrefix(line, "*") { // disabled
-			continue
-		}
-		svcs = append(svcs, line)
-	}
-	return svcs
-}
+func (unsupportedBackend) status() (bool, error) { return false, nil }

@@ -41,7 +41,9 @@ export function transitionView(updateFunction){
   // still active. Commit first, then animate only the newly-active panel.
   updateFunction();
   if(document.hidden || prefersReducedMotion()) return null;
-  const panel=document.querySelector('.panel.active');
+  // Animate the focused pane's panel; in a split two panels are `.active`, so the
+  // entrance plays on the one that just took focus (falls back to any visible).
+  const panel=document.querySelector('.panel.is-focused')||document.querySelector('.panel.active');
   if(!panel || typeof panel.animate !== 'function') return null;
   cancelElementAnimations(panel);
   const x=document.documentElement.dataset.motionDirection==='back'?-6:6;

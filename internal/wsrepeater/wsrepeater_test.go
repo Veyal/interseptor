@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/textproto"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -75,6 +76,105 @@ func TestSendBadHandshake(t *testing.T) {
 	}
 	if res == nil || res.Status != 400 {
 		t.Fatalf("expected status 400 in result, got %+v", res)
+	}
+}
+
+func TestSendPingRespondsWithPong(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	pongReceived := make(chan bool, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		br := bufio.NewReader(conn)
+		tp := textproto.NewReader(br)
+		tp.ReadLine()
+		hdr, _ := tp.ReadMIMEHeader()
+		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acceptKey(hdr.Get("Sec-WebSocket-Key")))
+
+		// Read client text frame
+		_, _, _ = readFrame(br)
+
+		// Send ping frame from server to client
+		conn.Write(encodeServerFrame(opPing, []byte("heartbeat-data")))
+
+		// Read client's reply frame
+		op, payload, err := readFrame(br)
+		if err == nil && op == opPong && string(payload) == "heartbeat-data" {
+			pongReceived <- true
+		} else {
+			pongReceived <- false
+		}
+		// Send final reply text frame so client finishes reading
+		conn.Write(encodeServerFrame(opText, []byte("done")))
+	}()
+
+	res, err := Send(Request{URL: "ws://" + ln.Addr().String() + "/", Message: "hello", ReadFor: time.Second})
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+	select {
+	case ok := <-pongReceived:
+		if !ok {
+			t.Fatal("expected pong with matching payload heartbeat-data")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pong")
+	}
+	if len(res.Frames) < 2 {
+		t.Fatalf("expected at least 2 frames (send and recv), got %+v", res.Frames)
+	}
+}
+
+func TestWriteHandshakeDeduplicatesHeaders(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+
+	u, _ := url.Parse("ws://example.com/socket")
+	extra := map[string]string{
+		"host":                  "malicious.com",
+		"UPGRADE":               "something-else",
+		"Connection":            "close",
+		"Sec-WebSocket-Key":     "dummy",
+		"sec-websocket-version": "99",
+		"X-Custom-Auth":         "bearer-token",
+	}
+
+	go func() {
+		_ = writeHandshake(c1, u, "my-key", extra)
+	}()
+
+	br := bufio.NewReader(c2)
+	tp := textproto.NewReader(br)
+	_, _ = tp.ReadLine()
+	hdr, err := tp.ReadMIMEHeader()
+	if err != nil {
+		t.Fatalf("read mime header: %v", err)
+	}
+
+	if h := hdr.Values("Host"); len(h) != 1 || h[0] != "example.com" {
+		t.Fatalf("expected 1 Host header for example.com, got %v", h)
+	}
+	if up := hdr.Values("Upgrade"); len(up) != 1 || up[0] != "websocket" {
+		t.Fatalf("expected 1 Upgrade header for websocket, got %v", up)
+	}
+	if cn := hdr.Values("Connection"); len(cn) != 1 || cn[0] != "Upgrade" {
+		t.Fatalf("expected 1 Connection header for Upgrade, got %v", cn)
+	}
+	if key := hdr.Get("Sec-WebSocket-Key"); key != "my-key" {
+		t.Fatalf("expected Sec-WebSocket-Key my-key, got %s", key)
+	}
+	if hdr.Get("X-Custom-Auth") != "bearer-token" {
+		t.Fatalf("expected X-Custom-Auth header preserved")
 	}
 }
 

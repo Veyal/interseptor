@@ -108,7 +108,7 @@ async function loadCodecDocs() {
     codecDocsLoaded = true;
   } catch (e) {
     if (epoch !== codecDocsLoadEpoch) return;
-    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
+    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><p class="state-error-msg" role="alert">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-codec-docs-retry]');if(retry)retry.onclick=loadCodecDocs;
   }
 }
@@ -124,7 +124,7 @@ function codecRow(c) {
   ].filter(Boolean).join('');
   return `<div class="checks-row checks-pick codecs-row${codecSel === id ? ' sel' : ''}" id="codec-option-${escAttr(id)}" data-id="${escAttr(id)}" role="option" tabindex="${codecSel === id ? '0' : '-1'}" aria-selected="${codecSel === id ? 'true' : 'false'}" title="${escAttr(err ? c.error : title)}" aria-label="codec ${escAttr(id)}">
     <div class="checks-body">
-      <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>' : ''}</span>
+      <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>' : ''}</span>
       <div class="checks-meta"><span class="checks-cat">${esc(id)}</span>${badges}</div>
     </div>
   </div>`;
@@ -198,7 +198,7 @@ export async function loadCodecsList() {
     codecsApplyFilter();
   } catch (e) {
     if (epoch !== codecListLoadEpoch) return;
-    box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load codecs: ${esc(e.message)}</p><button type="button" class="btn" data-codecs-list-retry>Retry</button></div>`;
+    box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><p class="state-error-msg" role="alert">Couldn't load codecs: ${esc(e.message)}</p><button type="button" class="btn" data-codecs-list-retry>Retry</button></div>`;
     box.querySelector('[data-codecs-list-retry]')?.addEventListener('click', loadCodecsList);
   }
 }
@@ -267,7 +267,7 @@ async function codecSave() {
     });
     if (codecEditorMatches(epoch, id, source)) {
       codecSel = id;
-      if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved ✓ — available in History / Repeater <b>Decoded</b> views.</div>';
+      if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> — available in History / Repeater <b>Decoded</b> views.</div>';
     }
     toast('codec saved');
     loadCodecsList();
@@ -325,7 +325,7 @@ async function codecTest() {
       return;
     }
     if (!d.matched) {
-      out.innerHTML = `<div class="check-status check-status-ok"><div class="hint">no match on flow #${esc(String(d.flowId || flowId || '?'))}</div><div style="color:var(--accent);margin-top:4px">✓ Codec compiles — match() skipped this flow.</div></div>`;
+      out.innerHTML = `<div class="check-status check-status-ok"><div class="hint">no match on flow #${esc(String(d.flowId || flowId || '?'))}</div><div style="color:var(--accent);margin-top:4px"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> Codec compiles — match() skipped this flow.</div></div>`;
       return;
     }
     const note = (d.title || d.codecId || 'matched') + ' · flow #' + (d.flowId || flowId || '?');

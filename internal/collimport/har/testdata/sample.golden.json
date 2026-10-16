@@ -1,0 +1,286 @@
+{
+  "collection": {
+    "uid": "id001",
+    "name": "HAR import",
+    "scopePolicy": "block",
+    "sidecar": {
+      "format": "har"
+    },
+    "importReport": {
+      "format": "har",
+      "entries": [
+        {
+          "level": "needs-review",
+          "path": "api.example.com/POST api.example.com/login",
+          "item": "id003",
+          "feature": "embedded-credential",
+          "message": "header Authorization holds a literal credential (value not shown)",
+          "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+        },
+        {
+          "level": "needs-review",
+          "feature": "binary-body",
+          "message": "1 request(s) had a binary body that cannot be edited as text; the body was dropped",
+          "suggestion": "Use the History import to keep the exact bytes"
+        },
+        {
+          "level": "needs-review",
+          "feature": "target-host",
+          "message": "3 request(s) target api.example.com; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "needs-review",
+          "feature": "target-host",
+          "message": "1 request(s) target cdn.example.com; sends are blocked until the host is in scope",
+          "suggestion": "Add the host to the engagement scope"
+        },
+        {
+          "level": "degraded",
+          "feature": "responses-not-imported",
+          "message": "responses are not stored in the collection; header order is not preserved",
+          "suggestion": "Import as History flows to keep evidence"
+        }
+      ],
+      "counts": {
+        "degraded": 1,
+        "needs-review": 4
+      },
+      "scripts": {
+        "total": 0,
+        "supported": 0,
+        "partial": 0,
+        "unsupported": 0
+      },
+      "stats": {
+        "folders": 2,
+        "requests": 4,
+        "examples": 0,
+        "variables": 0,
+        "secretVariables": 0,
+        "disabledRows": 0,
+        "needsAsset": 0,
+        "embeddedCredentials": 1,
+        "environmentVariables": 0
+      },
+      "headline": "2 folder(s), 4 request(s) from HAR; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 4 need review, 1 degraded, 0 unsupported"
+    },
+    "rev": 0,
+    "ts": 0
+  },
+  "items": [
+    {
+      "uid": "id002",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "i",
+      "name": "api.example.com",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id003",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "i",
+      "name": "POST api.example.com/login",
+      "method": "POST",
+      "url": {
+        "raw": "https://api.example.com/login?next=/",
+        "protocol": "https",
+        "host": [
+          "api",
+          "example",
+          "com"
+        ],
+        "path": [
+          "login"
+        ],
+        "query": [
+          {
+            "key": "next",
+            "value": "/"
+          }
+        ]
+      },
+      "headers": [
+        {
+          "key": "Authorization",
+          "value": "Bearer canary-har-token"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\"u\":\"a\",\"p\":\"b\"}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id004",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "r",
+      "name": "GET api.example.com/users",
+      "method": "GET",
+      "url": {
+        "raw": "https://api.example.com/users",
+        "protocol": "https",
+        "host": [
+          "api",
+          "example",
+          "com"
+        ],
+        "path": [
+          "users"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "*/*"
+        }
+      ],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id005",
+      "collectionUid": "id001",
+      "parentUid": "id002",
+      "kind": "request",
+      "rank": "v",
+      "name": "GET api.example.com/users",
+      "method": "GET",
+      "url": {
+        "raw": "https://api.example.com/users",
+        "protocol": "https",
+        "host": [
+          "api",
+          "example",
+          "com"
+        ],
+        "path": [
+          "users"
+        ]
+      },
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "*/*"
+        }
+      ],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id006",
+      "collectionUid": "id001",
+      "kind": "folder",
+      "rank": "r",
+      "name": "cdn.example.com",
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    },
+    {
+      "uid": "id007",
+      "collectionUid": "id001",
+      "parentUid": "id006",
+      "kind": "request",
+      "rank": "i",
+      "name": "PUT cdn.example.com/blob",
+      "method": "PUT",
+      "url": {
+        "raw": "https://cdn.example.com/blob",
+        "protocol": "https",
+        "host": [
+          "cdn",
+          "example",
+          "com"
+        ],
+        "path": [
+          "blob"
+        ]
+      },
+      "headers": [],
+      "sidecar": {},
+      "rev": 0,
+      "ts": 0
+    }
+  ],
+  "report": {
+    "format": "har",
+    "entries": [
+      {
+        "level": "needs-review",
+        "path": "api.example.com/POST api.example.com/login",
+        "item": "id003",
+        "feature": "embedded-credential",
+        "message": "header Authorization holds a literal credential (value not shown)",
+        "suggestion": "Lift it to a secret variable and reference it as {{name}}"
+      },
+      {
+        "level": "needs-review",
+        "feature": "binary-body",
+        "message": "1 request(s) had a binary body that cannot be edited as text; the body was dropped",
+        "suggestion": "Use the History import to keep the exact bytes"
+      },
+      {
+        "level": "needs-review",
+        "feature": "target-host",
+        "message": "3 request(s) target api.example.com; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "needs-review",
+        "feature": "target-host",
+        "message": "1 request(s) target cdn.example.com; sends are blocked until the host is in scope",
+        "suggestion": "Add the host to the engagement scope"
+      },
+      {
+        "level": "degraded",
+        "feature": "responses-not-imported",
+        "message": "responses are not stored in the collection; header order is not preserved",
+        "suggestion": "Import as History flows to keep evidence"
+      }
+    ],
+    "counts": {
+      "degraded": 1,
+      "needs-review": 4
+    },
+    "scripts": {
+      "total": 0,
+      "supported": 0,
+      "partial": 0,
+      "unsupported": 0
+    },
+    "stats": {
+      "folders": 2,
+      "requests": 4,
+      "examples": 0,
+      "variables": 0,
+      "secretVariables": 0,
+      "disabledRows": 0,
+      "needsAsset": 0,
+      "embeddedCredentials": 1,
+      "environmentVariables": 0
+    },
+    "headline": "2 folder(s), 4 request(s) from HAR; 0 scripts: 0 fully supported, 0 partial, 0 using unsupported APIs (all quarantined until trusted); 4 need review, 1 degraded, 0 unsupported"
+  }
+}

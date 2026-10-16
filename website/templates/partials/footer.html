@@ -1,0 +1,57 @@
+{{- /* One footer for every page: veyal's butter band. A page whose front matter lists
+     `sections: [{title, id}]` (the landing page) also gets a "This page" column. */ -}}
+{{define "footer" -}}
+<footer class="site-footer">
+  <div class="wrap-wide">
+    <div class="footer-grid{{if .Page.Params.sections}} footer-grid-page{{end}}">
+      <div class="footer-brand">
+        <a class="brand footer-brand-link" href="{{url "/"}}"><span class="brand-mark" aria-hidden="true">{{template "brand-mark"}}</span><span class="brand-name">Interseptor</span></a>
+        <p>An intercepting proxy and pentest workspace in one Go binary, built as the boss stage of veyal.land.</p>
+      </div>
+      {{- with .Page.Params.sections}}
+      <nav class="footer-col" aria-labelledby="footer-page">
+        <p class="footer-heading" id="footer-page">This page</p>
+        <ul>
+          {{- range .}}
+          <li><a href="#{{.id}}">{{.title}}</a></li>
+          {{- end}}
+        </ul>
+      </nav>
+      {{- end}}
+      <nav class="footer-col" aria-labelledby="footer-docs">
+        <p class="footer-heading" id="footer-docs">Docs</p>
+        <ul>
+          <li><a href="{{url "/getting-started/"}}">Getting started</a></li>
+          <li><a href="{{url "/proxy-and-tls/"}}">Proxy and TLS</a></li>
+          <li><a href="{{url "/findings-and-reporting/"}}">Findings and reporting</a></li>
+          <li><a href="{{url "/api-and-mcp/"}}">API and MCP</a></li>
+          <li><a href="{{url "/ai-agents/"}}">For AI agents</a></li>
+          <li><a href="{{url "/features/"}}">All features</a></li>
+        </ul>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-project">
+        <p class="footer-heading" id="footer-project">Project</p>
+        <ul>
+          <li><a href="{{.Site.Repo}}">Source on GitHub</a></li>
+          <li><a href="{{.Site.Repo}}/releases">Releases</a></li>
+          <li><a href="{{.Site.Repo}}/issues">Report an issue</a></li>
+          <li><a href="{{.Site.Repo}}/blob/main/LICENSE">MIT licence</a></li>
+          <li><a href="{{url "/troubleshooting/"}}">Troubleshooting</a></li>
+        </ul>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-veyal">
+        <p class="footer-heading" id="footer-veyal">veyal.land</p>
+        <ul>
+          <li><a href="{{.Site.Parent}}">Back to veyal.land</a></li>
+          <li><a href="{{.Site.Parent}}#tools">Playground tools</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <p class="footer-notice">{{icon "shield"}}<span>Interseptor is for testing systems you are authorised to test.</span></p>
+      <p class="footer-copy">© {{.Site.Year}} Veyal · MIT licence · made with <span aria-hidden="true">♥</span><span class="sr-only">love</span> and too many snacks</p>
+      {{template "release-chip" .}}
+    </div>
+  </div>
+</footer>
+{{- end}}

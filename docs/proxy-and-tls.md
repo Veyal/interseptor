@@ -1,6 +1,6 @@
 # Proxy, TLS, and networking
 
-This guide explains the listener, the browser authentication prompt, HTTPS interception, origin
+This guide explains the listener, optional proxy authentication, HTTPS interception, origin
 certificate verification, TLS passthrough, and chained upstream proxies.
 
 ## Listener model
@@ -13,41 +13,49 @@ listener**, then use the workstation's LAN address as the device proxy.
 `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` disables all non-loopback listener changes. This is useful on a
 workstation that must never accept LAN traffic.
 
-## Proxy authentication
+## System proxy automation
 
-A loopback proxy listener does not request credentials. Every non-loopback proxy listener requires
-proxy authentication, even when the client happens to connect from the same workstation. This
-protects captured traffic and prevents an accidentally exposed listener from becoming an open proxy.
+**Settings → Proxy & network** and the first-run **Setup** wizard can point the operating system's
+HTTP/HTTPS proxy at Interseptor and turn it back off again. It only ever acts on an explicit request
+— Interseptor never changes your system proxy on its own.
 
-Create a **full-scope** API key in **Settings → API & MCP → API keys**. Configure the client with:
+| OS | Mechanism | Notes |
+| --- | --- | --- |
+| **macOS** | `networksetup` web + secure-web proxy on every active network service | Unchanged behaviour. |
+| **Windows** | The per-user WinINet registry values `ProxyServer` and `ProxyEnable` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, then a WinINet refresh so running apps pick up the change | The operator's previous proxy is saved and restored when you turn it off. |
+| **Linux (GNOME)** | `gsettings org.gnome.system.proxy` manual HTTP/HTTPS mode | The previous proxy mode is restored on disable. |
 
-- username: any non-empty label, such as `interseptor`;
-- password: the full-scope API key.
+On a non-GNOME Linux desktop (KDE, a headless host, or anything without `gsettings`), automatic
+configuration reports as unsupported and the control is hidden; set the proxy manually, or export
+`http_proxy` and `https_proxy=http://127.0.0.1:8080` for CLI tools. Automatic configuration changes
+only the HTTP/HTTPS proxy, never the bypass list. The Windows and Linux paths are built and
+unit-tested on every platform but are exercised end to end only on their own OS.
 
-A read-only key is rejected because proxying creates captured flows and can send traffic. Interseptor
-removes `Proxy-Authorization` before forwarding, so the listener credential is never sent to the
-target origin.
+## Test browser
 
-## Browser prompt
+**Launch test browser** in the first-run **Setup** wizard starts your installed Chrome/Chromium in an
+isolated profile already pointed at the proxy — the same idea as Burp's embedded browser. Personal
+history, cookies, and extensions stay in your real profile and never pollute captured traffic. The
+browser is discovered exactly as the PDF report export discovers it (`INTERSEPTOR_CHROME`, then
+`PATH`, then the usual install locations); with none installed the action reports an honest error
+naming what it looked for. The test browser runs with `--ignore-certificate-errors` so HTTPS targets
+load through the MITM without the throwaway profile having to trust the Interseptor CA — the proxy
+itself can still verify the real origin (Origin certificate verification, below).
 
-The dialog saying that `moz-proxy://…` requests a username and password is Firefox's normal response
-to HTTP `407 Proxy Authentication Required`. The realm text is **interseptor**. It is the proxy asking,
-not the destination website and not a compromised page.
+## Proxy listener exposure
 
-If you do not need LAN/device capture, bind the proxy to `127.0.0.1`; the prompt disappears. If you do
-need it, enter any username and a full-scope Interseptor API key as the password. Repeated prompts mean
-the key is absent, expired, revoked, or read-only. Do not enter the target application's credentials.
+Proxy listeners do not require authentication by default — not on loopback, and not on a LAN or
+tailnet address. API keys protect History and the control API; they are not a proxy password.
 
-Command-line clients can authenticate explicitly:
+Optional listener basic auth lives in **Settings → Proxy & network → Proxy authentication**. Turn
+it on and set a username and password of your own, then point the client at the proxy with those
+credentials (`Proxy-Authorization: Basic`). Leave it off, the default, and any client that can
+reach the listener can use it. `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` still refuses non-loopback binds.
 
-```bash
-curl --proxy http://192.0.2.10:8080 \
-  --proxy-user 'interseptor:FULL_SCOPE_API_KEY' \
-  https://example.com/
-```
-
-Avoid putting a real key in shell history on an engagement; use your client's protected credential
-store or an environment-specific secret mechanism.
+A non-loopback listener with authentication off is an open proxy for everyone who can reach it:
+bind only the interfaces the engagement needs, prefer a tailnet or LAN you control, and close the
+listener after capture. Interseptor removes `Proxy-Authorization` before forwarding, so the
+listener password is never sent to the target origin.
 
 ## Browser background traffic suppression
 
@@ -172,10 +180,27 @@ If an upstream returns `407`, Interseptor reports an upstream authentication fai
 the upstream's authentication challenge to the browser. This avoids a misleading second credential
 prompt.
 
+## Upstream TLS fingerprint (ClientHello)
+
+Interseptor dials origins with Go's standard `crypto/tls`, so its TLS ClientHello carries Go's
+fingerprint. Some anti-bot WAFs (Cloudflare, Akamai) fingerprint the ClientHello (JA3/JA4) and may
+challenge or block a connection that does not look like a mainstream browser.
+
+Mimicking a Chrome or Firefox ClientHello needs a third-party TLS stack — such as
+[uTLS](https://github.com/refraction-networking/utls) — which would be a **new production dependency**
+and is **not bundled**. It is deferred deliberately: adding a dependency is a project decision, and
+uTLS does not drop cleanly into the current upstream transport, which negotiates HTTP/2 by ALPN
+through Go's `http.Transport`/`DialTLSContext`. A uTLS `UConn` shapes the handshake but hands back a
+connection `http.Transport` will not speak HTTP/2 over, so the HTTP/2 leg would have to be wired
+explicitly (an `http2.Transport` with a custom dial) rather than inherited — a real change to the
+forwarding path, not a drop-in. If you need ClientHello mimicry today, chain Interseptor through an
+upstream proxy that performs it (see [Upstream proxies](#upstream-proxies)). The full assessment is in
+[issue #108](https://github.com/Veyal/interseptor/issues/108).
+
 ## Safe network checklist
 
-- Bind only the interfaces needed for the engagement.
-- Use a scoped, expiring full key for non-loopback proxy clients.
+- Bind only the interfaces needed for the engagement. With proxy authentication off, a non-loopback
+  listener is an open proxy for everyone who can reach it.
 - Keep the control UI loopback-only unless remote access is intentional and key-protected.
 - Enable origin verification unless the target environment requires an explicit exception.
 - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out.

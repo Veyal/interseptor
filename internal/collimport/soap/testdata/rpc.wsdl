@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<definitions name="Inventory" targetNamespace="urn:inventory"
+    xmlns="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="urn:inventory">
+  <types>
+    <xsd:schema targetNamespace="urn:inventory">
+      <xsd:complexType name="Item">
+        <xsd:all>
+          <xsd:element name="sku" type="xsd:string"/>
+          <xsd:element name="qty" type="xsd:int"/>
+        </xsd:all>
+      </xsd:complexType>
+      <xsd:complexType name="StringArray">
+        <xsd:complexContent>
+          <xsd:restriction base="soapenc:Array">
+            <xsd:attribute ref="soapenc:arrayType" wsdl:arrayType="xsd:string[]"/>
+          </xsd:restriction>
+        </xsd:complexContent>
+      </xsd:complexType>
+    </xsd:schema>
+  </types>
+  <message name="LookupRequest">
+    <part name="sku" type="xsd:string"/>
+    <part name="warehouse" type="xsd:int"/>
+  </message>
+  <message name="AddRequest">
+    <part name="item" type="tns:Item"/>
+    <part name="tags" type="tns:StringArray"/>
+  </message>
+  <message name="LiteralRequest"><part name="note" type="xsd:string"/></message>
+  <portType name="InventoryPT">
+    <operation name="Lookup"><input message="tns:LookupRequest"/></operation>
+    <operation name="Add"><input message="tns:AddRequest"/></operation>
+    <operation name="Note"><input message="tns:LiteralRequest"/></operation>
+  </portType>
+  <binding name="InventoryBinding" type="tns:InventoryPT">
+    <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="Lookup">
+      <soap:operation soapAction="urn:inventory#Lookup"/>
+      <input><soap:body use="encoded" namespace="urn:inventory" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    </operation>
+    <operation name="Add">
+      <soap:operation soapAction="urn:inventory#Add"/>
+      <input><soap:body use="encoded" namespace="urn:inventory" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    </operation>
+    <operation name="Note">
+      <soap:operation soapAction="urn:inventory#Note"/>
+      <input><soap:body use="literal" namespace="urn:inventory"/></input>
+    </operation>
+  </binding>
+  <service name="InventoryService">
+    <port name="InventoryPort" binding="tns:InventoryBinding">
+      <soap:address location="http://inventory.example.com:8080/soap"/>
+    </port>
+  </service>
+</definitions>

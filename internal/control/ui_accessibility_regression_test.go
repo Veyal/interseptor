@@ -109,7 +109,7 @@ func TestUIMainNavigationReportsResponsiveOrientation(t *testing.T) {
 func TestUIStatusRegionsAnnounceBoundedUpdates(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, contract := range []string{
-		`id="mapWarn" class="map-warn" style="display:none" role="status" aria-live="polite"`,
+		`id="mapWarn" class="map-warn" data-init-hidden role="status" aria-live="polite"`,
 		`id="actCount" role="status" aria-live="polite" aria-atomic="true"`,
 	} {
 		if !strings.Contains(index, contract) {

@@ -1,0 +1,17 @@
+{{- /*
+  Docs / group chip in its colour / page. The page part uses the navigation title when
+  the page is in the navigation ("nav-title"), and the page title otherwise.
+*/ -}}
+{{define "breadcrumb" -}}
+<nav class="crumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{{url "/getting-started/"}}">Docs</a></li>
+    {{- with .Page.Group}}
+    <li><span class="chip chip-{{.Color}} crumb-group">{{.Title}}</span></li>
+    {{- end}}
+    <li><span class="crumb-current" aria-current="page">{{template "nav-title" .}}</span></li>
+  </ol>
+</nav>
+{{- end}}
+
+{{define "nav-title"}}{{$title := .Page.Title}}{{with .Page.Group}}{{range .Links}}{{if .Current}}{{$title = .Title}}{{end}}{{end}}{{end}}{{$title}}{{end}}

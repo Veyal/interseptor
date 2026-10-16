@@ -1,4 +1,6 @@
-import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey } from './core.js';
+import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey, openFlow, getHook, openCtxMenu, icon } from './core.js';
+import { linkedIndex, endpointLinked, coveragePips, coverageSummary, authState } from './map-coverage.js';
+import { renderState } from './statepanel.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
@@ -13,7 +15,23 @@ function keyClick(el, fn, preserveRole=false){
   el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});
   el.onclick=fn;
 }
-import { flowPopup } from './flowmodal.js';
+// wireRovingGroup turns a set of keyClick-wired sibling rows into a single shared
+// Tab stop, with Arrow/Home/End moving focus among them (roving tabindex) —
+// dense hosts would otherwise turn every row into its own Tab stop. Call after
+// keyClick, which unconditionally sets tabIndex=0 on each row.
+function wireRovingGroup(elsLike){
+  const els=[...elsLike];
+  els.forEach((el,i)=>{
+    el.tabIndex=i===0?0:-1;
+    el.addEventListener('keydown',e=>{
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
+      e.preventDefault();
+      const idx=els.indexOf(el);
+      const next=e.key==='ArrowDown'?(idx+1)%els.length:e.key==='ArrowUp'?(idx-1+els.length)%els.length:e.key==='Home'?0:els.length-1;
+      el.tabIndex=-1;els[next].tabIndex=0;els[next].focus();
+    });
+  });
+}
 
 function labelMapControls() {
   const labels = {
@@ -91,6 +109,8 @@ function restoreMapView(){
     const v = localStorage.getItem(projectStorageKey(MAP_VIEW_KEY));
     if(v === 'tree' || v === 'table' || v === 'graph' || v === 'params') return v;
   }catch(e){}
+  // Phones default to the list (table) view; the tree needs width to read.
+  try{if(window.matchMedia('(max-width: 720px)').matches) return 'table';}catch(e){}
   return 'tree';
 }
 
@@ -98,7 +118,7 @@ export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, hideNoise: restoreMapHideNoise(), noiseHiddenCount: 0, collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), searchExpandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
-  sort: { key: 'path', dir: 1 }, _treeHosts: null, _treeSeenHosts: new Set(), _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
+  sort: { key: 'path', dir: 1 }, linked: null, onlyUnlinked: false, _linkVersion: 0, _treeHosts: null, _treeSeenHosts: new Set(), _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
 
 function mapUsesServerSearch(){
@@ -170,6 +190,7 @@ export async function loadEndpoints(){
   }
   const q = params.toString();
   if(warn){warn.style.display='block';warn.textContent='Loading Map…';}
+  if(!mapState.eps.length) showMapSkeleton();
   try{
     const d = await api('/api/endpoints' + (q ? '?' + q : ''));
     if (epoch !== loadEndpointsEpoch) return;
@@ -203,14 +224,35 @@ export async function loadEndpoints(){
     fillMapMethods();
     fillMapTags();
     renderMap();
+    void loadMapLinks();
   }catch(e){
-    if(epoch === loadEndpointsEpoch) renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
+    if(epoch === loadEndpointsEpoch){
+      // With nothing loaded yet, a StatePanel with Retry replaces the empty tree;
+      // with data on screen the shared inline error keeps the last good view.
+      if(mapState.eps.length) renderLoadError(warn,'Map',e,loadEndpoints,true);
+      else renderMapLoadError(e);
+    }
   }finally{
     if(epoch===loadEndpointsEpoch){
       loadEndpointsPending=false;
       if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
     }
   }
+}
+
+// First load: skeleton rows in the active view's host, so the panel never looks
+// empty while the lazy module and the first request are in flight.
+function mapViewHost(){
+  return mapState.view === 'table' ? $('#mapTable') : mapState.view === 'params' ? $('#mapParams') : $('#mapTree');
+}
+function showMapSkeleton(){
+  const host = mapViewHost();
+  if(host && mapState.view !== 'graph') renderState(host, 'loading', { rows: 6, title: 'Loading Map' });
+}
+function renderMapLoadError(e){
+  const host = mapViewHost();
+  if(!host) return;
+  renderState(host, 'error', { title: 'Could not load the Map', status: e && e.status, message: e && e.message, onRetry: loadEndpoints });
 }
 
 let _fdKey = -1, _fdPreserved = '', _fdHtml = '';
@@ -269,7 +311,7 @@ export function epMatchesSearch(e, q){
 
 let _mfKey = '', _mfCache = null;
 export function mapFiltered(){
-  const key = mapState._dataVersion + '|' + (mapState.domain || '') + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.eps.length;
+  const key = mapState._dataVersion + '|' + (mapState.domain || '') + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.eps.length + '|' + mapState.onlyUnlinked + '|' + mapState._linkVersion;
   if(key === _mfKey && _mfCache) return _mfCache;
   // Client-side search is a marking pass only (dims non-matches) — not a filter —
   // so buildMapTree's memo stays valid while typing.
@@ -277,6 +319,7 @@ export function mapFiltered(){
     if(mapState.domain && e.host !== mapState.domain) return false;
     if(mapState.method && e.method !== mapState.method) return false;
     if(mapState.statusClass && Math.floor((e.lastStatus || 0) / 100) !== mapState.statusClass) return false;
+    if(mapState.onlyUnlinked && mapState.linked && endpointLinked(e, mapState.linked)) return false;
     return true;
   });
   _mfKey = key; _mfCache = out;
@@ -404,7 +447,9 @@ function mapExpandClustersForSearch(eps){
 }
 
 function wireMapEpRows(root){
-  root.querySelectorAll('.map-ep[data-flow]').forEach(el => keyClick(el, () => flowPopup(Number(el.dataset.flow))));
+  const rows=root.querySelectorAll('.map-ep[data-flow]');
+  rows.forEach(el => keyClick(el, () => openMapFlow(Number(el.dataset.flow))));
+  wireRovingGroup(rows);
   root.querySelectorAll('.map-cluster-badge').forEach(btn => {
     btn.onclick = ev => {
       ev.stopPropagation();
@@ -415,6 +460,86 @@ function wireMapEpRows(root){
       renderMap();
     };
   });
+}
+
+// Evidence-aware row decoration. Every part is derived from fields the API
+// already returns (observed statuses, flows attached to findings); with no
+// findings data loaded the linkage pip is omitted rather than shown as "none".
+function mapCoverageHTML(e){
+  const auth = authState(e);
+  const authHTML = auth.kind === 'unknown' ? '' : `<span class="map-auth is-${auth.kind}" title="${auth.kind === 'auth' ? 'A 401 or 403 was observed for this endpoint' : 'Only successful or redirect statuses were observed'}">${icon(auth.icon)}<span>${esc(auth.label)}</span></span>`;
+  const linked = coveragePips(e, mapState.linked).find(p => p.id === 'linked');
+  const pipHTML = !linked ? '' : linked.on
+    ? `<span class="map-pip is-on" title="${escAttr(linked.label)}">${icon('attach')}<span>Linked</span></span>`
+    : `<span class="map-pip" title="${escAttr(linked.label)}">${icon('status-todo')}<span class="u-sr">${esc(linked.label)}</span></span>`;
+  return authHTML || pipHTML ? `<span class="map-cov">${authHTML}${pipHTML}</span>` : '';
+}
+
+// One entry for opening an endpoint's latest flow: the Flow Drawer when it is
+// registered, the legacy popup otherwise.
+function openMapFlow(id){
+  if(!id) return;
+  openFlow(id, { source: 'map' });
+}
+
+function mapCtxFor(trigger){
+  const id = Number(trigger.closest('[data-flow]')?.dataset.flow);
+  if(!id) return null;
+  const items = [
+    { label: 'Open in flow view', icon: 'search', act: () => openMapFlow(id) },
+    { label: 'Send to Repeater', icon: 'repeater', act: () => sendToRepeater({ id }) },
+  ];
+  const attach = getHook('attachEvidence');
+  if(attach) items.push({ label: 'Attach to finding or create one', icon: 'attach', act: () => attach({ kind: 'flow', refs: [id] }, { anchor: trigger }) });
+  return { id, sections: [{ head: 'ENDPOINT', items }] };
+}
+
+function wireMapContextMenus(){
+  ['#mapTree', '#mapTable'].forEach(sel => {
+    const box = $(sel);
+    if(!box || box._mapCtxWired) return;
+    box._mapCtxWired = true;
+    box.addEventListener('contextmenu', ev => {
+      const row = ev.target.closest && ev.target.closest('.map-ep[data-flow], tr[data-flow]');
+      const ctx = row && mapCtxFor(row);
+      if(!ctx) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const r = row.getBoundingClientRect();
+      openCtxMenu(ev.clientX || r.left, ev.clientY || r.bottom, ctx.sections, null);
+    });
+  });
+}
+
+// Which flows are attached to findings (for coverage). Non-blocking: the Map is
+// fully usable while this loads, and a failure simply hides the linkage pips.
+let mapLinkEpoch = 0;
+async function loadMapLinks(){
+  const epoch = ++mapLinkEpoch;
+  try{
+    const d = await api('/api/findings');
+    if(epoch !== mapLinkEpoch) return;
+    mapState.linked = linkedIndex(d.findings || []);
+  }catch(e){
+    if(epoch !== mapLinkEpoch) return;
+    mapState.linked = null;
+  }
+  mapState._linkVersion++;
+  renderMap();
+}
+
+function renderMapCoverage(eps){
+  const sum = coverageSummary(eps, mapState.linked);
+  const el = $('#mapCoverage'); if(!el) return;
+  el.hidden = !sum;
+  if(!sum) return;
+  el.textContent = sum.text;
+  const btn = $('#mapUnlinked');
+  if(btn){
+    btn.hidden = false;
+    btn.setAttribute('aria-pressed', mapState.onlyUnlinked ? 'true' : 'false');
+    btn.classList.toggle('on', mapState.onlyUnlinked);
+  }
 }
 
 export function mapEpRow(e, dim){
@@ -430,12 +555,12 @@ export function mapEpRow(e, dim){
     const expanded = searchExpanded||mapState.expandedClusters.has(e._cluster.key);
     const badgeTitle=searchExpanded?'Expanded to show current search matches':`${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}`;
     const badgeLabel=searchExpanded?`Expanded ${extra} ${label} endpoint${extra === 1 ? '' : 's'} to show search matches`:`${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}`;
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
     <span class="map-m" style="color:${methodColor(e.method)}">${esc(e.method)}</span>
-    <span class="map-p">${esc(path)}</span>${clusterBadge}<span class="map-sts">${sts}</span>
+    <span class="map-p">${esc(path)}</span>${clusterBadge}<span class="map-sts">${sts}</span>${mapCoverageHTML(e)}
     <span class="map-hits">${e.hits > 1 ? e.hits+'×' : ''}</span></div>`;
 }
 
@@ -545,11 +670,15 @@ function renderMapParams(d){
       <td style="font-family:var(--mono);color:var(--fg)">${esc(p.name)}</td>
       <td style="color:var(--fg3)">${esc(p.source)}</td>
       <td>${p.hits}</td>
-      <td><button type="button" class="btn xs map-param-inspect">#${p.lastFlowId}</button></td>
+      <td><button type="button" class="btn xs map-param-inspect" aria-label="Inspect flow #${p.lastFlowId} for parameter ${escAttr(p.name)}">#${p.lastFlowId}</button></td>
     </tr>`).join('')}
     </tbody></table></div>`).join('');
-  box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
-  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
+  box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)openFlow(Number(tr.dataset.flow),{source:'map'});};});
+  box.querySelectorAll('tbody').forEach(tbody=>{
+    const rows=tbody.querySelectorAll('.map-param-row[data-flow]');
+    rows.forEach(tr=>keyClick(tr,()=>openFlow(Number(tr.dataset.flow),{source:'map'}),true));
+    wireRovingGroup(rows);
+  });
 }
 
 function renderMapCrumb(eps){
@@ -598,6 +727,8 @@ function mapPerfNote(eps){
 }
 
 export function renderMap(){
+  // A skeleton or error panel from the loading phase must not leave busy state behind.
+  ['#mapTree', '#mapTable', '#mapParams'].forEach(sel => { const h = $(sel); if(h){ h.removeAttribute('aria-busy'); delete h.dataset.state; } });
   if(mapState.view === 'params') return;
   const filtered = mapFiltered();
   const visible=mapVisibleEps(filtered);
@@ -635,6 +766,7 @@ export function renderMap(){
     }
   }
   renderMapCrumb(eps);
+  renderMapCoverage(mapState.eps);
   if(mapState.view === 'graph') renderMapGraph(eps);
   else if(mapState.view === 'table') renderMapTable(eps);
   else renderMapTree(eps);
@@ -657,7 +789,7 @@ export function renderMapTree(eps){
     return;
   }
   if(eps.length > MAP_TREE_EAGER_MAX && (mapState.expandAll || mapState.search)){
-    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
+    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
     mapState._treeHosts = null;
     return;
   }
@@ -702,7 +834,7 @@ function mapTableRow(e, showHost){
   if(e._cluster && !e._clusterChild){
     const extra = e._cluster.count - 1;
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
-    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</span>`;
+    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</span>`;
   }
   return `<tr data-flow="${e.lastFlowId || ''}" class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
     ${showHost ? `<td style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
@@ -710,19 +842,23 @@ function mapTableRow(e, showHost){
     <td class="map-tbl-p" title="${escAttr(path)}">${esc(path)}${clusterCell}</td>
     <td class="map-tbl-sts">${sts || '—'}</td>
     <td style="text-align:right;color:var(--fg3)">${e.hits > 1 ? e.hits+'×' : ''}</td>
+    <td class="map-tbl-cov">${mapCoverageHTML(e)}</td>
     <td class="map-tbl-act">${e.lastFlowId ? `<button class="btn" data-rep="${e.lastFlowId}" title="Send to Repeater">→ Rep</button>` : ''}</td>
   </tr>`;
 }
 
 function wireMapTableRows(box){
+  const wired=[];
   box.querySelectorAll('tr[data-flow]').forEach(tr => {
     const id = Number(tr.dataset.flow);
     if(!id) return;
     keyClick(tr, ev => {
       if(ev.target.closest('[data-rep]')) return;
-      flowPopup(id);
+      openMapFlow(id);
     }, true);
+    wired.push(tr);
   });
+  wireRovingGroup(wired);
   box.querySelectorAll('[data-rep]').forEach(b => b.onclick = ev => {
     ev.stopPropagation();
     sendToRepeater({ id: Number(b.dataset.rep) });
@@ -738,13 +874,14 @@ function renderMapTable(eps){
   const sorted = mapSortEps(eps);
   const showHost = !mapState.domain;
   const sk = mapState.sort.key, sd = mapState.sort.dir;
-  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ' + icon('arrow-up') : ' ' + icon('arrow-down')) : ''}</th>`;
   const head = `<thead><tr>
     ${showHost ? th('host', 'Host', '140px') : ''}
     ${th('method', 'Method', '72px')}
     ${th('path', 'Path', '')}
     ${th('status', 'Status', '88px')}
     ${th('hits', 'Hits', '52px')}
+    <th class="map-th-evidence">Evidence</th>
     <th style="width:72px"></th>
   </tr></thead>`;
 
@@ -823,6 +960,8 @@ $('#mapDomain') && ($('#mapDomain').onchange = e => {
 });
 $('#mapMethod') && ($('#mapMethod').onchange = e => { mapState.method = e.target.value; mapState._needFit = true; renderMap(); });
 $('#mapRefresh') && ($('#mapRefresh').onclick = loadEndpoints);
+$('#mapUnlinked') && ($('#mapUnlinked').onclick = () => { mapState.onlyUnlinked = !mapState.onlyUnlinked; renderMap(); });
+wireMapContextMenus();
 $('#mapExpand').onclick = () => {
   const eps = mapFiltered();
   if(!mapState.expandAll && eps.length > MAP_TREE_EAGER_MAX){
@@ -891,7 +1030,7 @@ $('#mapDiscoveryHelp')&&($('#mapDiscoveryHelp').onclick=()=>{
   const p=$('#mapDiscoveryPanel'); if(!p) return;
   const show=p.hasAttribute('hidden')||p.style.display==='none';
   const button=$('#mapDiscoveryHelp');
-  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); button.textContent='Discovery ▾'; }
+  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); button.textContent='Discovery'; }
   else { p.hidden=true; p.style.display='none'; button.textContent='Discovery ▸'; }
   button.setAttribute('aria-expanded',show?'true':'false');
 });
@@ -1187,7 +1326,7 @@ export function renderMapGraph(eps){
       selectGraphNode(el);
       if(el.dataset.kind === 'ep'){
         const f = el.dataset.flow;
-        if(f) flowPopup(Number(f));
+        if(f) openFlow(Number(f),{source:'map'});
         return;
       }
       const k = el.dataset.key;
