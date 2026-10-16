@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **UI hints are off by default.** Only an explicit stored `interseptor.hints=on` enables hover/focus hints; unset or unreadable storage now means off, and the initial markup matches so first paint shows no hints. Users who turned hints on keep them.
+- **`interseptor launcher` dashboard redesigned.** Mobile-first (viewport meta, 44px touch targets at phone width), light/dark via `prefers-color-scheme`, running projects first then most recent, project filter, Running/Stopped status pills, project path, wrapping MCP setting with a Copy button, a real create form with label and inline validation, visible start/stop/fetch errors, loading/empty/error states, focus-preserving auto-refresh, `aria-live` status, and no inline handlers. `/api/instances` now also returns `path` and `modified`.
 
 ### Fixed
 

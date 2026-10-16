@@ -235,6 +235,26 @@ type instanceView struct {
 	UIURL       string `json:"uiUrl,omitempty"`
 	MCPURL      string `json:"mcpUrl,omitempty"`
 	MCPEnvHint  string `json:"mcpEnvHint,omitempty"`
+	Path        string `json:"path,omitempty"`     // project data directory
+	Modified    string `json:"modified,omitempty"` // data dir mtime (RFC3339), for recency sorting
+}
+
+// projectPath is a project's data directory: "default" is the global root
+// itself (see resolveProjectDir), every other name lives under projectsDir.
+func (lh *launcherServer) projectPath(name string) string {
+	if name == "default" {
+		return lh.globalDir
+	}
+	return filepath.Join(lh.projectsDir, name)
+}
+
+// decorate adds the display-only path and last-modified fields.
+func (lh *launcherServer) decorate(v instanceView) instanceView {
+	v.Path = lh.projectPath(v.Project)
+	if fi, err := os.Stat(v.Path); err == nil {
+		v.Modified = fi.ModTime().UTC().Format(time.RFC3339)
+	}
+	return v
 }
 
 func runningView(inst launcher.Instance) instanceView {
@@ -278,14 +298,14 @@ func (lh *launcherServer) views() []instanceView {
 	var out []instanceView
 	for _, name := range lh.knownProjects() {
 		if inst, ok := running[name]; ok {
-			out = append(out, runningView(inst))
+			out = append(out, lh.decorate(runningView(inst)))
 			delete(running, name)
 			continue
 		}
-		out = append(out, instanceView{Project: name})
+		out = append(out, lh.decorate(instanceView{Project: name}))
 	}
 	for _, inst := range running {
-		out = append(out, runningView(inst))
+		out = append(out, lh.decorate(runningView(inst)))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Project < out[j].Project })
 	return out
@@ -492,71 +512,269 @@ func (lh *launcherServer) serveDashboard(w http.ResponseWriter, r *http.Request)
 }
 
 const launcherDashboardHTML = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Interseptor — Projects</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Interseptor — Projects</title>
 <style>
-  body{font:14px/1.4 -apple-system,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;margin:0;padding:32px}
-  h1{font-size:18px;margin:0 0 20px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-  .card{background:#181b21;border:1px solid #2a2e37;border-radius:8px;padding:14px}
-  .card h2{font-size:15px;margin:0 0 8px;word-break:break-all}
-  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;margin-bottom:8px}
-  .pill.on{background:#153;color:#7f7}
-  .pill.off{background:#333;color:#999}
-  .meta{font-size:12px;color:#9aa;margin:2px 0}
-  .row{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
-  button,a.btn{font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid #3a3f4a;background:#232730;color:#e6e6e6;cursor:pointer;text-decoration:none}
-  button:hover,a.btn:hover{background:#2c313c}
-  input{font:inherit;padding:6px 8px;border-radius:5px;border:1px solid #3a3f4a;background:#181b21;color:#e6e6e6}
-  code{background:#0b0d11;padding:2px 5px;border-radius:4px;font-size:11px}
-  .new{margin-top:22px;display:flex;gap:8px}
+:root{
+  color-scheme:light dark;
+  --bg:#ffffff;--bg1:#f7f8fa;--bg2:#f0f2f5;--bg3:#e7ebf0;
+  --line:rgba(15,23,42,.1);--line2:rgba(15,23,42,.22);
+  --fg:#0f172a;--fg2:#334155;--fg3:#475569;
+  --accent:#065f46;--accentSolid:#047857;--onAccent:#ffffff;--accentDim:rgba(6,95,70,.12);
+  --red:#b91c1c;--redDim:rgba(185,28,28,.08);
+  --focus-ring:#7c2d12;--shadow:rgba(15,23,42,.08);
+  --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;
+  --r-sm:3px;--r-md:6px;--r-lg:9px;--r-pill:999px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111318;--bg1:#171a20;--bg2:#1c2028;--bg3:#252b35;
+    --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.18);
+    --fg:#f8fafc;--fg2:#cbd5e1;--fg3:#94a3b8;
+    --accent:#6ee7c2;--accentDim:rgba(110,231,194,.14);
+    --red:#f87171;--redDim:rgba(239,68,68,.15);
+    --focus-ring:#facc15;--shadow:rgba(0,0,0,.4);
+  }
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--ui);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+main{max-width:880px;margin:0 auto;padding:var(--sp-5) var(--sp-4) var(--sp-6)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-4)}
+h1{font-size:20px;line-height:1.2;margin:0;font-weight:650}
+.count{color:var(--fg2);font-size:13px;white-space:nowrap}
+.search{flex:1 1 220px;min-width:0;margin-left:auto;max-width:360px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+input[type=search],input[type=text]{font:inherit;width:100%;min-height:36px;padding:0 var(--sp-3);background:var(--bg1);color:var(--fg);border:1px solid var(--line2);border-radius:var(--r-md)}
+input::placeholder{color:var(--fg3);opacity:1}
+input[aria-invalid=true]{border-color:var(--red)}
+:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 var(--sp-3);font:600 13px/1 var(--ui);color:var(--fg);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--bg3)}
+.btn[disabled],.btn[aria-disabled=true]{opacity:.6;cursor:progress}
+.btn.primary{background:var(--accentSolid);border-color:var(--accentSolid);color:var(--onAccent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--red);background:transparent}
+.btn.danger:hover{background:var(--redDim)}
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-2)}
+.item{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-4);padding:var(--sp-3) var(--sp-4);background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-lg)}
+.item.on{border-color:var(--accent)}
+.info{flex:1 1 260px;min-width:0}
+.top{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
+.top h2{margin:0;font-size:15px;font-weight:650;overflow-wrap:anywhere}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:var(--r-pill);font-size:12px;font-weight:600;border:1px solid var(--line2);color:var(--fg2);background:var(--bg2)}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--fg3)}
+.pill.on{color:var(--accent);background:var(--accentDim);border-color:var(--accent)}
+.pill.on::before{background:var(--accent)}
+.pill.busy::before{animation:pulse 1s ease-in-out infinite alternate}
+@keyframes pulse{from{opacity:.3}to{opacity:1}}
+.meta{margin:var(--sp-1) 0 0;font-size:12px;color:var(--fg2);display:flex;flex-wrap:wrap;gap:0 var(--sp-3)}
+.meta code,.path{font-family:var(--mono);font-size:12px}
+.path{margin:var(--sp-1) 0 0;color:var(--fg3);overflow-wrap:anywhere}
+.mcp{display:flex;align-items:flex-start;gap:var(--sp-2);margin-top:var(--sp-2);flex-wrap:wrap}
+.mcp code{flex:1 1 200px;min-width:0;font-family:var(--mono);font-size:12px;padding:6px var(--sp-2);background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);overflow-wrap:anywhere;word-break:break-all}
+.mcplabel{font-size:12px;color:var(--fg2);padding-top:8px}
+.btn.small{min-height:44px;min-width:44px}
+.actions{display:flex;gap:var(--sp-2);flex:0 0 auto}
+.state{padding:var(--sp-6) var(--sp-4);text-align:center;color:var(--fg2);border:1px dashed var(--line2);border-radius:var(--r-lg)}
+.state[hidden]{display:none}
+.state strong{display:block;color:var(--fg);font-size:15px;margin-bottom:var(--sp-1)}
+.state .btn{margin-top:var(--sp-3)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-3);padding:var(--sp-2) var(--sp-3);border:1px solid var(--red);border-radius:var(--r-md);background:var(--redDim);color:var(--fg)}
+.banner[hidden]{display:none}
+.skel{height:64px;border-radius:var(--r-lg);background:var(--bg2);animation:pulse 1.2s ease-in-out infinite alternate}
+form.new{margin-top:var(--sp-5);padding:var(--sp-4);background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-lg)}
+form.new label{display:block;font-weight:600;margin-bottom:var(--sp-2)}
+.row{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.row input{flex:1 1 200px;width:auto}
+.hint{margin:var(--sp-2) 0 0;font-size:12px;color:var(--fg3)}
+.hint.err{color:var(--red)}
+#status{margin:var(--sp-3) 0 0;min-height:1.4em;font-size:13px;color:var(--fg2)}
+#status.err{color:var(--red)}
+@media (max-width:520px){
+  main{padding:var(--sp-4) var(--sp-4) var(--sp-5)}
+  .search{flex-basis:100%;max-width:none;margin-left:0;order:3}
+  .actions{width:100%}
+  .actions .btn{flex:1}
+  .btn,input[type=search],input[type=text]{min-height:44px}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
 </style></head>
 <body>
-<h1>Interseptor — running projects</h1>
-<div class="grid" id="grid"></div>
-<div class="new">
-  <input id="newName" placeholder="new project name…">
-  <button onclick="startProject(document.getElementById('newName').value); document.getElementById('newName').value=''">+ Start project</button>
+<main>
+<header>
+  <h1>Projects</h1>
+  <span class="count" id="count" aria-hidden="true"></span>
+  <div class="search">
+    <label class="sr" for="q">Search projects</label>
+    <input id="q" type="search" placeholder="Search projects…" autocomplete="off" spellcheck="false">
+  </div>
+</header>
+<div class="banner" id="error" role="alert" hidden>
+  <span id="errorText">Could not reach the launcher.</span>
+  <button class="btn" type="button" id="retry">Retry</button>
 </div>
+<div id="state" class="state" hidden></div>
+<ul class="list" id="list" aria-label="Projects"></ul>
+<form class="new" id="newForm" novalidate>
+  <label for="newName">New project name</label>
+  <div class="row">
+    <input id="newName" name="project" type="text" autocomplete="off" spellcheck="false" maxlength="64" aria-describedby="newHint" placeholder="e.g. example-app">
+    <button class="btn primary" type="submit" id="newBtn">Create and start</button>
+  </div>
+  <p class="hint" id="newHint">Letters, numbers, dashes and dots. No slashes.</p>
+</form>
+<p id="status" role="status" aria-live="polite"></p>
+</main>
 <script>
 const LAUNCHER_TOKEN = __LAUNCHER_TOKEN__;
 function esc(s){return String(s).replace(/[&<>"']/g, function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+var items = [], loaded = false, lastSig = '', filter = '', busy = {};
+var $ = function(id){return document.getElementById(id);};
+
+function ago(iso){
+  var t = Date.parse(iso); if(!t) return '';
+  var s = Math.max(0, Math.round((Date.now()-t)/1000));
+  if(s < 60) return 'just now';
+  if(s < 3600) return Math.floor(s/60)+'m ago';
+  if(s < 86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
+function stamp(it){ return Date.parse(it.running ? it.startedAt : it.modified) || 0; }
+function sorted(list){
+  return list.slice().sort(function(a,b){
+    if(a.running !== b.running) return a.running ? -1 : 1;
+    var d = stamp(b) - stamp(a);
+    return d || a.project.localeCompare(b.project);
+  });
+}
+function say(msg, isErr){
+  var el = $('status'); el.textContent = msg; el.className = isErr ? 'err' : '';
+}
+function rowHTML(it){
+  var name = it.project, b = busy[name];
+  var pillCls = it.running ? 'pill on' : 'pill';
+  var pillTxt = b ? (b === 'stop' ? 'Stopping…' : 'Starting…') : (it.running ? 'Running' : 'Stopped');
+  var meta = '';
+  if(it.running){
+    meta = '<p class="meta"><span>UI <code>'+esc(it.controlAddr)+'</code></span><span>Proxy <code>'+esc(it.proxyAddr)+'</code></span><span>pid '+esc(it.pid)+'</span>'+
+      (it.startedAt ? '<span>started '+esc(ago(it.startedAt))+'</span>' : '')+'</p>'+
+      (it.mcpEnvHint ? '<div class="mcp"><span class="mcplabel">MCP</span><code>'+esc(it.mcpEnvHint)+'</code><button class="btn small" type="button" data-action="copy" data-text="'+esc(it.mcpEnvHint)+'" aria-label="Copy MCP setting for '+esc(name)+'">Copy</button></div>' : '');
+  } else if(it.modified){
+    meta = '<p class="meta"><span>last used '+esc(ago(it.modified))+'</span></p>';
+  }
+  var path = it.path ? '<p class="path">'+esc(it.path)+'</p>' : '';
+  var dis = b ? ' disabled aria-disabled="true"' : '';
+  var actions = '';
+  if(it.running){
+    if(/^https?:\/\//.test(it.uiUrl || '')) actions += '<a class="btn primary" href="'+esc(it.uiUrl)+'" target="_blank" rel="noopener noreferrer" aria-label="Open '+esc(name)+' in a new tab">Open</a>';
+    actions += '<button class="btn danger" type="button" data-action="stop" data-project="'+esc(name)+'" aria-label="Stop '+esc(name)+'"'+dis+'>Stop</button>';
+  } else {
+    actions += '<button class="btn primary" type="button" data-action="start" data-project="'+esc(name)+'" aria-label="Start '+esc(name)+'"'+dis+'>Start</button>';
+  }
+  return '<li class="item'+(it.running?' on':'')+'"><div class="info"><div class="top"><h2>'+esc(name)+'</h2><span class="'+pillCls+(b?' busy':'')+'">'+pillTxt+'</span></div>'+meta+path+'</div><div class="actions">'+actions+'</div></li>';
+}
+function render(force){
+  var q = filter.trim().toLowerCase();
+  var shown = sorted(items).filter(function(it){return !q || it.project.toLowerCase().indexOf(q) >= 0;});
+  var sig = JSON.stringify([shown, q, busy, loaded, Math.floor(Date.now()/60000)]);
+  var running = items.filter(function(i){return i.running;}).length;
+  $('count').textContent = loaded ? items.length+' project'+(items.length===1?'':'s')+' · '+running+' running' : '';
+  var st = $('state'), list = $('list');
+  if(!force && sig === lastSig) return;
+  lastSig = sig;
+  var active = document.activeElement, key = active && active.dataset && active.dataset.action ? active.dataset.action+'|'+active.dataset.project : '';
+  if(!loaded){
+    st.hidden = true; list.innerHTML = '<li class="skel" aria-hidden="true"></li><li class="skel" aria-hidden="true"></li>'; list.setAttribute('aria-busy','true'); return;
+  }
+  list.removeAttribute('aria-busy');
+  if(!shown.length){
+    st.hidden = false;
+    st.innerHTML = q ? '<strong>No matches</strong>Nothing matches “'+esc(filter.trim())+'”.' : '<strong>No projects yet</strong>Create one below to start an instance.';
+  } else { st.hidden = true; }
+  list.innerHTML = shown.map(rowHTML).join('');
+  if(key){
+    var parts = key.split('|'), btns = list.querySelectorAll('button[data-action]');
+    for(var i=0;i<btns.length;i++){ if(btns[i].dataset.action===parts[0] && btns[i].dataset.project===parts[1] && !btns[i].disabled){ btns[i].focus({preventScroll:true}); break; } }
+  }
+}
 async function refresh(){
-  const res = await fetch('/api/instances');
-  const items = await res.json();
-  const grid = document.getElementById('grid');
-  grid.innerHTML = items.map(function(it){
-    const pill = it.running ? '<span class="pill on">running · pid '+it.pid+'</span>' : '<span class="pill off">stopped</span>';
-    const meta = it.running ? (
-      '<div class="meta">UI '+esc(it.controlAddr)+'</div>'+
-      '<div class="meta">Proxy '+esc(it.proxyAddr)+'</div>'+
-      '<div class="meta">MCP <code>'+esc(it.mcpEnvHint)+'</code></div>'
-    ) : '';
-    const actions = it.running
-      ? '<a class="btn" href="'+esc(it.uiUrl)+'" target="_blank">Open</a><button data-action="stop" data-project="'+esc(it.project)+'">Stop</button>'
-      : '<button data-action="start" data-project="'+esc(it.project)+'">Start</button>';
-    return '<div class="card"><h2>'+esc(it.project)+'</h2>'+pill+meta+'<div class="row">'+actions+'</div></div>';
-  }).join('');
+  try{
+    var res = await fetch('/api/instances', {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    items = await res.json();
+    if(!Array.isArray(items)) items = [];
+    Object.keys(busy).forEach(function(n){
+      var it = items.filter(function(i){return i.project===n;})[0];
+      if(it && ((busy[n]==='stop') !== it.running)) delete busy[n];
+    });
+    loaded = true; $('error').hidden = true;
+  }catch(e){
+    $('errorText').textContent = 'Could not load projects ('+e.message+'). '+(loaded ? 'Showing the last known list.' : '');
+    $('error').hidden = false;
+    if(!loaded){ loaded = true; items = []; }
+  }
+  render(false);
 }
-async function startProject(name){
-  name = (name || '').trim();
-  if(!name) return;
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/start', {method:'POST', headers:{'X-Interseptor-Launcher-Token': LAUNCHER_TOKEN}});
-  refresh();
+async function act(name, verb){
+  busy[name] = verb; render(false);
+  say((verb==='stop' ? 'Stopping ' : 'Starting ')+name+'…', false);
+  try{
+    var res = await fetch('/api/instances/'+encodeURIComponent(name)+'/'+verb, {method:'POST', headers:{'X-Interseptor-Launcher-Token': LAUNCHER_TOKEN}});
+    var body = {}; try{ body = await res.json(); }catch(_){}
+    if(!res.ok) throw new Error(body.error || ('HTTP '+res.status));
+    say(name+(verb==='stop' ? ' is stopping.' : ' is running.'), false);
+    if(verb==='stop') setTimeout(function(){ if(busy[name]){ delete busy[name]; refresh(); } }, 10000);
+  }catch(e){
+    delete busy[name];
+    say('Could not '+verb+' '+name+': '+e.message, true);
+  }
+  await refresh();
 }
-async function stopProject(name){
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/stop', {method:'POST', headers:{'X-Interseptor-Launcher-Token': LAUNCHER_TOKEN}});
-  refresh();
+function copyText(btn){
+  var text = btn.dataset.text || '';
+  var done = function(ok){ say(ok ? 'Copied MCP setting.' : 'Copy failed; select the text manually.', !ok); btn.textContent = ok ? 'Copied' : 'Copy'; setTimeout(function(){ btn.textContent = 'Copy'; }, 1500); };
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(function(){done(true);}, function(){done(false);}); return; }
+  var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+  var ok = false; try{ ok = document.execCommand('copy'); }catch(_){} document.body.removeChild(ta); done(ok);
 }
-refresh();
-setInterval(refresh, 3000);
-// Delegated buttons: project names never enter inline JS — inside an HTML
-// attribute esc()'s &#39; decodes back to a quote before the JS engine parses
-// the handler, so a crafted project name could break out of the string.
-document.getElementById('grid').addEventListener('click', function(ev){
-  var btn = ev.target.closest('button[data-action]');
-  if(!btn) return;
-  if(btn.dataset.action === 'stop') stopProject(btn.dataset.project);
-  else startProject(btn.dataset.project);
+function validName(v){
+  v = v.trim();
+  if(!v) return 'Enter a project name.';
+  if(v === '.' || v === '..' || /[\/\\]/.test(v)) return 'Names cannot be "." or ".." or contain slashes.';
+  if(/[\u0000-\u001f]/.test(v)) return 'Names cannot contain control characters.';
+  return '';
+}
+$('newForm').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var inp = $('newName'), hint = $('newHint'), err = validName(inp.value);
+  if(err){
+    inp.setAttribute('aria-invalid','true'); hint.textContent = err; hint.className = 'hint err'; inp.focus(); return;
+  }
+  inp.removeAttribute('aria-invalid'); hint.textContent = 'Letters, numbers, dashes and dots. No slashes.'; hint.className = 'hint';
+  var name = inp.value.trim(); inp.value = '';
+  act(name, 'start');
 });
+$('newName').addEventListener('input', function(){
+  this.removeAttribute('aria-invalid'); $('newHint').className = 'hint'; $('newHint').textContent = 'Letters, numbers, dashes and dots. No slashes.';
+});
+$('q').addEventListener('input', function(){ filter = this.value; render(false); });
+$('retry').addEventListener('click', function(){ refresh(); });
+$('list').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button[data-action]');
+  if(!btn || btn.disabled) return;
+  if(btn.dataset.action === 'copy'){ copyText(btn); return; }
+  act(btn.dataset.project, btn.dataset.action === 'stop' ? 'stop' : 'start');
+});
+render(true);
+refresh();
+setInterval(function(){ if(!document.hidden) refresh(); }, 3000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) refresh(); });
 </script>
 </body></html>`

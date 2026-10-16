@@ -492,3 +492,112 @@ func TestLauncherAliveDefaultsToAliveInterseptor(t *testing.T) {
 		t.Fatalf("launcherAlive(%d) = true, want false", deadPID)
 	}
 }
+
+func fetchDashboard(t *testing.T) (string, string) {
+	t.Helper()
+	lh, tok := newTestLauncherServer(t)
+	rr := httptest.NewRecorder()
+	lh.routes().ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
+	if rr.Code != 200 {
+		t.Fatalf("GET /: status = %d", rr.Code)
+	}
+	return rr.Body.String(), tok
+}
+
+// TestDashboardHasNoInlineHandlers: project names must never reach an inline
+// JS handler, and the page must be fully self-contained.
+func TestDashboardHasNoInlineHandlers(t *testing.T) {
+	body, _ := fetchDashboard(t)
+	for _, bad := range []string{"onclick=", "onsubmit=", "oninput=", "onchange=", "javascript:", "http://", "https://", "<link ", "src=\"http"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("dashboard contains %q", bad)
+		}
+	}
+	if !strings.Contains(body, "addEventListener") {
+		t.Error("dashboard does not use addEventListener")
+	}
+}
+
+// TestDashboardMarkupContract pins the redesigned UI's key affordances.
+func TestDashboardMarkupContract(t *testing.T) {
+	body, _ := fetchDashboard(t)
+	for _, want := range []string{
+		`type="search"`,
+		`aria-live="polite"`,
+		`id="newName"`,
+		`<label`,
+		`prefers-color-scheme: dark`,
+		`prefers-reduced-motion`,
+		`:focus-visible`,
+		`name="viewport"`,
+		`id="state"`,
+		`font-family:system-ui`,
+		`@media (max-width`,
+		`data-action="copy"`,
+		`lang="en"`,
+		`id="newForm"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard missing %q", want)
+		}
+	}
+	rootIdx := strings.Index(body, ":root{")
+	darkIdx := strings.Index(body, "prefers-color-scheme: dark")
+	if rootIdx < 0 || darkIdx < 0 || rootIdx > darkIdx {
+		t.Error("light tokens must be defined on :root before the dark media override")
+	}
+	if !strings.Contains(body, "Running") || !strings.Contains(body, "Stopped") {
+		t.Error("status pills must carry Running/Stopped text")
+	}
+}
+
+// TestDashboardKeepsEscapingAndTokenHandling: every interpolated value goes
+// through esc() and the token header is still sent on start/stop.
+func TestDashboardKeepsEscapingAndTokenHandling(t *testing.T) {
+	body, tok := fetchDashboard(t)
+	if !strings.Contains(body, "function esc(") || !strings.Contains(body, "&#39;") {
+		t.Error("esc() helper missing or incomplete")
+	}
+	if !strings.Contains(body, "X-Interseptor-Launcher-Token") || !strings.Contains(body, "const LAUNCHER_TOKEN = \""+tok+"\"") {
+		t.Error("token not embedded as a JSON string literal / header missing")
+	}
+	if strings.Contains(body, "__LAUNCHER_TOKEN__") {
+		t.Error("token placeholder not substituted")
+	}
+	for _, field := range []string{"it.project", "it.controlAddr", "it.proxyAddr", "it.uiUrl", "it.path", "it.mcpEnvHint"} {
+		for _, line := range strings.Split(body, "\n") {
+			// A raw concatenation ('+it.x+' or '+it.x) bypasses esc().
+			if strings.Contains(line, "'+"+field) || strings.Contains(line, "\"+"+field) {
+				t.Errorf("field %s concatenated without esc(): %s", field, strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+// TestInstancesAPIIncludesPathAndModified: the dashboard shows each
+// project's path and sorts stopped projects by recency.
+func TestInstancesAPIIncludesPathAndModified(t *testing.T) {
+	lh, _ := newTestLauncherServer(t)
+	if err := os.MkdirAll(filepath.Join(lh.projectsDir, "alpha"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	views := lh.views()
+	var alpha, def *instanceView
+	for i := range views {
+		switch views[i].Project {
+		case "alpha":
+			alpha = &views[i]
+		case "default":
+			def = &views[i]
+		}
+	}
+	if alpha == nil || def == nil {
+		t.Fatalf("views missing alpha/default: %+v", views)
+	}
+	if alpha.Path != filepath.Join(lh.projectsDir, "alpha") || alpha.Modified == "" {
+		t.Errorf("alpha path/modified = %q/%q", alpha.Path, alpha.Modified)
+	}
+	if def.Path != lh.globalDir {
+		t.Errorf("default path = %q, want global dir %q", def.Path, lh.globalDir)
+	}
+}
