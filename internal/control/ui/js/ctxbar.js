@@ -173,12 +173,6 @@ export function renderCtxbar(s = projectState.get()) {
   renderNext(s); renderRing(s); renderRailBadge(s);
 }
 
-export function setCtxProject(name) {
-  setText('ctxProjectText', name || 'Project');
-  const b = $('ctxProject');
-  if (b) b.setAttribute('aria-label', 'Project: ' + (name || 'unknown') + '. Switch or create a project.');
-}
-
 /* ---- readiness popover: the blocker checklist ---- */
 function projectRow(b) {
   const li = el('li', 'ctx-pop-row');
@@ -329,7 +323,6 @@ export function initCtxbar(d = {}) {
   const live = $('ctxLive');
   announcer = createBlockerAnnouncer({ emit: (msg) => { if (live) live.textContent = msg; } });
   $('ctxScope').addEventListener('click', onScopeClick);
-  $('ctxProject').addEventListener('click', () => { if (deps.openProject) deps.openProject(); });
   $('ctxIdentity').addEventListener('change', onIdentityChange);
   $('ctxTarget').addEventListener('click', leaving(openEngagement));
   $('ctxEvidence').addEventListener('click', leaving(() => { if (deps.activateTab) deps.activateTab('findings'); }));

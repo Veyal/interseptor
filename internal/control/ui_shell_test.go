@@ -91,7 +91,7 @@ func TestUIShellFlightBarSemantics(t *testing.T) {
 		`id="ctxTarget"`, `id="ctxEvidence"`, `id="ctxNext"`,
 	)
 	// Every control the bar and its popovers carry is a real <button type=button>.
-	for _, id := range []string{"ctxProject", "ctxScope", "ctxRing", "ctxRingClose", "ctxNext", "ctxTarget", "ctxEvidence", "ctxScopeSettings", "connChip"} {
+	for _, id := range []string{"ctxScope", "ctxRing", "ctxRingClose", "ctxNext", "ctxTarget", "ctxEvidence", "ctxScopeSettings", "connChip"} {
 		if !regexp.MustCompile(`<button type="button"[^>]*\sid="` + id + `"`).MatchString(bar) {
 			t.Errorf("#%s must be a <button type=button>", id)
 		}
@@ -249,10 +249,8 @@ func TestUIShellStylesheetHasPhoneAndNarrowRules(t *testing.T) {
 		}
 	}
 	phone := mediaBlock(t, body, "@media (max-width:720px)")
-	for _, hidden := range []string{".ctx-project", ".ctx-identity"} {
-		if !strings.Contains(phone, hidden) {
-			t.Errorf("the 720px bar must collapse %s (the dock and the palette cover it)", hidden)
-		}
+	if !strings.Contains(phone, ".ctx-identity") {
+		t.Errorf("the 720px bar must collapse .ctx-identity (the dock and the palette cover it)")
 	}
 	// Side gutters of at least 16px on desktop and 8px on the phone tier (both clear of
 	// the safe-area insets), and nothing wider than a 375px phone.

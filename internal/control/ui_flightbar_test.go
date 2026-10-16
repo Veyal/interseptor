@@ -100,9 +100,9 @@ func TestUIFlightBarIsTheOnlyTopBar(t *testing.T) {
 
 func TestUIFlightBarHoldsEveryAffordanceInReadingOrder(t *testing.T) {
 	bar := flightBarMarkup(t)
-	// [Logo] [Project] [Scope] [Omnibar] [intercept status] [Identity] [Readiness ring + popover] [Live status] [Theme].
+	// [Logo] [Scope] [Omnibar] [intercept status] [Identity] [Readiness ring + popover] [Live status] [Theme].
 	order := []string{
-		`id="logo"`, `id="ctxProject"`, `id="ctxScope"`, `id="cmdkBtn"`, `id="icptStat"`, `id="icptCompact"`, `id="ctxIdentityWrap"`,
+		`id="logo"`, `id="ctxScope"`, `id="cmdkBtn"`, `id="icptStat"`, `id="icptCompact"`, `id="ctxIdentityWrap"`,
 		`id="ctxRing"`, `id="ctxRingPop"`, `id="connChip"`, `id="connPop"`, `id="themeToggle"`,
 	}
 	prev := -1
@@ -419,4 +419,26 @@ func TestUIFlightBarPopoversStayReachableOnShortAndNarrowWindows(t *testing.T) {
 	)
 	requireUIContains(t, mediaBlock(t, css, "@media (max-height:560px)"), ".ctx-pop-list{overflow:visible;flex:none}")
 	requireUIContains(t, mediaBlock(t, css, "@media (forced-colors:active)"), ".ctx-ring-track,.ctx-ring-bang,.ctx-ring-check{stroke:CanvasText}")
+}
+
+// The rail-foot #projBadge is the single project control (#117): the Flight Bar must
+// not grow a second project chip, and no markup, JS or CSS may reference the old one.
+func TestUIFlightBarHasNoProjectChip(t *testing.T) {
+	bar := flightBarMarkup(t)
+	for _, gone := range []string{`id="ctxProject"`, `id="ctxProjectText"`, `ctx-project`} {
+		if strings.Contains(bar, gone) {
+			t.Errorf("the Flight Bar must not carry the duplicate project chip (%s)", gone)
+		}
+	}
+	for _, name := range []string{"index.html", "shell.css", "js/app.js", "js/ctxbar.js"} {
+		src := readUIAsset(t, name)
+		for _, gone := range []string{"ctxProject", "ctx-project", "setCtxProject"} {
+			if strings.Contains(src, gone) {
+				t.Errorf("%s still references the removed project chip (%s)", name, gone)
+			}
+		}
+	}
+	if !strings.Contains(readUIAsset(t, "index.html"), `id="projBadge"`) {
+		t.Error("the rail-foot #projBadge must remain the project control")
+	}
 }

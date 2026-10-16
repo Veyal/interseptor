@@ -24,7 +24,7 @@ import { projectStorageReady, loadMapModule } from './project.js';
 import { initUiHints } from './hints.js';
 import { openFlowDiff } from './flow-diff.js';
 import { projectState } from './project-state.js';
-import { initCtxbar, renderCtxbar, setCtxProject } from './ctxbar.js';
+import { initCtxbar, renderCtxbar } from './ctxbar.js';
 import { initConnection, setConnectionStatus } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
@@ -658,7 +658,6 @@ async function loadVersion(retry){
   try{
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
-    if(d.project)setCtxProject(d.project);
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent=d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
