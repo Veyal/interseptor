@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **UI hints are off by default.** Only an explicit stored `interseptor.hints=on` enables hover/focus hints; unset or unreadable storage now means off, and the initial markup matches so first paint shows no hints. Users who turned hints on keep them.
+
 ### Fixed
 
 - **AI-originated authorization replays now carry the AI tag.** Flows recorded by `/api/authz/run`, `/check-sessions`, `/differential` and `/cross-host-replay` get `FlagAI` alongside `FlagAuthz` when the request has `X-Interseptor-Source: ai`, so they appear under the History "AI" chip and `?ai=1` filter (#114).

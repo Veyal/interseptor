@@ -40,7 +40,7 @@ export function normalizeDensityChoice(raw) {
 }
 
 export function readHintsPref(storage) {
-  try { return (storage || globalThis.localStorage).getItem(HINTS_PREF) !== 'off'; } catch (e) { return true; }
+  try { return (storage || globalThis.localStorage).getItem(HINTS_PREF) === 'on'; } catch (e) { return false; }
 }
 export function writeHintsPref(on, storage) {
   try { (storage || globalThis.localStorage).setItem(HINTS_PREF, on ? 'on' : 'off'); return true; } catch (e) { return false; }

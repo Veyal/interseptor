@@ -32,13 +32,15 @@ test('density choices normalise to the three tiers', () => {
   assert.equal(normalizeDensityChoice('x'), 'default');
 });
 
-test('hints preference defaults on and survives a throwing storage', () => {
+test('hints preference defaults off and survives a throwing storage', () => {
   const s = memory();
+  assert.equal(readHintsPref(s), false);
+  assert.equal(writeHintsPref(true, s), true);
   assert.equal(readHintsPref(s), true);
   assert.equal(writeHintsPref(false, s), true);
   assert.equal(readHintsPref(s), false);
   const bad = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
-  assert.equal(readHintsPref(bad), true);
+  assert.equal(readHintsPref(bad), false);
   assert.equal(writeHintsPref(false, bad), false);
 });
 
