@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="/css/evidence-render.css">
 <link rel="stylesheet" href="/css/collections.css">
 <link rel="stylesheet" href="/css/collections-matrix.css">
+<link rel="stylesheet" href="/css/projects.css">
 <link rel="stylesheet" href="/canvas.css">
 <link rel="stylesheet" href="/mobile.css">
 <!-- Modulepreload hints flatten the HTTP/1.1 import waterfall: the root modules
@@ -166,6 +167,7 @@
     </div>
     <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel, flow or finding" aria-keyshortcuts="Control+K Meta+K"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span class="cmdk-label-text">Search<span class="cmdk-label-more"> flows, findings, actions</span></span></span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
     <div class="fb-zone fb-end">
+      <button type="button" id="mobileProjectChip" class="pm-mobile-chip" aria-haspopup="dialog" aria-label="Project: loading. Switch or create a project."><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><span id="mobileProjectChipText" class="pm-mobile-chip-text">Project</span></button>
       <span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span>
       <span id="icptCompact" class="kv state-active icpt-compact" aria-hidden="true" hidden></span>
       <div id="ctxIdentityWrap" class="ctx-identity" hidden><span id="ctxAvatar" class="ctx-avatar" data-hue="1" aria-hidden="true">?</span><label for="ctxIdentity" class="ctx-key">Act as</label><select id="ctxIdentity" class="btn" aria-label="Active identity"></select></div>
@@ -231,7 +233,7 @@
     <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure" title="Settings"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg>Settings</button>
   </div>
   <div class="nav-rail-foot">
-    <span class="nav-foot-proj u-hidden" id="projBadge" role="button" tabindex="0" title="Active project — click to switch or create a project" aria-label="Active project — click to switch or create a project" aria-haspopup="dialog"></span>
+    <button type="button" class="nav-foot-proj u-hidden" id="projBadge" title="Active project — switch or create a project" aria-label="Active project — switch or create a project" aria-haspopup="dialog"></button>
     <a class="nav-foot-ver" id="verBadge" href="https://github.com/Veyal/interseptor/releases" target="_blank" rel="noopener" title="Interseptor releases"></a>
   </div>
 </div>
@@ -1369,17 +1371,13 @@ Content-Type: application/json
           <div class="section">
             <h3>Project</h3>
             <div id="projectLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
-            <p class="hint u-mb-3">Each project has its own history, rules, and scope, kept under <code>~/.interseptor/projects/&lt;name&gt;/</code> by default — or a folder you choose below. CA and checks are shared globally. Switching restarts Interseptor.</p>
-            <div class="field"><label>Active project</label><div class="u-fs-md"><b class="u-accent" id="projNameHint">default</b> · <span class="u-fg3" id="projDirHint">~/.interseptor</span></div></div>
-            <div class="row u-gap-2 u-ai-end u-wrap u-mb-3">
-              <div class="field field-inline"><label for="projSelect">Switch to a saved project</label><select id="projSelect" aria-label="Saved project" class="btn btn-field"></select></div>
-              <button class="btn btn-primary" id="projSwitchBtn">Open ▸</button>
+            <div class="pm-settings-current">
+              <span class="pm-settings-key">Current</span>
+              <b class="u-accent pm-settings-name" id="projNameHint">default</b>
+              <button type="button" class="btn" id="projPickerBtn" aria-haspopup="dialog"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg> Switch project…</button>
             </div>
-            <div class="row u-gap-2 u-ai-end u-wrap">
-              <div class="field field-inline field-inline-xl"><label for="projNew">New project</label><input id="projNew" aria-label="New project name" class="btn btn-field" placeholder="acme-engagement"></div>
-              <button class="btn" id="projNewBtn">Create &amp; open</button>
-            </div>
-            <div class="field field-inline u-mt-2"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-describedby="projSwitchNote" aria-label="New project save location" class="btn btn-field font-mono" placeholder="Project folder path"></div>
+            <p class="pm-settings-path font-mono" id="projDirHint">~/.interseptor</p>
+            <p class="hint">Each project keeps its own history, rules and scope, under <code>~/.interseptor/projects/&lt;name&gt;/</code> or a folder you choose when creating it. The CA and checks are shared. Opening or creating a project restarts Interseptor.</p>
             <p class="hint u-mt-3 u-hidden u-accent" id="projSwitchNote" role="status" aria-live="polite"></p>
             <div class="row u-mt-3"><button class="btn" id="runSetupBtn" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg> Run setup wizard again</button><span class="hint">Replays the first-run guide (proxy, CA, scope).</span></div>
           </div>
@@ -1662,32 +1660,56 @@ Content-Type: application/json
     </div>
   </div>
 </div>
-<div id="projModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="projModalTitle" class="modal-shell modal-sm-tall">
-    <div class="row modal-shell-head">
-      <span id="projModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg> Projects</span>
-      <div class="spacer"></div><button type="button" class="btn" id="pmClose" aria-label="Close projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+<div id="projModal" class="modal-overlay pm-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="projModalTitle" aria-describedby="pmRestartNote" class="modal-shell pm-dialog">
+    <div class="modal-shell-head">
+      <h2 id="projModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg> Projects</h2>
+      <button type="button" class="btn" id="pmClose" aria-label="Close projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
-    <div class="modal-shell-body u-col u-gap-4">
-      <div class="field u-m-0"><label>Active project</label><div class="u-fs-md"><b class="u-accent" id="pmCurrent">default</b> · <span class="u-fg3 font-mono u-fs-xs" id="pmDir"></span></div></div>
-      <div class="pm-picker">
-        <div class="micro-label u-mb-1">SAVED PROJECTS</div>
-        <input id="pmFilter" class="btn btn-field" placeholder="Filter by name or folder" spellcheck="false" aria-label="Filter projects" autocomplete="off">
-        <div id="pmList" class="pm-list"></div>
-        <p class="hint u-m-0">Folders only organize this list. Each project keeps its own history.</p>
+    <section class="pm-current" aria-labelledby="pmCurrentLabel">
+      <span class="micro-label" id="pmCurrentLabel">Current project</span>
+      <b class="pm-current-name" id="pmCurrent" aria-current="true">default</b>
+      <div class="pm-current-path"><code class="pm-path" id="pmDir"></code><button type="button" class="btn xs" id="pmCopyDir" aria-label="Copy current project folder path" title="Copy path"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div>
+    </section>
+    <div class="pm-search">
+      <div class="pm-filter">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
+        <input id="pmFilter" class="pm-filter-input" placeholder="Filter by name, folder or path" spellcheck="false" aria-label="Filter projects" aria-controls="pmList" aria-describedby="pmKeys" autocomplete="off">
+        <button type="button" class="btn xs" id="pmFilterClear" aria-label="Clear filter" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
       </div>
-      <div>
-        <div class="micro-label u-mb-1">CREATE / OPEN A NEW PROJECT</div>
-        <div class="row u-gap-2 u-wrap">
-          <input id="pmNew" class="btn btn-field field-grow" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
-          <button class="btn btn-primary" id="pmNewBtn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Create &amp; open</button>
-        </div>
-        <input id="pmNewFolder" class="btn btn-field" placeholder="Folder, optional — Clients/Acme" spellcheck="false" aria-label="Folder for the new project" autocomplete="off">
-        <input id="pmNewPath" aria-describedby="pmSwitchNote" class="btn btn-field font-mono" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
-        <p class="hint u-hidden u-accent" id="pmSwitchNote" role="status" aria-live="polite"></p>
-      </div>
-      <div id="pmNote" class="hint u-accent" data-init-hidden></div>
+      <div class="pm-search-meta"><span id="pmSummary" role="status" aria-live="polite"></span><span id="pmKeys" class="pm-keys">Arrow keys move, Enter opens, Shift+F10 moves to a folder</span></div>
     </div>
+    <div id="pmList" class="pm-list" role="tree" aria-label="Other projects"></div>
+    <div id="pmEmpty" class="pm-empty" hidden></div>
+    <form id="pmMove" class="pm-move" novalidate hidden aria-labelledby="pmMoveTitle">
+      <label id="pmMoveTitle" for="pmMoveFolder">Folder for <b id="pmMoveName"></b></label>
+      <div class="pm-move-row">
+        <input id="pmMoveFolder" class="btn btn-field" list="pmFolderList" placeholder="Clients/Acme — empty removes the folder" spellcheck="false" autocomplete="off" aria-describedby="pmMoveError">
+        <button type="submit" class="btn btn-primary" id="pmMoveSave">Save</button>
+        <button type="button" class="btn" id="pmMoveCancel">Cancel</button>
+      </div>
+      <p id="pmMoveError" class="pm-error" role="alert" hidden></p>
+    </form>
+    <form id="pmCreate" class="pm-create" novalidate hidden aria-labelledby="pmCreateTitle">
+      <h3 id="pmCreateTitle" class="pm-create-title">New project</h3>
+      <div class="field u-m-0"><label for="pmNew">Project name</label><input id="pmNew" class="btn btn-field" placeholder="acme-engagement" spellcheck="false" autocomplete="off" aria-describedby="pmNewError"></div>
+      <p id="pmNewError" class="pm-error" role="alert" hidden></p>
+      <button type="button" class="btn xs pm-open-existing" id="pmOpenExisting" hidden>Open existing project</button>
+      <details class="pm-more" id="pmCreateMore">
+        <summary>Folder / Location</summary>
+        <div class="field u-m-0"><label for="pmNewFolder">Folder <span class="hint">optional, groups the list, e.g. Clients/Acme</span></label><input id="pmNewFolder" class="btn btn-field" list="pmFolderList" spellcheck="false" autocomplete="off" aria-describedby="pmNewFolderError"></div>
+        <p id="pmNewFolderError" class="pm-error" role="alert" hidden></p>
+        <div class="field u-m-0"><label for="pmNewPath">Save location <span class="hint">optional absolute folder; default ~/.interseptor/projects/&lt;name&gt;</span></label><input id="pmNewPath" aria-describedby="pmSwitchNote pmNewPathError" class="btn btn-field font-mono" spellcheck="false" autocomplete="off"></div>
+        <p id="pmNewPathError" class="pm-error" role="alert" hidden></p>
+      </details>
+      <div class="pm-create-actions"><button type="button" class="btn" id="pmCreateCancel">Cancel</button><button type="submit" class="btn btn-primary" id="pmNewBtn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Create and open</button></div>
+    </form>
+    <div class="modal-shell-foot pm-foot">
+      <p class="pm-foot-note" id="pmRestartNote">Opening a project restarts Interseptor and its proxy listener.</p>
+      <p class="pm-switch-note u-hidden u-accent" id="pmSwitchNote" role="status" aria-live="polite"></p>
+      <button type="button" class="btn" id="pmNewToggle" aria-expanded="false" aria-controls="pmCreate"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> New project</button>
+    </div>
+    <datalist id="pmFolderList"></datalist>
   </div>
 </div>
 <div id="sessionInspectModal" class="modal-overlay">

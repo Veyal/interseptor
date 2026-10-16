@@ -487,8 +487,8 @@ func TestUIFoundationIndexHasNoStyleAttributes(t *testing.T) {
 	// hidden state is stamped through the CSSOM (never a style attribute) before
 	// the application module loads; that keeps '' / 'none' / 'block' toggling intact.
 	hidden := regexp.MustCompile(`data-init-hidden`).FindAllString(index, -1)
-	if len(hidden) < 17 {
-		t.Errorf("expected the 17 formerly inline-hidden elements to carry data-init-hidden, found %d", len(hidden))
+	if len(hidden) < 16 {
+		t.Errorf("expected the 16 formerly inline-hidden elements to carry data-init-hidden, found %d", len(hidden))
 	}
 	script := regexp.MustCompile(`querySelectorAll\('\[data-init-hidden\]'\)[^;]*style\.display\s*=\s*'none'`)
 	if !script.MatchString(index) {
@@ -498,7 +498,7 @@ func TestUIFoundationIndexHasNoStyleAttributes(t *testing.T) {
 		t.Error("the data-init-hidden stamp must run before the app module loads")
 	}
 	for _, id := range []string{"repHistory", "repCodecBadge", "intrListMode", "intrHistory", "mapFit", "mapWarn", "deviceProxyManualField",
-		"androidAdbSection", "androidLanHint", "iosLanHint", "iosSshLanHint", "sessionExpiry", "pmNote", "authzMax",
+		"androidAdbSection", "androidLanHint", "iosLanHint", "iosSshLanHint", "sessionExpiry", "authzMax",
 		"authzScopePanel", "authzCookieHint", "setupBack"} {
 		if !regexp.MustCompile(`id="` + id + `"[^>]*data-init-hidden`).MatchString(index) {
 			t.Errorf("#%s must carry data-init-hidden", id)

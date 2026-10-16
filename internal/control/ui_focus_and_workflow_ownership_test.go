@@ -108,11 +108,13 @@ func TestUIProjectSwitchWaitsForTheAcceptedIdentity(t *testing.T) {
 		t.Fatal("project switching must never accept an old-project response after a grace period")
 	}
 
-	start := strings.Index(settings, "function projectPathFlavorFor(value)")
-	end := strings.Index(settings, "export async function doSwitchProject")
-	if start < 0 || end <= start {
-		t.Fatal("project path normalizer not found")
-	}
+	// settings.js delegates normalisation to the pure picker model, which is
+	// the one implementation both the switch poll and the picker compare with.
+	requireUIContains(t, settings,
+		"import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './project-picker-model.js'",
+		"function projectPathKey(value,flavor=projectPathFlavor){return normalizeProjectPath(value,flavor);}",
+	)
+	model := strings.ReplaceAll(readUIAsset(t, "js/project-picker-model.js"), "export ", "")
 	cases := [][3]string{
 		{"/tmp/engagement/../acme/", "posix", "/tmp/acme"},
 		{"/tmp//acme/./", "posix", "/tmp/acme"},
@@ -128,7 +130,7 @@ func TestUIProjectSwitchWaitsForTheAcceptedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := settings[start:end] + "\nconst cases=" + string(encoded) + "; for (const [input,flavor,want] of cases) { const got=projectPathKey(input,flavor); if (got!==want) throw new Error(JSON.stringify({input,flavor,want,got})); }"
+	script := model + "\nconst cases=" + string(encoded) + "; for (const [input,flavor,want] of cases) { const got=projectPathKey(input,flavor); if (got!==want) throw new Error(JSON.stringify({input,flavor,want,got})); }"
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("project path normalization contract failed: %v\n%s", err, out)
 	}
@@ -138,27 +140,28 @@ func TestUIProjectPathFailuresAreOwnedByBothProjectSurfaces(t *testing.T) {
 	settings := readUIAsset(t, "js/settings.js")
 	requireUIContains(t, settings,
 		"function setProjectSwitchFeedback(text,kind='status')",
-		"['projNewPath','pmNewPath']",
+		"['pmNewPath']",
 		"field.setAttribute('aria-invalid','true')",
 		"setProjectSwitchFeedback(message,'error')",
 		"toast(message,'error')",
 		"#pmSwitchNote",
 	)
 
-	start := strings.Index(settings, "async function renderProjModal()")
-	end := strings.Index(settings, "export async function openProjectModal")
+	picker := readUIAsset(t, "js/project-picker.js")
+	start := strings.Index(picker, "export async function renderProjModal()")
+	end := strings.Index(picker, "function restoreCreateButton()")
 	if start < 0 || end <= start {
 		t.Fatal("project modal render boundary not found")
 	}
-	requireUIContains(t, settings[start:end],
-		"projectPathFlavor=projectPathFlavorFor(d.dir)",
-		"if(epoch!==projectModalLoadEpoch)return false",
+	requireUIContains(t, picker[start:end],
+		"const flavor = projectPathFlavorFor(d.dir);",
+		"cfg.setPathFlavor(flavor);",
+		"if (epoch !== projectModalLoadEpoch) return false;",
 	)
 
 	requireUIContracts(t, "index.html",
-		`id="projNewPath" aria-describedby="projSwitchNote"`,
 		`id="projSwitchNote" role="status" aria-live="polite"`,
-		`id="pmNewPath" aria-describedby="pmSwitchNote"`,
+		`id="pmNewPath" aria-describedby="pmSwitchNote pmNewPathError"`,
 		`id="pmSwitchNote" role="status" aria-live="polite"`,
 	)
 }

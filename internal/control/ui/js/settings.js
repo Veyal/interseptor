@@ -1,3 +1,5 @@
+import { configureProjectPicker, openProjectPicker, setProjectSwitchModalBusy } from './project-picker.js';
+import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './project-picker-model.js';
 import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, getHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { emit as busEmit, on as busOn, EVENTS } from './bus.js';
@@ -643,34 +645,28 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||docum
 /* ---- settings ---- */
 let apiLoaded=false;
 let projectDataLoaded=false;
-let projectModalDataLoaded=false;
 let projectLoadEpoch=0;
-let projectModalLoadEpoch=0;
 let projectPathFlavor='posix';
 
 function setProjectControlsDisabled(disabled,title=''){
-  ['projSelect','projSwitchBtn','projNewBtn'].forEach(id=>{
+  ['projPickerBtn'].forEach(id=>{
     const el=$('#'+id);if(!el)return;
     el.disabled=!!disabled;
     if(title)el.title=title;else el.removeAttribute('title');
   });
 }
 function markProjectDataStale(stale){
-  const sel=$('#projSelect');
-  if(!sel)return;
-  if(stale){
-    sel.dataset.stale='true';
-    sel.setAttribute('aria-label','Saved project (stale — retry to refresh)');
-  }else{
-    sel.removeAttribute('data-stale');
-    sel.setAttribute('aria-label','Saved project');
-  }
+  const name=$('#projNameHint');
+  if(!name)return;
+  if(stale){name.dataset.stale='true';name.title='Project data is stale — retry to refresh';}
+  else{name.removeAttribute('data-stale');name.removeAttribute('title');}
 }
-function setProjectModalActionsDisabled(disabled){
-  const b=$('#pmNewBtn');if(!b)return;
-  b.disabled=!!disabled;
-  if(disabled)b.title='Project data is stale — retry before creating or opening a project';
-  else b.removeAttribute('title');
+// Every surface that names the active project outside the picker.
+function paintProjectIdentity(name,dir){
+  const n=$('#projNameHint');if(n)n.textContent=name;
+  const d=$('#projDirHint');if(d&&dir)d.textContent=dir;
+  const chip=$('#mobileProjectChipText');if(chip)chip.textContent=name;
+  const btn=$('#mobileProjectChip');if(btn)btn.setAttribute('aria-label','Project: '+name+'. Switch or create a project.');
 }
 
 function settingsLoadState(){
@@ -1458,19 +1454,7 @@ export async function loadProject(){
     if(epoch!==projectLoadEpoch)return;
     projectPathFlavor=projectPathFlavorFor(d.dir);
     if(loadState)loadState.style.display='none';
-    const n=$('#projNameHint');if(n)n.textContent=d.current||'default';
-    const dir=$('#projDirHint');if(dir&&d.dir)dir.textContent=d.dir;
-    const sel=$('#projSelect');
-    if(sel){
-      const list=(d.projects&&d.projects.length)?d.projects:[{name:'default',path:''}];
-      sel.innerHTML=list.map(p=>{
-        const isCur=isCurrentProject(p,d.current,d.dir,list);
-        const folder=p.category?`${p.category} / `:'';
-        const opened=formatProjectStamp(p.openedAt);
-        const label=`${folder}${p.name}${p.path?` — ${p.path}`:''}${opened?` · ${opened}`:''}${isCur?' (current)':''}`;
-        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${esc(label)}</option>`;
-      }).join('');
-    }
+    paintProjectIdentity(d.current||'default',d.dir||'');
     projectDataLoaded=true;markProjectDataStale(false);
     setProjectControlsDisabled(!d.canSwitch,d.canSwitch?'':'project switching is unavailable in this build');
   }catch(e){
@@ -1481,27 +1465,7 @@ export async function loadProject(){
   }
 }
 let projectSwitchEpoch=0,projectSwitchTimer=null,projectSwitchPending=false;
-function projectPathFlavorFor(value){
-  const raw=String(value||'').trim();
-  return /^[A-Za-z]:[\\/]/.test(raw)||raw.startsWith('\\\\')?'windows':'posix';
-}
-function projectPathKey(value,flavor=projectPathFlavor){
-  const source=String(value||'').trim();
-  if(!source)return '';
-  const windows=flavor==='windows';
-  const raw=windows?source.replace(/\\/g,'/'):source;
-  const drive=windows?(raw.match(/^[A-Za-z]:/)||[])[0]||'':'';
-  const unc=windows&&!drive&&raw.startsWith('//');
-  const rooted=windows?(unc||(drive&&raw.slice(drive.length).startsWith('/'))):raw.startsWith('/');
-  if(!rooted)return '';
-  const parts=raw.slice(drive.length).split('/'),out=[],rootDepth=unc?2:0;
-  for(const part of parts){
-    if(!part||part==='.')continue;
-    if(part==='..'){if(out.length>rootDepth)out.pop();continue;}
-    out.push(part);
-  }
-  return (unc?'//':drive?drive+'/':'/')+out.join('/');
-}
+function projectPathKey(value,flavor=projectPathFlavor){return normalizeProjectPath(value,flavor);}
 function setProjectSwitchFeedback(text,kind='status'){
   const error=kind==='error';
   ['#projSwitchNote','#pmSwitchNote'].map(selector=>$(selector)).filter(Boolean).forEach(note=>{
@@ -1510,7 +1474,7 @@ function setProjectSwitchFeedback(text,kind='status'){
   });
 }
 function setProjectPathInvalid(path,invalid){
-  ['projNewPath','pmNewPath'].map(id=>$('#'+id)).filter(Boolean).forEach(field=>{
+  ['pmNewPath'].map(id=>$('#'+id)).filter(Boolean).forEach(field=>{
     if(invalid&&field.value.trim()===path)field.setAttribute('aria-invalid','true');
     else if(!invalid)field.removeAttribute('aria-invalid');
   });
@@ -1522,24 +1486,6 @@ function clearProjectPathFeedback(){
     note.style.display='none';note.textContent='';note.style.color='var(--accent)';
     note.setAttribute('role','status');note.setAttribute('aria-live','polite');
   });
-}
-const projectSwitchDisabledControls=new Map();
-function setProjectSwitchModalBusy(busy){
-  const modal=$('#projModal');if(!modal)return;
-  if(busy){
-    // Invalidate an earlier list load before it can enable replacement rows.
-    projectModalLoadEpoch++;
-    modal.querySelectorAll('button,input,textarea,select').forEach(control=>{
-      if(!projectSwitchDisabledControls.has(control))projectSwitchDisabledControls.set(control,control.disabled);
-      control.disabled=true;
-    });
-    const note=$('#pmSwitchNote');if(note)note.tabIndex=-1;
-    openModal(modal,{initialFocus:note,onEscape:()=>{},onDismiss:()=>{}});
-  }else{
-    projectSwitchDisabledControls.forEach((disabled,control)=>{control.disabled=disabled;});
-    projectSwitchDisabledControls.clear();
-    if(modal.style.display==='flex')openModal(modal,{initialFocus:$('#pmClose')});
-  }
 }
 export async function doSwitchProject(target,path){
   if(!target&&!path)return;
@@ -1558,7 +1504,7 @@ export async function doSwitchProject(target,path){
   // Surface the "restarting…" message wherever it's visible — the Settings panel
   // note and the top-bar Projects modal share this one switch path.
   const setNote=(text,kind='status')=>setProjectSwitchFeedback(text,kind);
-  setNote('Switching projects…');
+  setNote('Opening project… Interseptor restarts.');
   setProjectSwitchModalBusy(true);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
@@ -1573,7 +1519,7 @@ export async function doSwitchProject(target,path){
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
     expected=String(accepted.switching);
   }catch(e){projectSwitchPending=false;setProjectSwitchModalBusy(false);setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
-  setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
+  setNote(path?`Opening "${target||path}" (${path})… Interseptor is restarting and will reconnect.`:`Opening "${target}"… Interseptor is restarting and will reconnect.`);
   const deadline=Date.now()+30000;
   const poll=async()=>{
     if(switchEpoch!==projectSwitchEpoch)return;
@@ -1588,175 +1534,18 @@ export async function doSwitchProject(target,path){
   };
   projectSwitchTimer=setTimeout(poll,500);
 }
-$('#projSwitchBtn').onclick=()=>{
-  const sel=$('#projSelect');const opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
-  if(!opt){toast('no other project to open');return;}
-  doSwitchProject(opt.value,opt.dataset.path||'');
-};
-$('#projNewBtn').onclick=()=>createProjectFrom('#projNew','#projNewPath','');
-
-// ---- top-bar Projects picker modal (click the project badge) ----
-// Same data + switch endpoint as the Settings panel, surfaced as a prominent,
-// first-class action so choosing a project never means opening Settings.
-function formatProjectStamp(sec, nowMs){
-  const n=Number(sec)||0;
-  if(!n)return '';
-  const now=nowMs||Date.now();
-  const delta=Math.max(0, now-n*1000);
-  const min=Math.floor(delta/60000);
-  if(min<1)return 'just now';
-  if(min<60)return min+'m ago';
-  const hr=Math.floor(min/60);
-  if(hr<36)return hr+'h ago';
-  const day=Math.floor(hr/24);
-  if(day<14)return day+'d ago';
-  const d=new Date(n*1000);
-  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const year=d.getFullYear()===new Date(now).getFullYear()?'':' '+d.getFullYear();
-  return d.getDate()+' '+months[d.getMonth()]+year;
-}
-function groupProjectTree(projects){
-  const root={folders:[], items:[]};
-  const find=(list,name)=>{
-    let folder=list.find(item=>item.name===name);
-    if(!folder){folder={name, folders:[], items:[]}; list.push(folder);}
-    return folder;
-  };
-  for(const project of projects||[]){
-    const parts=String(project.category||'').split(/[\\/]/).map(part=>part.trim()).filter(Boolean);
-    let node=root;
-    for(const part of parts) node=find(node.folders, part);
-    node.items.push(project);
-  }
-  const sortNode=node=>{
-    node.folders.sort((a,b)=>a.name.localeCompare(b.name));
-    node.items.sort((a,b)=>(Number(b.openedAt)||0)-(Number(a.openedAt)||0)||String(a.name).localeCompare(String(b.name)));
-    node.folders.forEach(sortNode);
-    node.count=node.items.length+node.folders.reduce((sum,folder)=>sum+(folder.count||0),0);
-  };
-  sortNode(root);
-  return root;
-}
-function projectMatchesQuery(project, query){
-  if(!query)return true;
-  return `${project.name||''} ${project.path||''} ${project.category||''}`.toLowerCase().includes(query);
-}
-function isCurrentProject(project, current, dir, projects){
-  const dirKey=projectPathKey(dir);
-  const external=(projects||[]).some(item=>item.path&&projectPathKey(item.path)===dirKey);
-  if(project.path)return projectPathKey(project.path)===dirKey;
-  return !external&&project.name===current;
-}
-function projectTimeLabel(project, nowMs){
-  const opened=formatProjectStamp(project.openedAt, nowMs);
-  const created=formatProjectStamp(project.createdAt, nowMs);
-  return `${opened?`Opened ${opened}`:'Not opened yet'}${created?` · Created ${created}`:''}`;
-}
-function projectRowHTML(project, cache){
-  const current=isCurrentProject(project, cache.current, cache.dir, cache.projects);
-  const path=project.path?`<span class="pm-meta">${esc(project.path)}</span>`:'';
-  return `<div class="pm-item"><div class="row u-gap-2"><button type="button" class="btn pm-row" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}"${current?' disabled':''}><span class="pm-name">${esc(project.name)}${current?' (current)':''}</span><span class="pm-meta">${esc(projectTimeLabel(project))}</span>${path}</button><button type="button" class="btn pm-folder-btn" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}" aria-label="Set folder for ${escAttr(project.name)}">Folder</button></div><div class="pm-folder-edit" hidden><input class="btn btn-field pm-folder-input" value="${escAttr(project.category||'')}" aria-label="Folder for ${escAttr(project.name)}" spellcheck="false" placeholder="Clients/Acme"><button type="button" class="btn pm-folder-save">Save</button></div></div>`;
-}
-function projectTreeHTML(node, cache, openAll){
-  const folders=node.folders.map(folder=>{
-    const open=openAll||folderContainsCurrent(folder, cache)?' open':'';
-    return `<details class="pm-folder"${open}><summary>${esc(folder.name)}<span class="pm-count">${folder.count}</span></summary><div class="pm-folder-body">${projectTreeHTML(folder, cache, openAll)}</div></details>`;
-  }).join('');
-  return node.items.map(project=>projectRowHTML(project, cache)).join('')+folders;
-}
-function folderContainsCurrent(node, cache){
-  if(node.items.some(project=>isCurrentProject(project, cache.current, cache.dir, cache.projects)))return true;
-  return node.folders.some(folder=>folderContainsCurrent(folder, cache));
-}
-let projectModalCache=null;
-function paintProjectModal(){
-  const list=$('#pmList');
-  const cache=projectModalCache;
-  if(!list||!cache)return;
-  if(!cache.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';return;}
-  const query=($('#pmFilter')?.value||'').trim().toLowerCase();
-  const projects=(cache.projects||[]).filter(project=>projectMatchesQuery(project, query));
-  if(!projects.length){
-    list.innerHTML=query?'<div class="hint">No projects match that filter.</div>':'<div class="hint">No saved projects yet — create one below.</div>';
-    return;
-  }
-  const openAll=!!query||(cache.projects||[]).length<=8;
-  list.innerHTML=projectTreeHTML(groupProjectTree(projects), cache, openAll);
-  list.querySelectorAll('.pm-row').forEach(button=>{
-    if(button.disabled)return;
-    button.onclick=()=>doSwitchProject(button.dataset.proj, button.dataset.path||'');
-  });
-  list.querySelectorAll('.pm-folder-btn').forEach(button=>button.onclick=()=>{
-    const edit=button.closest('.pm-item')?.querySelector('.pm-folder-edit');
-    if(edit)edit.hidden=!edit.hidden;
-  });
-  list.querySelectorAll('.pm-folder-save').forEach(button=>button.onclick=async()=>{
-    const item=button.closest('.pm-item');
-    const row=item?.querySelector('.pm-row');
-    const input=item?.querySelector('.pm-folder-input');
-    if(!row||!input)return;
-    button.disabled=true;
-    try{
-      const path=row.dataset.path||'';
-      await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:input.value}:{target:row.dataset.proj,category:input.value})});
-      await renderProjModal();
-    }catch(e){toast(e.message,'error');button.disabled=false;}
-  });
-}
-async function createProjectFrom(nameSel, pathSel, folderSel){
-  const v=($(nameSel)?.value||'').trim();
-  const path=($(pathSel)?.value||'').trim();
-  const folder=folderSel?($(folderSel)?.value||'').trim():'';
-  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
-  if(folder){
-    try{await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:folder}:{target:v,category:folder})});}
-    catch(e){toast(e.message,'error');return;}
-  }
-  doSwitchProject(v,path);
-}
-async function renderProjModal(){
-  const epoch=++projectModalLoadEpoch;
-  const list=$('#pmList');
-  if(list){
-    list.setAttribute('aria-busy','true');
-    list.querySelectorAll('.pm-row').forEach(button=>button.disabled=true);
-  }
-  setProjectModalActionsDisabled(true);
-  try{const d=await api('/api/project');
-    if(epoch!==projectModalLoadEpoch)return false;
-    projectPathFlavor=projectPathFlavorFor(d.dir);
-    const cur=$('#pmCurrent');if(cur)cur.textContent=d.current||'default';
-    const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
-    if(!list)return false;
-    projectModalCache={projects:d.projects||[], current:d.current||'default', dir:d.dir||'', canSwitch:!!d.canSwitch};
-    paintProjectModal();
-    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(!d.canSwitch);return true;
-  }catch(e){
-    if(epoch!==projectModalLoadEpoch)return false;
-    setProjectModalActionsDisabled(true);
-    renderLoadError(list,'Projects',e,renderProjModal,projectModalDataLoaded);
-    if(list)list.removeAttribute('aria-busy');
-    return false;
-  }
-}
-export async function openProjectModal(){
-  if(projectSwitchPending)return;
-  const m=$('#projModal');if(!m)return;
-  const note=$('#pmNote');if(note){note.style.display='none';note.textContent='';}
-  clearProjectPathFeedback();
-  const inp=$('#pmNew');if(inp)inp.value='';
-  const pinp=$('#pmNewPath');if(pinp)pinp.value='';
-  const folder=$('#pmNewFolder');if(folder)folder.value='';
-  openModal(m);
-  const rendered=await renderProjModal();
-  if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();
-}
-{const c=$('#pmClose');if(c)c.onclick=()=>{if(!projectSwitchPending)closeModal($('#projModal'));};}
-{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>createProjectFrom('#pmNew','#pmNewPath','#pmNewFolder');}
-$('#pmFilter')?.addEventListener('input',paintProjectModal);
-{const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
-{const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
-['projNewPath','pmNewPath'].forEach(id=>$('#'+id)?.addEventListener('input',clearProjectPathFeedback));
+// ---- end project switching ----
+// The Projects picker (js/project-picker.js) owns listing, filtering, folders
+// and creation; it reaches the one switch path above through this wiring.
+configureProjectPicker({
+  switchProject:doSwitchProject,
+  isSwitchPending:()=>projectSwitchPending,
+  setPathFlavor:flavor=>{projectPathFlavor=flavor;},
+  clearFeedback:clearProjectPathFeedback,
+  onProjectsChanged:()=>loadProject(),
+});
+export function openProjectModal(from){return openProjectPicker(from);}
+$('#projPickerBtn')?.addEventListener('click',e=>openProjectModal(e.currentTarget));
 $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
   const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();

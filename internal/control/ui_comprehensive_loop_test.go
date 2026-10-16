@@ -370,24 +370,24 @@ func TestUIRESTAndProjectRefreshesMarkPreviousDataStale(t *testing.T) {
 }
 
 func TestUIProjectModalDisablesExistingRowsDuringRefresh(t *testing.T) {
-	settings := readUIAsset(t, "js/settings.js")
-	start := strings.Index(settings, "async function renderProjModal()")
-	end := strings.Index(settings, "export async function openProjectModal()")
+	picker := readUIAsset(t, "js/project-picker.js")
+	start := strings.Index(picker, "export async function renderProjModal()")
+	end := strings.Index(picker, "function restoreCreateButton()")
 	if start < 0 || end <= start {
 		t.Fatal("project modal renderer not found")
 	}
-	renderer := settings[start:end]
+	renderer := picker[start:end]
 	for _, contract := range []string{
-		"list.setAttribute('aria-busy','true')",
-		"list.querySelectorAll('.pm-row').forEach(button=>button.disabled=true)",
+		"el.setAttribute('aria-busy', 'true')",
+		"el.querySelectorAll('.pm-row').forEach((row) => row.setAttribute('aria-disabled', 'true'))",
 		"setProjectModalActionsDisabled(true)",
-		"list.removeAttribute('aria-busy')",
+		"el.removeAttribute('aria-busy')",
 	} {
 		if !strings.Contains(renderer, contract) {
 			t.Errorf("project modal pending-state contract missing %q", contract)
 		}
 	}
-	disable := strings.Index(renderer, "list.querySelectorAll('.pm-row').forEach(button=>button.disabled=true)")
+	disable := strings.Index(renderer, "el.querySelectorAll('.pm-row').forEach((row) => row.setAttribute('aria-disabled', 'true'))")
 	request := strings.Index(renderer, "await api('/api/project')")
 	if disable < 0 || request < 0 || disable > request {
 		t.Error("existing project modal rows must be disabled before the refresh request starts")
@@ -456,8 +456,10 @@ func TestUISecurityRelevantReferenceFailuresStayVisibleAndRetryable(t *testing.T
 	)
 	requireUIContracts(t, "js/settings.js",
 		"renderLoadError($('#projectLoadState'),'Projects',e,loadProject",
-		"renderLoadError(list,'Projects',e,renderProjModal",
 		"renderLoadError($('#sysProxyHint'),'System proxy',e,loadSysProxy",
+	)
+	requireUIContracts(t, "js/project-picker.js",
+		"renderLoadError(el, 'Projects', e, renderProjModal, projectModalDataLoaded)",
 	)
 	requireUIContracts(t, "js/proxy.js",
 		"let viewsLoadError=null",

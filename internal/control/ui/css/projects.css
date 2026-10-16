@@ -1,0 +1,121 @@
+/* projects.css — the Projects picker (#projModal), its entry points (rail-foot
+   #projBadge, phone top-bar #mobileProjectChip) and the Settings › Project
+   summary. Shared tokens only; motion uses the --motion-* tokens, which the
+   reduced-motion block zeroes. */
+
+/* ---- dialog frame: centred on desktop, a full-height sheet on phones ---- */
+.pm-dialog{width:min(640px,96vw);height:min(86vh,720px);max-height:86vh}
+.pm-dialog>.modal-shell-head{padding:var(--sp-3) var(--sp-4)}
+.pm-dialog .modal-shell-title{display:flex;align-items:center;gap:var(--sp-2);margin:0}
+
+/* ---- pinned current project ---- */
+.pm-current{flex:none;display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-1);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg1);box-shadow:inset 2px 0 0 var(--accent)}
+.pm-current-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);font-size:var(--fs-lg);font-weight:650}
+.pm-current-path{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+.pm-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)}
+.pm-current-path .btn.xs{flex:none}
+
+/* ---- filter (stays put while the list scrolls) ---- */
+.pm-search{flex:none;display:flex;flex-direction:column;gap:var(--sp-1);padding:var(--sp-3) var(--sp-4) var(--sp-2)}
+.pm-filter{display:flex;align-items:center;gap:var(--sp-2);min-height:36px;padding:0 var(--sp-1) 0 var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-md);background:var(--bg3)}
+.pm-filter:focus-within{border-color:var(--accent);outline:2px solid var(--focus-ring);outline-offset:2px}
+.pm-filter>.icon{flex:none;width:14px;height:14px;color:var(--fg3)}
+.pm-filter-input{flex:1;min-width:0;min-height:34px;font-size:var(--fs-md);color:var(--fg)}
+.pm-filter #pmFilter:focus-visible{outline:none;box-shadow:none}
+.pm-filter .btn.xs{flex:none}
+.pm-search-meta{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);min-height:16px;font-size:var(--fs-xs);color:var(--fg3)}
+.pm-keys{text-align:right}
+
+/* ---- the tree: two-line, left-aligned rows ---- */
+.pm-list{flex:1 1 auto;min-height:96px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:var(--sp-1);padding:0 var(--sp-4) var(--sp-3)}
+.pm-group{display:block;border-radius:var(--r-md)}
+.pm-group:focus-visible{outline:none}
+.pm-group:focus-visible>.pm-group-head{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.pm-group-head{display:flex;align-items:center;gap:var(--sp-2);min-height:32px;padding:0 var(--sp-2);border-radius:var(--r-md);cursor:pointer;user-select:none;font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3)}
+.pm-group-head:hover{color:var(--fg2);background:var(--bg2)}
+.pm-chevron{flex:none;width:14px;height:14px;transition:transform var(--motion-fast) var(--motion-standard)}
+.pm-group[aria-expanded="false"]>.pm-group-head .pm-chevron{transform:rotate(-90deg)}
+.pm-group-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-count{flex:none;margin-left:auto;font-weight:600;letter-spacing:0;color:var(--fg3)}
+.pm-group-body{display:flex;flex-direction:column;gap:2px;padding:2px 0 var(--sp-2)}
+.pm-group-body[hidden]{display:none}
+
+.pm-row{position:relative;display:flex;align-items:center;gap:var(--sp-2);min-width:0;min-height:48px;padding:var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);border:1px solid transparent;border-radius:var(--r-md);cursor:pointer;text-align:left}
+.pm-row:hover{background:var(--bg2);border-color:var(--line)}
+.pm-row[tabindex="0"]{background:var(--sel)}
+.pm-row:focus-visible{border-color:var(--accent)}
+.pm-row[aria-disabled="true"]{cursor:default;opacity:.6}
+.pm-row[aria-busy="true"]{border-color:var(--accent);background:var(--accentDim)}
+.pm-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pm-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-md);font-weight:600;color:var(--fg)}
+.pm-meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs);color:var(--fg3)}
+.pm-row-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs);color:var(--fg3)}
+.pm-hit{background:var(--accentDim);color:var(--accent);border-radius:2px;padding:0}
+.pm-row-more{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--r-md);color:var(--fg3);opacity:0;cursor:pointer}
+.pm-row:hover .pm-row-more,.pm-row:focus-visible .pm-row-more,.pm-row[tabindex="0"] .pm-row-more{opacity:1}
+.pm-row-more:hover{background:var(--bg3);color:var(--fg)}
+.pm-row-more .icon{width:14px;height:14px}
+
+/* ---- empty / no-match ---- */
+.pm-empty{flex:1 1 auto;display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-3);padding:var(--sp-2) var(--sp-4) var(--sp-4)}
+.pm-empty[hidden]{display:none}
+.pm-empty-text{margin:0;color:var(--fg2);font-size:var(--fs-md);overflow-wrap:anywhere}
+.pm-empty-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);max-width:100%}
+.pm-empty-actions .btn{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- move to folder / create: footer steps ---- */
+.pm-move,.pm-create{flex:none;display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--line);background:var(--bg1)}
+.pm-move[hidden],.pm-create[hidden]{display:none}
+.pm-move>label{font-size:var(--fs-sm);color:var(--fg2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-move-row{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.pm-move-row .btn-field{flex:1 1 200px;min-width:0}
+.pm-create-title{margin:0;font-size:var(--fs-lg);font-weight:650;color:var(--fg)}
+.pm-create .field{display:flex;flex-direction:column;gap:var(--sp-1)}
+.pm-create .btn-field{width:100%}
+.pm-create .field .hint{font-size:var(--fs-xs)}
+.pm-more>summary{cursor:pointer;width:max-content;max-width:100%;padding:var(--sp-1) 0;font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.pm-more[open]{display:flex;flex-direction:column;gap:var(--sp-2)}
+.pm-error{margin:0;font-size:var(--fs-sm);color:var(--red);overflow-wrap:anywhere}
+.pm-error[hidden],.pm-open-existing[hidden]{display:none}
+.pm-open-existing{align-self:flex-start}
+.pm-create-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2)}
+.pm-foot{flex-wrap:wrap;justify-content:space-between;padding:var(--sp-3) var(--sp-4)}
+.pm-foot-note{flex:1 1 220px;margin:0;font-size:var(--fs-xs);color:var(--fg3)}
+.pm-switch-note{flex:1 1 100%;order:-1;margin:0;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.pm-switch-note:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- entry points ---- */
+.nav-foot-proj:hover{color:var(--fg);background:var(--sel)}
+.nav-foot-proj:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.pm-mobile-chip{display:none;align-items:center;gap:var(--sp-1);flex:0 1 auto;min-width:0;max-width:12ch;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.pm-mobile-chip .icon{flex:none;width:14px;height:14px;color:var(--fg3)}
+.pm-mobile-chip-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pm-mobile-chip:hover{background:var(--bg3)}
+.pm-mobile-chip:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- Settings › Project summary ---- */
+.pm-settings-current{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-width:0}
+.pm-settings-key{color:var(--fg3);font-size:var(--fs-sm)}
+.pm-settings-name{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-lg)}
+.pm-settings-name[data-stale="true"]{text-decoration:underline dashed}
+.pm-settings-path{margin:var(--sp-1) 0 var(--sp-3);font-size:var(--fs-xs);color:var(--fg3);overflow-wrap:anywhere}
+
+@media (max-width:720px){
+  .pm-overlay{align-items:stretch}
+  /* #projModal outranks the shared .modal-overlay>.modal-shell phone cap in mobile.css. */
+  #projModal>.pm-dialog{width:100%;height:100dvh;max-height:none;border-radius:0;border:0;padding-bottom:var(--safe-b,0px)}
+  .pm-keys{display:none}
+  .pm-row-more{opacity:1;width:44px;height:44px}
+  .pm-row{min-height:52px}
+  .pm-group-head{min-height:40px}
+  .pm-path{direction:ltr}
+  .pm-mobile-chip{display:inline-flex}
+  .pm-filter-input{font-size:var(--fs-xl)}
+}
+@media (max-width:360px){
+  .pm-mobile-chip{max-width:9ch}
+}
+@media (forced-colors:active){
+  .pm-row:focus-visible,.pm-group:focus-visible>.pm-group-head{outline:2px solid Highlight}
+  .pm-hit{forced-color-adjust:none;background:Highlight;color:HighlightText}
+}

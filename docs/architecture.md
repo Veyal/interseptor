@@ -178,6 +178,11 @@ Findings uses `finding-workspace.js` for section routes and filtering, with
 searchable list, section reader and inline evidence. `surfaces.css` supplies
 shared popup and disclosure styling; `surface-position.js` bounds floating
 menus to the visual viewport. These assets are embedded alongside `app.css`.
+The Projects dialog is `project-picker.js` (view, `css/projects.css`) over the pure
+`project-picker-model.js` (grouping, Recent, filtering, keyboard index math, new-project
+validation, path keys); `settings.js` keeps the single `doSwitchProject` path and injects it with
+`configureProjectPicker`, so the picker never imports `settings.js`. Phones reach it from the top-bar
+`#mobileProjectChip`, wider windows from the rail-foot `#projBadge`.
 `listbox.js` gives JS-rendered single-select lists their listbox/option
 semantics and one roving Tab stop. `index.html` carries no inline colour,
 spacing, typography, or width styles (`TestUIIndexHasNoInlineDesignStyles`);

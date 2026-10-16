@@ -271,7 +271,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .ai-tag{font-size:var(--fs-xs);font-weight:700;background:var(--accentSolid);color:var(--onAccent);border-radius:var(--r-sm);padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 /* .nav-foot-proj — active-project pill in the nav-rail foot (#projBadge). Replaces
    its inline recipe; `display` stays inline (JS toggles it at runtime). */
-.nav-foot-proj{display:block;width:100%;padding:5px 12px;font-size:var(--fs-xs);font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:var(--r-md);cursor:pointer}
+.nav-foot-proj{display:block;width:100%;padding:5px 12px;border:0;font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;text-align:left;color:var(--accent);background:var(--accentDim);border-radius:var(--r-md);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* .nav-foot-ver — version-link badge in the nav-rail foot (#verBadge). Replaces its
    inline recipe (no display toggle — always visible once version resolves). */
 .nav-foot-ver{padding:2px 12px;font-size:var(--fs-xs);color:var(--fg3);text-decoration:none}
@@ -1740,7 +1740,7 @@ summary::-webkit-details-marker{display:none}
 #peerUrl,#vaultUrl{flex:1;min-width:280px}
 #oobBase,#oobUrl{flex:1;min-width:240px}
 #oobModalTunnelCmd{flex:1;min-width:200px}
-#macroTarget,#macroExtract,#macroName,#loginMacroTarget,#pmNew,#projSelect{min-width:200px}
+#macroTarget,#macroExtract,#macroName,#loginMacroTarget{min-width:200px}
 #retPatternInput{min-width:200px;max-width:340px;border:1px solid var(--line)}
 #keyLabel,#allowCIDR,#vaultKey{max-width:220px}
 #peerKey{max-width:200px}
@@ -1750,9 +1750,8 @@ summary::-webkit-details-marker{display:none}
 #retMaxAge,#retMaxFlows{width:110px}
 #loginMacroRefresh{width:72px}
 #setControlHost{width:100%;text-align:left}
-#setControlPort,#projNew,#codecNew{width:100%}
+#setControlPort,#codecNew{width:100%}
 #promptInput{width:100%;border:1px solid var(--line);font-size:var(--fs-md);padding:9px 11px}
-#projNewPath,#pmNewPath{width:100%;font-size:var(--fs-xs)}
 /* A .field sitting in a horizontal row rather than a stacked form: it drops the
    column's bottom margin and takes one of five widths instead of the block
    420px cap. The sizes are the SSH/host/port/user shapes those rows actually
@@ -1784,7 +1783,7 @@ summary::-webkit-details-marker{display:none}
 #restLoadState,#scopeLoadState,#sessionLoadState,#projectLoadState,#scopeDupWarn{margin-bottom:var(--sp-2)}
 #tlsDiagPanel{margin-bottom:var(--sp-3);padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);line-height:var(--lh-normal)}
 #authzScopePanel{border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;background:var(--bg)}
-#authzIds,#pmList{display:flex;flex-direction:column;gap:var(--sp-2)}
+#authzIds{display:flex;flex-direction:column;gap:var(--sp-2)}
 #sessionExpiry{font-size:var(--fs-xs);padding:2px 7px;border-radius:var(--r-sm);background:var(--bg3)}
 #mapDscFerox,#mapDscFfuf{flex:1;margin:0;font-size:var(--fs-xs);white-space:pre-wrap}
 
@@ -1810,23 +1809,6 @@ summary::-webkit-details-marker{display:none}
 .modal-lg-tall{width:94%;max-width:760px;max-height:88vh}
 .modal-xl{width:94%;max-width:900px;max-height:88vh}
 .modal-sm-tall{width:94%;max-width:560px;max-height:86vh}
-#projModal .modal-shell{width:min(680px,96vw);height:min(86vh,760px);max-height:86vh}
-#projModal .modal-shell-body{overflow:hidden;min-height:0}
-#projModal .pm-picker{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
-#projModal .pm-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
-.pm-folder{border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1)}
-.pm-folder>summary{cursor:pointer;padding:6px 8px;font-weight:650;list-style-position:inside}
-.pm-folder>summary::-webkit-details-marker{color:var(--fg3)}
-.pm-folder .pm-count{margin-left:6px;color:var(--fg3);font-weight:500;font-size:var(--fs-xs)}
-.pm-folder-body{display:flex;flex-direction:column;gap:6px;padding:0 6px 6px}
-.pm-item{display:flex;flex-direction:column;gap:4px;min-width:0}
-.pm-item>.row{align-items:stretch;min-width:0}
-.pm-row{display:block;flex:1;min-width:0;text-align:left;background:var(--bg3);overflow-wrap:anywhere}
-.pm-folder-btn{flex:none;align-self:center}
-.pm-row .pm-name{font-weight:650}
-.pm-meta{display:block;color:var(--fg3);font-size:var(--fs-xs);line-height:1.35}
-.pm-folder-edit{display:flex;gap:6px;align-items:center}
-.pm-folder-edit .btn-field{flex:1;min-width:0}
 .modal-plain-head{padding:14px 16px 0}
 .modal-plain-body{padding:12px 16px}
 /* Panes inside the Settings › API & MCP sub-tabs. apipanel.js flips

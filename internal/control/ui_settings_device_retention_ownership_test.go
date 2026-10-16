@@ -92,12 +92,12 @@ func TestUIRetentionRefreshAndDestructiveActionsHaveOwnership(t *testing.T) {
 }
 
 func TestUIProjectModalDoesNotFocusAfterStaleAsyncLoad(t *testing.T) {
-	settings := requireUIContracts(t, "js/settings.js",
-		"if(epoch!==projectModalLoadEpoch)return false",
-		"const rendered=await renderProjModal()",
-		"if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();",
+	picker := requireUIContracts(t, "js/project-picker.js",
+		"if (epoch !== projectModalLoadEpoch) return false;",
+		"const rendered = await renderProjModal();",
+		"if (rendered && f && m.style.display === 'flex' && !f.disabled && !m.contains(document.activeElement)) f.focus();",
 	)
-	if !strings.Contains(settings, "rendered=await renderProjModal()") {
-		t.Error("project modal must gate focus on the current async render")
+	if !strings.Contains(picker, "openModal(m, { initialFocus: f })") {
+		t.Error("project picker must open with the filter focused, not the create field")
 	}
 }

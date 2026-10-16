@@ -12,7 +12,7 @@ func TestUIProjectSwitchRejectsUnsavedDraftsBeforePosting(t *testing.T) {
 	if start < 0 {
 		t.Fatal("project switch function missing")
 	}
-	end := strings.Index(src[start:], "$('#projSwitchBtn').onclick")
+	end := strings.Index(src[start:], "// ---- end project switching ----")
 	script := `let blocker='Save or retry Notes before switching projects.',posted=0,feedback='';
 let projectSwitchPending=false,projectSwitchEpoch=0,projectSwitchTimer=null;
 const projectSwitchBlocker=()=>blocker,toast=()=>{},projectPathKey=x=>x;
@@ -39,7 +39,7 @@ func TestUIProjectSwitchIgnoresNavigationButGuardsSettingsDrafts(t *testing.T) {
 const controls=new Map();const $=id=>controls.get(id);
 const dirty=id=>controls.set('#'+id,{dataset:{settingsDirty:'1'}});
 ` + src[start:start+end] + `
-['setSearch','projSelect','projNew','projNewPath'].forEach(dirty);
+['setSearch','pmFilter','pmNew','pmNewFolder','pmNewPath','pmMoveFolder'].forEach(dirty);
 if(hasUnsavedSettingsFields())throw Error('navigation or project form blocked a clean switch');
 for(const id of ['setSessionHeaders','hostHdrList','setUpstreamHost','proxyListenersList','retMaxFlows']){
  dirty(id);if(!hasUnsavedSettingsFields())throw Error(id+' draft would be discarded');controls.delete('#'+id);
@@ -51,22 +51,30 @@ if(hasUnsavedSettingsFields())throw Error('saved settings still block switching'
 }
 
 func TestUIProjectSwitchKeepsModalLockedUntilFailureRecovery(t *testing.T) {
-	src := readUIAsset(t, "js/settings.js")
-	start := strings.Index(src, "const projectSwitchDisabledControls=")
-	end := strings.Index(src[start:], "export async function doSwitchProject(")
+	src := readUIAsset(t, "js/project-picker.js")
+	start := strings.Index(src, "const projectSwitchDisabledControls =")
+	if start < 0 {
+		t.Fatal("project switch lock missing from project-picker.js")
+	}
+	end := strings.Index(src[start:], "/* ---- wiring ---- */")
 	script := `let projectModalLoadEpoch=3,options;
 const fields=[{disabled:false},{disabled:true}];
-const note={},modal={style:{display:'flex'},querySelectorAll:()=>fields};
+const attrs=new Set();
+const note={dataset:{}},modal={style:{display:'flex'},querySelectorAll:sel=>sel.includes('aria-busy')?[]:fields,
+  setAttribute:k=>attrs.add(k),removeAttribute:k=>attrs.delete(k)};
 const $=id=>id==='#projModal'?modal:note;
 const openModal=(el,opts)=>{options=opts};
-` + src[start:start+end] + `
+const restoreCreateButton=()=>{};
+` + strings.ReplaceAll(src[start:start+end], "export function", "function") + `
 setProjectSwitchModalBusy(true);
 if(fields.some(f=>!f.disabled)||projectModalLoadEpoch!==4)throw Error('pending switch still permits editing or a stale list load');
+if(!attrs.has('aria-busy'))throw Error('pending switch is not announced as busy');
 if(!options.onEscape||!options.onDismiss)throw Error('pending switch can be dismissed');
 options.onEscape();options.onDismiss();
 setProjectSwitchModalBusy(false);
 if(fields[0].disabled||!fields[1].disabled)throw Error('failure did not restore original control states');
-if(options.onEscape||options.onDismiss)throw Error('recovered project dialog cannot be closed');`
+if(options.onEscape||options.onDismiss)throw Error('recovered project dialog cannot be closed');
+if(attrs.has('aria-busy'))throw Error('recovered project dialog still reports busy');`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("project switch modal recovery: %v\n%s", err, out)
 	}
@@ -124,32 +132,58 @@ if(authored.tabIndex!==0)throw Error('authored focus behavior was overwritten');
 	}
 }
 
-func TestUIProjectTreeGroupsNestedFolders(t *testing.T) {
-	src := readUIAsset(t, "js/settings.js")
-	start := strings.Index(src, "function formatProjectStamp(")
-	end := strings.Index(src, "function projectMatchesQuery(")
-	if start < 0 || end <= start {
-		t.Fatal("project tree helpers missing")
+// TestUIProjectPickerMarkupContract pins the picker's structure: the filter is
+// the first control, other projects form one tree (one Tab stop), the current
+// project is pinned once, creation and folder moves are separate labelled
+// steps, and Settings and phones reach the same dialog instead of a select.
+func TestUIProjectPickerMarkupContract(t *testing.T) {
+	index := requireUIContracts(t, "index.html",
+		`<link rel="stylesheet" href="/css/projects.css">`,
+		`id="pmFilter"`, `aria-controls="pmList"`,
+		`id="pmList" class="pm-list" role="tree"`,
+		`id="pmCurrent" aria-current="true"`,
+		`id="pmCopyDir" aria-label="Copy current project folder path"`,
+		`id="pmSummary" role="status" aria-live="polite"`,
+		`id="pmNewToggle" aria-expanded="false" aria-controls="pmCreate"`,
+		`<form id="pmCreate" class="pm-create" novalidate hidden`,
+		`<label for="pmNew">Project name</label>`,
+		`<summary>Folder / Location</summary>`,
+		`<label for="pmNewFolder">Folder`, `<label for="pmNewPath">Save location`,
+		`<form id="pmMove" class="pm-move" novalidate hidden`,
+		`id="pmMoveFolder" class="btn btn-field" list="pmFolderList"`,
+		`<datalist id="pmFolderList">`,
+		`id="projPickerBtn" aria-haspopup="dialog"`,
+		`<button type="button" class="nav-foot-proj u-hidden" id="projBadge"`,
+		`id="mobileProjectChip" class="pm-mobile-chip" aria-haspopup="dialog"`,
+	)
+	dialog := index[strings.Index(index, `<div id="projModal"`):strings.Index(index, `<div id="sessionInspectModal"`)]
+	if strings.Index(dialog, `id="pmFilter"`) > strings.Index(dialog, `id="pmNew"`) {
+		t.Error("the filter must precede the create form in the projects dialog")
 	}
-	script := src[start:end] + `
-const tree=groupProjectTree([
-  {name:'web',category:'Clients/Acme',openedAt:10,createdAt:1},
-  {name:'api',category:'Clients/Acme',openedAt:30,createdAt:2},
-  {name:'notes',category:'',openedAt:5,createdAt:3},
-]);
-if(tree.items[0].name!=='notes')throw Error('ungrouped project was not kept at the root');
-const clients=tree.folders.find(folder=>folder.name==='Clients');
-const acme=clients&&clients.folders.find(folder=>folder.name==='Acme');
-if(!acme||acme.items.map(item=>item.name).join()!=='api,web')throw Error('folder did not nest or sort by last opened');
-if(clients.count!==2)throw Error('folder count ignored nested projects');
-if(formatProjectStamp(Math.floor(Date.now()/1000)-120, Date.now())!=='2m ago')throw Error('recent open time was not relative');`
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("project tree: %v\n%s", err, out)
-	}
-	index := readUIAsset(t, "index.html")
-	for _, want := range []string{`id="pmFilter"`, `class="pm-list"`, `id="pmNewFolder"`} {
-		if !strings.Contains(index, want) {
-			t.Errorf("project dialog missing %s", want)
+	for _, gone := range []string{`id="projSelect"`, `id="projSwitchBtn"`, `id="projNewBtn"`, `id="projNewPath"`, `id="pmNote"`, `role="button" tabindex="0" title="Active project`} {
+		if strings.Contains(index, gone) {
+			t.Errorf("index.html still carries the replaced project control %s", gone)
 		}
 	}
+	bar := index[strings.Index(index, `<header id="bar"`):strings.Index(index, `</header>`)]
+	if !strings.Contains(bar, `id="mobileProjectChip"`) {
+		t.Error("the phone project chip must live in the top bar, not the hidden tool nav")
+	}
+	css := requireUIContracts(t, "css/projects.css", ".pm-mobile-chip{display:none", "@media (max-width:720px)", ".pm-mobile-chip{display:inline-flex}")
+	if strings.Contains(css, "gradient") {
+		t.Error("projects.css must use flat tokens, not gradients")
+	}
+	requireUIContracts(t, "js/project-picker.js",
+		"import {", "from './project-picker-model.js'",
+		"buildPickerModel(cache.projects",
+		"opener.focus({ preventScroll: true })",
+		"e.key === 'F10' && e.shiftKey",
+		"writeOpenState(node.dataset.section, next)",
+		"validateNewProject(createValues()",
+	)
+	requireUIContracts(t, "js/settings.js",
+		"configureProjectPicker({",
+		"switchProject:doSwitchProject",
+		"export function openProjectModal(from){return openProjectPicker(from);}",
+	)
 }

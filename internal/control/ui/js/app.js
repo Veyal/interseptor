@@ -638,11 +638,9 @@ $('#scClose').onclick=()=>closeModal($('#shortcutsModal'));
 {const skip=$('#skipLink');if(skip)skip.addEventListener('click',e=>{e.preventDefault();$('#main')?.focus();});}
 
 /* ---- project badge → Projects picker (switch / create) ---- */
-$('#mobileProjectBtn').onclick=()=>{if(projectScopedUIReady)openProjectModal();};
-{const pb=$('#projBadge');if(pb){
-  pb.addEventListener('click',openProjectModal);
-  pb.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openProjectModal();}});
-}}
+$('#mobileProjectBtn').onclick=e=>{if(projectScopedUIReady)openProjectModal(e.currentTarget);};
+$('#mobileProjectChip')?.addEventListener('click',e=>{if(projectScopedUIReady)openProjectModal(e.currentTarget);});
+$('#projBadge')?.addEventListener('click',e=>openProjectModal(e.currentTarget));
 
 /* ---- version / update check ---- */
 function markVersionFailed(el){
