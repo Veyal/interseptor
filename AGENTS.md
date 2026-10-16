@@ -39,3 +39,17 @@ Adding a feature: `store` → `internal/*` (TDD) → `control` (REST+SSE) → `j
 9. **CHANGELOG.md** — add entry under `[Unreleased]` for every code/doc/config change.
 10. **Learn** — when you discover patterns, gotchas, or conventions not captured here, add a skill (`.claude/skills/<name>/SKILL.md`) so future sessions benefit.
 11. **No private data in repo** — never commit real request/response data, user history, or any personal/target information. Use only generic example domains (e.g. `example.com`) in tests, docs, and sample data.
+
+## Cursor Cloud specific instructions
+
+The Cloud Agent base image ships Go 1.22. This module requires Go 1.25 (`go.mod`). Leave `GOTOOLCHAIN=auto` (the default). The first `go` command in this repository downloads the 1.25 toolchain into the module cache. `go mod download` is the environment install step and is safe to repeat. Do not install a second Go toolchain.
+
+`gcc` is already installed and is required for `go test -race ./...`.
+
+To exercise the running app without a browser launch or a GitHub update check:
+
+```bash
+INTERSEPTOR_NO_UPDATE_CHECK=1 INTERSEPTOR_NO_BROWSER=1 go run ./cmd/interseptor --data-dir /tmp/interseptor-data --project demo
+```
+
+The proxy listens on `127.0.0.1:8080` and the control UI/API on `http://127.0.0.1:9966`. Loopback API calls do not need an API key. Ordinary `go test` skips the live GitHub release check unless `INTERSEPTOR_LIVE_RELEASE_CHECK=1`.
