@@ -246,19 +246,33 @@ func TestUIFlowPngCopyIsMountedWhereProofIsPasted(t *testing.T) {
 	}
 }
 
-func TestUIInterceptHeldMessageHasAReadOnlyPrettyView(t *testing.T) {
+func TestUIInterceptHeldMessageHasAnEditablePrettyView(t *testing.T) {
 	html := readUIAsset(t, "index.html")
-	for _, want := range []string{`id="heldViewSeg"`, `id="heldViewRaw"`, `id="heldViewPretty"`, `id="heldPretty"`} {
+	for _, want := range []string{`id="heldViewSeg"`, `id="heldViewRaw"`, `id="heldViewPretty"`, `id="heldPretty"`, `id="heldPrettyHL"`, `id="heldPrettyEdit"`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("index.html missing %s", want)
 		}
 	}
-	// The pretty pane is a <pre>, so it cannot be typed into by construction.
-	if !regexp.MustCompile(`<pre id="heldPretty"[^>]*hidden>`).MatchString(html) {
-		t.Error("#heldPretty must be a <pre> that starts hidden")
+	// Pretty is the Repeater overlay editor: a highlighted <pre> behind a
+	// transparent <textarea>, in a .rep-field that also uses .icpt-raw so it
+	// scrolls internally and the action bar stays pinned.
+	if !regexp.MustCompile(`<div id="heldPretty" class="icpt-raw rep-field[^"]*"[^>]*hidden>`).MatchString(html) {
+		t.Error("#heldPretty must be a hidden .rep-field.icpt-raw wrapper")
 	}
-	if !strings.Contains(html, `aria-label="Held message, pretty view — read-only, the bytes to forward are unchanged"`) {
-		t.Error("the pretty pane must say it is read-only")
+	if !regexp.MustCompile(`<pre class="rep-hl" id="heldPrettyHL" aria-hidden="true"></pre>`).MatchString(html) {
+		t.Error("the highlight overlay must be an aria-hidden .rep-hl <pre>")
+	}
+	if !regexp.MustCompile(`<textarea id="heldPrettyEdit" class="rep-edit"[^>]*spellcheck="false"`).MatchString(html) {
+		t.Error("#heldPrettyEdit must be a .rep-edit textarea")
+	}
+	if !strings.Contains(html, `aria-label="Held message, pretty view — editable; the message to forward changes only once you type"`) {
+		t.Error("the pretty editor must say that typing changes the forwarded message")
+	}
+	if strings.Contains(html, "read-only, the bytes to forward are unchanged") {
+		t.Error("the pretty pane is no longer read-only")
+	}
+	if !strings.Contains(readUIAsset(t, "app.css"), ".icpt-raw.rep-field") {
+		t.Error("app.css must size the Pretty .rep-field inside .icpt-raw")
 	}
 	// Beautify still rewrites the forwarded bytes, and now says so.
 	if !strings.Contains(html, "Rewrite the bytes that will be forwarded") {
@@ -267,9 +281,18 @@ func TestUIInterceptHeldMessageHasAReadOnlyPrettyView(t *testing.T) {
 	js := requireUIContracts(t, "js/intercept.js",
 		"function renderHeldPretty()",
 		"function setHeldView(view,{focus=false}={})",
-		"pre.innerHTML=raw?highlightHTTP(heldBeautified(raw),true,contentTypeFromRaw(raw)):",
+		"ed.value=prettyBridge.show(ta.value||'');",
+		"highlightHTTP(text,true,contentTypeFromRaw(text))",
 		"function resetHeldView()",
-		`'#heldViewRaw','#heldViewPretty'`,
+		`'#heldViewRaw','#heldViewPretty','#heldPrettyEdit'`,
+		// Only typing in Pretty writes back to the raw editor, through the
+		// shared #heldRaw input handler (cache + MODIFIED + decode epoch).
+		"ta.value=prettyBridge.edit(ed.value);",
+		// Forward omits raw for an unedited message so the original bytes go out.
+		"heldForwardRaw(",
+		// The textarea is LF-normalized, the held original CRLF: MODIFIED must
+		// compare line-ending-insensitively or every view would flag it.
+		"const modified=heldIsModified(raw,original);",
 		// A textarea's API value normalizes CRLF to LF, so core's CRLF-only
 		// prettify() never split this text. Both separators must be accepted.
 		"function heldBeautified(raw)",
@@ -278,14 +301,14 @@ func TestUIInterceptHeldMessageHasAReadOnlyPrettyView(t *testing.T) {
 	if strings.Contains(js, "prettify(ta.value)") {
 		t.Error("Beautify must use heldBeautified, which matches the editor's LF separator")
 	}
-	// The read-only view must never write back into the editor.
+	// Merely rendering Pretty must never write into the editor or mark MODIFIED.
 	pretty := js[strings.Index(js, "function renderHeldPretty()"):]
 	pretty = pretty[:strings.Index(pretty, "function syncHeldViewSeg()")]
 	if strings.Contains(pretty, "ta.value=") {
-		t.Fatal("the pretty view must not assign #heldRaw.value — that is what Beautify does")
+		t.Fatal("rendering the pretty view must not assign #heldRaw.value — only typing does")
 	}
 	if strings.Contains(pretty, "setHeldModified") {
-		t.Fatal("reading a held message pretty must not mark it MODIFIED")
+		t.Fatal("viewing a held message pretty must not mark it MODIFIED")
 	}
 	// Raw | Pretty | Decoded stay mutually exclusive.
 	if !strings.Contains(js, "if(heldView==='pretty')setHeldView('raw');") {

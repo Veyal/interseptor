@@ -43,10 +43,18 @@ func TestInterceptActionBarStaysPinnedWhileMessageScrolls(t *testing.T) {
 			t.Errorf(".icpt-actionbar must keep %q so it never shrinks or scrolls away", want)
 		}
 	}
+	// The editable Pretty view is an overlay editor inside .icpt-raw: the wrapper
+	// clips, the textarea is the one that scrolls.
+	prettyWrap := interceptCSSRule(t, app, ".icpt-raw.rep-field")
+	for _, want := range []string{"overflow:hidden", "padding:0"} {
+		if !strings.Contains(prettyWrap, want) {
+			t.Errorf(".icpt-raw.rep-field must keep %q so only the editor scrolls", want)
+		}
+	}
 	// Every held-message body view shares the scrolling class.
 	html := readUIAsset(t, "index.html")
 	for _, id := range []string{"heldDecoded", "heldPretty", "heldRaw"} {
-		re := regexp.MustCompile(`<(?:pre|textarea)[^>]*\bid="` + id + `"[^>]*>`)
+		re := regexp.MustCompile(`<(?:pre|div|textarea)[^>]*\bid="` + id + `"[^>]*>`)
 		tag := re.FindString(html)
 		if tag == "" || !strings.Contains(tag, `class="icpt-raw`) {
 			t.Errorf("#%s must use .icpt-raw so it scrolls inside the editor pane", id)

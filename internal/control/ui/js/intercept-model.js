@@ -166,3 +166,47 @@ export function createAutoForwardTally() {
     count: () => n,
   };
 }
+
+/* ---- Pretty view editing ----
+   #heldRaw stays the single source of truth for the bytes that get forwarded.
+   Pretty is an editable presentation of it: merely viewing derives indented
+   text from the raw text without touching it; typing in Pretty is the only act
+   that writes the pretty text back into the raw editor. */
+
+// A <textarea>'s API value normalizes CRLF to LF, so comparisons against the
+// server's CRLF original must ignore line-ending style.
+export function normalizeEOL(s) { return String(s == null ? '' : s).replace(/\r\n/g, '\n'); }
+
+// heldIsModified: does the editor text differ from the held original?
+export function heldIsModified(current, original) {
+  return normalizeEOL(current) !== normalizeEOL(original);
+}
+
+// heldForwardRaw is the `raw` field to POST on Forward, or null to omit it. An
+// untouched message omits it so the server forwards the held original bytes
+// exactly (no LF-normalized copy replaces them); an edited one sends the text.
+export function heldForwardRaw(current, original) {
+  return heldIsModified(current, original) ? String(current == null ? '' : current) : null;
+}
+
+// createPrettyBridge maps raw text <-> the text shown in the Pretty editor.
+// show(raw) never mutates anything; it returns what Pretty should display. Once
+// the user types, edit(text) records that pretty text IS the new raw, so a
+// Raw -> Pretty round trip shows the user's own text back instead of
+// re-indenting it.
+export function createPrettyBridge({ beautify }) {
+  let synced = null; // { raw, pretty } — the last text the user typed in Pretty
+  return {
+    show(raw) {
+      const r = String(raw == null ? '' : raw);
+      if (synced && synced.raw === r) return synced.pretty;
+      return beautify(r);
+    },
+    edit(text) {
+      const t = String(text == null ? '' : text);
+      synced = { raw: t, pretty: t };
+      return t; // the raw text to store in the editor
+    },
+    reset() { synced = null; },
+  };
+}

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Intercept: edit held requests and responses in the Pretty view.** Pretty is now an
+  editable, syntax-highlighted editor (the Repeater overlay technique) instead of a read-only
+  pane. Merely viewing Pretty still leaves the held message untouched and Forward sends the
+  original bytes; typing in Pretty makes the edited text the message to forward (MODIFIED on),
+  Raw shows it, switching Raw and Pretty keeps it, and Reset restores the original. The server
+  already recomputes `Content-Length` for edited request and response bodies; end-to-end tests
+  now prove it for both directions.
+
+### Fixed
+
+- **Intercept: untouched messages no longer show MODIFIED.** The editor's LF-normalized text was
+  compared byte-for-byte with the CRLF original, so every held message was flagged as modified
+  and Forward re-sent a LF copy. The comparison ignores line endings, and an unedited Forward
+  now omits `raw` so the server forwards the held original bytes.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.15.0` release.

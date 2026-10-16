@@ -3,7 +3,7 @@ import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
@@ -172,17 +172,25 @@ function setHeldDecodeState(show){
 function heldOriginal(h){return h.original||h.raw||'';}
 function setHeldModified(raw, original){
   const badge=$('#heldModified');
-  const modified=raw!==original;
+  // A <textarea> value is LF-normalized while the held original is CRLF, so a
+  // plain !== would flag every untouched message as MODIFIED.
+  const modified=heldIsModified(raw,original);
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
 }
 
-/* ---- Raw | Pretty (read-only) ----
+/* ---- Raw | Pretty (editable) ----
    Beautify rewrites the bytes that will be forwarded and marks the message
    MODIFIED. Reviewing a held message must not require that, so Pretty is a
-   separate read-only presentation: it indents and highlights a copy of the
-   editor's current text and never writes back to #heldRaw. */
+   separate presentation: it indents a copy of the editor's current text into
+   its own textarea (#heldPrettyEdit, highlighted by the #heldPrettyHL overlay —
+   the Repeater .rep-field technique) and does not touch #heldRaw until the
+   operator actually types. Typing there writes the pretty text into #heldRaw,
+   so Forward sends it, MODIFIED turns on, and Raw shows it. Merely viewing
+   leaves #heldRaw (and so the forwarded original bytes) alone. */
 let heldView='raw';
+const prettyBridge=createPrettyBridge({beautify:heldBeautified});
 function heldPrettyEl(){return $('#heldPretty');}
+function heldPrettyEditEl(){return $('#heldPrettyEdit');}
 // heldBeautified indents a held message's body. core.js's prettify() splits the
 // head from the body on CRLF, but a <textarea>'s API value normalizes CRLF to LF
 // (HTML spec), so the editor's text never matches it — this accepts both.
@@ -193,14 +201,24 @@ function heldBeautified(raw){
   const body=raw.slice(sep.index+sep[0].length);
   return body?head+'\n\n'+beautifyBody(body):raw;
 }
-// renderHeldPretty paints the current editor text, indented and highlighted. It
-// writes to its own <pre>, never back to #heldRaw: reading a held message must
-// not change the bytes that will be forwarded.
+// paintHeldPrettyHL colors the overlay from the Pretty textarea's own text. The
+// highlighter only wraps spans around the characters (never re-indents), and a
+// trailing newline mirrors the textarea's reserved last line, so the two stay
+// aligned exactly as in the Repeater panes.
+function paintHeldPrettyHL(){
+  const ed=heldPrettyEditEl(),hl=$('#heldPrettyHL');
+  if(!ed||!hl)return;
+  const text=ed.value||'';
+  hl.innerHTML=(text?highlightHTTP(text,true,contentTypeFromRaw(text)):'')+'\n';
+}
+// renderHeldPretty fills the Pretty editor from the current raw text, indented
+// and highlighted. It reads #heldRaw and never writes back to it: reading a held
+// message must not change the bytes that will be forwarded.
 function renderHeldPretty(){
-  const pre=heldPrettyEl(),ta=$('#heldRaw');
-  if(!pre||!ta)return;
-  const raw=ta.value||'';
-  pre.innerHTML=raw?highlightHTTP(heldBeautified(raw),true,contentTypeFromRaw(raw)):'<span class="u-fg3">Nothing held to show.</span>';
+  const ed=heldPrettyEditEl(),ta=$('#heldRaw');
+  if(!ed||!ta)return;
+  ed.value=prettyBridge.show(ta.value||'');
+  paintHeldPrettyHL();
 }
 function syncHeldViewSeg(){
   const seg=$('#heldViewSeg');if(!seg)return;
@@ -223,14 +241,21 @@ function setHeldView(view,{focus=false}={}){
     renderHeldPretty();
     if(pre){pre.hidden=false;pre.style.display='block';}
     if(ta)ta.style.display='none';
-    if(focus&&pre)pre.focus({preventScroll:true});
+    const ed=heldPrettyEditEl();
+    if(focus&&ed)ed.focus({preventScroll:true});
   }else{
-    if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}
+    clearHeldPretty();
     if(ta){ta.style.display='block';if(focus)ta.focus({preventScroll:true});}
   }
   syncHeldViewSeg();
 }
-function resetHeldView(){heldView='raw';const pre=heldPrettyEl();if(pre){pre.hidden=true;pre.style.display='none';pre.innerHTML='';}syncHeldViewSeg();}
+function clearHeldPretty(){
+  const pre=heldPrettyEl(),ed=heldPrettyEditEl(),hl=$('#heldPrettyHL');
+  if(pre){pre.hidden=true;pre.style.display='none';}
+  if(ed)ed.value='';
+  if(hl)hl.innerHTML='';
+}
+function resetHeldView(){heldView='raw';prettyBridge.reset();clearHeldPretty();syncHeldViewSeg();}
 
 // Intercept must not be a dead end: "Repeater" copies the (edited) held request
 // into a new Repeater tab without forwarding or dropping it.
@@ -253,7 +278,7 @@ function syncHeldRepeaterButton(side){
 }
 function setHeldControlsDisabled(disabled){
   const dropping=selectionDropping();
-  ['#heldRaw','#forwardBtn','#forwardRepeaterBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldViewRaw','#heldViewPretty','#heldRepeaterBtn']
+  ['#heldRaw','#forwardBtn','#forwardRepeaterBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldViewRaw','#heldViewPretty','#heldPrettyEdit','#heldRepeaterBtn']
     .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight||dropping;});
   const all=$('#forwardAllBtn');if(all)all.disabled=!!heldActionInFlight||forwardAllBusy||!heldItems().some(h=>!dropMarks.has(heldKey(h.side,h.id)));
 }
@@ -438,6 +463,8 @@ export async function selectHeld(id,side,opts={}){
   if(opts.keepEditor){
     const ta=$('#heldRaw');
     if(ta&&document.activeElement===ta)return;
+    // A background refresh must not tear down an open Pretty editor either.
+    if(heldView==='pretty'&&previousKey===nextKey)return;
   }
   if(!heldRawCache.has(cacheKey)&&!raw&&h.len!=null){
     showHeldLoading({...h,side});
@@ -452,6 +479,7 @@ export async function selectHeld(id,side,opts={}){
         if(!state.heldSel||state.heldSel.id!==id||state.heldSel.side!==side)return;
         raw=d.raw||'';
         heldRawCache.set(cacheKey,raw);
+        if(!heldOriginalCache.get(cacheKey))heldOriginalCache.set(cacheKey,raw);
         h.raw=raw;
       }catch(e){
         if(state.heldSel&&state.heldSel.id===id&&state.heldSel.side===side)showHeldLoadError({...h,side},e);
@@ -615,7 +643,12 @@ $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const actionKey=heldKey(sel.side,sel.id);
   heldActionInFlight={key:actionKey,deferred:false};
   setHeldActionState(button,'pending','Forwarding…');
-  try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
+  // An untouched message omits `raw` so the server forwards the held original
+  // bytes exactly; viewing Pretty never changes #heldRaw, so it stays untouched.
+  const held=heldItem(sel.id,sel.side);
+  const original=heldOriginalCache.get(actionKey)??(held?heldOriginal(held):null);
+  const rawOut=original==null?$('#heldRaw').value:heldForwardRaw($('#heldRaw').value,original);
+  try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rawOut==null?{}:{raw:rawOut})});
     await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
@@ -657,6 +690,21 @@ $('#heldRaw').addEventListener('input',()=>{
     setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
   }
 });
+// Typing in Pretty is the one act that turns the pretty text into the message to
+// forward: it is stored into #heldRaw and the shared input handler above takes
+// over (cache, MODIFIED badge, Decoded invalidation).
+{
+  const ed=heldPrettyEditEl(),ta=$('#heldRaw');
+  if(ed&&ta){
+    ed.addEventListener('input',()=>{
+      ta.value=prettyBridge.edit(ed.value);
+      paintHeldPrettyHL();
+      ta.dispatchEvent(new Event('input'));
+    });
+    // Keep the colored overlay scrolled in lockstep with the editor.
+    ed.addEventListener('scroll',()=>{const hl=$('#heldPrettyHL');if(hl){hl.scrollTop=ed.scrollTop;hl.scrollLeft=ed.scrollLeft;}});
+  }
+}
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
   const ta=$('#heldRaw');if(!ta)return;
   setHeldView('raw');
