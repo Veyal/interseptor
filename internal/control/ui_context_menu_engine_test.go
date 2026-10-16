@@ -295,8 +295,11 @@ func TestUIInterceptHeldMessageHasAnEditablePrettyView(t *testing.T) {
 		"const modified=heldIsModified(raw,original);",
 		// A textarea's API value normalizes CRLF to LF, so core's CRLF-only
 		// prettify() never split this text. Both separators must be accepted.
-		"function heldBeautified(raw)",
+		"function heldBeautified(raw,format=beautifyBody)",
 		`const sep=/\r?\n\r?\n/.exec(raw);`,
+		// Pretty edits forward as shown, so Pretty only reformats losslessly;
+		// a lossy JSON round-trip would silently rewrite the payload.
+		"losslessBeautify(body,beautifyBody)",
 	)
 	if strings.Contains(js, "prettify(ta.value)") {
 		t.Error("Beautify must use heldBeautified, which matches the editor's LF separator")

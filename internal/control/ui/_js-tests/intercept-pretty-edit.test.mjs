@@ -92,3 +92,17 @@ test('responses behave the same way', () => {
   assert.equal(s.modified, true);
   assert.match(s.forward, /false/);
 });
+
+// Pretty edits forward the shown text, so Pretty may only reformat a body when
+// the reformat is whitespace-only. JSON.parse/stringify is lossy (big integers,
+// duplicate keys, integer-like key order, 1.0, \u escapes); such bodies are shown
+// verbatim so an edit never silently rewrites the payload.
+test('lossless beautify keeps bodies that JSON round-tripping would change', async () => {
+  const { losslessBeautify } = await import('../js/intercept-model.js');
+  const reformat = b => JSON.stringify(JSON.parse(b), null, 2);
+  const lossy = '{"id":12345678901234567890,"b":1,"1":2,"k":1,"k":2,"x":1.0,"u":"\\u00e9"}';
+  assert.equal(losslessBeautify(lossy, reformat), lossy, 'lossy reformat must fall back to the original body');
+  const safe = '{"a":1,"b":"two words","c":[1,2]}';
+  assert.equal(losslessBeautify(safe, reformat), reformat(safe), 'whitespace-only reformat is applied');
+  assert.equal(losslessBeautify('not json', () => { throw new Error('x'); }), 'not json');
+});

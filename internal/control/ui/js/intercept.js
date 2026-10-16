@@ -3,7 +3,7 @@ import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
@@ -188,18 +188,20 @@ function setHeldModified(raw, original){
    so Forward sends it, MODIFIED turns on, and Raw shows it. Merely viewing
    leaves #heldRaw (and so the forwarded original bytes) alone. */
 let heldView='raw';
-const prettyBridge=createPrettyBridge({beautify:heldBeautified});
+// Pretty only reformats losslessly (its edits forward as shown); the explicit
+// Beautify action keeps the full reformat.
+const prettyBridge=createPrettyBridge({beautify:raw=>heldBeautified(raw,body=>losslessBeautify(body,beautifyBody))});
 function heldPrettyEl(){return $('#heldPretty');}
 function heldPrettyEditEl(){return $('#heldPrettyEdit');}
 // heldBeautified indents a held message's body. core.js's prettify() splits the
 // head from the body on CRLF, but a <textarea>'s API value normalizes CRLF to LF
 // (HTML spec), so the editor's text never matches it — this accepts both.
-function heldBeautified(raw){
+function heldBeautified(raw,format=beautifyBody){
   const sep=/\r?\n\r?\n/.exec(raw);
   if(!sep)return raw;
   const head=raw.slice(0,sep.index).replace(/\r\n/g,'\n');
   const body=raw.slice(sep.index+sep[0].length);
-  return body?head+'\n\n'+beautifyBody(body):raw;
+  return body?head+'\n\n'+format(body):raw;
 }
 // paintHeldPrettyHL colors the overlay from the Pretty textarea's own text. The
 // highlighter only wraps spans around the characters (never re-indents), and a
@@ -730,7 +732,7 @@ $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
 }
 $('#heldResetBtn')&&($('#heldResetBtn').onclick=()=>{
   const sel=state.heldSel,ta=$('#heldRaw');if(!sel||!ta)return;
-  setHeldView('raw');
+  setHeldView('raw');prettyBridge.reset();
   const original=heldOriginalCache.get(heldKey(sel.side,sel.id));if(original==null)return;
   ta.value=original;ta.dispatchEvent(new Event('input'));ta.focus();
 });

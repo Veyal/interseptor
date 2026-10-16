@@ -210,3 +210,19 @@ export function createPrettyBridge({ beautify }) {
     reset() { synced = null; },
   };
 }
+
+// squashJSONish drops whitespace outside double-quoted strings, so two texts that
+// differ only in indentation compare equal.
+const squashJSONish = s => s.replace(/"(?:\\.|[^"\\])*"|\s+/g, m => (m[0] === '"' ? m : ''));
+// losslessBeautify returns beautify(body) only when the reformat changes nothing
+// but whitespace; otherwise (big integers, duplicate or reordered keys, 1.0,
+// \u escapes, a throwing formatter) it returns body unchanged. Pretty edits are
+// forwarded as shown, so a lossy reformat would silently rewrite the payload.
+export function losslessBeautify(body, beautify) {
+  try {
+    const out = beautify(body);
+    return squashJSONish(out) === squashJSONish(body.trim()) ? out : body;
+  } catch (e) {
+    return body;
+  }
+}
