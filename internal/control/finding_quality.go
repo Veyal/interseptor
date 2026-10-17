@@ -82,7 +82,12 @@ func reportGateIssues(f *store.Finding) []reportGateIssue {
 func assessFindingQuality(f store.Finding) (reportFindingQuality, reportBoardRow) {
 	f.EnrichCompleteness()
 	issues := reportGateIssues(&f)
-	ready := f.Ready && len(issues) == 0
+	if f.Status == "false_positive" {
+		// Rendered in the excluded appendix, never in the findings body, so
+		// the final gate does not apply to it.
+		issues = nil
+	}
+	ready := (f.Ready || f.Status == "false_positive") && len(issues) == 0
 	checks := []store.FindingQualityCheck{}
 	if f.Readiness != nil {
 		checks = f.Readiness.Checks
