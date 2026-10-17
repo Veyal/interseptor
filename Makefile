@@ -1,7 +1,7 @@
-.PHONY: build test race vet check run clean macos-app
+.PHONY: build test race vet check fmt-check ui-smoke audit-digest vulncheck run clean macos-app
 
 # Mirrors the "Green before commit" gate in CONTRIBUTING.md:
-#   go test ./... + go test -race ./... + go vet ./... + CGO_ENABLED=0 build
+#   gofmt + go test ./... + go test -race ./... + go vet ./... + CGO_ENABLED=0 build
 # Use `make check` before every commit.
 
 # Local CLI builds identify themselves separately from published releases.
@@ -25,7 +25,24 @@ race:
 vet:
 	go vet ./...
 
-check: vet test race build
+check: fmt-check vet test race build
+
+# gofmt on Go files changed on this branch (see scripts/gofmt_check.sh);
+# GOFMT_ALL=1 make fmt-check checks every file.
+fmt-check:
+	scripts/gofmt_check.sh
+
+# Headless-Chrome UI boot smoke (needs Chrome and Node >= 22); same script CI runs.
+ui-smoke:
+	scripts/ui_smoke.sh
+
+# Recompute the UI audit manifest runtime identity after changing runtime code.
+# Without this, TestUIVisualAuditEvidenceMatchesCurrentRuntime fails.
+audit-digest:
+	go run ./tools/auditdigest -write
+
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
 run:
 	CGO_ENABLED=0 go run -ldflags "$(LOCAL_LDFLAGS)" ./cmd/interseptor

@@ -73,9 +73,13 @@ assistants alike. They describe how the existing code is written; match it.
 
 ## Cutting a release
 
-- Before tagging any release that touches `internal/control/ui/`, run
-  `node scripts/ui_boot_smoke.mjs <url>` against a throwaway instance with headless Chrome (see
-  `docs/ui-audit/verification.md`); it must exit 0. It is not in CI because it needs Chrome.
+- The UI boot smoke (`scripts/ui_boot_smoke.mjs` in headless Chrome) runs in CI on every PR and is
+  a required job for the Release workflow's `publish` step. Run it locally with `make ui-smoke`
+  (needs Chrome and Node 22; override the browser with `CHROME=/path/to/chrome`).
+- Runtime code changes make the UI audit manifest stale
+  (`TestUIVisualAuditEvidenceMatchesCurrentRuntime`). Refresh it with `make audit-digest`
+  (`go run ./tools/auditdigest -write`) as the last step before committing; never hand-edit the
+  hashes. CI runs `go run ./tools/auditdigest` and fails with that remedy when it is stale.
 - `internal/version/version.go`'s `Version` variable is the dev-build fallback. At each
   release commit, bump it to the **previous** published tag (not the tag being released) —
   e.g. when tagging v1.0.0, bump `Version` to the last tag that was already public before
@@ -91,7 +95,9 @@ assistants alike. They describe how the existing code is written; match it.
 ## Before opening a PR
 
 - [ ] `go test ./...` and `go test -race ./...` pass
+- [ ] `make fmt-check` is clean (gofmt on the Go files you changed; CI enforces the same)
 - [ ] `go vet ./...` is clean
+- [ ] `make audit-digest` run if you changed anything under `cmd/`, `internal/`, `go.mod` or `go.sum`
 - [ ] `CGO_ENABLED=0 go build ./cmd/interseptor` succeeds
 - [ ] New behavior is covered by a test
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`

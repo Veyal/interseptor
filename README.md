@@ -3,7 +3,7 @@
 [![CI](https://github.com/Veyal/interseptor/actions/workflows/ci.yml/badge.svg)](https://github.com/Veyal/interseptor/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Veyal/interseptor?sort=semver)](https://github.com/Veyal/interseptor/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go](https://img.shields.io/github/go-mod/go-version/Veyal/interseptor?logo=go&logoColor=white&color=00ADD8)](go.mod)
 
 *"Interseptor"* — from the Indonesian slang **intersep** (to intercept), plus `-tor`. It does exactly
 what it says on the tin: it **intersep**s your HTTP/HTTPS traffic so you don't have to squint at
@@ -28,8 +28,8 @@ external agent owns reasoning and sequencing. Nothing phones home.
 
 - **Intercept & edit** HTTP/HTTPS live (hold, forward, drop — requests *and* responses) via a local
   CA, with match-&-replace rules.
-- **Repeater & Intruder** — resend and mutate requests by hand, or run Sniper/Pitchfork/Race attacks
-  with grep-match/extract and anomaly flagging. Import Postman Collection v2.0/v2.1 JSON directly into
+- **Repeater & Intruder** — resend and mutate requests by hand, or run Sniper, Battering, Pitchfork, Cluster, and
+  no-payload Repeat (race-window) attacks with grep-match/extract and anomaly flagging. Import Postman Collection v2.0/v2.1 JSON directly into
   editable Repeater tabs (optionally with an exported environment) when a collection is the fastest
   way to bring an API test plan into a pentest.
 - **Scanner** — passive checks out of the box. External agents compose Repeater, Intruder, Authz, OOB,
@@ -48,10 +48,16 @@ and more.
 The quickest path — grab a prebuilt binary (no Go toolchain needed):
 
 ```bash
-# macOS / Linux (pick your OS+arch from the Releases page)
-curl -L https://github.com/Veyal/interseptor/releases/latest/download/interseptor_<version>_<os>_<arch>.tar.gz | tar xz
+# macOS / Linux — GitHub CLI picks the latest release; swap darwin_arm64 for
+# darwin_amd64, linux_amd64, or linux_arm64
+gh release download --repo Veyal/interseptor --pattern '*_darwin_arm64.tar.gz'
+tar xzf interseptor_*_darwin_arm64.tar.gz
 ./interseptor
 ```
+
+No `gh`? Download the archive for your OS and architecture from the
+[Releases page](https://github.com/Veyal/interseptor/releases/latest) and extract it. Release
+archives list their SHA-256 sums in `checksums.txt` on the same page.
 
 Or, if you have Go 1.25+:
 

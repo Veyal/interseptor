@@ -6,8 +6,47 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege by default; a job that needs more declares it itself.
+permissions:
+  contents: read
+
+# A new push to the same PR/branch supersedes the previous run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gofmt_check.sh diffs against the base branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: gofmt (Go files changed on this branch)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            BASE="$(git merge-base HEAD "origin/$BASE_REF")" scripts/gofmt_check.sh
+          else
+            scripts/gofmt_check.sh
+          fi
+      - run: go vet ./...
+      - name: UI audit manifest digest is current
+        run: go run ./tools/auditdigest
+      - run: go test ./...
+      - run: CGO_ENABLED=1 go test -race ./...
+
+  # Real-browser boot check for the vanilla-JS UI (no build step, no type
+  # checker). ubuntu-latest ships google-chrome.
+  ui-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +56,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: go vet ./...
-      - run: go test ./...
-      - run: CGO_ENABLED=1 go test -race ./...
+      - run: scripts/ui_smoke.sh
 
   build:
     strategy:
