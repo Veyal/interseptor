@@ -310,7 +310,7 @@ func TestUIFoundationShortcutContract(t *testing.T) {
 		"if(workflowShortcutBlocked())return",
 	)
 	requireUIRegex(t, app, `function exactModifiers\(e,\{mod=false,shift=false,alt=false\}=\{\}\)\{[^}]*ctrlKey\|\|e\.metaKey[^}]*shiftKey[^}]*altKey`)
-	requireUIRegex(t, app, `function isHelpShortcut\(e\)\{return e\.key==='\?'&&!e\.ctrlKey&&!e\.metaKey&&!e\.altKey;\}`)
+	requireUIRegex(t, app, `function isHelpShortcut\(e\)\{return e\.key==='\?'&&!e\.ctrlKey&&!e\.metaKey&&!e\.altKey&&readSingleKeyPref\(\);\}`)
 	// Repeater Send (Mod+Space / Mod+Enter) must run before the typing early-return.
 	requireUIRegex(t, app, `(?s)if\(activePanel\(\)==='repeater'&&\(isModSpace\(e\)\|\|isModShortcut\(e,'Enter'\)\)\).*?if\(typing\)return`)
 	// Plain-letter Intercept actions are destructive, so typing must block them.

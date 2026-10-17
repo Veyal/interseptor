@@ -95,8 +95,23 @@ func TestUISettingsAppearanceSection(t *testing.T) {
 		}
 	}
 	src := executableJS(readUIAsset(t, "js/settings-appearance.js"))
-	requireUIContains(t, src, "setDensity(", "writeSingleKeyPref(", "readSingleKeyPref(", "themeStoragePlan(", "writeHintsPref(",
+	requireUIContains(t, src, "setDensity(", "setSingleKeyShortcuts(", "SINGLE_KEY_EVENT", "readSingleKeyPref(", "themeStoragePlan(", "writeHintsPref(",
 		"prefers-color-scheme", "aria-pressed", "data-hints", "'densitychange'")
+}
+
+// The Settings switch "Single-key shortcuts" must gate the legacy plain-letter
+// handlers in app.js too (g-chords, r, i, c, a, x, /, ?, j/k), not only the
+// keys.js registry, or turning it off changes nothing (WCAG 2.1.4).
+func TestUISettingsSingleKeySwitchGatesLegacyShortcuts(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app, "import { readSingleKeyPref } from './keys.js'")
+	requireUIRegex(t, app, `function isPlainShortcut\([^\n]*readSingleKeyPref\(\)`)
+	requireUIRegex(t, app, `function isHelpShortcut\(e\)\{[^}]*readSingleKeyPref\(\)`)
+	requireUIRegex(t, app, `e\.key==='j'\|\|e\.key==='k'\)&&!readSingleKeyPref\(\)`)
+	appearance := executableJS(readUIAsset(t, "js/settings-appearance.js"))
+	if strings.Contains(appearance, "writeSingleKeyPref(") {
+		t.Error("settings-appearance.js must toggle through setSingleKeyShortcuts so keyboard.js state and the sheet checkbox stay in sync")
+	}
 }
 
 func TestUISettingsEngagementUsesOneRenderer(t *testing.T) {
