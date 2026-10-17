@@ -2,7 +2,10 @@
 // High contrast), density, the single-key shortcuts switch and hint visibility.
 // Everything is a per-browser preference; storage is wrapped because it can throw.
 import { $, $$, setSeg, setDensity, getDensity } from './core.js';
-import { readSingleKeyPref, writeSingleKeyPref } from './keys.js';
+import { readSingleKeyPref } from './keys.js';
+// The switch goes through keyboard.js so its cached state, the shortcut sheet's
+// checkbox and every listener of SINGLE_KEY_EVENT stay in step with Settings.
+import { setSingleKeyShortcuts, SINGLE_KEY_EVENT } from './keyboard.js';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
 } from './settings-model.js';
@@ -64,7 +67,8 @@ function wire() {
   $$('#themeSeg button').forEach((b) => { b.onclick = () => setThemeChoice(b.dataset.themeChoice); });
   $$('#densitySeg button').forEach((b) => { b.onclick = () => { setDensity(b.dataset.densityChoice); syncAppearance(); }; });
   const keys = $('#singleKeySwitch');
-  if (keys) keys.onclick = () => { writeSingleKeyPref(!readSingleKeyPref()); syncAppearance(); };
+  if (keys) keys.onclick = () => { setSingleKeyShortcuts(!readSingleKeyPref()); syncAppearance(); };
+  document.addEventListener(SINGLE_KEY_EVENT, syncAppearance);
   const hints = $('#hintsSwitch');
   if (hints) hints.onclick = () => { writeHintsPref(!readHintsPref()); applyHints(); syncAppearance(); };
   // System follows the OS live; the topbar toggle and other writers change data-theme.

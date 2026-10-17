@@ -174,6 +174,8 @@ html,body{height:100%}
    queries were simultaneously firing. */
 body{background:var(--grad-bg);color:var(--fg);font-family:var(--ui);font-size:var(--fs-md);display:flex;flex-direction:column;overflow:hidden;min-width:0}
 button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;transition:border-color var(--motion-base) var(--motion-standard),background var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard)}
+/* Placeholders often hold the only format hint; the browser default grey is 3.1:1 on dark. */
+::placeholder{color:var(--fg3);opacity:1}
 /* Declared AFTER the form-control reset above, which would otherwise pull
    textarea back to the inherited proportional face. */
 pre,code,kbd,samp,textarea{font-family:var(--mono)}
@@ -226,7 +228,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* breadcrumb — "Group / Panel" context indicator, updated on every tab switch */
 #crumb{font-size:var(--fs-xs);color:var(--fg3);font-family:var(--ui);display:flex;align-items:center;gap:5px;white-space:nowrap}
 #crumb .crumb-group{color:var(--fg3)}
-#crumb .crumb-sep{color:var(--fg3);opacity:.5}
+#crumb .crumb-sep{color:var(--fg3)}
 #crumb .crumb-panel{color:var(--fg2);font-weight:600}
 #themeToggle{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r-md);background:var(--bg3);color:var(--fg2);font-size:var(--fs-md);line-height:1}
 #themeToggle:hover{color:var(--fg);background:var(--line)}
@@ -254,7 +256,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* Group labels are wayfinding, not content: same 11px floor as every other
    micro-label, but quieter than the items they head — no bold, wide tracking,
    and uppercase so they read as a rule rather than a clickable row. */
-.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3);opacity:.8;padding:6px 12px 4px}
+.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3);padding:6px 12px 4px}
 .nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-1);padding:var(--sp-2) 0 0}
 /* Uniform 36px hit area for every rail item, so the rail scans as one column of
    equal targets instead of rows that grow with their label. */
@@ -750,7 +752,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-line{flex:none;display:flex;align-items:center;gap:var(--sp-2);padding:7px var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg)}
 .rep-line .repurl{font-family:var(--mono)}
 #repSend{display:inline-flex;align-items:center;gap:6px;flex:none}
-#repSend .kbd{font-size:var(--fs-xs);font-weight:600;opacity:.75}
+#repSend .kbd{font-size:var(--fs-xs);font-weight:600}
 .rep-work{flex:1;display:flex;min-height:0;background:var(--bg)}
 .rep-res>.pane-head{height:auto;min-height:38px;flex-wrap:wrap;padding-top:6px;padding-bottom:6px}
 .rep-res .statusline{min-width:0;overflow-wrap:anywhere}
@@ -1093,7 +1095,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-poc-req .p{color:var(--fg2);word-break:break-all}
 .find-poc-req .sts{color:var(--fg3);font-size:var(--fs-xs);flex-shrink:0}
 .find-poc-note-input{display:block;width:100%;margin-top:6px;padding:0;font-size:var(--fs-sm);font-style:italic;color:var(--fg3);background:transparent;border:none;font-family:inherit}
-.find-poc-note-input::placeholder{color:var(--fg3);opacity:.75}
+.find-poc-note-input::placeholder{color:var(--fg3)}
 .find-poc-note-input:focus{color:var(--fg2)}
 .find-block-controls{position:absolute;top:0;right:0;display:flex;gap:1px;opacity:0;pointer-events:none;transition:opacity var(--motion-fast) var(--motion-standard);background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-sm);padding:1px;z-index:1}
 .find-doc-actions{display:flex;gap:8px;margin:16px 0 24px;padding-top:12px;border-top:1px dashed var(--line2)}

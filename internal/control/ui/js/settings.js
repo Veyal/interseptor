@@ -409,7 +409,7 @@ function makeProxyListenerRow(addr){
   row.querySelector('.proxy-listener-del').onclick=()=>{
     const list=$('#proxyListenersList');
     if(list&&list.querySelectorAll('.proxy-listener-row').length>1){row.remove();markSettingsDirty(list);}
-    else toast('at least one proxy listener required');
+    else toast('at least one proxy listener required','error');
   };
   return row;
 }
@@ -521,7 +521,7 @@ async function saveDeviceProxyEndpoint(){
     toast('device proxy → '+ep.endpoint+(ep.mode==='auto'?' (auto)':' (manual)'));
   }catch(e){
     deviceProxyLoadEpoch++;
-    toast(e.message);
+    toast(e.message,'error');
   }finally{
     deviceProxyMutationPending=false;
     invalidateSettingsLoads({reconcile:true});
@@ -696,7 +696,7 @@ $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
       toast(current?'Strict origin certificate verification enabled':'Compatibility mode enabled');
     },
     failure:e=>{
-      toast('origin TLS: '+e.message);
+      toast('origin TLS: '+e.message,'error');
       clearSettingsDirty(['originTLSVerifyMode']);
       loadSettings();
     },
@@ -776,7 +776,7 @@ $('#setOobEnabled')&&($('#setOobEnabled').onchange=async()=>{
       applyOobDisabledUI();
       toast(current?'OOB catcher enabled':'OOB catcher disabled');
     },
-    failure:e=>{toast(e.message);clearSettingsDirty(['setOobEnabled']);loadSettings();},
+    failure:e=>{toast(e.message,'error');clearSettingsDirty(['setOobEnabled']);loadSettings();},
   });
 });
 
@@ -786,7 +786,7 @@ $('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
   const on=!control.classList.contains('on');
   return saveBooleanSetting('captureScopeOnly',on,{control,lockControl:true,
     success:current=>{setCapScope(current);toast(current?'Now saving only in-scope traffic':'Now saving all traffic');},
-    failure:e=>{toast('capture: '+e.message);loadSettings();},
+    failure:e=>{toast('capture: '+e.message,'error');loadSettings();},
   });
 });
 export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser background traffic':'Capturing browser background traffic';}
@@ -795,7 +795,7 @@ $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
   const on=!control.classList.contains('on');
   return saveBooleanSetting('suppressBrowserTelemetry',on,{control,lockControl:true,
     success:current=>{setSuppressTelemetry(current);toast(current?'New browser background traffic will be forwarded without capture':'Browser background suppression disabled; other capture policies still apply');},
-    failure:e=>{toast('browser background traffic: '+e.message);loadSettings();},
+    failure:e=>{toast('browser background traffic: '+e.message,'error');loadSettings();},
   });
 });
 export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
@@ -804,7 +804,7 @@ $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').oncl
   const on=!control.classList.contains('on');
   return saveBooleanSetting('suppressAndroidTelemetry',on,{control,lockControl:true,
     success:current=>{setSuppressAndroidTelemetry(current);toast(current?'Android telemetry suppressed':'Android telemetry suppression disabled; other capture policies still apply');},
-    failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
+    failure:e=>{toast('android telemetry: '+e.message,'error');loadSettings();},
   });
 });
 export function setFindingsUIEditing(on){state.findingsUIEditing=on;const b=$('#findingsUIEditingToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Findings editing is on':'Findings editing is off';}
@@ -825,7 +825,7 @@ $('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($(
   const enabled=$('#proxyAuthEnabled')?.value==='1';
   const user=($('#proxyAuthUser')?.value||'').trim();
   const password=$('#proxyAuthPassword')?.value||'';
-  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password');return;}
+  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password','error');return;}
   const userEl=$('#proxyAuthUser'),passEl=$('#proxyAuthPassword'),enabledEl=$('#proxyAuthEnabled');
   const generation=settingsEditGeneration(enabledEl);
   try{
@@ -834,14 +834,14 @@ $('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($(
       clearSettingsDirty(['proxyAuthEnabled','proxyAuthUser','proxyAuthPassword']);
     }
     toast(enabled?'Proxy authentication enabled':'Proxy authentication disabled');
-  }catch(e){toast('proxy authentication: '+e.message);}
+  }catch(e){toast('proxy authentication: '+e.message,'error');}
 }));
 $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
   const control=$('#invisibleProxyToggle');
   const on=!control.classList.contains('on');
   return saveBooleanSetting('invisibleProxy',on,{control,lockControl:true,
     success:current=>{setInvisibleProxy(current);toast(current?'Invisible proxy enabled':'Invisible proxy disabled');},
-    failure:e=>{toast('invisible: '+e.message);loadSettings();},
+    failure:e=>{toast('invisible: '+e.message,'error');loadSettings();},
   });
 });
 
@@ -850,7 +850,7 @@ $('#findingsUIEditingToggle')&&($('#findingsUIEditingToggle').onclick=async()=>{
   const on=!control.classList.contains('on');
   return saveBooleanSetting('findingsUIEditing',on,{control,lockControl:true,
     success:current=>{setFindingsUIEditing(current);window.dispatchEvent(new CustomEvent('interseptor:findings-ui-editing'));toast(current?'Findings editing enabled':'Findings editing disabled');},
-    failure:e=>{toast('findings editing: '+e.message);loadSettings();},
+    failure:e=>{toast('findings editing: '+e.message,'error');loadSettings();},
   });
 });
 
@@ -871,7 +871,7 @@ $('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
   const on=!control.classList.contains('on');
   return saveBooleanSetting('autoBypassOnPinFailure',on,{control,lockControl:true,
     success:current=>{setAutoBypass(current);toast(current?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');},
-    failure:e=>{toast('auto-bypass: '+e.message);loadSettings();},
+    failure:e=>{toast('auto-bypass: '+e.message,'error');loadSettings();},
   });
 });
 $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=()=>runSettingsAction($('#tlsBypassSave'),async()=>{
@@ -884,7 +884,7 @@ $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=()=>runSettingsAction($('#tlsB
     });
     if(settingsEditOwned(list,generation,submittedValue)){list.value=savedHosts.join('\n');clearSettingsDirty(['tlsBypassList']);}updateBypassCount();
     toast(savedHosts.length?('Passing through '+savedHosts.length+' domain'+(savedHosts.length>1?'s':'')):'Passthrough list cleared');}
-  catch(e){toast('passthrough: '+e.message);}
+  catch(e){toast('passthrough: '+e.message,'error');}
 }));
 export function addTLSBypassHosts(hosts){
   const additions=[...new Set((hosts||[]).map(h=>String(h).trim().toLowerCase()).filter(Boolean))];
@@ -1130,7 +1130,7 @@ if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#s
     if(on) msg=complete?'session saved · token macro on — fires before each send':'session saved — set target, request, extract & inject-name for the token macro to fire';
     if(submitted.loginMacro.enabled) msg+=' · login macro on';
     toast(msg);loadSession();
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
 });
 if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{
   let saveAcknowledged=false;
@@ -1138,7 +1138,7 @@ if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#log
     const submitted=sessionFormPayload();
     const r=await runLoginMacroWithSession(submitted,()=>{saveAcknowledged=true;sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);});
     toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
   finally{if(saveAcknowledged)await loadSession();}
 });
 // Test = dry-run: run the login request and show the response + the session it
@@ -1162,7 +1162,7 @@ if($('#loginMacroTest'))$('#loginMacroTest').onclick=()=>runSettingsAction($('#l
     if(out)out.innerHTML=html;
   }catch(e){
     if(out){out.style.display='block';out.innerHTML='<span style="color:var(--red)">Test failed: '+esc(e.message)+'</span>';}
-    else toast(e.message);
+    else toast(e.message,'error');
   }
 });
 
@@ -1393,19 +1393,19 @@ if(importFullFile)importFullFile.onchange=async e=>{
       const r=await api('/api/import/full?name='+encodeURIComponent(name.trim()),{method:'POST',body:f});
       toast('Imported project "'+r.name+'" — open it from the project switcher below');
       loadProject();
-    }catch(err){toast('import: '+err.message);}
+    }catch(err){toast('import: '+err.message,'error');}
   }
   e.target.value='';
 };
 const runSetupBtn=$('#runSetupBtn');
-if(runSetupBtn)runSetupBtn.onclick=()=>{import('./setup.js').then(m=>m.openSetup()).catch(e=>toast(e.message));};
+if(runSetupBtn)runSetupBtn.onclick=()=>{import('./setup.js').then(m=>m.openSetup()).catch(e=>toast(e.message,'error'));};
 const dlCa=$('#dlCaBtn');if(dlCa)dlCa.onclick=()=>toast('Downloading CA certificate — trust it on the client');
 $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
 $('#importProjectFile').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const text=await f.text();const r=await api('/api/import/project',{method:'POST',headers:{'content-type':'application/json'},body:text});
     toast(`imported ${r.importedFlows} flows · ${r.importedRules} rules · ${r.importedScope} scope`);
-    loadFlows();loadRules();loadScope();loadSettings();}catch(err){toast('import: '+err.message);}
+    loadFlows();loadRules();loadScope();loadSettings();}catch(err){toast('import: '+err.message,'error');}
   e.target.value='';
 };
 const importHARBtn=$('#importHARBtn');if(importHARBtn)importHARBtn.onclick=()=>$('#importHARFile').click();
@@ -1421,7 +1421,7 @@ if(importHARFile)importHARFile.onchange=async e=>{
     const n=r.imported!=null?r.imported:(r.importedFlows!=null?r.importedFlows:0);
     toast('HAR import: '+n+' entr'+(n===1?'y':'ies')+' merged');
     loadFlows();
-  }catch(err){toast('HAR import: '+err.message);}
+  }catch(err){toast('HAR import: '+err.message,'error');}
   e.target.value='';
 };
 const importBurpBtn=$('#importBurpBtn');if(importBurpBtn)importBurpBtn.onclick=()=>$('#importBurpFile').click();
@@ -1436,7 +1436,7 @@ if(importBurpFile)importBurpFile.onchange=async e=>{
     const n=r.imported||0,skipped=r.skipped||0;
     toast('Burp import: '+n+' entr'+(n===1?'y':'ies')+' merged'+(skipped?' · '+skipped+' skipped':''));
     loadFlows();
-  }catch(err){toast('Burp import: '+err.message);}
+  }catch(err){toast('Burp import: '+err.message,'error');}
   e.target.value='';
 };
 // ---- project switching (close current, open another / a new path) ----
@@ -1549,7 +1549,7 @@ $('#projPickerBtn')?.addEventListener('click',e=>openProjectModal(e.currentTarge
 $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
   const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();
-  if(!addrs.length){toast('enter at least one listener');return;}
+  if(!addrs.length){toast('enter at least one listener','error');return;}
   try{
     const s=await saveSettingsPatch({proxyAddrs:addrs});
     state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;
@@ -1557,14 +1557,14 @@ $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
     if(settingsEditOwned(list,generation)){renderProxyListeners(s.proxyAddrs||addrs);clearSettingsDirty([],['#proxyListenersList']);}
     await loadDeviceProxyEndpoint();
     toast('proxy now on '+s.proxyAddr);
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
 });
 $('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),async()=>{
   const host=$('#setControlHost'),port=$('#setControlPort');
   const hostGeneration=settingsEditGeneration(host),portGeneration=settingsEditGeneration(port);
   const submittedHost=host?.value,submittedPort=port?.value;
   const controlAddr=syncControlAddrFields();
-  if(!controlAddr){toast('enter control host and port');return;}
+  if(!controlAddr){toast('enter control host and port','error');return;}
   try{
     const s=await saveSettingsPatch({controlAddr},{reconcile:false});
     state.controlAddr=s.controlAddr;$('#controlAddr').textContent=s.controlAddr;
@@ -1578,7 +1578,7 @@ $('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),
     if(location.host!==s.controlAddr)toast('Control UI now on '+newUrl+' — open that URL if this page stops updating');
     else{toast('control UI now on '+s.controlAddr);scheduleSettingsReconcile();}
     const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url '+newUrl;
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
 });
 let sysProxyLoadEpoch=0;
 let sysProxyMutationPromise=null;
@@ -1692,7 +1692,7 @@ $('#sysProxyToggle').onclick=async()=>{
   try{
     const s=await setSystemProxyEnabled(!on);
     toast(s?.enabled?'system proxy enabled':'system proxy disabled');
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
 };
 
 let androidDeviceSerial='';
@@ -1936,7 +1936,7 @@ async function androidAction(fn){
   androidActionPending=true;androidDeviceActionsReady=false;androidLoadEpoch++;setAndroidActionBusy(true);
   let error=null;
   try{
-    try{await fn();}catch(e){toast(e.message);error=e;}
+    try{await fn();}catch(e){toast(e.message,'error');error=e;}
     const status=await loadAndroid({allowDuringAction:true});
     setAndroidActionBusy(true);
     if(error||!status?.ok)return false;
@@ -2120,7 +2120,7 @@ async function iosAction(fn){
   iosActionPending=true;iosLoadEpoch++;setIOSActionBusy(true);
   let error=null;
   try{
-    try{await fn();}catch(e){toast(e.message);error=e;}
+    try{await fn();}catch(e){toast(e.message,'error');error=e;}
     const status=await loadIOS({allowDuringAction:true});
     if(error||!status?.ok)return false;
     await mobileReadiness('#iosHint');
@@ -2260,7 +2260,7 @@ async function iosSshAction(fn){
   iosSshActionPending=true;iosSshLoadEpoch++;setIOSSshActionBusy(true);
   let error=null;
   try{
-    try{await fn();}catch(e){toast(e.message);error=e;}
+    try{await fn();}catch(e){toast(e.message,'error');error=e;}
     const status=await loadIOSSsh({allowDuringAction:true});
     if(error||!status?.ok)return false;
     await mobileReadiness('#iosSshHint');

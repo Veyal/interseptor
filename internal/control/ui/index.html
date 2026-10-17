@@ -936,7 +936,7 @@ Content-Type: application/json
           <div class="section" id="sysProxySection">
             <h3>System proxy</h3>
             <p class="hint u-mb-2">Route this machine's traffic through Interseptor (macOS only).</p>
-            <div class="row u-gap-3"><button type="button" class="uisw" id="sysProxyToggle" aria-pressed="false">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
+            <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="sysProxyToggle" aria-pressed="false">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
           <div class="section">
             <h3>Capture policy</h3>
@@ -981,7 +981,7 @@ Content-Type: application/json
           <div class="section" id="tlsBypassSection">
             <h3>TLS passthrough · SSL pinning</h3>
             <p class="hint u-mb-2">Domains listed here are tunneled straight through <b>without interception</b>, so pinned apps keep working while you focus on the domains you <i>can</i> intercept. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
-            <div class="row u-gap-3 u-mb-2"><button type="button" class="uisw" id="autoBypassToggle" aria-pressed="false">Auto-bypass on pinning failure is off</button><span class="hint">Adds a domain here automatically the first time its TLS handshake fails (pinning).</span></div>
+            <div class="row u-gap-3 u-wrap u-mb-2"><button type="button" class="uisw" id="autoBypassToggle" aria-pressed="false">Auto-bypass on pinning failure is off</button><span class="hint">Adds a domain here automatically the first time its TLS handshake fails (pinning).</span></div>
             <textarea id="tlsBypassList" class="host-list-edit" aria-label="TLS passthrough hosts" spellcheck="false" placeholder="api.pinned-app.com&#10;*.analytics.example.com"></textarea>
             <div class="row u-gap-2 u-mt-2"><button class="btn btn-primary" id="tlsBypassSave">Save passthrough list</button><span class="hint" id="tlsBypassCount"></span></div>
           </div>
@@ -1295,7 +1295,7 @@ Content-Type: application/json
             <label class="chk-row u-mb-2"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
             <div class="field"><textarea id="setSessionHeaders" aria-label="Session headers applied to outgoing sends" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" class="textarea-full"></textarea></div>
             <label class="chk-row u-ai-start u-mb-2"><input type="checkbox" id="setSessionUnscoped"> <span><b class="u-danger">Allow on any host (unsafe)</b> — attach session headers even when the send target is outside scope. Only use if you understand the cross-domain leak risk.</span></label>
-            <details class="section set-disc">
+            <details class="set-disc u-mt-3">
             <summary>Per-host overrides</summary>
               <div class="u-mt-2" id="hostHdrList"></div>
               <button class="btn xs u-mt-1" id="addHostHdrBtn">+ Add host</button>
@@ -1334,7 +1334,7 @@ Content-Type: application/json
             <div id="loginMacroTestOut" class="evidence u-hidden u-mt-2"></div>
             <p class="hint u-mt-2">Tip: right-click a login flow → <b>Use as login macro</b>.</p>
           </details>
-          <div class="row u-gap-2 u-pad-4"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" data-init-hidden></span></div>
+          <div class="row u-gap-2 u-wrap u-mt-4"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" data-init-hidden></span></div>
         </section>
         <section class="set-sec" data-sec="appearance" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-appearance"/></svg><h2>Appearance</h2></header>

@@ -29,6 +29,7 @@ import { initConnection, setConnectionStatus } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
+import { readSingleKeyPref } from './keys.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
@@ -206,6 +207,7 @@ document.addEventListener('keydown',e=>{
     e.preventDefault();toggleSelectAllShown();return;
   }
   if(e.key!=='ArrowDown'&&e.key!=='ArrowUp'&&e.key!=='j'&&e.key!=='k')return;
+  if((e.key==='j'||e.key==='k')&&!readSingleKeyPref())return;
   if(!p||!p.classList.contains('active'))return;
   const t=e.target;
   if(isTypingTarget(t))return;
@@ -553,9 +555,10 @@ function exactModifiers(e,{mod=false,shift=false,alt=false}={}){
 }
 function isModShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true});}
 function isModSpace(e){return (e.key===' '||e.code==='Space')&&exactModifiers(e,{mod:true});}
-function isPlainShortcut(e,key,{shift=false}={}){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{shift});}
+// Bare-character shortcuts honour the Settings switch "Single-key shortcuts" (WCAG 2.1.4).
+function isPlainShortcut(e,key,{shift=false}={}){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{shift})&&readSingleKeyPref();}
 function isModShiftShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true,shift:true});}
-function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
+function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&readSingleKeyPref();}
 function isTypingTarget(t){
   const tag=(t?.tagName||'').toLowerCase();
   return tag==='input'||tag==='textarea'||tag==='select'||!!t?.isContentEditable
