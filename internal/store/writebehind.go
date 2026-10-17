@@ -765,6 +765,9 @@ func (s *Store) completeOps(batch []flowOp) {
 		}
 	}
 	s.flowMu.Unlock()
+	if !batchHasBodies(batch) {
+		return // typical GET burst: no body claims, so leave bodyMu alone
+	}
 	// One bodyMu acquisition for the whole chunk. Capture takes that same lock
 	// for every finalized body, so releasing per write made the flusher queue
 	// behind the proxy up to flowBatchMax times per chunk — which is what
@@ -783,6 +786,18 @@ func (s *Store) completeOps(batch []flowOp) {
 		s.releasePendingBody(op.flow.OriginalResBodyHash)
 	}
 	s.bodyMu.Unlock()
+}
+
+func batchHasBodies(batch []flowOp) bool {
+	for _, op := range batch {
+		if hasAnyHash(op.release) {
+			return true
+		}
+		if f := op.flow; f != nil && (f.ReqBodyHash != "" || f.ResBodyHash != "" || f.OriginalReqBodyHash != "" || f.OriginalResBodyHash != "") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) abandonPending() int {

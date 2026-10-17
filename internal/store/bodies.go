@@ -174,11 +174,26 @@ func (s *Store) releasePendingBody(sum string) {
 }
 
 func (s *Store) publishBodies(hashes ...string) {
+	// Most flows carry no body claim (GETs, an enqueue that dropped nothing).
+	// bodyMu is held across file system calls by every body capture, so never
+	// queue behind it for nothing.
+	if !hasAnyHash(hashes) {
+		return
+	}
 	s.bodyMu.Lock()
 	for _, sum := range hashes {
 		s.releasePendingBody(sum)
 	}
 	s.bodyMu.Unlock()
+}
+
+func hasAnyHash(hashes []string) bool {
+	for _, sum := range hashes {
+		if sum != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) protectMergeBodies(hashes []string) func() {

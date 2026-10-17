@@ -96,6 +96,42 @@ func TestEnqueueUpdateCoalescesIntoQueuedInsert(t *testing.T) {
 	}
 }
 
+// TestEnqueueDoesNotTakeBodyLockWithoutWork pins the hot-path contract: the
+// proxy enqueues two writes per flow, and body capture holds bodyMu across
+// file system calls, so an enqueue that drops nothing must not touch bodyMu
+// (doing so formed multi-second lock convoys under load).
+func TestEnqueueDoesNotTakeBodyLockWithoutWork(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	pauseFlusher(t, s)
+	s.bodyMu.Lock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f := queueInsert(t, s, "/no-body-lock")
+		f.Status = 200
+		s.EnqueueUpdateFlow(f) // coalesced
+		g := queueInsert(t, s, "/no-body-lock-2")
+		s.flowMu.Lock()
+		s.takeFlowPendingLocked() // force the next update to append
+		s.flowMu.Unlock()
+		g.Status = 200
+		s.EnqueueUpdateFlow(g)
+		s.EnqueueAddFlowTags(g.ID, []string{"x"})
+	}()
+	select {
+	case <-done:
+		s.bodyMu.Unlock()
+	case <-time.After(2 * time.Second):
+		s.bodyMu.Unlock()
+		<-done
+		t.Fatal("enqueue blocked on bodyMu although nothing was dropped")
+	}
+}
+
 // TestCoalescedUpdateReleasesEveryBodyClaim keeps body GC ownership exact when
 // two snapshots fold into one queued write: every claim the replaced snapshot
 // carried is still released once the coalesced write commits.
