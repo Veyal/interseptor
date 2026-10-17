@@ -1859,9 +1859,11 @@ function syncScopeToggle(on){
 {const edit=$('#scopeEdit');if(edit)edit.onclick=()=>{const open=getShellApi().openSettings;if(open)open('scope');};}
 // One-time tip: the project-wide scope switch lives in the Flight Bar now.
 // Seen-state is a per-viewer convenience, so every storage touch is guarded.
+// Only a returning viewer (one with saved History preferences) knew the old
+// place, so a first-run user is not told that something "moved".
 {
   const KEY='interseptor.coach.scopeSwitch';
-  let seen=false;try{seen=localStorage.getItem(KEY)==='1';}catch(e){}
+  let seen=true;try{seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'proxy.dock','inspect.height'].some(k=>localStorage.getItem(k)!==null);}catch(e){}
   const anchor=$('#scopeEdit');
   if(!seen&&anchor&&anchor.parentNode){
     const tip=document.createElement('span');
