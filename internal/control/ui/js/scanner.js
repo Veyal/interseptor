@@ -707,6 +707,9 @@ function onScanProgress(m){
   if(count)count.textContent=done.toLocaleString()+' / '+total.toLocaleString()+' flows';
 }
 try{registerSseHandler('scan.progress',onScanProgress);}catch(e){/* progress stays indeterminate */}
+// A scope edit changes which hosts a scan covers: refresh the target list (and the Run gate) while
+// the panel is open; it is reloaded anyway whenever the panel is opened.
+try{registerSseHandler('scope.update',()=>{if(document.querySelector('#panel-scanner.active'))loadScanTargets();});}catch(e){/* reloaded on next open */}
 async function stopScan(){
   if(!scanRunPending||scanStopPending)return;
   scanStopPending=true;syncScanProgress();
@@ -1130,15 +1133,22 @@ $('#scanClear')&&($('#scanClear').onclick=async()=>{
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}
   setScanRunState('idle','Run scan ▸');
   syncScanActionControls();
+  // The clear's own scanner.update would reload an empty list and wipe the confirmation below.
+  let cleared=false;
   try{
     await api('/api/scanner/issues',{method:'DELETE'});
     if(clearEpoch!==scanClearEpoch||clearRunEpoch!==scanRunEpoch||clearResultsEpoch!==scanResultsEpoch)return;
-    scanState.issues=[];scanState.sel=null;renderScan();
+    scanState.issues=[];scanState.sel=null;cleared=true;renderScan();
     $('#scanRescanState').textContent='Scanner results cleared · curated Findings were not changed';
   }catch(e){
     if(clearEpoch===scanClearEpoch&&clearResultsEpoch===scanResultsEpoch)renderLoadError($('#scanRescanState'),'Clear scanner results',e,()=>$('#scanClear').click(),scanState.issues.length>0);
   }finally{
-    if(clearEpoch===scanClearEpoch){scanClearPending=false;if(button)button.textContent='Clear';syncScanActionControls();if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}}
+    if(clearEpoch===scanClearEpoch){
+      scanClearPending=false;if(button)button.textContent='Clear results';syncScanActionControls();
+      // The button was disabled while it had focus; give focus back instead of leaving it on <body>.
+      if(button&&(!document.activeElement||document.activeElement===document.body))button.focus({preventScroll:true});
+      if(scanResultsRefreshPending){scanResultsRefreshPending=false;if(!cleared)loadIssues();}
+    }
   }
 });
 

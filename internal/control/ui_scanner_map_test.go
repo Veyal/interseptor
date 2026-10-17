@@ -56,3 +56,18 @@ func TestUIScannerProgressStopAndHostFilter(t *testing.T) {
 		"if(row.hidden&&stopFocused)$('#scanRun')?.focus",
 	)
 }
+
+// Clearing results renamed the button "Clear" (the markup says "Clear results"),
+// the clear's own scanner.update reload wiped its confirmation, and a scope edit
+// left the target list and Run gate stale until the panel was reopened.
+func TestUIScannerClearAndScopeRefresh(t *testing.T) {
+	js := readUIAsset(t, "js/scanner.js")
+	requireUIContains(t, js,
+		"if(button)button.textContent='Clear results';",
+		"if(!cleared)loadIssues();",
+		"registerSseHandler('scope.update',()=>{if(document.querySelector('#panel-scanner.active'))loadScanTargets();});",
+	)
+	if strings.Contains(js, "scanClearPending=false;if(button)button.textContent='Clear';") {
+		t.Fatal("the Clear results button must keep its label after clearing")
+	}
+}
