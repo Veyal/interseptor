@@ -137,6 +137,11 @@ const groupIssues = (issues) => issues.slice(); // ready-made groups; a copy, as
 const filterGroups = (groups) => groups;
 const renderScanChips = () => {};
 const summaryText = () => '';
+const hostCounts = () => [];
+const renderScanHosts = () => {};
+const issuesForHost = (issues) => issues;
+const groupHostLabel = (g) => g.items.length + ' target' + (g.items.length === 1 ? '' : 's');
+const scanEmptyHint = () => '';
 const renderScanDetail = () => {};
 const setScanDetailHTML = () => {};
 const renderState = () => {};

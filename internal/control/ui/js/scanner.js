@@ -6,7 +6,7 @@ import { renderState } from './statepanel.js';
 import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
 import { stepIndex } from './list-rows-model.js';
-import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, coverageNote } from './scanner-model.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, hostCounts, issuesForHost, groupHostLabel, coverageNote } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -791,6 +791,7 @@ export async function loadScanTargets(){
     if(d.truncated)throw new Error('server returned a truncated host list — retry before choosing a target');
     const hosts=(d.hosts||[]).filter(h=>h&&h.host);
     scanUI.hostCount=hosts.length;scanUI.hostsLoaded=true;renderScanContext();
+    if(!scanState.issues.length&&!scanRunPending)renderScan(); // the empty state names what Run will cover
     const cur=sel.value;
     sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${Number(h.count)||0})</option>`).join('');
     if(hosts.some(h=>h.host===cur))sel.value=cur;
@@ -817,7 +818,7 @@ export const sevRank=modelSevRank;
 export function scanGroups(){return groupIssues(scanState.issues);}
 // Scanner view state that is not part of the issue data: the severity filter,
 // the split pane and the scope/target context behind the Run gate.
-const scanUI={sevActive:new Set(),pane:null,hostCount:0,hostsLoaded:false,scope:null};
+const scanUI={sevActive:new Set(),host:'',pane:null,hostCount:0,hostsLoaded:false,scope:null};
 function setScanDetailHTML(html){
   const host=$('#scanDetail');if(!host)return;
   // The SplitPane's Back button lives inside the detail; keep it across renders.
@@ -849,7 +850,7 @@ function scanItemHTML(g,idx){
   const on=idx===scanState.sel;
   return `<div class="scan-item ${on?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" data-key="${escAttr(g.title)}" role="option" tabindex="${on?'0':'-1'}" aria-selected="${on?'true':'false'}" aria-posinset="${idx+1}" aria-setsize="${(scanState.groups||[]).length}">
     ${sevChip(g.severity)}
-    <div class="t" title="${escAttr(g.title)}">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`;
+    <div class="t" title="${escAttr(g.title)}">${esc(g.title)}</div><div class="tg">${esc(groupHostLabel(g))}</div></div>`;
 }
 function ensureScanListWin(list){
   if(scanListWin&&scanListWin.container===list)return scanListWin;
@@ -906,6 +907,28 @@ function moveScanSelection(e,from){
   $('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true});
   requestAnimationFrame(()=>$('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true}));
 }
+// With traffic captured but no scan run yet, say what Run will cover instead of asking for traffic.
+function scanEmptyHint(){
+  const n=scanUI.hostCount;
+  if(scanUI.hostsLoaded&&n>0)return 'Run scan to check '+n+' in-scope host'+(n===1?'':'s')+'. It reads captured traffic only and sends nothing.';
+  return 'Capture some traffic, then Run scan.';
+}
+// The host filter narrows the results to one target, so background traffic from other hosts
+// (a browser's own update and sign-in calls when no scope is set) cannot bury them. It only
+// appears when the issues span more than one host; options are rebuilt only when the hosts change.
+let scanHostSig='';
+function renderScanHosts(hosts){
+  const row=$('#scanHostRow'),sel=$('#scanHostFilter');if(!row||!sel)return;
+  row.hidden=hosts.length<2;
+  const sig=JSON.stringify(hosts);
+  if(sig!==scanHostSig){
+    scanHostSig=sig;
+    const total=hosts.reduce((n,h)=>n+h.count,0);
+    sel.innerHTML='<option value="">All hosts ('+total+')</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${h.count})</option>`).join('');
+  }
+  sel.value=scanUI.host;
+}
+$('#scanHostFilter')?.addEventListener('change',e=>{scanUI.host=e.target.value||'';scanState.sel=null;renderScan();});
 export function renderScan(opts){
   const list=$('#scanList');
   const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||'';
@@ -913,15 +936,19 @@ export function renderScan(opts){
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
   const focusedTitle=opts&&typeof opts.focusTitle==='string'?opts.focusTitle:Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
   list.removeAttribute('data-state');
-  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';if(scanListWin)scanListWin.suspend();list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
-  const all=groupIssues(scanState.issues);
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;scanUI.host='';renderScanHosts([]);renderScanChips([]);$('#scanCount').textContent='';if(scanListWin)scanListWin.suspend();list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">'+esc(scanEmptyHint())+'</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
+  const hosts=hostCounts(scanState.issues);
+  if(scanUI.host&&!hosts.some(h=>h.host===scanUI.host))scanUI.host='';
+  renderScanHosts(hosts);
+  const scoped=issuesForHost(scanState.issues,scanUI.host);
+  const all=groupIssues(scoped);
   const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
   renderScanChips(all);
-  $('#scanCount').textContent=summaryText(all,scanState.issues);
+  $('#scanCount').textContent=summaryText(all,scoped);
   if(!groups.length){
     scanState.sel=null;
     if(scanListWin)scanListWin.suspend();
-    renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size,onClear:()=>{scanUI.sevActive=new Set();renderScan();}});
+    renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size+(scanUI.host?1:0),onClear:()=>{scanUI.sevActive=new Set();scanUI.host='';renderScan();}});
     setScanDetailHTML(SCAN_NO_SELECTION);
     return;
   }

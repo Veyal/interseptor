@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SEV_ORDER, sevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity,
-  onlySeverity, summaryText, coverageNote, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
+  onlySeverity, summaryText, issueHost, hostCounts, issuesForHost, groupHostLabel, coverageNote, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
 } from '../js/scanner-model.js';
 
 const issues = [
@@ -53,8 +53,28 @@ test('"Filter this severity" keeps the issue severity as the chips spell it', ()
 
 test('summary text', () => {
   const g = groupIssues(issues);
-  assert.equal(summaryText(g, issues), '3 findings · 4 targets');
+  assert.equal(summaryText(g, issues), '3 issues · 4 targets');
   assert.equal(summaryText([], []), '');
+});
+
+test('issue hosts: parsed from every target shape, counted and filterable', () => {
+  assert.equal(issueHost('GET app.example.com/p?q=1'), 'app.example.com');
+  assert.equal(issueHost('POST API.example.com'), 'api.example.com');
+  assert.equal(issueHost('https://www.example.com:8443/x'), 'www.example.com');
+  assert.equal(issueHost('cdn.example.com/a.js'), 'cdn.example.com');
+  assert.equal(issueHost(''), '');
+  const mixed = [
+    { title: 'Missing headers', severity: 'Medium', target: 'GET app.example.com/a' },
+    { title: 'Missing headers', severity: 'Medium', target: 'GET app.example.com/b' },
+    { title: 'Missing headers', severity: 'Medium', target: 'GET accounts.example.net/' },
+    { title: 'CORS', severity: 'High', target: 'GET accounts.example.net/o' },
+  ];
+  assert.deepEqual(hostCounts(mixed), [{ host: 'accounts.example.net', count: 2 }, { host: 'app.example.com', count: 2 }]);
+  const onlyApp = groupIssues(issuesForHost(mixed, 'app.example.com'));
+  assert.deepEqual(onlyApp.map((g) => [g.title, g.items.length]), [['Missing headers', 2]]);
+  assert.equal(issuesForHost(mixed, '').length, 4);
+  assert.equal(groupHostLabel(groupIssues(mixed).find((g) => g.title === 'Missing headers')), '3 targets · 2 hosts');
+  assert.equal(groupHostLabel(onlyApp[0]), '2 targets');
 });
 
 test('a capped scan says older traffic was not scanned', () => {

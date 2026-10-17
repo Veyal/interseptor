@@ -36,11 +36,13 @@ func TestMapVirtualTableIsOneMeasuredTableWithWholeTableKeys(t *testing.T) {
 
 // The scanner shows real progress from scan.progress events and can stop a scan
 // through POST /api/scanner/cancel (a stopped scan saves nothing and is not
-// reported as a failure). A capped scan says older traffic was not scanned.
-func TestUIScannerProgressAndStop(t *testing.T) {
+// reported as a failure). Results can be narrowed to one host, so traffic from
+// hosts outside the engagement cannot bury the target's issues.
+func TestUIScannerProgressStopAndHostFilter(t *testing.T) {
 	region := uiRegion(t, "scanner")
 	requireUIContains(t, region,
 		`<button type="button" class="btn xs" id="scanStop">Stop scan</button>`,
+		`<div class="scan-host-filter" id="scanHostRow" hidden><label for="scanHostFilter">Host</label><select id="scanHostFilter" class="btn btn-field">`,
 	)
 	js := readUIAsset(t, "js/scanner.js")
 	requireUIContains(t, js,
@@ -48,6 +50,7 @@ func TestUIScannerProgressAndStop(t *testing.T) {
 		"api('/api/scanner/cancel',{method:'POST'})",
 		"if(e&&e.status===409&&scanStopPending){",
 		"Scan stopped · nothing was saved; the previous results are unchanged",
+		"const scoped=issuesForHost(scanState.issues,scanUI.host);",
 		"stateEl.textContent=coverage||",
 		"if(!fresh)loadIssues();",
 		"if(row.hidden&&stopFocused)$('#scanRun')?.focus",

@@ -62,11 +62,52 @@ export function toggleSeverity(active, severity) {
   return next;
 }
 
+// Results are "issues": "findings" are the curated reports in the Findings tool.
 export function summaryText(groups, issues) {
   const g = Array.isArray(groups) ? groups.length : 0;
   const t = Array.isArray(issues) ? issues.length : 0;
   if (!g) return '';
-  return g + ' finding' + (g === 1 ? '' : 's') + ' · ' + t + ' target' + (t === 1 ? '' : 's');
+  return g + ' issue' + (g === 1 ? '' : 's') + ' · ' + t + ' target' + (t === 1 ? '' : 's');
+}
+
+// issueHost reads the host out of an issue target. Built-in checks write
+// "METHOD host/path"; a custom check may write a URL or a bare host. It matches
+// issueHost in internal/control/scanner_issues_query.go.
+export function issueHost(target) {
+  let t = String(target || '').trim();
+  const sp = t.indexOf(' ');
+  if (sp >= 0 && !t.slice(0, sp).includes('/')) t = t.slice(sp + 1).trim();
+  if (t.includes('://')) {
+    try { const h = new URL(t).hostname; if (h) return h.toLowerCase(); } catch { /* fall through */ }
+  }
+  const cut = t.search(/[/?# ]/);
+  return (cut >= 0 ? t.slice(0, cut) : t).toLowerCase();
+}
+
+// hostCounts lists the hosts the issues fired on, most issues first, so the
+// results can be narrowed to one target when browser background traffic (or any
+// other host outside the engagement) fills the list.
+export function hostCounts(issues) {
+  const counts = new Map();
+  for (const i of Array.isArray(issues) ? issues : []) {
+    const h = issueHost(i && i.target);
+    if (h) counts.set(h, (counts.get(h) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([host, count]) => ({ host, count }));
+}
+
+// issuesForHost keeps one host's issues; '' keeps them all.
+export function issuesForHost(issues, host) {
+  const list = Array.isArray(issues) ? issues : [];
+  return host ? list.filter((i) => issueHost(i && i.target) === host) : list;
+}
+
+// groupHostLabel is the list row's second line: how many targets, and on how
+// many hosts when it is more than one.
+export function groupHostLabel(group) {
+  const items = (group && group.items) || [];
+  const hosts = new Set(items.map((i) => issueHost(i && i.target)).filter(Boolean)).size;
+  return items.length + ' target' + (items.length === 1 ? '' : 's') + (hosts > 1 ? ' · ' + hosts + ' hosts' : '');
 }
 
 // coverageNote explains a scan that stopped at its flow cap: the newest flows
