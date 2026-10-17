@@ -993,10 +993,14 @@ function repBuildRaw(t){
   if(!headers.some(line=>/^host:/i.test(line)))headers.unshift('Host: '+u.host);
   const method=t.method||'GET';
   const raw=`${method} ${u.pathname}${u.search} HTTP/1.1\n${headers.join('\n')}\n\n${repExportBody(t)}`;
-  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(line=>!/^host:/i.test(line)),body:repExportBody(t)};
+  // curl derives Host from the URL, so only a Host that differs from it (a
+  // vhost or Host-header test) is kept as an explicit header.
+  const keepHeader=line=>!/^host:/i.test(line)||line.replace(/^host:\s*/i,'').trim().toLowerCase()!==u.host.toLowerCase();
+  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(keepHeader),body:repExportBody(t)};
 }
 function repCurlCommand(built){
-  const parts=['curl -i -X '+built.method];
+  // curl -X HEAD waits for a body that never comes; -I is curl's HEAD.
+  const parts=[built.method==='HEAD'?'curl -I':'curl -i -X '+built.method];
   built.headers.forEach(line=>parts.push('-H '+shellQuote(line)));
   if(built.body)parts.push('--data-raw '+shellQuote(built.body));
   parts.push(shellQuote(built.url));
