@@ -14,11 +14,19 @@ import (
 // BodyWriter streams bytes to a temp file while hashing them, then commits
 // the file to a content-addressed path on Finalize. Safe for bounded memory:
 // bytes are never buffered whole.
+//
+// The temp file is created on the first non-empty Write, so an empty body
+// (every GET request, every 204/304 response) costs no file system work and
+// finalizes to "" — the same "no body" the other capture paths record.
 type BodyWriter struct {
-	s                  *Store
-	tmp                *os.File
-	h                  hash.Hash
-	n                  int64
+	s   *Store
+	tmp *os.File
+	h   hash.Hash
+	n   int64
+	// createErr is a failed lazy temp-file creation. Write keeps reporting
+	// success so a tee'd forward is never broken by capture; Finalize returns
+	// the error so the caller flags the flow.
+	createErr          error
 	pendingPublication bool
 	// lockHeld marks a writer whose caller already holds bodyMu and keeps
 	// holding it until the hash is referenced. Finalize must not take the lock
@@ -45,12 +53,8 @@ func (s *Store) newBodyWriterUnderBodyLock() (*BodyWriter, error) {
 }
 
 func (s *Store) newBodyWriter(pendingPublication, lockHeld bool) (*BodyWriter, error) {
-	tmp, err := os.CreateTemp(s.bodiesDir, ".tmp-*")
-	if err != nil {
-		return nil, err
-	}
 	return &BodyWriter{
-		s: s, tmp: tmp, h: sha256.New(),
+		s: s, h: sha256.New(),
 		pendingPublication: pendingPublication,
 		lockHeld:           lockHeld,
 	}, nil
@@ -58,6 +62,20 @@ func (s *Store) newBodyWriter(pendingPublication, lockHeld bool) (*BodyWriter, e
 
 // Write implements io.Writer.
 func (w *BodyWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if w.tmp == nil {
+		if w.createErr != nil {
+			return len(p), nil
+		}
+		tmp, err := os.CreateTemp(w.s.bodiesDir, ".tmp-*")
+		if err != nil {
+			w.createErr = err
+			return len(p), nil
+		}
+		w.tmp = tmp
+	}
 	n, err := w.tmp.Write(p)
 	w.h.Write(p[:n])
 	w.n += int64(n)
@@ -67,6 +85,11 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 // Finalize commits the body and returns its sha256 hex hash and byte length.
 // If a body with the same hash already exists it is deduplicated.
 func (w *BodyWriter) Finalize() (string, int64, error) {
+	if w.tmp == nil {
+		// Nothing was written, or the temp file could not be created: no
+		// file, no hash and no GC claim to take.
+		return "", 0, w.createErr
+	}
 	// bodyMu makes "this blob is on disk" and "a writer has claimed its hash"
 	// one step as far as a body GC pass is concerned. A caller that already
 	// holds the lock for a wider window says so with lockHeld.
@@ -183,8 +206,10 @@ func (s *Store) protectMergeBodies(hashes []string) func() {
 
 // Abort discards an in-progress body (e.g. on error).
 func (w *BodyWriter) Abort() {
-	w.tmp.Close()
-	os.Remove(w.tmp.Name())
+	if w.tmp != nil {
+		w.tmp.Close()
+		os.Remove(w.tmp.Name())
+	}
 	if w.pendingHash == "" {
 		return
 	}

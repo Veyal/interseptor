@@ -10,6 +10,48 @@ import (
 	"testing"
 )
 
+// TestBodyWriterEmptyBodyCreatesNoFile pins the empty-body fast path: a capture
+// that never receives a byte (every GET request body, every 204/304 response)
+// must not create, hash, rename or unlink a temp file, and reports "no body"
+// rather than the sha256 of the empty string.
+func TestBodyWriterEmptyBodyCreatesNoFile(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	for _, mk := range []func() (*BodyWriter, error){s.NewBodyWriter, s.NewFlowBodyWriter} {
+		w, err := mk()
+		if err != nil {
+			t.Fatalf("new writer: %v", err)
+		}
+		if _, err := w.Write(nil); err != nil {
+			t.Fatalf("empty write: %v", err)
+		}
+		if tmp, _ := filepath.Glob(filepath.Join(s.BodiesDir(), ".tmp-*")); len(tmp) != 0 {
+			t.Fatalf("empty capture created temp files %v", tmp)
+		}
+		hash, n, err := w.Finalize()
+		if err != nil || hash != "" || n != 0 {
+			t.Fatalf("Finalize = %q, %d, %v; want \"\", 0, nil", hash, n, err)
+		}
+		w.Abort() // safe after Finalize on the empty path
+	}
+	entries, err := os.ReadDir(s.BodiesDir())
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("bodies dir not empty after empty captures: %d entries", len(entries))
+	}
+	s.bodyMu.Lock()
+	pending := len(s.pendingBodies)
+	s.bodyMu.Unlock()
+	if pending != 0 {
+		t.Fatalf("empty capture left %d pending ownership record(s)", pending)
+	}
+}
+
 func TestFlowBodyWriterReleasesOwnershipWhenFinalizeFails(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
