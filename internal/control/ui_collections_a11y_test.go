@@ -88,6 +88,16 @@ func TestCollectionsSendResultStaysWithItsRequest(t *testing.T) {
 	}
 }
 
+// A current value typed into a new variable row before its name was keyed by
+// the empty name and silently dropped on save. Values are keyed by row now.
+func TestCollectionsVariableSheetKeepsCurrentValueTypedBeforeName(t *testing.T) {
+	js := executableJS(readUIAsset(t, "js/collections-sheets.js"))
+	requireUIContains(t, js, "currents.set(r, {", "for (const [row, c] of currents)", "const key = (row.key || '').trim();")
+	if strings.Contains(js, "currents.set(r.key") {
+		t.Error("current values must not be keyed by the name at typing time")
+	}
+}
+
 // The collection and environment pickers are enhanced into .ui-select
 // wrappers; when the toolbar is crowded the wrapper shrinks, so the trigger
 // must fill it (and ellipsize) rather than spill over the next button.

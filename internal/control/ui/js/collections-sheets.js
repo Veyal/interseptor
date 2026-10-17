@@ -66,7 +66,7 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
     const curPlaceholder = r.secret ? (r.hasCurrent ? 'set (hidden)' : 'not set') : '';
     tr.append(on, mkText('key', 'Name', {}), type,
       mkText('initial', 'Initial value of', { label: 'Initial value', disabled: r.secret, placeholder: r.secret ? 'never stored' : '' }),
-      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r.key, { value: v, secret: r.secret }); } }));
+      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r, { value: v, secret: r.secret }); } }));
     const del = el('td', 'coll-del'); const x = btn('', () => { rows.splice(rows.indexOf(r), 1); paintRows(); }, 'btn xs'); x.innerHTML = icon('trash'); x.setAttribute('aria-label', 'Remove ' + (r.key || 'variable')); del.append(x); tr.append(del);
     tb.append(tr);
   };
@@ -84,8 +84,11 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
     save.disabled = true;
     try {
       await jsend('PUT', '/api/variables/' + g.kind + '/' + encodeURIComponent(g.uid), { variables: V.toDeclared(rows) });
-      for (const [key, c] of currents) {
-        if (!key || (c.secret && c.value === '')) continue;
+      // Keyed by row, so a value typed before the name (or a renamed row) is
+      // saved under the name the row has now; removed rows are dropped.
+      for (const [row, c] of currents) {
+        const key = (row.key || '').trim();
+        if (!key || !rows.includes(row) || (c.secret && c.value === '')) continue;
         await jsend('PUT', '/api/variables/' + g.kind + '/' + encodeURIComponent(g.uid) + '/current', { key, value: c.value, secret: c.secret });
       }
       await reloadEnvs();
