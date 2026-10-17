@@ -4,12 +4,12 @@ import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
-import { S, X, btn, el, itemByUid, jget, jsend, setStatus } from './collections-core.js';
-import { paintPane, scheduleResolve } from './collections-editor.js';
+import { S, X, btn, el, fmtSize, itemByUid, jget, jsend, setStatus } from './collections-core.js';
 import { globalsEnv, reloadEnvs, renderEnvSelect, renderScriptsChip, updateBadge } from './collections-env.js';
-import { fmtSize } from './collections-response.js';
-import { renderTree } from './collections-tree.js';
 import { CONFIRM_PHRASE, buildRunPlan, methodBreakdown, planConfirmed, planSummary } from './collections-run-plan.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { openEnvSheet, openImportSheet, openScriptsSheet, runCollection });
 
 export function openEnvSheet() {
   if (!S.collection) { toast('Create or import a collection first'); return; }
@@ -66,7 +66,7 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
     const curPlaceholder = r.secret ? (r.hasCurrent ? 'set (hidden)' : 'not set') : '';
     tr.append(on, mkText('key', 'Name', {}), type,
       mkText('initial', 'Initial value of', { label: 'Initial value', disabled: r.secret, placeholder: r.secret ? 'never stored' : '' }),
-      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r.key, { value: v, secret: r.secret }); } }));
+      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r, { value: v, secret: r.secret }); } }));
     const del = el('td', 'coll-del'); const x = btn('', () => { rows.splice(rows.indexOf(r), 1); paintRows(); }, 'btn xs'); x.innerHTML = icon('trash'); x.setAttribute('aria-label', 'Remove ' + (r.key || 'variable')); del.append(x); tr.append(del);
     tb.append(tr);
   };
@@ -84,13 +84,16 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
     save.disabled = true;
     try {
       await jsend('PUT', '/api/variables/' + g.kind + '/' + encodeURIComponent(g.uid), { variables: V.toDeclared(rows) });
-      for (const [key, c] of currents) {
-        if (!key || (c.secret && c.value === '')) continue;
+      // Keyed by row, so a value typed before the name (or a renamed row) is
+      // saved under the name the row has now; removed rows are dropped.
+      for (const [row, c] of currents) {
+        const key = (row.key || '').trim();
+        if (!key || !rows.includes(row) || (c.secret && c.value === '')) continue;
         await jsend('PUT', '/api/variables/' + g.kind + '/' + encodeURIComponent(g.uid) + '/current', { key, value: c.value, secret: c.secret });
       }
       await reloadEnvs();
       renderEnvSelect();
-      scheduleResolve();
+      X.scheduleResolve();
       status.textContent = 'Saved';
       toast('Variables saved');
     } catch (e) { status.textContent = ''; toastError('Could not save variables', e); } finally { save.disabled = false; }
@@ -191,12 +194,12 @@ export async function paintScriptsSheet(body) {
       if (!all && !picked.size) { toast('Select scripts to approve'); return; }
       const ok = await uiConfirm('Approve scripts', 'Approved scripts run with these capabilities: <b>' + esc([...caps].join(', ') || 'none') + '</b>. Read the source first; a trusted script is trusted code with your network position.', 'Approve', 'btn accent');
       if (!ok) return;
-      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust', M.trustBody({ all, hashes: [...picked], capabilities: [...caps] })); toast('Scripts approved'); body.textContent = ''; await paintScriptsSheet(body); renderTree(); if (S.ed) paintPane(S.tab); } catch (e) { toastError('Could not approve', e); }
+      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust', M.trustBody({ all, hashes: [...picked], capabilities: [...caps] })); toast('Scripts approved'); body.textContent = ''; await paintScriptsSheet(body); X.renderTree(); if (S.ed) X.paintPane(S.tab); } catch (e) { toastError('Could not approve', e); }
     };
     const revoke = async () => {
       const ok = await uiConfirm('Revoke approval', 'Quarantine every script in this collection again?', 'Revoke', 'btn danger');
       if (!ok) return;
-      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust/revoke', { all: true }); toast('Approval revoked'); body.textContent = ''; await paintScriptsSheet(body); renderTree(); } catch (e) { toastError('Could not revoke', e); }
+      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust/revoke', { all: true }); toast('Approval revoked'); body.textContent = ''; await paintScriptsSheet(body); X.renderTree(); } catch (e) { toastError('Could not revoke', e); }
     };
     foot.append(status, btn('Revoke all', revoke, 'btn danger'), btn('Approve selected', () => approve(false), 'btn'), btn('Approve all', () => approve(true), 'btn accent'));
     holder.append(foot);
@@ -342,7 +345,7 @@ export function paintImport(body, initialText) {
     try {
       const r = await post('commit');
       if (!r) return;
-      toast('Imported. Scripts are quarantined until you approve them.');
+      toast(M.importCommitMessage(r));
       closeSheet('collImportSheet');
       if (r.collectionUid) S.colUid = r.collectionUid;
       S.selUid = '';
@@ -399,7 +402,7 @@ export async function runCollection(folderUid = '') {
       body.textContent = '';
       const w = el('div', 'coll-sheet');
       body.append(w);
-      paintRunPlan(w, plan, () => {
+      paintRunPlan(w, plan, { persistNote: 'Variable changes made by scripts are kept only if you choose to, in the runner below or when it asks.' }, () => {
         w.textContent = '';
         let reviewed = true; // the review above covers the first run
         mount(w, {
@@ -415,7 +418,7 @@ export async function runCollection(folderUid = '') {
     body.textContent = '';
     const w = el('div', 'coll-sheet');
     body.append(w);
-    paintRunPlan(w, plan, (typed) => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid, plan, typed); });
+    paintRunPlan(w, plan, {}, (typed) => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid, plan, typed); });
     return body;
   } });
 }
@@ -450,7 +453,7 @@ async function confirmRerun(payload, folderUid) {
 }
 
 // paintRunPlan shows what is about to be sent and only calls onRun once the plan is confirmed.
-function paintRunPlan(holder, plan, onRun) {
+function paintRunPlan(holder, plan, opts, onRun) {
   holder.textContent = '';
   // The sheet title is already the scope label, so neither the heading nor the
   // sentence repeats it.
@@ -463,7 +466,9 @@ function paintRunPlan(holder, plan, onRun) {
   });
   holder.append(mb);
   if (plan.hosts.length) holder.append(el('p', 'coll-note', 'Target hosts: ' + plan.hosts.join(', ')));
-  holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. Variable changes made by scripts are discarded.'));
+  // The mounted runner view offers Ask/Keep/Discard, so only the plain run
+  // (which always discards) may promise that writes are thrown away.
+  holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. ' + (opts.persistNote || 'Variable changes made by scripts are discarded.')));
   const go = btn('Run ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'),
     () => { const v = typed ? typed.value : ''; if (planConfirmed(plan, v)) onRun(v); }, 'btn accent', 'rocket');
   let typed = null;

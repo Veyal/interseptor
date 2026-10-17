@@ -107,3 +107,28 @@ func TestScriptsQuarantinedReflectsReality(t *testing.T) {
 		t.Fatal("no scripts: must not claim quarantine")
 	}
 }
+
+// Plain text and a top-level JSON array are not OpenAPI documents; auto
+// detection must say the file was not recognised instead of blaming OpenAPI
+// for a "document root" the user never meant to be one.
+func TestUnrecognisedTextIsNotBlamedOnOpenAPI(t *testing.T) {
+	f := newCollFixture(t)
+	for _, body := range []string{"hello world", "[1,2]"} {
+		code, out := f.do("POST", "/api/import/collection/preview", body, asUI)
+		if code < 400 || code >= 500 {
+			t.Errorf("%q: status %d, want a 4xx: %s", body, code, out)
+		}
+		if strings.Contains(out, "document root is not an object") {
+			t.Errorf("%q: error blames the OpenAPI root: %s", body, out)
+		}
+	}
+}
+
+// An empty Burp export names Burp, not the HAR parser it shares.
+func TestEmptyBurpExportNamesBurp(t *testing.T) {
+	f := newCollFixture(t)
+	out := f.must("POST", "/api/import/collection/preview", `<?xml version="1.0"?><items></items>`, asUI, 415, nil)
+	if strings.Contains(out, "har:") || !strings.Contains(out, "Burp") {
+		t.Fatalf("want a Burp-specific message: %s", out)
+	}
+}

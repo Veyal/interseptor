@@ -3,30 +3,37 @@ import { $, esc, api, toast, toastError, icon, getHook, uiPrompt, uiConfirm, cop
 import { getShellApi } from './shell-hooks.js';
 import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
-import { S, btn, el, jget, jsend, setStatus } from './collections-core.js';
-import { saveForSend } from './collections-editor.js';
+import { S, X, btn, el, fmtSize, jget, jsend, setStatus } from './collections-core.js';
 import { paintEnvDot, reloadEnvs, setPhone } from './collections-env.js';
-import { openEnvSheet, openScriptsSheet } from './collections-sheets.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { copyCurl, openInRepeater, renderResponse, sendCurrent });
 
 export async function sendCurrent() {
   if (!S.ed) return;
   const verdict = M.decideSend({ url: S.ed.url, busy: S.busy, kind: S.ed.kind });
   if (!verdict.ok) { toast(verdict.reason); return; }
-  if (S.dirty && !(await saveForSend())) return;
+  if (S.dirty && !(await X.saveForSend())) return;
   const gen = ++S.sendGen;
+  // The user may open another request while this one is in flight; its result
+  // must not be painted (or saved as an example) under that other request.
+  const uid = S.ed.uid;
+  const current = () => gen === S.sendGen && S.ed && S.ed.uid === uid;
   S.busy = true;
   setSendBusy(true);
   S.step = null;
   renderResponse({ loading: true });
   if (S.phone === 'req' && window.matchMedia('(max-width:720px)').matches) setPhone('res');
   try {
-    const res = await jsend('POST', '/api/collections/send', { itemUid: S.ed.uid, envUid: S.envUid || undefined, persist: 'keep' });
-    if (gen !== S.sendGen) return;
+    const res = await jsend('POST', '/api/collections/send', { itemUid: uid, envUid: S.envUid || undefined, persist: 'keep' });
+    let flow = null;
+    const id = M.firstFlowId(res);
+    if (id && current()) { try { flow = await jget('/api/flows/' + id); } catch (e) { flow = null; } }
+    // Kept script variable writes still refresh the environments.
+    if (!current()) { if (gen === S.sendGen && (res.varChanges || []).length) await reloadEnvs(); return; }
     S.step = res;
     S.consoleLines = (res.console || []).slice(0);
-    S.flow = null;
-    const id = M.firstFlowId(res);
-    if (id) { try { S.flow = await jget('/api/flows/' + id); } catch (e) { S.flow = null; } }
+    S.flow = flow;
     S.resTab = (res.tests || []).length && M.stepSummary(res).kind !== 'sent' ? 'tests' : S.resTab;
     renderResponse();
     renderConsole();
@@ -35,7 +42,7 @@ export async function sendCurrent() {
     else setStatus('', '');
     paintEnvDot((res.unresolved || []).length || null);
   } catch (e) {
-    if (gen !== S.sendGen) return;
+    if (!current()) return;
     S.step = null;
     renderResponse({ error: e });
   } finally {
@@ -106,9 +113,9 @@ export function renderResponse(opts = {}) {
     if ((S.step.unresolved || []).length) box.append(el('span', '', 'Unresolved: ' + S.step.unresolved.join(', ') + '. Define them in the active environment, or choose one.'));
     (S.step.warnings || []).forEach((w) => box.append(el('span', '', w)));
     const acts = el('div', 'coll-chips');
-    if ((S.step.unresolved || []).length) acts.append(btn('Edit variables', () => openEnvSheet(), 'btn xs'));
+    if ((S.step.unresolved || []).length) acts.append(btn('Edit variables', () => X.openEnvSheet(), 'btn xs'));
     if (M.needsAddHost(S.step)) acts.append(btn('Add host to scope', () => addHostToScope(), 'btn xs'));
-    if (sum.reason === 'scripts_quarantined') acts.append(btn('Review scripts', () => openScriptsSheet(), 'btn xs'));
+    if (sum.reason === 'scripts_quarantined') acts.append(btn('Review scripts', () => X.openScriptsSheet(), 'btn xs'));
     if (acts.childNodes.length) box.append(acts);
     pane.append(box);
     (S.step.scripts || []).forEach((n) => pane.append(el('p', 'coll-note', 'Script ' + n.listen + ': ' + n.reason)));
@@ -161,7 +168,6 @@ export function renderResponse(opts = {}) {
   host.append(acts);
 }
 
-export function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 
 export const BINARY_MIME = /^(image|audio|video|font)\/|octet-stream|zip|pdf|wasm/i;
 

@@ -746,21 +746,22 @@ Content-Type: application/json
     <div class="toolbar coll-bar">
       <label class="coll-field" for="collPicker"><span class="u-sr">Collection</span>
         <select id="collPicker" class="btn btn-field" aria-label="Collection"></select></label>
-      <button type="button" class="btn" id="collNew" title="New collection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span class="lbl-long">Collection</span></button>
-      <button type="button" class="btn" id="collImport" title="Import a Postman, OpenAPI or curl file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg><span class="lbl-long">Import</span></button>
-      <button type="button" class="btn" id="collExport" aria-haspopup="dialog" title="Export this collection as Postman, curl or native JSON (secrets removed)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg><span class="lbl-long">Export</span></button>
+      <button type="button" class="btn" id="collNew" aria-label="New collection" title="New collection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span class="lbl-long">Collection</span></button>
+      <button type="button" class="btn" id="collMore" aria-label="Collection actions" aria-haspopup="menu" aria-expanded="false" title="Rename, delete or analyse this collection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-more"/></svg></button>
+      <button type="button" class="btn" id="collImport" aria-label="Import" title="Import a Postman, OpenAPI or curl file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg><span class="lbl-long">Import</span></button>
+      <button type="button" class="btn" id="collExport" aria-label="Export" aria-haspopup="dialog" title="Export this collection as Postman, curl or native JSON (secrets removed)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg><span class="lbl-long">Export</span></button>
       <div class="spacer"></div>
       <span class="coll-env" id="collEnvWrap">
         <span class="coll-dot" id="collEnvDot" data-state="none" role="img" aria-label="No environment selected"></span>
         <label class="u-sr" for="collEnv">Active environment</label>
         <select id="collEnv" class="btn btn-field" aria-label="Active environment"></select>
-        <button type="button" class="btn" id="collEnvEdit" aria-haspopup="dialog" title="Edit environment variables"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-storage"/></svg><span class="lbl-long">Variables</span></button>
+        <button type="button" class="btn" id="collEnvEdit" aria-label="Variables" aria-haspopup="dialog" title="Edit environment variables"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-storage"/></svg><span class="lbl-long">Variables</span></button>
         <button type="button" class="btn" id="collEnvNew" hidden title="Create an environment for this collection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span>New environment</span></button>
-        <button type="button" class="btn" id="collEnvManage" aria-haspopup="dialog" title="Create, rename, duplicate or delete environments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg><span class="lbl-long">Environments</span></button>
+        <button type="button" class="btn" id="collEnvManage" aria-label="Environments" aria-haspopup="dialog" title="Create, rename, duplicate or delete environments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg><span class="lbl-long">Environments</span></button>
       </span>
       <button type="button" class="btn coll-chip" id="collScripts" aria-haspopup="dialog" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg><span id="collScriptsText">Scripts</span></button>
-      <button type="button" class="btn" id="collRun" title="Run every request in the collection or the selected folder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg><span class="lbl-long">Run</span></button>
-      <button type="button" class="btn" id="collConsoleBtn" aria-pressed="false" aria-controls="collConsole" title="Show the console (Ctrl+`)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg><span class="lbl-long">Console</span></button>
+      <button type="button" class="btn" id="collRun" aria-label="Run" title="Run every request in the collection or the selected folder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg><span class="lbl-long">Run</span></button>
+      <button type="button" class="btn" id="collConsoleBtn" aria-label="Console" aria-pressed="false" aria-controls="collConsole" title="Show the console (Ctrl+`)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"/></svg><span class="lbl-long">Console</span></button>
     </div>
     <div id="collStatus" class="coll-status" role="status" aria-live="polite" hidden></div>
     <div class="coll-root" id="collRoot">

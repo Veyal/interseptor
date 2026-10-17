@@ -32,8 +32,14 @@
   def('TextEncoder', TextEncoderImpl); def('TextDecoder', TextDecoderImpl); def('URL', URLImpl); def('URLSearchParams', URLSearchParamsImpl);
   def('require', requireImpl);
   def('tests', legacyTests);
-  def('environment', scopes.environment.toObject());
-  def('globals', scopes.globals.toObject());
+  // The legacy snapshots read variables, so they are built on first use: a
+  // script without vars.read still runs and only fails if it touches them.
+  const lazy = (k, make) => Object.defineProperty(globalThis, k, {
+    get() { const v = make(); def(k, v); return v; },
+    set(v) { def(k, v); }, configurable: true, enumerable: false,
+  });
+  lazy('environment', () => scopes.environment.toObject());
+  lazy('globals', () => scopes.globals.toObject());
   def('data', Object.assign({}, sd(scopes.iteration)));
   def('iteration', __in.info.iteration || 0);
   def('request', { url: reqObj.url.toString(), method: reqObj.method, headers: reqObj.headers.toObject(), data: reqObj.body.toString(), name: reqObj.name, id: reqObj.id });

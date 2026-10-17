@@ -569,6 +569,28 @@ export function reportHeadline(report) {
   return report.headline || '';
 }
 
+// importCommitMessage is the toast after an import commit. It says what was
+// added (a re-import merges, so it can add nothing) and mentions quarantine
+// only when the file carried scripts.
+export function importCommitMessage(res) {
+  const st = (res && res.stats) || {};
+  const n = (k) => Number(st[k]) || 0;
+  const plural = (c, w) => c + ' ' + w + (c === 1 ? '' : 's');
+  const added = n('itemsAdded'), updated = n('itemsUpdated'), skipped = n('itemsSkipped'), envs = n('environmentsAdded');
+  let msg;
+  if (added || updated) {
+    msg = 'Imported ' + plural(added, 'item') + (updated ? ', updated ' + updated : '') + (skipped ? ', ' + skipped + ' already present' : '') + '.';
+  } else if (envs) {
+    msg = 'Imported ' + plural(envs, 'environment') + '.';
+  } else if (skipped) {
+    msg = 'Nothing new: ' + plural(skipped, 'item') + (skipped === 1 ? ' was' : ' were') + ' already in the collection.';
+  } else {
+    msg = 'Imported.';
+  }
+  if (res && res.scriptsQuarantined) msg += ' Scripts are quarantined until you approve them.';
+  return msg;
+}
+
 // scriptReview prepares the review-sheet rows from GET .../scripts. A script is
 // approvable only when it is not already trusted.
 export function scriptReview(view, ownerName = () => '') {
