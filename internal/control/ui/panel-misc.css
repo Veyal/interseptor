@@ -52,6 +52,26 @@
 #panel-notes.notes-wide #notesEdit{display:block!important;grid-column:1;min-height:0;border-right:1px solid var(--line)}
 #panel-notes.notes-wide #notesPreview,#panel-notes.notes-wide #notesPreview.u-hidden{display:block!important;grid-column:2;min-height:0;overflow:auto}
 
+/* ---- OOB catcher: expandable interaction rows and the base URL hint ---- */
+.oob-base-hint{font-size:var(--fs-xs);overflow-wrap:anywhere}
+.oob-base-hint:empty{display:none}
+.oob-base-hint[data-state="warn"]{color:var(--amber)}
+.oob-hit>summary{list-style:none;cursor:pointer}
+/* The shared details caret (surfaces.css) becomes the first grid column. */
+.oob-hit>summary.oob-row{grid-template-columns:auto 52px minmax(0,1fr) 150px 70px}
+.oob-hit>summary.oob-row::before{margin:0 2px 2px}
+@media (max-width:600px){
+  .oob-hit>summary.oob-row{grid-template-columns:auto 44px minmax(0,1fr) auto}
+  .oob-hit>summary.oob-row .oob-src{grid-column:2/-1;grid-row:2}
+}
+.oob-hit>summary::-webkit-details-marker{display:none}
+.oob-hit>summary:hover,.oob-hit[open]>summary{background:var(--bg1)}
+.oob-q{color:var(--fg3)}
+.oob-detail{display:grid;gap:4px;margin:0 0 var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1);font-size:var(--fs-xs);overflow-wrap:anywhere}
+.oob-detail>div{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:var(--sp-2)}
+.oob-detail b{color:var(--fg3);font-weight:600}
+.oob-detail pre{margin:0;white-space:pre-wrap;word-break:break-all;font-family:var(--mono)}
+
 /* ---- Map: coverage, auth state and the evidence column ---- */
 .map-coverage[hidden],#mapUnlinked[hidden]{display:none}
 #mapUnlinked.on{border-color:var(--accent);background:var(--accentDim)}
