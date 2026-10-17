@@ -1,9 +1,9 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope, wireRowKey } from './core.js';
 import { sendRawToRepeater } from './tools.js';
-import { wireListbox, setListboxSelection } from './listbox.js';
+import { wireListbox, setListboxSelection, focusOption } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
@@ -176,6 +176,10 @@ function setHeldModified(raw, original){
   // plain !== would flag every untouched message as MODIFIED.
   const modified=heldIsModified(raw,original);
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
+  // The server rewrites Content-Length from the edited body, so the header in
+  // the editor is stale after a body edit: say what will really be sent.
+  const cl=$('#heldClNote');
+  if(cl){const text=modified?contentLengthText(contentLengthNote(raw)):'';cl.hidden=!text;cl.textContent=text;}
 }
 
 /* ---- Raw | Pretty (editable) ----
@@ -386,7 +390,10 @@ export function renderIntercept(){
   const total=items.length;
   syncInterceptBanner();
   const list=$('#heldList');
-  if(!total){list.innerHTML='';list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
+  // Phones show the queue alone (the editor's "Nothing on hold" state is in the
+  // hidden detail pane), so the empty queue carries the same message; CSS shows
+  // it only in the stacked layout.
+  if(!total){list.innerHTML=`<p class="icpt-list-empty hint">Nothing on hold. ${esc(hint?hint.textContent:'')}</p>`;list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
   list.innerHTML=items.map(heldRowMarkup).join('');
   // The hold queue is a single-select list: one listbox, one Tab stop, arrows
   // move the selection because selecting *is* what shows the item in the editor.
@@ -443,7 +450,9 @@ function showEditor(h){
   syncHeldRepeaterButton(h.side);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
-    :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
+    // .icpt-edtitle is a flex row, so a plain space between the method and the
+    // URL collapses ("POSTexample.com/api"); the gap is a margin instead.
+    :`<span style="color:${methodColor(h.method)};font-weight:700;margin-right:8px;flex:none">${esc(h.method)}</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`;
 }
 export async function selectHeld(id,side,opts={}){
   const previousKey=state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id);
@@ -583,6 +592,23 @@ export async function toggleIntercept(){
   try{await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
 }
 $('#interceptToggle').onclick=toggleIntercept;
+// Arrow/Home/End over the hold queue. wireListbox binds traversal to the rows of
+// the last full render, but held/released deltas add and remove rows in place,
+// so a new row was unreachable and a removed one could take focus off-page. The
+// keys are handled here instead, in the capture phase (ahead of the per-row
+// handlers), against the live rows.
+const HELD_NAV_KEYS=['ArrowDown','ArrowUp','Home','End'];
+$('#heldList').addEventListener('keydown',e=>{
+  if(!HELD_NAV_KEYS.includes(e.key))return;
+  const row=e.target.closest?.('.icpt-item');
+  if(!row||e.target!==row)return;
+  e.preventDefault();e.stopPropagation();
+  const els=[...$('#heldList').querySelectorAll('.icpt-item')];
+  const from=els.indexOf(row),n=els.length;
+  const to=e.key==='ArrowDown'?(from+1)%n:e.key==='ArrowUp'?(from-1+n)%n:e.key==='Home'?0:n-1;
+  const el=focusOption(els,to);
+  if(el&&to!==from)selectHeld(Number(el.dataset.id),el.dataset.side);
+},true);
 // Forward / Drop act on the selected item, routing to the request or response API.
 function setHeldActionState(button,stateName,label){
   const buttons=[$('#forwardBtn'),$('#dropBtn')];
@@ -763,10 +789,14 @@ export async function applyInterceptFilter(draft=pendingFilterMutation||stageInt
   const {input}=draft;
   draft.promise=(async()=>{
     try{
-      const saved=await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),draft);
-      if(saved)toast(input.enabled&&input.pattern?'filter applied':'filter off');
+      // Typing a pattern while "Only hold when" is unchecked saves it but changes
+      // nothing, so it must not toast "filter off" on every pause in typing.
+      let wasOn=false;
+      const saved=await applyFilterMutation(()=>{wasOn=!!(acknowledgedFilterConfig||currentFilterConfig()).filterEnabled;return api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});},draft);
+      const on=!!(input.enabled&&input.pattern);
+      if(saved&&(on||wasOn))toast(on?'filter applied':'filter off');
       return saved;
-    }catch(e){toast(e.message);return false;}
+    }catch(e){toast(e.message,'error');return false;}
   })();
   return draft.promise;
 }
@@ -790,6 +820,8 @@ function scheduleInterceptFilter(){
 });
 
 /* ---- rules ---- */
+// Same wording as the add-rule picker, so a saved rule reads like the one added.
+const RULE_TYPES=[['req-header','Request header'],['req-body','Request body'],['res-header','Response header'],['res-body','Response body']];
 let rulesLoadEpoch=0,ruleMutationEpoch=0,ruleMutationLanes=new Map(),ruleMutationRevision=new Map(),ruleDrafts=new Map();
 export function renderRules(){
   const body=$('#rulesBody');
@@ -803,9 +835,9 @@ export function renderRules(){
   const rows=state.rules.map(r=>({...r,...(ruleDrafts.get(r.id)||{})}));
   body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable interception rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
-    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
-    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" value="${escAttr(r.replace)}"></td>
+    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${RULE_TYPES.map(([tp,label])=>`<option value="${tp}" ${r.type===tp?'selected':''}>${label}</option>`).join('')}</select></td>
+    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" placeholder="match regex" spellcheck="false" value="${escAttr(r.match)}"></td>
+    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" placeholder="replacement" spellcheck="false" value="${escAttr(r.replace)}"></td>
     <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete interception rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);
@@ -869,7 +901,7 @@ $('#addRuleBtn').onclick=async()=>{
   if(!rule.match){toast('match regex required');return;}
   ruleAddInFlight=true;const addEpoch=++ruleAddEpoch;setRuleAddState('pending');
   try{await ruleMutation(0,()=>api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message,'error');setRuleAddState('idle');}
   finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };
 
@@ -1016,3 +1048,24 @@ try{
 // Settings' import/restore asks the intercept rule list to reload over the bus
 // instead of importing it from settings.js (part of breaking the settings cycle).
 busOn(EVENTS.INTERCEPT_RELOAD_RULES, () => { loadRules(); });
+// Toasts sit just above the viewport bottom, which is where the held action bar
+// is: while the bar is on screen, lift them above it so a toast (the drop Undo
+// included) never covers Forward or Drop. The panel and the work area are
+// observed because tab switches and the Match & Replace drawer move the bar
+// without resizing it.
+try{
+  const bar=$('#heldActions'),host=$('#toast');
+  let lifted=false;
+  const syncToastLift=()=>{
+    const r=bar.getBoundingClientRect();
+    const on=r.height>0&&r.top<innerHeight&&r.bottom>0;
+    if(on)host.style.bottom=`max(calc(18px + env(safe-area-inset-bottom,0px)),${Math.round(innerHeight-r.top+8)}px)`;
+    else if(lifted)host.style.bottom='';
+    lifted=on;
+  };
+  if(bar&&host&&typeof ResizeObserver==='function'){
+    const ro=new ResizeObserver(syncToastLift);
+    [bar,$('#panel-intercept'),$('#icptWork')].forEach(el=>{if(el)ro.observe(el);});
+    addEventListener('resize',syncToastLift);
+  }
+}catch(e){/* toasts keep their default position */}

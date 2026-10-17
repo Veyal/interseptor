@@ -1165,9 +1165,10 @@ func validRule(w http.ResponseWriter, in ruleJSON) bool {
 		httpErr(w, http.StatusBadRequest, "match pattern too long")
 		return false
 	}
-	// Compile-check the regex through the engine's validation path.
-	if err := (intercept.New()).SetRules([]store.Rule{{Enabled: true, Type: in.Type, Match: in.Match}}); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	// Compile-check the regex the way the engine does (regexp.Compile). The
+	// engine's own error names a rule id, which is still 0 here.
+	if _, err := regexp.Compile(in.Match); err != nil {
+		httpErr(w, http.StatusBadRequest, "invalid match regex: "+err.Error())
 		return false
 	}
 	return true
@@ -1326,7 +1327,9 @@ func (h *interceptAPI) setInterceptFilter(w http.ResponseWriter, r *http.Request
 		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, h.interceptState())
+	// The UI saves the filter as the operator types: answer with the summary
+	// (no held raw bytes), as the SSE stream does; raw loads on demand.
+	writeJSON(w, http.StatusOK, h.interceptStateSummary())
 }
 
 func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) {

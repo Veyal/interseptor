@@ -81,7 +81,9 @@ export function forwardAllPlan(items, { dropping = new Set(), rawCache = new Map
     if (dropping.has(key)) continue;
     const step = { side: h.side, id: h.id };
     const raw = rawCache.get(key);
-    if (typeof raw === 'string' && raw !== (originalCache.get(key) ?? raw)) step.raw = raw;
+    // Same test as a single Forward: a line-ending-only difference (the textarea
+    // LF-normalizes the CRLF original) is not an edit, so the held bytes go out.
+    if (typeof raw === 'string' && heldIsModified(raw, originalCache.get(key) ?? raw)) step.raw = raw;
     plan.push(step);
   }
   return plan;
@@ -225,4 +227,44 @@ export function losslessBeautify(body, beautify) {
   } catch (e) {
     return body;
   }
+}
+
+/* ---- Content-Length after an edit ----
+   The server re-derives Content-Length from the edited body on Forward
+   (intercept.parseEditedRequest, proxy response edits), so the header the
+   operator sees in the editor goes stale as soon as the body changes. These
+   mirror that rule so the panel can say what will actually be sent. */
+
+// contentLengthNote returns {declared, actual} when the forwarded
+// Content-Length will differ from the one written in the editor, else null.
+// `declared` is null when the message has no Content-Length but gains one.
+// Chunked messages keep their own framing and are left alone, as on the server.
+export function contentLengthNote(raw) {
+  const s = String(raw == null ? '' : raw);
+  let i = s.indexOf('\r\n\r\n'), sep = 4;
+  if (i < 0) { i = s.indexOf('\n\n'); sep = 2; }
+  if (i < 0) return null;
+  const head = s.slice(0, i);
+  const body = s.slice(i + sep);
+  const lines = head.split(/\r?\n/).slice(1);
+  let declared = null;
+  for (const line of lines) {
+    const c = line.indexOf(':');
+    if (c < 0) continue;
+    const name = line.slice(0, c).trim().toLowerCase();
+    const value = line.slice(c + 1).trim();
+    if (name === 'transfer-encoding' && /chunked/i.test(value)) return null;
+    if (name === 'content-length' && declared === null && /^\d+$/.test(value)) declared = Number(value);
+  }
+  const actual = new TextEncoder().encode(body).length;
+  if (declared === actual) return null;
+  if (declared === null && actual === 0) return null;
+  return { declared, actual };
+}
+
+export function contentLengthText(note) {
+  if (!note) return '';
+  return note.declared === null
+    ? 'Content-Length ' + note.actual + ' added on Forward'
+    : 'Content-Length ' + note.declared + ' \u2192 ' + note.actual + ' on Forward';
 }

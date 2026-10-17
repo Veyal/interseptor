@@ -185,3 +185,43 @@ test('auto-forward tally: only proxy-captured out-of-scope requests count while 
   t.sync(false); t.sync(true);
   assert.equal(t.count(), 0, 'turning interception back on restarts the tally');
 });
+
+test('forward all treats a line-ending-only difference as untouched, like Forward', async () => {
+  const { forwardAllPlan: plan } = await import('../js/intercept-model.js');
+  // The textarea LF-normalizes the CRLF original; typing then undoing leaves an
+  // LF copy in the cache. Forward omits raw for it, so Forward all must too, or
+  // the body's CRLF bytes are silently rewritten to LF.
+  const original = 'POST /a HTTP/1.1\r\nHost: example.com\r\n\r\nline1\r\nline2';
+  const rawCache = new Map([[heldKey('req', 1), original.replace(/\r\n/g, '\n')]]);
+  const originalCache = new Map([[heldKey('req', 1), original]]);
+  assert.deepEqual(plan([{ side: 'req', id: 1 }], { rawCache, originalCache }), [{ side: 'req', id: 1 }]);
+});
+
+test('contentLengthNote reports the length the server will send after an edit', async () => {
+  const { contentLengthNote } = await import('../js/intercept-model.js');
+  // untouched: header matches body
+  assert.equal(contentLengthNote('POST / HTTP/1.1\nHost: example.com\nContent-Length: 3\n\nabc'), null);
+  // edited body: stale header
+  assert.deepEqual(contentLengthNote('POST / HTTP/1.1\nHost: example.com\nContent-Length: 3\n\nabcdef'), { declared: 3, actual: 6 });
+  // UTF-8 bytes, not UTF-16 code units
+  assert.deepEqual(contentLengthNote('POST / HTTP/1.1\nContent-Length: 1\n\né'), { declared: 1, actual: 2 });
+  // CRLF framing (server splits on the first CRLFCRLF)
+  assert.deepEqual(contentLengthNote('POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nab'), { declared: 1, actual: 2 });
+  // chunked bodies keep their own framing; the server leaves them alone
+  assert.equal(contentLengthNote('POST / HTTP/1.1\nTransfer-Encoding: chunked\nContent-Length: 1\n\n5\nhello\n0\n\n'), null);
+  // no Content-Length and no body: nothing to say
+  assert.equal(contentLengthNote('GET / HTTP/1.1\nHost: example.com\n\n'), null);
+  // body added where no Content-Length was declared
+  assert.deepEqual(contentLengthNote('POST / HTTP/1.1\nHost: example.com\n\nxy'), { declared: null, actual: 2 });
+  // no blank line yet (mid-edit): nothing to say
+  assert.equal(contentLengthNote('POST / HTTP/1.1\nContent-Length: 9'), null);
+  // header names are case-insensitive
+  assert.deepEqual(contentLengthNote('HTTP/1.1 200 OK\ncontent-length: 2\n\nabc'), { declared: 2, actual: 3 });
+});
+
+test('contentLengthText is short, states the change and when it happens', async () => {
+  const { contentLengthText } = await import('../js/intercept-model.js');
+  assert.equal(contentLengthText({ declared: 22, actual: 26 }), 'Content-Length 22 → 26 on Forward');
+  assert.equal(contentLengthText({ declared: null, actual: 2 }), 'Content-Length 2 added on Forward');
+  assert.equal(contentLengthText(null), '');
+});
