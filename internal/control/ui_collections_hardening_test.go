@@ -98,6 +98,13 @@ func TestCollectionsVariableSheetKeepsCurrentValueTypedBeforeName(t *testing.T) 
 	}
 }
 
+// The run plan promised "variable changes made by scripts are discarded" even
+// above the runner view, whose Persist control defaults to Ask and offers Keep.
+func TestCollectionsRunPlanDoesNotPromiseDiscardAboveTheRunner(t *testing.T) {
+	js := executableJS(readUIAsset(t, "js/collections-sheets.js"))
+	requireUIContains(t, js, "paintRunPlan(w, plan, { persistNote: 'Variable changes made by scripts are kept only if you choose to")
+}
+
 // The collection and environment pickers are enhanced into .ui-select
 // wrappers; when the toolbar is crowded the wrapper shrinks, so the trigger
 // must fill it (and ellipsize) rather than spill over the next button.

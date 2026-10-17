@@ -402,7 +402,7 @@ export async function runCollection(folderUid = '') {
       body.textContent = '';
       const w = el('div', 'coll-sheet');
       body.append(w);
-      paintRunPlan(w, plan, () => {
+      paintRunPlan(w, plan, { persistNote: 'Variable changes made by scripts are kept only if you choose to, in the runner below or when it asks.' }, () => {
         w.textContent = '';
         let reviewed = true; // the review above covers the first run
         mount(w, {
@@ -418,7 +418,7 @@ export async function runCollection(folderUid = '') {
     body.textContent = '';
     const w = el('div', 'coll-sheet');
     body.append(w);
-    paintRunPlan(w, plan, (typed) => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid, plan, typed); });
+    paintRunPlan(w, plan, {}, (typed) => { renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid, plan, typed); });
     return body;
   } });
 }
@@ -453,7 +453,7 @@ async function confirmRerun(payload, folderUid) {
 }
 
 // paintRunPlan shows what is about to be sent and only calls onRun once the plan is confirmed.
-function paintRunPlan(holder, plan, onRun) {
+function paintRunPlan(holder, plan, opts, onRun) {
   holder.textContent = '';
   // The sheet title is already the scope label, so neither the heading nor the
   // sentence repeats it.
@@ -466,7 +466,9 @@ function paintRunPlan(holder, plan, onRun) {
   });
   holder.append(mb);
   if (plan.hosts.length) holder.append(el('p', 'coll-note', 'Target hosts: ' + plan.hosts.join(', ')));
-  holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. Variable changes made by scripts are discarded.'));
+  // The mounted runner view offers Ask/Keep/Discard, so only the plain run
+  // (which always discards) may promise that writes are thrown away.
+  holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. ' + (opts.persistNote || 'Variable changes made by scripts are discarded.')));
   const go = btn('Run ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's'),
     () => { const v = typed ? typed.value : ''; if (planConfirmed(plan, v)) onRun(v); }, 'btn accent', 'rocket');
   let typed = null;
