@@ -112,7 +112,8 @@ func parseOpenAPIImport(data []byte) (*postman.Result, int, error) {
 		switch {
 		case errors.Is(err, openapi.ErrTooLarge):
 			return nil, http.StatusRequestEntityTooLarge, err
-		case errors.Is(err, openapi.ErrNotOpenAPI), errors.Is(err, openapi.ErrUnsupported):
+		case errors.Is(err, openapi.ErrNotOpenAPI), errors.Is(err, openapi.ErrUnsupported), errors.Is(err, openapi.ErrNotObject):
+			// A scalar or array root is simply not an OpenAPI document.
 			return nil, http.StatusUnsupportedMediaType, err
 		}
 		return nil, http.StatusBadRequest, errors.New("could not parse the file: " + err.Error())

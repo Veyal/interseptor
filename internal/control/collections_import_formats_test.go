@@ -149,6 +149,22 @@ func TestImportBrunoFolderAsFiles(t *testing.T) {
 	}
 }
 
+// A GraphQL introspection result is JSON, so auto-detection used to hand it to
+// the JSON trial importers (Postman, OpenAPI, Insomnia, HAR) and reject it.
+func TestImportAutoDetectsGraphQLIntrospection(t *testing.T) {
+	f := newCollFixture(t)
+	doc := `{"data":{"__schema":{"queryType":{"name":"Query"},"types":[` +
+		`{"kind":"OBJECT","name":"Query","fields":[{"name":"me","args":[],"type":{"kind":"SCALAR","name":"String"}}]},` +
+		`{"kind":"SCALAR","name":"String"}]}}}`
+	var pv struct {
+		Kind string `json:"kind"`
+	}
+	f.must("POST", "/api/import/collection/preview", doc, asUI, 200, &pv)
+	if pv.Kind != "collection" {
+		t.Fatalf("kind = %q", pv.Kind)
+	}
+}
+
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

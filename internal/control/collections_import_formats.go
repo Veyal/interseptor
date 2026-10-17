@@ -96,7 +96,7 @@ func harErr(err error, what string) (int, error) {
 	case errors.Is(err, har.ErrTooLarge):
 		return http.StatusRequestEntityTooLarge, err
 	case errors.Is(err, har.ErrEmpty):
-		return http.StatusUnsupportedMediaType, err
+		return http.StatusUnsupportedMediaType, errors.New("the " + what + " file has no requests")
 	}
 	return http.StatusBadRequest, errors.New("could not parse the " + what + " file: " + err.Error())
 }
@@ -141,15 +141,20 @@ func looksLikeInsomniaYAML(data []byte) bool {
 // document with no telltale key falls back to trying each importer in turn.
 func sniffJSON(data []byte) (*postman.Result, int, error) {
 	var top map[string]json.RawMessage
-	if json.Unmarshal(data, &top) == nil {
-		switch {
-		case top["log"] != nil:
-			return parseHARImport(data)
-		case top["_type"] != nil || top["resources"] != nil || top["__export_format"] != nil:
-			return parseInsomniaImport(data)
-		case top["openapi"] != nil || top["swagger"] != nil:
-			return parseOpenAPIImport(data)
-		}
+	if json.Unmarshal(data, &top) != nil {
+		// Every supported JSON format has an object at the top level.
+		return nil, http.StatusUnsupportedMediaType, errors.New("the file is JSON but its top level is not an object, so it is not a Postman, OpenAPI, Insomnia or HAR file")
+	}
+	switch {
+	case top["log"] != nil:
+		return parseHARImport(data)
+	case top["_type"] != nil || top["resources"] != nil || top["__export_format"] != nil:
+		return parseInsomniaImport(data)
+	case top["openapi"] != nil || top["swagger"] != nil:
+		return parseOpenAPIImport(data)
+	case graphql.Sniff(data):
+		// An introspection result ({data:{__schema:{queryType...}}}) is JSON too.
+		return parseGraphQLImport(data)
 	}
 	return sniffByTrial(data, top)
 }
