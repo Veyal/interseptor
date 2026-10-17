@@ -74,6 +74,12 @@ type Store struct {
 	flowCancelOnce sync.Once
 	flowPending    []flowOp
 	flowPendingN   map[int64]int
+	// flowLatest maps a flow id to the sequence number of its newest queued
+	// insert or update, so a later update can replace that snapshot in place
+	// instead of queueing a second write. flowBase is the sequence number of
+	// flowPending[0].
+	flowLatest     map[int64]uint64
+	flowBase       uint64
 	flowVoid       map[int64]struct{}
 	flowDropped    atomic.Uint64
 	flowInFlight   bool

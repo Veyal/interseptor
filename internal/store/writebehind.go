@@ -62,6 +62,19 @@ type flowOp struct {
 	flow *Flow
 	id   int64
 	tags []string
+	// release holds the body hashes of snapshots this op replaced in place.
+	// Each finalized body carries one GC claim, released by the write that
+	// queued its hash; folding two writes into one must still release both
+	// sets, and only once the surviving write has committed.
+	release []string
+}
+
+func (op flowOp) bodyHashes() []string {
+	out := op.release
+	if f := op.flow; f != nil {
+		out = append(out[:len(out):len(out)], f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
+	}
+	return out
 }
 
 type flowCmd struct {
@@ -76,35 +89,35 @@ func (s *Store) EnqueueInsertFlow(f *Flow) (bool, error) {
 	if f == nil {
 		return false, errors.New("nil flow")
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
 	if s.flowClosed || s.flowWake == nil {
 		s.flowMu.Unlock()
 		return false, errFlowsClosed
 	}
-	dropped = s.dropOldestFlowLocked()
+	dropped := s.dropOldestFlowLocked()
 	if f.ID == 0 {
 		f.ID = s.allocFlowID()
 	} else {
 		s.noteFlowID(f.ID)
 	}
 	cp := cloneFlow(f)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpInsert, flow: cp, id: cp.ID})
-	s.bumpFlowPendingLocked(cp.ID)
+	s.appendFlowOpLocked(flowOp{kind: flowOpInsert, flow: cp, id: cp.ID})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
 }
 
 // EnqueueUpdateFlow queues a snapshot of f, keyed by f.ID. It never waits on
-// SQLite. A full buffer drops the oldest write. An update whose insert was
-// already dropped is discarded and its body protection is released.
+// SQLite. When the flow's insert (or an earlier update) is still queued, the
+// snapshot replaces it in place: one SQLite write per flow instead of two, and
+// no extra slot in a full buffer. Otherwise a full buffer drops a write first
+// (see dropOldestFlowLocked). An update whose insert was already dropped is
+// discarded and its body protection is released.
 func (s *Store) EnqueueUpdateFlow(f *Flow) (bool, error) {
 	if f == nil || f.ID == 0 {
 		return false, errors.New("update requires a flow id")
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
 	if s.flowClosed || s.flowWake == nil {
 		s.flowMu.Unlock()
@@ -115,14 +128,61 @@ func (s *Store) EnqueueUpdateFlow(f *Flow) (bool, error) {
 		s.publishFlowBodies(f)
 		return true, nil
 	}
-	dropped = s.dropOldestFlowLocked()
+	if op := s.queuedSnapshotLocked(f.ID); op != nil {
+		op.release = op.bodyHashes()
+		op.flow = cloneFlow(f)
+		s.flowMu.Unlock()
+		return true, nil
+	}
+	dropped := s.dropOldestFlowLocked()
 	cp := cloneFlow(f)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpUpdate, flow: cp, id: cp.ID})
-	s.bumpFlowPendingLocked(cp.ID)
+	s.appendFlowOpLocked(flowOp{kind: flowOpUpdate, flow: cp, id: cp.ID})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
+}
+
+// appendFlowOpLocked queues op and records it as the newest snapshot of its
+// flow when it carries one.
+func (s *Store) appendFlowOpLocked(op flowOp) {
+	seq := s.flowBase + uint64(len(s.flowPending))
+	s.flowPending = append(s.flowPending, op)
+	s.bumpFlowPendingLocked(op.id)
+	if op.kind == flowOpInsert || op.kind == flowOpUpdate {
+		if s.flowLatest == nil {
+			s.flowLatest = map[int64]uint64{}
+		}
+		s.flowLatest[op.id] = seq
+	}
+}
+
+// queuedSnapshotLocked returns the still-queued insert or update that holds
+// id's newest snapshot, or nil when none is waiting (the flusher has taken it).
+func (s *Store) queuedSnapshotLocked(id int64) *flowOp {
+	seq, ok := s.flowLatest[id]
+	if !ok || seq < s.flowBase {
+		return nil
+	}
+	i := seq - s.flowBase
+	if i >= uint64(len(s.flowPending)) {
+		return nil
+	}
+	op := &s.flowPending[i]
+	if op.id != id || (op.kind != flowOpInsert && op.kind != flowOpUpdate) {
+		return nil
+	}
+	return op
+}
+
+// takeFlowPendingLocked hands the whole buffer to the caller and forgets the
+// in-place snapshot index: nothing taken may be modified any more.
+func (s *Store) takeFlowPendingLocked() []flowOp {
+	batch := s.flowPending
+	s.flowPending = nil
+	s.flowBase += uint64(len(batch))
+	clear(s.flowLatest)
+	return batch
 }
 
 // EnqueueAddFlowTags queues a tag union for id. It never waits on SQLite.
@@ -131,7 +191,6 @@ func (s *Store) EnqueueAddFlowTags(id int64, tags []string) (bool, error) {
 	if id == 0 || len(tags) == 0 {
 		return true, nil
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
 	if s.flowClosed || s.flowWake == nil {
 		s.flowMu.Unlock()
@@ -141,13 +200,12 @@ func (s *Store) EnqueueAddFlowTags(id int64, tags []string) (bool, error) {
 		s.flowMu.Unlock()
 		return true, nil
 	}
-	dropped = s.dropOldestFlowLocked()
+	dropped := s.dropOldestFlowLocked()
 	cp := append([]string(nil), tags...)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpAddTags, id: id, tags: cp})
-	s.bumpFlowPendingLocked(id)
+	s.appendFlowOpLocked(flowOp{kind: flowOpAddTags, id: id, tags: cp})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
 }
 
@@ -332,8 +390,7 @@ func (s *Store) drainOnce() error {
 		return errFlowDrainTimeout
 	}
 	s.flowMu.Lock()
-	batch := s.flowPending
-	s.flowPending = nil
+	batch := s.takeFlowPendingLocked()
 	if len(batch) > 0 {
 		s.flowInFlight = true
 	}
@@ -497,6 +554,11 @@ func (s *Store) applyFlowOpsOneByOne(batch []flowOp) error {
 			log.Printf("store: persist flow: %v", err)
 		}
 		s.completeOp(op)
+		// applyFlowOp released op.flow's claims; the snapshots it replaced
+		// in place still hold theirs.
+		if len(op.release) > 0 {
+			s.publishBodies(op.release...)
+		}
 	}
 	return first
 }
@@ -540,16 +602,46 @@ func (s *Store) pauseApply() {
 	}
 }
 
-func (s *Store) dropOldestFlowLocked() *Flow {
+// dropOldestFlowLocked makes room in a full buffer and returns the discarded
+// write so the caller can release its body claims outside flowMu.
+//
+// The victim is the oldest queued insert, not simply the oldest write: an
+// insert has not reached SQLite yet, so dropping it loses one whole flow (its
+// later update and tags are discarded with it). Dropping the oldest write
+// instead usually hit the response update of a row already committed, leaving
+// that row stuck at status 0 ("pending") forever. Only a buffer holding no
+// insert at all falls back to the oldest write.
+func (s *Store) dropOldestFlowLocked() flowOp {
 	if len(s.flowPending) < flowBufCap {
-		return nil
+		return flowOp{}
 	}
-	op := s.flowPending[0]
+	victim := 0
+	for i := range s.flowPending {
+		if s.flowPending[i].kind == flowOpInsert {
+			victim = i
+			break
+		}
+	}
+	op := s.flowPending[victim]
+	if seq, ok := s.flowLatest[op.id]; ok && seq == s.flowBase+uint64(victim) {
+		delete(s.flowLatest, op.id)
+	}
+	// Close the gap by shifting the writes ahead of the victim up one slot,
+	// then trim the front. Those writes move one sequence number later, so
+	// their snapshot index entries move with them.
+	for i := victim; i > 0; i-- {
+		prev := s.flowPending[i-1]
+		if seq, ok := s.flowLatest[prev.id]; ok && seq == s.flowBase+uint64(i-1) {
+			s.flowLatest[prev.id] = seq + 1
+		}
+		s.flowPending[i] = prev
+	}
 	s.flowPending[0] = flowOp{}
 	s.flowPending = s.flowPending[1:]
+	s.flowBase++
 	n := s.flowDropped.Add(1)
 	if n == 1 || n%1024 == 0 {
-		log.Printf("store: flow buffer full, dropped %d oldest write(s)", n)
+		log.Printf("store: flow buffer full, dropped %d write(s)", n)
 	}
 	s.finishFlowPendingLocked(op.id)
 	if op.kind == flowOpInsert {
@@ -558,7 +650,7 @@ func (s *Store) dropOldestFlowLocked() *Flow {
 		}
 		s.flowVoid[op.id] = struct{}{}
 	}
-	return op.flow
+	return op
 }
 
 func (s *Store) bumpFlowPendingLocked(id int64) {
@@ -606,6 +698,9 @@ func (s *Store) completeOps(batch []flowOp) {
 	// actually limited capture throughput once the commits were batched.
 	s.bodyMu.Lock()
 	for _, op := range batch {
+		for _, sum := range op.release {
+			s.releasePendingBody(sum)
+		}
 		if op.flow == nil {
 			continue
 		}
@@ -619,8 +714,7 @@ func (s *Store) completeOps(batch []flowOp) {
 
 func (s *Store) abandonPending() int {
 	s.flowMu.Lock()
-	batch := s.flowPending
-	s.flowPending = nil
+	batch := s.takeFlowPendingLocked()
 	s.flowInFlight = false
 	for _, op := range batch {
 		s.finishFlowPendingLocked(op.id)
@@ -637,7 +731,7 @@ func (s *Store) abandonPending() int {
 
 func (s *Store) abandonOps(batch []flowOp) int {
 	for _, op := range batch {
-		s.publishFlowBodies(op.flow)
+		s.publishBodies(op.bodyHashes()...)
 	}
 	if len(batch) == 0 {
 		return 0
