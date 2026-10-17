@@ -750,7 +750,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-line{flex:none;display:flex;align-items:center;gap:var(--sp-2);padding:7px var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg)}
 .rep-line .repurl{font-family:var(--mono)}
 #repSend{display:inline-flex;align-items:center;gap:6px;flex:none}
-#repSend .kbd{font-size:var(--fs-xs);font-weight:600;opacity:.75}
+#repSend .kbd{font-size:var(--fs-xs);font-weight:500}
 .rep-work{flex:1;display:flex;min-height:0;background:var(--bg)}
 .rep-res>.pane-head{height:auto;min-height:38px;flex-wrap:wrap;padding-top:6px;padding-bottom:6px}
 .rep-res .statusline{min-width:0;overflow-wrap:anywhere}
