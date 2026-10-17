@@ -26,6 +26,8 @@
 .act-outcome{flex:none;font-size:var(--fs-xs);font-weight:700}
 .act-outcome.is-ok{color:var(--fg2)}
 .act-outcome.is-fail{color:var(--rd-block)}
+/* The expanded detail sits after its row (not inside the role="button" row). */
+.act-day>.act-detail{margin:0 var(--sp-4) var(--sp-3) calc(var(--sp-4) + 17px)}
 @media (max-width:720px){
   .act-chips{padding-inline:var(--sp-4)}
   .act-tool{min-width:0}
@@ -38,6 +40,7 @@
   .act-sum,.act-res{flex:1 1 100%}
   .act-sum:empty,.act-res:empty{display:none}
   .act-intent{margin-left:0}
+  .act-day>.act-detail{margin-inline:var(--sp-4)}
 }
 
 /* ---- Notes: status text, reference chips, promote, side-by-side layout ---- */
