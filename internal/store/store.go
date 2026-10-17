@@ -80,6 +80,9 @@ type Store struct {
 	// flowPending[0].
 	flowLatest     map[int64]uint64
 	flowBase       uint64
+	// flowSpace is closed (and cleared) when the flusher takes the buffer,
+	// waking captures that found it full.
+	flowSpace      chan struct{}
 	flowVoid       map[int64]struct{}
 	flowDropped    atomic.Uint64
 	flowInFlight   bool

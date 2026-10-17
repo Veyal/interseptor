@@ -132,6 +132,107 @@ func TestEnqueueDoesNotTakeBodyLockWithoutWork(t *testing.T) {
 	}
 }
 
+// TestFlusherGroupsTrickleIntoFewTransactions pins group commit: proxied flows
+// arrive one at a time, and a flusher that drained on every wake-up committed a
+// transaction per flow — too slow to keep up, so the buffer filled and capture
+// dropped flows. A short linger lets a trickle share one transaction (and lets
+// a fast response coalesce into its still-queued insert).
+func TestFlusherGroupsTrickleIntoFewTransactions(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	const n = 200
+	before := s.flowTxs.Load()
+	for i := 0; i < n; i++ {
+		queueInsert(t, s, "/trickle-"+strconv.Itoa(i))
+		for start := time.Now(); time.Since(start) < 50*time.Microsecond; {
+		}
+	}
+	if err := s.FlushFlows(); err != nil {
+		t.Fatalf("FlushFlows: %v", err)
+	}
+	if got := countRows(t, s, `SELECT COUNT(*) FROM flows`); got != n {
+		t.Fatalf("persisted %d flows, want %d", got, n)
+	}
+	if txs := s.flowTxs.Load() - before; txs > n/8 {
+		t.Fatalf("%d flows arriving %v apart used %d transactions, want at most %d", n, 50*time.Microsecond, txs, n/8)
+	}
+}
+
+// fillWhileFlusherDelayed fills the buffer to capacity while the flusher sits in
+// its apply delay, so the next enqueue finds it full.
+func fillWhileFlusherDelayed(t *testing.T, s *Store, delay time.Duration) {
+	t.Helper()
+	flowApplyDelayNS.Store(int64(delay))
+	t.Cleanup(func() { flowApplyDelayNS.Store(0) })
+	for i := 0; i < flowBufCap; i++ {
+		queueInsert(t, s, "/full-"+strconv.Itoa(i))
+	}
+	if n := s.pendingLen(); n != flowBufCap {
+		t.Fatalf("buffer holds %d writes, want %d (flusher drained during fill)", n, flowBufCap)
+	}
+}
+
+// TestFullBufferWaitsForFlusherInsteadOfDropping is the load-gate contract:
+// when the proxy outruns the flusher, the next capture waits (bounded) for the
+// flusher to take the buffer instead of discarding a flow, so saved flows equal
+// requests sent.
+func TestFullBufferWaitsForFlusherInsteadOfDropping(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	const delay = 300 * time.Millisecond
+	fillWhileFlusherDelayed(t, s, delay)
+	start := time.Now()
+	extra := queueInsert(t, s, "/extra")
+	waited := time.Since(start)
+	flowApplyDelayNS.Store(0)
+	if err := s.FlushFlows(); err != nil {
+		t.Fatalf("FlushFlows: %v", err)
+	}
+	if n := s.FlowsDropped(); n != 0 {
+		t.Fatalf("dropped %d writes, want 0", n)
+	}
+	if waited < 20*time.Millisecond {
+		t.Fatalf("enqueue into a full buffer returned after %s without waiting", waited)
+	}
+	if got := countRows(t, s, `SELECT COUNT(*) FROM flows`); got != flowBufCap+1 {
+		t.Fatalf("persisted %d flows, want %d", got, flowBufCap+1)
+	}
+	if _, err := s.GetFlow(extra.ID); err != nil {
+		t.Fatalf("waiting flow not persisted: %v", err)
+	}
+}
+
+// TestFullBufferWaitIsBounded keeps forwarding alive when the flusher is stuck
+// (a long foreign transaction, a dead disk): the wait gives up after
+// flowFullWait and the overflow is dropped and counted.
+func TestFullBufferWaitIsBounded(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	prev := flowFullWait
+	flowFullWait = 50 * time.Millisecond
+	t.Cleanup(func() { flowFullWait = prev })
+	fillWhileFlusherDelayed(t, s, time.Second)
+	start := time.Now()
+	queueInsert(t, s, "/overflow")
+	waited := time.Since(start)
+	if waited < flowFullWait || waited > 2*time.Second {
+		t.Fatalf("full-buffer enqueue waited %s, want about %s", waited, flowFullWait)
+	}
+	if n := s.FlowsDropped(); n != 1 {
+		t.Fatalf("dropped %d writes, want 1", n)
+	}
+	flowApplyDelayNS.Store(0)
+}
+
 // TestCoalescedUpdateReleasesEveryBodyClaim keeps body GC ownership exact when
 // two snapshots fold into one queued write: every claim the replaced snapshot
 // carried is still released once the coalesced write commits.

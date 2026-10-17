@@ -8,11 +8,14 @@ import (
 	"time"
 )
 
-// Flow capture from the proxy is write-behind: enqueue never waits on SQLite.
-// One flusher applies a FIFO buffer so a flow's insert lands before its update
-// and before a tag write for that same id. Direct InsertFlow / UpdateFlow
-// callers stay synchronous; reads and later mutations wait only when they
-// touch an id that is still queued.
+// Flow capture from the proxy is write-behind: enqueue does not wait on SQLite
+// while the buffer has room. One flusher applies a FIFO buffer so a flow's
+// insert lands before its update and before a tag write for that same id.
+// When the proxy outruns the flusher and the buffer is full, a capture waits up
+// to flowFullWait for the flusher to take the buffer — slowing the proxy to the
+// rate evidence can be saved — and only then drops a write, counted in
+// FlowsDropped. Direct InsertFlow / UpdateFlow callers stay synchronous; reads
+// and later mutations wait only when they touch an id that is still queued.
 
 const flowBufCap = 4096
 
@@ -32,6 +35,12 @@ var (
 	flowApplyDelayNS atomic.Int64
 	flowBatchFault   atomic.Int32
 )
+
+// flowFullWait bounds how long a capture waits for room in a full buffer. Long
+// enough to ride out one drain pass of a full buffer on a loaded machine
+// (measured at up to ~460 ms), short enough that a stuck flusher degrades the
+// proxy to slow rather than hung.
+var flowFullWait = time.Second
 
 const (
 	faultFlowBatchBegin  int32 = 1
@@ -82,17 +91,24 @@ type flowCmd struct {
 	errc  chan error
 }
 
-// EnqueueInsertFlow assigns an id and queues a snapshot of f. It never waits
-// on SQLite. On a full buffer the oldest queued write is dropped and counted.
+// EnqueueInsertFlow assigns an id and queues a snapshot of f. It does not wait
+// on SQLite while the buffer has room; on a full buffer it waits (bounded) for
+// the flusher, then drops a write and counts it (see awaitFlowSpaceLocked).
 // The returned bool is false only when the queue is closed.
 func (s *Store) EnqueueInsertFlow(f *Flow) (bool, error) {
 	if f == nil {
 		return false, errors.New("nil flow")
 	}
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
 	dropped := s.dropOldestFlowLocked()
 	if f.ID == 0 {
@@ -108,31 +124,37 @@ func (s *Store) EnqueueInsertFlow(f *Flow) (bool, error) {
 	return true, nil
 }
 
-// EnqueueUpdateFlow queues a snapshot of f, keyed by f.ID. It never waits on
-// SQLite. When the flow's insert (or an earlier update) is still queued, the
-// snapshot replaces it in place: one SQLite write per flow instead of two, and
-// no extra slot in a full buffer. Otherwise a full buffer drops a write first
-// (see dropOldestFlowLocked). An update whose insert was already dropped is
-// discarded and its body protection is released.
+// EnqueueUpdateFlow queues a snapshot of f, keyed by f.ID. When the flow's
+// insert (or an earlier update) is still queued, the snapshot replaces it in
+// place: one SQLite write per flow instead of two, and no extra slot in a full
+// buffer. Otherwise a full buffer is handled as in EnqueueInsertFlow. An update
+// whose insert was already dropped is discarded and its body protection is
+// released.
 func (s *Store) EnqueueUpdateFlow(f *Flow) (bool, error) {
 	if f == nil || f.ID == 0 {
 		return false, errors.New("update requires a flow id")
 	}
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
-	}
-	if _, void := s.flowVoid[f.ID]; void && s.flowPendingN[f.ID] == 0 {
-		s.flowMu.Unlock()
-		s.publishFlowBodies(f)
-		return true, nil
-	}
-	if op := s.queuedSnapshotLocked(f.ID); op != nil {
-		op.release = op.bodyHashes()
-		op.flow = cloneFlow(f)
-		s.flowMu.Unlock()
-		return true, nil
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if _, void := s.flowVoid[f.ID]; void && s.flowPendingN[f.ID] == 0 {
+			s.flowMu.Unlock()
+			s.publishFlowBodies(f)
+			return true, nil
+		}
+		if op := s.queuedSnapshotLocked(f.ID); op != nil {
+			op.release = op.bodyHashes()
+			op.flow = cloneFlow(f)
+			s.flowMu.Unlock()
+			return true, nil
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
 	dropped := s.dropOldestFlowLocked()
 	cp := cloneFlow(f)
@@ -176,13 +198,52 @@ func (s *Store) queuedSnapshotLocked(id int64) *flowOp {
 }
 
 // takeFlowPendingLocked hands the whole buffer to the caller and forgets the
-// in-place snapshot index: nothing taken may be modified any more.
+// in-place snapshot index: nothing taken may be modified any more. Captures
+// waiting for room are woken.
 func (s *Store) takeFlowPendingLocked() []flowOp {
 	batch := s.flowPending
 	s.flowPending = nil
 	s.flowBase += uint64(len(batch))
 	clear(s.flowLatest)
+	if s.flowSpace != nil {
+		close(s.flowSpace)
+		s.flowSpace = nil
+	}
 	return batch
+}
+
+// awaitFlowSpaceLocked is called with flowMu held by a capture about to append.
+// While the buffer is full it releases flowMu and waits until the flusher takes
+// the buffer, the shared deadline (flowFullWait from the first wait) passes, or
+// the flusher is stopped. It reports whether it released the lock, in which
+// case the caller re-checks its state before appending. A paused flusher (tests)
+// will not drain, so it never waits for one.
+func (s *Store) awaitFlowSpaceLocked(deadline *time.Time) bool {
+	if len(s.flowPending) < flowBufCap || s.flowPaused || flowFullWait <= 0 {
+		return false
+	}
+	now := time.Now()
+	if deadline.IsZero() {
+		*deadline = now.Add(flowFullWait)
+	}
+	wait := deadline.Sub(now)
+	if wait <= 0 {
+		return false
+	}
+	if s.flowSpace == nil {
+		s.flowSpace = make(chan struct{})
+	}
+	space := s.flowSpace
+	s.flowMu.Unlock()
+	timer := time.NewTimer(wait)
+	select {
+	case <-space:
+	case <-timer.C:
+	case <-s.flowStop:
+	}
+	timer.Stop()
+	s.flowMu.Lock()
+	return true
 }
 
 // EnqueueAddFlowTags queues a tag union for id. It never waits on SQLite.
@@ -192,13 +253,19 @@ func (s *Store) EnqueueAddFlowTags(id int64, tags []string) (bool, error) {
 		return true, nil
 	}
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
-	}
-	if _, void := s.flowVoid[id]; void && s.flowPendingN[id] == 0 {
-		s.flowMu.Unlock()
-		return true, nil
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if _, void := s.flowVoid[id]; void && s.flowPendingN[id] == 0 {
+			s.flowMu.Unlock()
+			return true, nil
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
 	dropped := s.dropOldestFlowLocked()
 	cp := append([]string(nil), tags...)
@@ -362,18 +429,56 @@ func (s *Store) flowFlusher() {
 			if s.flowIsPaused() {
 				continue
 			}
+			if cmd, ok := s.lingerForBatch(); ok {
+				if s.runFlowCmd(cmd) {
+					return
+				}
+				continue
+			}
 			_ = s.drainUntilIdle(time.Time{})
 		case cmd := <-s.flowOpCh:
-			var deadline time.Time
-			if cmd.close {
-				deadline = time.Now().Add(flowDrainTimeout)
-			}
-			cmd.errc <- s.drainUntilIdle(deadline)
-			if cmd.close {
+			if s.runFlowCmd(cmd) {
 				return
 			}
 		}
 	}
+}
+
+// runFlowCmd serves a FlushFlows or Close request and reports whether the
+// flusher must exit.
+func (s *Store) runFlowCmd(cmd flowCmd) bool {
+	var deadline time.Time
+	if cmd.close {
+		deadline = time.Now().Add(flowDrainTimeout)
+	}
+	cmd.errc <- s.drainUntilIdle(deadline)
+	return cmd.close
+}
+
+// flowLinger is how long a wake-up waits for more writes before draining. The
+// proxy enqueues one write at a time; draining each on arrival paid a commit
+// per flow and could not keep up with the proxy, so the buffer filled and
+// capture dropped flows. Waiting a moment groups a trickle into one
+// transaction and lets a fast response coalesce into its still-queued insert.
+// Readers never see the delay: FlushFlows interrupts the linger.
+var flowLinger = 2 * time.Millisecond
+
+// lingerForBatch waits up to flowLinger while the buffer holds less than one
+// batch. A FlushFlows or Close arriving meanwhile is returned for the caller to
+// run at once.
+func (s *Store) lingerForBatch() (flowCmd, bool) {
+	if flowLinger <= 0 || s.pendingLen() >= flowBatchMax {
+		return flowCmd{}, false
+	}
+	timer := time.NewTimer(flowLinger)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-s.flowStop:
+	case cmd := <-s.flowOpCh:
+		return cmd, true
+	}
+	return flowCmd{}, false
 }
 
 // drainUntilIdle applies queued writes until the buffer is empty, the pass
