@@ -1308,7 +1308,7 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 // gateAndForward after Host-retargeting is resolved, so an edited Host can't
 // slip a forward past this check.
 func (s *Server) isOwnListenerTarget(host string, port int) bool {
-	if len(s.SelfPorts) == 0 || !isLoopbackName(host) {
+	if len(s.SelfPorts) == 0 || !isSelfAliasName(host) {
 		return false
 	}
 	for _, p := range s.SelfPorts {
@@ -1371,6 +1371,17 @@ func (s *Server) teeBody(flow *proxyFlow, body io.Reader) (io.Reader, func() (st
 		return s.cap.TeeBody(body)
 	}
 	return body, func() (string, int64, error) { return "", 0, nil }, nil
+}
+
+// isSelfAliasName extends isLoopbackName with the aliases that also connect to
+// a local listener: the unspecified address (0.0.0.0 / ::), a trailing-dot
+// "localhost." and *.localhost subdomains (RFC 6761).
+func isSelfAliasName(host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+	if ip := net.ParseIP(h); ip != nil {
+		return ip.IsLoopback() || ip.IsUnspecified()
+	}
+	return h == "localhost" || strings.HasSuffix(h, ".localhost")
 }
 
 // isLoopbackName reports whether a bare hostname names the loopback interface.

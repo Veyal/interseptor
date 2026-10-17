@@ -296,6 +296,9 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 			if up == nil || senderSOCKSUpstream(up) {
 				return nil, nil
 			}
+			if err := s.selfCheckRequest(req); err != nil {
+				return nil, err
+			}
 			if o.Guard != nil {
 				port, _ := strconv.Atoi(req.URL.Port())
 				if port == 0 {

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,8 @@ type Sender struct {
 
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
+
+	ownPorts atomic.Pointer[func() []int] // own listener ports (self_guard.go)
 }
 
 // SetMacro configures the token-refresh macro applied before each send.
@@ -257,10 +260,13 @@ func New(st *store.Store, cap *capture.Capturer) *Sender {
 	return s
 }
 
-func (s *Sender) proxyForRequest(*http.Request) (*url.URL, error) {
+func (s *Sender) proxyForRequest(req *http.Request) (*url.URL, error) {
 	up := s.upstream.Load()
 	if up == nil || senderSOCKSUpstream(up) {
 		return nil, nil
+	}
+	if err := s.selfCheckRequest(req); err != nil {
+		return nil, err
 	}
 	return up, nil
 }
@@ -312,12 +318,29 @@ func (s *Sender) SetUpstreamProxyCA(pemBytes []byte) error {
 }
 
 func (s *Sender) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return s.dialVia(s.upstream.Load(), ctx, network, addr)
+	up := s.upstream.Load()
+	if up != nil && !senderSOCKSUpstream(up) && addr == senderUpstreamAddress(up) {
+		return senderNetDialer().DialContext(ctx, network, addr) // proxy hop; destination vetted in proxyForRequest
+	}
+	return s.dialVia(up, ctx, network, addr)
 }
 
-// dialVia dials addr directly, or through up when up is a SOCKS proxy.
+// dialVia dials addr directly, or through up when up is a SOCKS proxy. A
+// destination on one of the tool's own ports is vetted after resolution first.
 func (s *Sender) dialVia(up *url.URL, ctx context.Context, network, addr string) (net.Conn, error) {
-	if up == nil || !senderSOCKSUpstream(up) {
+	direct := up == nil || !senderSOCKSUpstream(up)
+	if host, portStr, err := net.SplitHostPort(addr); err == nil {
+		port, _ := strconv.Atoi(portStr)
+		if g := s.selfGuardFor(port); g != nil {
+			if direct {
+				return guardedDial(ctx, g, nil, network, addr, senderNetDialer().DialContext)
+			}
+			if err := g.CheckHost(ctx, host, port); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if direct {
 		return senderNetDialer().DialContext(ctx, network, addr)
 	}
 	if up.Scheme == "socks5" {

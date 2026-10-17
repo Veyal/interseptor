@@ -7,6 +7,7 @@ package wsrepeater
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
@@ -44,6 +45,9 @@ type Request struct {
 	Binary  bool              // send a binary frame instead of text
 	Headers map[string]string // extra handshake headers (Cookie, Authorization, …)
 	ReadFor time.Duration     // how long to collect response frames (default 2s)
+	// DialContext, when set, opens the TCP connection (the caller's destination
+	// guard); TLS is layered on top. Nil dials directly.
+	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // Frame is one sent or received WebSocket frame.
@@ -65,6 +69,26 @@ type Result struct {
 	ResHeaders map[string][]string `json:"-"`
 }
 
+// dialTarget opens the connection through dial (or a plain dialer) within a
+// 10s budget and performs the TLS handshake for wss.
+func dialTarget(dial func(ctx context.Context, network, addr string) (net.Conn, error), addr, serverName string, secure bool) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if dial == nil {
+		dial = (&net.Dialer{}).DialContext
+	}
+	conn, err := dial(ctx, "tcp", addr)
+	if err != nil || !secure {
+		return conn, err
+	}
+	tc := tls.Client(conn, &tls.Config{InsecureSkipVerify: true, ServerName: serverName}) //nolint:gosec // pentest tool, by design
+	if err := tc.HandshakeContext(ctx); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return tc, nil
+}
+
 // Send performs the handshake, sends the message, and returns the exchange.
 func Send(req Request) (*Result, error) {
 	u, err := url.Parse(req.URL)
@@ -81,13 +105,7 @@ func Send(req Request) (*Result, error) {
 		}
 	}
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	var conn net.Conn
-	if secure {
-		conn, err = tls.DialWithDialer(dialer, "tcp", host, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // pentest tool, by design
-	} else {
-		conn, err = dialer.Dial("tcp", host)
-	}
+	conn, err := dialTarget(req.DialContext, host, u.Hostname(), secure)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", host, err)
 	}

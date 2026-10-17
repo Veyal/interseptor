@@ -11,6 +11,22 @@ import (
 // listeners (proxy and control) so collection sends can never reach them,
 // whatever the scope policy: every local interface address is "own".
 func (h *Hub) ownListeners() ([]int, []net.IP) {
+	ports := h.ownListenerPorts()
+	var ips []net.IP
+	if as, err := net.InterfaceAddrs(); err == nil {
+		for _, a := range as {
+			if ipn, ok := a.(*net.IPNet); ok {
+				ips = append(ips, ipn.IP)
+			}
+		}
+	}
+	return ports, ips
+}
+
+// ownListenerPorts returns the ports of the control listener and every proxy
+// listener. It backs the sender's dial-time self guard and the literal
+// own-listener checks, so it must stay cheap (no syscalls).
+func (h *Hub) ownListenerPorts() []int {
 	var ports []int
 	seen := map[int]bool{}
 	addrs := append([]string{h.GetSelfAddr()}, h.currentProxyAddrs()...)
@@ -24,15 +40,7 @@ func (h *Hub) ownListeners() ([]int, []net.IP) {
 			ports = append(ports, n)
 		}
 	}
-	var ips []net.IP
-	if as, err := net.InterfaceAddrs(); err == nil {
-		for _, a := range as {
-			if ipn, ok := a.(*net.IPNet); ok {
-				ips = append(ips, ipn.IP)
-			}
-		}
-	}
-	return ports, ips
+	return ports
 }
 
 // backend returns the process-wide collrun backend: the same store-backed

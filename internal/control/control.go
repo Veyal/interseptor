@@ -229,6 +229,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		}
 	}
 	h.snd.SetOnPersist(h.FlowCaptured)
+	h.snd.SetOwnPorts(h.ownListenerPorts)
 	return h
 }
 
