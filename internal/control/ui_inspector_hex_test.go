@@ -24,37 +24,23 @@ if(!longDump.includes("... [truncated, 100 B total]")) {
   throw Error("expected truncation marker in hex dump: " + longDump);
 }
 
-// Test toggleSelectCurrentFlow
-const row = {
-  classes: new Set(),
-  attrs: {},
-  classList: {
-    toggle(c, force){ if(force) row.classes.add(c); else row.classes.delete(c); },
-    add(c){ row.classes.add(c); },
-    remove(c){ row.classes.delete(c); },
-  },
-  setAttribute(k, v){ row.attrs[k] = v; },
-};
-let selBarUpdated = false;
+// Test toggleSelectCurrentFlow: it changes the selection set and repaints the
+// mounted rows (aria-selected can change on other rows than the current one).
+let selBarUpdated = false, refreshed = 0;
 globalThis.updateSelBar = () => { selBarUpdated = true; };
-globalThis.document = {
-  querySelector(sel){
-    if(sel === '.trow[data-id="42"]') return row;
-    return null;
-  }
-};
+globalThis.refreshVisibleRows = () => { refreshed++; };
 globalThis.state = {
   selId: 42,
   selected: new Set(),
 };
 
 toggleSelectCurrentFlow();
-if(!state.selected.has(42) || !row.classes.has('msel') || row.attrs['aria-pressed'] !== 'true' || !selBarUpdated) {
+if(!state.selected.has(42) || refreshed !== 1 || !selBarUpdated) {
   throw Error("toggleSelectCurrentFlow failed to select");
 }
 
 toggleSelectCurrentFlow();
-if(state.selected.has(42) || row.classes.has('msel') || row.attrs['aria-pressed'] !== 'false') {
+if(state.selected.has(42) || refreshed !== 2) {
   throw Error("toggleSelectCurrentFlow failed to deselect");
 }
 

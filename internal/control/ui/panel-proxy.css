@@ -22,6 +22,8 @@
 .tr-held .icon{color:var(--accent)}
 .tr-wait{color:var(--fg3)}
 .trow:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
+/* Fallback ring when focus is parked on the list after its row scrolled away. */
+#rows:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
 /* Row actions button (opens the same menu as right-click). It owns the trailing
    --row-more-w grid track so the row height and the virtual list are unchanged.
    Always painted: fine hover-capable pointers only dim it at rest, touch and

@@ -4,7 +4,7 @@
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
-import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
+import { selectFlow, revealFlowRow, focusInFlowList, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -213,10 +213,10 @@ document.addEventListener('keydown',e=>{
   if(isCommandPaletteOpen())return;
   const down=e.key==='ArrowDown'||e.key==='j';
   e.preventDefault();
+  const carryFocus=focusInFlowList();
   const id=walkFlowNav(down,e);
   if(id==null)return;
-  const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
-  if(row)row.scrollIntoView({block:'nearest'});
+  revealFlowRow(id,{focus:carryFocus});
 });
 
 /* ---- capture liveness (top bar) ---- */
@@ -559,7 +559,7 @@ function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey
 function isTypingTarget(t){
   const tag=(t?.tagName||'').toLowerCase();
   return tag==='input'||tag==='textarea'||tag==='select'||!!t?.isContentEditable
-    ||!!t?.closest?.('[role="combobox"],[role="listbox"]');
+    ||!!t?.closest?.('[role="combobox"],[role="listbox"]:not(#rows)'); // History's listbox has no typeahead: its rows take the flow shortcuts
 }
 function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';});}
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.

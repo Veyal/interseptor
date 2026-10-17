@@ -17,7 +17,7 @@ import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
-import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK } from './proxy-selection.js';
+import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
 import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
@@ -437,6 +437,44 @@ function flowTimeCell(f){
   if(w.kind==='none')return '<div class="tr-t" data-field="time"><span class="when-time">—</span><span class="u-sr">no timestamp</span></div>';
   return `<div class="tr-t" data-field="time" title="${escAttr(w.title)}">${w.date?`<span class="when-date" aria-hidden="true">${esc(w.date)}</span>`:''}<span class="when-time" aria-hidden="true">${esc(w.time)}</span><span class="u-sr">${esc(w.title)}</span></div>`;
 }
+// rowSelected is the listbox selection: the multi-selection when there is one,
+// otherwise the inspected row.
+function rowSelected(id){return state.selected.size?state.selected.has(id):id===state.selId;}
+// setRowsListbox gives #rows its listbox role only while it holds flow rows; the
+// empty and first-run cards inside it are ordinary content with buttons.
+function setRowsListbox(box,on){
+  if(!box)return;
+  if(on){
+    if(box.getAttribute('role')!=='listbox'){
+      box.setAttribute('role','listbox');box.setAttribute('aria-label','Captured flows');box.setAttribute('aria-multiselectable','true');
+    }
+  }else if(box.hasAttribute('role')){
+    box.removeAttribute('role');box.removeAttribute('aria-label');box.removeAttribute('aria-multiselectable');
+  }
+}
+// syncRowA11y stamps position-in-set on the mounted window (outside the row
+// markup, so a live insert does not invalidate every row stamp) and keeps exactly
+// one row in the Tab order: the row holding focus, else the inspected row, else
+// the first row in view. `start` is the window's first index in state.flows.
+function syncRowA11y(box,start){
+  if(!box)return;
+  const rows=box.querySelectorAll('.trow');
+  if(!rows.length)return;
+  const total=String(flowHasMore?-1:state.flows.length);
+  const active=document.activeElement;
+  let stop=null,sel=null;
+  rows.forEach((r,i)=>{
+    r.setAttribute('aria-posinset',String(start+i+1));
+    r.setAttribute('aria-setsize',total);
+    if(active&&r.contains(active))stop=r;
+    else if(r.classList.contains('sel'))sel=r;
+  });
+  if(!stop)stop=sel||rows[Math.min(rows.length-1,Math.max(0,Math.floor(box.scrollTop/ROW_H)-start))];
+  moveTabStop(rows,stop);
+}
+function moveTabStop(rows,stop){
+  rows.forEach(r=>{const want=r===stop?'0':'-1';if(r.getAttribute('tabindex')!==want)r.setAttribute('tabindex',want);});
+}
 function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
   const pending=!f.status&&!f.error;
@@ -457,7 +495,9 @@ function flowRowHTML(f){
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
     time:flowTimeCell(f),
   };
-  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
+  // History is one listbox: rows are options with one roving Tab stop (set by
+  // syncRowA11y after each render, so the stamp stays index-free).
+  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" role="option" tabindex="-1" aria-selected="${rowSelected(f.id)?'true':'false'}" aria-current="${f.id===state.selId?'true':'false'}"${title}>
       ${visibleFlowCols().map(k=>cells[k]).join('')}
       <button type="button" class="tr-more rowOverflow" data-rowmenu="${f.id}" aria-haspopup="menu" aria-label="Actions for flow #${f.id}" tabindex="-1">${icon('chevron')}</button>
     </div>`;
@@ -477,8 +517,10 @@ function wireFlowRow(r){
     : 'Flow #'+id);
   r.querySelectorAll('.flowtag').forEach(chip=>{
     const t=chip.dataset.tagchip;
+    // Not a Tab stop of its own: the row is the list's one stop; the context
+    // menu (Shift+F10) offers the same tag filter from the keyboard.
     chip.setAttribute('role','button');
-    chip.tabIndex=0;
+    chip.tabIndex=-1;
     chip.setAttribute('aria-label','filter by tag '+t);
     chip.addEventListener('keydown',e=>{
       if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();filterByTag(t);}
@@ -587,6 +629,7 @@ export function patchFlowRow(f){
   if(row){
     const hadFocus=row===document.activeElement||row.contains(document.activeElement);
     const nr=buildFlowRowEl(f);
+    copyRowA11y(row,nr);
     row.replaceWith(nr);
     // SSE response updates replace the row's DOM node. Keep keyboard users on
     // the same flow instead of dropping focus to the document body.
@@ -604,6 +647,13 @@ export function patchFlowRow(f){
     const anchor=document.querySelector('#rows .trow[data-id="'+next.id+'"]');
     if(anchor)anchor.before(nr);else box.prepend(nr);
   }else box.prepend(nr);
+  setRowsListbox(box,true);
+  syncRowA11y(box,0); // this path only runs below the virtualization threshold
+}
+// copyRowA11y carries the index-dependent attributes syncRowA11y set over to a
+// row rebuilt in place (same position, same flow).
+function copyRowA11y(from,to){
+  for(const a of ['tabindex','aria-posinset','aria-setsize']){const v=from.getAttribute(a);if(v!=null)to.setAttribute(a,v);}
 }
 // upsertFlow is Proxy's live-update policy layered on the generic flowStore
 // primitive from core.js: it decides *whether* a brand-new flow should be
@@ -876,7 +926,8 @@ function captureFlowListFocus(box){
 }
 function restoreFlowListFocus(box,focus){
   if(!focus)return;
-  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);if(!row)return;
+  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);
+  if(!row){if(box.contains(document.activeElement)||document.activeElement===document.body)box.focus({preventScroll:true});return;}
   const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
   target?.focus({preventScroll:true});
 }
@@ -912,9 +963,10 @@ function reconcileVirtualRows(){
   const plan=diffVisibleRows(mounted.map(r=>Number(r.dataset.id)),slice.map(f=>f.id));
   if(!plan.reusable)return false;
   const byId=new Map(mounted.map(r=>[Number(r.dataset.id),r]));
+  let parkFocus=false;
   for(const id of plan.remove){
     const row=byId.get(id);
-    if(row)row.remove();
+    if(row){parkFocus=parkFocus||row.contains(document.activeElement);row.remove();}
     byId.delete(id);
   }
   const nextById=new Map(slice.map(f=>[f.id,f]));
@@ -924,6 +976,11 @@ function reconcileVirtualRows(){
     (anchor||bottom).before(el);
     byId.set(ins.id,el);
   }
+  // Resize the pads before anything below can force layout (a focus() does):
+  // with rows removed and the old pads, the content is briefly shorter than the
+  // scroll position, and layout would clamp scrollTop and jump the list.
+  top.style.height=win.topPad+'px';
+  bottom.style.height=win.bottomPad+'px';
   for(const f of slice){
     const row=byId.get(f.id);
     if(!row||row._flowHTML===flowRowHTML(f))continue;
@@ -935,8 +992,10 @@ function reconcileVirtualRows(){
     if(focus)restoreFlowListFocus(box,focus);
     else if(hadFocus)nr.focus({preventScroll:true});
   }
-  top.style.height=win.topPad+'px';
-  bottom.style.height=win.bottomPad+'px';
+  // A focused row scrolled out of the window: park focus on the list itself
+  // (not <body>) so the arrow keys keep working from the selection.
+  if(parkFocus)box.focus({preventScroll:true});
+  syncRowA11y(box,win.start);
   consumeFlowSignals();
   return true;
 }
@@ -976,9 +1035,11 @@ export function renderRows(){
   applyFlowGrid();
   const flows=state.flows;
   if(!flows.length){
+    setRowsListbox(box,false);
     renderEmptyHistory(box);
     return;}
   if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
+  setRowsListbox(box,true);
   const win=flowVirt.computeWindow(flows.length);
   if(win){
     // The pads carry data-vpad so reconcileVirtualRows can recognize a window it
@@ -988,6 +1049,7 @@ export function renderRows(){
     stampFlowRows(box,html);
     consumeFlowSignals();
     restoreFlowListFocus(box,focus);
+    syncRowA11y(box,win.start);
     return;
   }
   const html=flows.map(f=>flowRowHTML(f));
@@ -995,6 +1057,7 @@ export function renderRows(){
   stampFlowRows(box,html);
   consumeFlowSignals();
   restoreFlowListFocus(box,focus);
+  syncRowA11y(box,0);
 }
 // stampFlowRows wires every freshly-serialized row and records the markup it came
 // from, so the next keyed reconcile can skip rows whose rendering hasn't changed.
@@ -1030,6 +1093,56 @@ export function walkFlowNav(down,e){
   stepSelection(list.map(f=>f.id),id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
   selectFlow(id);updateSelBar();return id;
 }
+// revealFlowRow scrolls the History list so the row of flow `id` is on screen,
+// mounting it synchronously when the list is virtualized (a key that repeats
+// faster than a frame must land on the new row, not on a stale window), and
+// optionally moves keyboard focus onto it.
+export function revealFlowRow(id,{focus=false}={}){
+  const box=$('#rows');if(!box)return null;
+  if(flowVirt.isActive()){
+    const i=state.flows.findIndex(f=>f.id===id);
+    if(i<0)return null;
+    const top=i*ROW_H,bottom=top+ROW_H;
+    if(top<box.scrollTop)box.scrollTop=top;
+    else if(bottom>box.scrollTop+box.clientHeight)box.scrollTop=bottom-box.clientHeight;
+    if(!reconcileVirtualRows())renderRows();
+  }
+  const row=box.querySelector(`.trow[data-id="${id}"]`);
+  if(!row)return null;
+  if(!flowVirt.isActive())row.scrollIntoView({block:'nearest'});
+  if(focus){row.focus({preventScroll:true});moveTabStop(box.querySelectorAll('.trow'),row);}
+  return row;
+}
+// focusInFlowList reports whether keyboard focus is on the History list (or
+// nowhere), the only case in which a j/k walk should carry focus along.
+export function focusInFlowList(){
+  const a=document.activeElement,box=$('#rows');
+  return !a||a===document.body||!!(box&&box.contains(a));
+}
+// The listbox key model: with focus on a row (or the list), Up/Down, Home/End and
+// PageUp/PageDown move the selection and focus together; Shift extends the range.
+{
+  const box=$('#rows');
+  if(box){
+    box.tabIndex=-1;
+    box.addEventListener('keydown',e=>{
+      if(e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey)return;
+      if(e.target!==box&&!(e.target.classList&&e.target.classList.contains('trow')))return;
+      const list=state.flows;
+      const from=e.target===box?state.selId:Number(e.target.dataset.id);
+      const page=Math.max(1,Math.floor(box.clientHeight/ROW_H)-1);
+      const to=listKeyTarget(e.key,list.findIndex(f=>f.id===from),list.length,page);
+      if(to==null)return;
+      e.preventDefault();e.stopPropagation();
+      const id=list[to].id;
+      if(state.selAnchorId==null&&from!=null)state.selAnchorId=from;
+      stepSelection(list.map(f=>f.id),id,{mod:false,shift:e.shiftKey});
+      selectFlow(id);updateSelBar();
+      revealFlowRow(id,{focus:true});
+      if(to>=list.length-1)loadMoreFlows();
+    });
+  }
+}
 // Ctrl+Shift+A: select every flow matching the current filters (the loaded,
 // filtered id list), not just the rendered window; again to clear.
 export function toggleSelectAllShown(){
@@ -1044,12 +1157,9 @@ export function toggleSelectCurrentFlow(){
   }else{
     state.selected.add(id);
   }
-  const row=document.querySelector(`.trow[data-id="${id}"]`);
-  if(row){
-    const has=state.selected.has(id);
-    row.classList.toggle('msel',has);
-    row.setAttribute('aria-pressed',has?'true':'false');
-  }
+  // Going between "no multi-selection" and "some" changes aria-selected on other
+  // mounted rows too; the keyed refresh patches exactly the rows that changed.
+  refreshVisibleRows();
   updateSelBar();
 }
 // buildFlowParams encodes the active filters into a query (without limit/cursor),
@@ -1355,8 +1465,13 @@ function syncSelectedRow(prevId){
     const sel=id===state.selId;
     row.classList.toggle('sel',sel);
     row.setAttribute('aria-current',sel?'true':'false');
+    row.setAttribute('aria-selected',sel?'true':'false');
     row._flowHTML=flowRowHTML(flowStore.byId.get(id));
   });
+  // The Tab stop follows the selection unless focus is inside the list (the
+  // keyboard path moves focus to the new row itself).
+  const next=rows.get(state.selId);
+  if(next&&!box.contains(document.activeElement))moveTabStop(box.querySelectorAll('.trow'),next);
   return true;
 }
 export async function selectFlow(id){
