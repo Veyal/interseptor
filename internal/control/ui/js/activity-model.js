@@ -11,26 +11,31 @@ export const ACTIVITY_CATEGORIES = [
 ];
 
 // Activity rows are MCP tool calls, so the category is derived from the tool name.
-// Anything unrecognised is a generic agent action, never dropped.
+// MCP tools are verb_noun (list_flows, create_finding, add_scope_rule), so every
+// underscore-separated word is checked, not just the first. Rules are ordered:
+// the first category with a matching word wins (record_finding_from_flow is a
+// finding, add_scope_rule is scope). Anything unrecognised is a generic agent
+// action, never dropped.
 const RULES = [
-  ['findings', /^(finding|report|evidence|note)/],
-  ['scope', /^scope/],
-  ['settings', /^(setting|config|project|upstream|device|ca_|tls|rule|match_replace)/],
-  ['proxy', /^(flow|history|proxy|repeat|send|replay|intruder|scan|intercept|endpoint|map|ws_|websocket|oob|tag|authz|decode|encode)/],
+  ['findings', /^(findings?|report|evidence|notes?|poc|cvss)$/],
+  ['scope', /^scope$/],
+  ['settings', /^(settings?|config|project|upstream|device|android|ios|ca|tls|ssl|rules?|match|interception|vault)$/],
+  ['proxy', /^(flows?|history|proxy|repeat|repeater|send|replay|intruder|scan|scanner|issues?|intercept|forward|drop|endpoint|map|ws|websocket|oob|tags?|authz|decode|encode|codecs?)$/],
 ];
 
 export function activityCategory(tool) {
-  const t = String(tool || '').toLowerCase();
-  for (const [id, re] of RULES) if (re.test(t)) return id;
+  const words = String(tool || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  for (const [id, re] of RULES) if (words.some((w) => re.test(w))) return id;
   return 'agent';
 }
 
+// The free-text filter matches the tool name, the summary and the stated intent.
 export function filterActivity(items, { cats, intent } = {}) {
   const set = cats ? new Set(cats) : null;
   const q = String(intent || '').trim().toLowerCase();
   return (items || []).filter((it) => {
     if (set && set.size && !set.has(activityCategory(it.tool))) return false;
-    if (q && !String(it.intent || '').toLowerCase().includes(q)) return false;
+    if (q && ![it.tool, it.summary, it.intent].some((v) => String(v || '').toLowerCase().includes(q))) return false;
     return true;
   });
 }

@@ -20,7 +20,7 @@ function sameWorkflow(a,b){
   return Math.abs((a.ts||0)-(b.ts||0))<=WORKFLOW_GAP_MS;
 }
 // ---- client-side filtering over the loaded feed ----
-// A single substring filter over each action's stated intent — enough to find
+// A single substring filter over each action's tool, summary and stated intent — enough to find
 // "what was the AI trying to do" without a noisy mode toggle.
 const actFilter={intent:'',cats:new Set()};
 let actDeferredNew=0;
@@ -220,7 +220,7 @@ $('#actClear').onclick=async()=>{
     if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Clear';}
   }
 };
-// Free-text intent filter (substring, case-insensitive).
+// Free-text filter over tool, summary and intent (substring, case-insensitive).
 const actIntentFilter=$('#actIntentFilter');
 if(actIntentFilter){
   let actFilterTimer=null;
