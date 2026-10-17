@@ -572,9 +572,11 @@ func TestSettingsOriginTLSVerifyDefaultsFalseAndStrictParsing(t *testing.T) {
 func TestPutSettingsOriginTLSVerifyPersistsBeforeCallback(t *testing.T) {
 	h, st, _ := newHub(t)
 	var order []string
-	h.setSetting = func(key, value string) error {
-		order = append(order, "persist:"+key+"="+value)
-		return st.SetSetting(key, value)
+	h.setSettings = func(values map[string]string) error {
+		for key, value := range values {
+			order = append(order, "persist:"+key+"="+value)
+		}
+		return st.SetSettings(values)
 	}
 	h.SetOriginTLSVerify = func(v bool) { order = append(order, "apply:false") }
 	rec := httptest.NewRecorder()
@@ -594,7 +596,7 @@ func TestPutSettingsOriginTLSVerifyPersistsBeforeCallback(t *testing.T) {
 func TestPutSettingsOriginTLSVerifyPersistenceFailureLeavesRuntimeUnchanged(t *testing.T) {
 	h, _, _ := newHub(t)
 	called := false
-	h.setSetting = func(string, string) error { return errors.New("store unavailable") }
+	h.setSettings = func(map[string]string) error { return errors.New("store unavailable") }
 	h.SetOriginTLSVerify = func(bool) { called = true }
 	rec := httptest.NewRecorder()
 	(&settingsAPI{h}).putSettings(rec, httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"originTLSVerify":true}`)))

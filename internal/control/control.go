@@ -82,6 +82,7 @@ type Hub struct {
 	// SetUpstreamProxyCA applies PEM trust roots for the chained upstream proxy. Set by cmd.
 	SetUpstreamProxyCA func([]byte) error
 	setSetting         func(string, string) error
+	setSettings        func(map[string]string) error
 	sysProxyEnable     func(string, int) error
 	sysProxyDisable    func() error
 	sysProxyStatus     func() (bool, error)
@@ -190,6 +191,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		clients:              map[chan string]struct{}{},
 		iosTCPReachable:      ios.TCPReachable,
 		setSetting:           st.SetSetting,
+		setSettings:          st.SetSettings,
 		sysProxyEnable:       sysproxy.Enable,
 		sysProxyDisable:      sysproxy.Disable,
 		sysProxyStatus:       sysproxy.Status,
@@ -1539,38 +1541,6 @@ func (h *Hub) NotifyBypassAdded(hosts []string) {
 	h.broadcast(map[string]any{"type": "settings.update"})
 }
 
-func (h *Hub) persistSetting(w http.ResponseWriter, key, val string) bool {
-	if err := h.setSetting(key, val); err != nil {
-		httpInternalErr(w, err)
-		return false
-	}
-	return true
-}
-
-func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
-	previous, _, err := h.st.GetSetting("upstream.proxyCA")
-	if err != nil {
-		return false, err
-	}
-	if err := h.snd.SetUpstreamProxyCA([]byte(value)); err != nil {
-		return false, err
-	}
-	if h.SetUpstreamProxyCA != nil {
-		if err := h.SetUpstreamProxyCA([]byte(value)); err != nil {
-			_ = h.snd.SetUpstreamProxyCA([]byte(previous))
-			return false, err
-		}
-	}
-	if err := h.setSetting("upstream.proxyCA", value); err != nil {
-		if h.SetUpstreamProxyCA != nil {
-			_ = h.SetUpstreamProxyCA([]byte(previous))
-		}
-		_ = h.snd.SetUpstreamProxyCA([]byte(previous))
-		return true, err
-	}
-	return true, nil
-}
-
 // ConfigureSenderUpstreamProxy applies a saved route to Repeater, Intruder,
 // and scanner traffic during startup. Runtime Settings updates call the same
 // Sender methods inside settingsAPI.
@@ -1582,54 +1552,6 @@ func (h *Hub) ConfigureSenderUpstreamProxy(value string) error {
 // consumers during startup.
 func (h *Hub) ConfigureSenderUpstreamProxyCA(value []byte) error {
 	return h.snd.SetUpstreamProxyCA(value)
-}
-
-func (h *settingsAPI) applyProxyBasicAuth(w http.ResponseWriter, enabled *bool, user, password *string) bool {
-	currentEnabled, _, err := h.st.GetSetting(proxyAuthEnabledKey)
-	if err != nil {
-		httpInternalErr(w, err)
-		return false
-	}
-	currentUser, _, err := h.st.GetSetting(proxyAuthUserKey)
-	if err != nil {
-		httpInternalErr(w, err)
-		return false
-	}
-	currentPassword, _, err := h.st.GetSetting(proxyAuthPasswordKey)
-	if err != nil {
-		httpInternalErr(w, err)
-		return false
-	}
-	on := currentEnabled == "1"
-	if enabled != nil {
-		on = *enabled
-	}
-	if user != nil {
-		currentUser = strings.TrimSpace(*user)
-	}
-	if password != nil {
-		currentPassword = *password
-	}
-	if err := validateProxyBasicAuth(on, currentUser, currentPassword); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
-		return false
-	}
-	stored := "0"
-	if on {
-		stored = "1"
-	}
-	if err := h.st.SetSettings(map[string]string{
-		proxyAuthEnabledKey:  stored,
-		proxyAuthUserKey:     currentUser,
-		proxyAuthPasswordKey: currentPassword,
-	}); err != nil {
-		httpInternalErr(w, err)
-		return false
-	}
-	if h.SetProxyBasicAuth != nil {
-		h.SetProxyBasicAuth(on, currentUser, currentPassword)
-	}
-	return true
 }
 
 func validateProxyBasicAuth(enabled bool, user, password string) error {
@@ -1645,247 +1567,344 @@ func validateProxyBasicAuth(enabled bool, user, password string) error {
 	return nil
 }
 
-func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		ProxyAddr                  string    `json:"proxyAddr"`
-		ProxyAddrs                 []string  `json:"proxyAddrs"`
-		ControlAddr                string    `json:"controlAddr"`
-		UpstreamProxy              *string   `json:"upstreamProxy"` // pointer so "" can clear it
-		UpstreamProxyCA            *string   `json:"upstreamProxyCA"`
-		OobEnabled                 *bool     `json:"oobEnabled"`
-		CaptureScopeOnly           *bool     `json:"captureScopeOnly"`
-		SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
-		SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
-		InvisibleProxy             *bool     `json:"invisibleProxy"`
-		FindingsUIEditing          *bool     `json:"findingsUIEditing"`
-		OriginTLSVerify            *bool     `json:"originTLSVerify"`
-		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
-		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
-		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
-		ProxyAuthEnabled           *bool     `json:"proxyAuthEnabled"`
-		ProxyAuthUser              *string   `json:"proxyAuthUser"`
-		ProxyAuthPassword          *string   `json:"proxyAuthPassword"`
+// settingsPut is the PUT /api/settings body. Pointer fields distinguish "absent"
+// from the zero value so a partial body changes only what it names.
+type settingsPut struct {
+	ProxyAddr                  string    `json:"proxyAddr"`
+	ProxyAddrs                 []string  `json:"proxyAddrs"`
+	ControlAddr                string    `json:"controlAddr"`
+	UpstreamProxy              *string   `json:"upstreamProxy"` // pointer so "" can clear it
+	UpstreamProxyCA            *string   `json:"upstreamProxyCA"`
+	OobEnabled                 *bool     `json:"oobEnabled"`
+	CaptureScopeOnly           *bool     `json:"captureScopeOnly"`
+	SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
+	SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
+	InvisibleProxy             *bool     `json:"invisibleProxy"`
+	FindingsUIEditing          *bool     `json:"findingsUIEditing"`
+	OriginTLSVerify            *bool     `json:"originTLSVerify"`
+	TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
+	OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
+	AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
+	ProxyAuthEnabled           *bool     `json:"proxyAuthEnabled"`
+	ProxyAuthUser              *string   `json:"proxyAuthUser"`
+	ProxyAuthPassword          *string   `json:"proxyAuthPassword"`
+}
+
+// settingsUpdate is a fully validated settings change. It is committed in three
+// phases so a rejected or failed request leaves nothing half-applied:
+//  1. runtime steps that can fail (listener rebinds, upstream route and trust),
+//     each paired with an undo;
+//  2. one atomic store.SetSettings batch for every key;
+//  3. infallible in-memory setters, then a single settings.update broadcast.
+type settingsUpdate struct {
+	values  map[string]string
+	runtime []settingsRuntimeStep
+	apply   []func()
+}
+
+type settingsRuntimeStep struct {
+	do   func() error // a returned error rejects the request with 400
+	undo func()
+}
+
+// settingsUpdateError carries the HTTP status for a rejected settings update.
+type settingsUpdateError struct {
+	status int
+	err    error
+}
+
+func (e *settingsUpdateError) Error() string { return e.err.Error() }
+
+func settingsBadRequest(err error) error {
+	return &settingsUpdateError{status: http.StatusBadRequest, err: err}
+}
+
+func settingFlag(on bool) string {
+	if on {
+		return "1"
 	}
-	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
+	return "0"
+}
+
+func (u *settingsUpdate) toggle(p *bool, key string, set func(bool)) {
+	if p == nil {
 		return
 	}
-	if in.OobEnabled != nil {
-		v := "0"
-		if *in.OobEnabled {
-			v = "1"
-		}
-		if !h.persistSetting(w, "oob.enabled", v) {
-			return
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	on := *p
+	u.values[key] = settingFlag(on)
+	if set != nil {
+		u.apply = append(u.apply, func() { set(on) })
 	}
-	if in.CaptureScopeOnly != nil {
-		v := "0"
-		if *in.CaptureScopeOnly {
-			v = "1"
-		}
-		if !h.persistSetting(w, "capture.scopeOnly", v) {
-			return
-		}
-		if h.SetCaptureScopeOnly != nil {
-			h.SetCaptureScopeOnly(*in.CaptureScopeOnly)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+}
+
+func (u *settingsUpdate) hostList(p *[]string, key string, set func([]string)) {
+	if p == nil {
+		return
 	}
-	if in.SuppressBrowserTelemetry != nil {
-		v := "0"
-		if *in.SuppressBrowserTelemetry {
-			v = "1"
-		}
-		if !h.persistSetting(w, "capture.suppressBrowserTelemetry", v) {
-			return
-		}
-		if h.SetSuppressBrowserTelemetry != nil {
-			h.SetSuppressBrowserTelemetry(*in.SuppressBrowserTelemetry)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	hosts := parseHostList(strings.Join(*p, "\n"))
+	u.values[key] = strings.Join(hosts, "\n")
+	if set != nil {
+		u.apply = append(u.apply, func() { set(hosts) })
 	}
-	if in.SuppressAndroidTelemetry != nil {
-		v := "0"
-		if *in.SuppressAndroidTelemetry {
-			v = "1"
-		}
-		if !h.persistSetting(w, "capture.suppressAndroidTelemetry", v) {
-			return
-		}
-		if h.SetSuppressAndroidTelemetry != nil {
-			h.SetSuppressAndroidTelemetry(*in.SuppressAndroidTelemetry)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+}
+
+func (h *settingsAPI) planSettingsUpdate(in *settingsPut) (*settingsUpdate, error) {
+	u := &settingsUpdate{values: map[string]string{}}
+	u.toggle(in.OobEnabled, "oob.enabled", nil)
+	u.toggle(in.CaptureScopeOnly, "capture.scopeOnly", h.SetCaptureScopeOnly)
+	u.toggle(in.SuppressBrowserTelemetry, "capture.suppressBrowserTelemetry", h.SetSuppressBrowserTelemetry)
+	u.toggle(in.SuppressAndroidTelemetry, "capture.suppressAndroidTelemetry", h.SetSuppressAndroidTelemetry)
+	u.toggle(in.InvisibleProxy, "proxy.invisibleProxy", h.SetInvisibleProxy)
+	u.toggle(in.FindingsUIEditing, "findings.uiEditing", nil)
+	u.hostList(in.TLSBypassHosts, tlsBypassSettingKey, h.SetTLSBypassHosts)
+	u.hostList(in.OriginTLSVerifyBypassHosts, originTLSVerifyBypassSettingKey, h.SetOriginTLSVerifyBypassHosts)
+	u.toggle(in.AutoBypassOnPinFailure, "proxy.autoBypassOnPinFailure", h.SetAutoBypassOnPinFailure)
+	u.toggle(in.OriginTLSVerify, originTLSVerifySettingKey, h.SetOriginTLSVerify)
+	if err := h.planProxyBasicAuth(u, in.ProxyAuthEnabled, in.ProxyAuthUser, in.ProxyAuthPassword); err != nil {
+		return nil, err
 	}
-	if in.InvisibleProxy != nil {
-		v := "0"
-		if *in.InvisibleProxy {
-			v = "1"
-		}
-		if !h.persistSetting(w, "proxy.invisibleProxy", v) {
-			return
-		}
-		if h.SetInvisibleProxy != nil {
-			h.SetInvisibleProxy(*in.InvisibleProxy)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	if err := h.planUpstreamProxyCA(u, in.UpstreamProxyCA); err != nil {
+		return nil, err
 	}
-	if in.FindingsUIEditing != nil {
-		v := "0"
-		if *in.FindingsUIEditing {
-			v = "1"
-		}
-		if !h.persistSetting(w, "findings.uiEditing", v) {
-			return
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	if err := h.planUpstreamProxy(u, in.UpstreamProxy); err != nil {
+		return nil, err
 	}
-	if in.TLSBypassHosts != nil {
-		hosts := parseHostList(strings.Join(*in.TLSBypassHosts, "\n"))
-		if !h.persistSetting(w, tlsBypassSettingKey, strings.Join(hosts, "\n")) {
-			return
-		}
-		if h.SetTLSBypassHosts != nil {
-			h.SetTLSBypassHosts(hosts)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	if err := h.planProxyAddrs(u, in.ProxyAddrs, in.ProxyAddr); err != nil {
+		return nil, err
 	}
-	if in.OriginTLSVerifyBypassHosts != nil {
-		hosts := parseHostList(strings.Join(*in.OriginTLSVerifyBypassHosts, "\n"))
-		if !h.persistSetting(w, originTLSVerifyBypassSettingKey, strings.Join(hosts, "\n")) {
-			return
-		}
-		if h.SetOriginTLSVerifyBypassHosts != nil {
-			h.SetOriginTLSVerifyBypassHosts(hosts)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	if err := h.planControlAddr(u, in.ControlAddr); err != nil {
+		return nil, err
 	}
-	if in.AutoBypassOnPinFailure != nil {
-		v := "0"
-		if *in.AutoBypassOnPinFailure {
-			v = "1"
-		}
-		if !h.persistSetting(w, "proxy.autoBypassOnPinFailure", v) {
-			return
-		}
-		if h.SetAutoBypassOnPinFailure != nil {
-			h.SetAutoBypassOnPinFailure(*in.AutoBypassOnPinFailure)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	return u, nil
+}
+
+func (h *settingsAPI) planProxyBasicAuth(u *settingsUpdate, enabled *bool, user, password *string) error {
+	if enabled == nil && user == nil && password == nil {
+		return nil
 	}
-	if in.OriginTLSVerify != nil {
-		v := "0"
-		if *in.OriginTLSVerify {
-			v = "1"
-		}
-		if !h.persistSetting(w, originTLSVerifySettingKey, v) {
-			return
-		}
-		if h.SetOriginTLSVerify != nil {
-			h.SetOriginTLSVerify(*in.OriginTLSVerify)
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	currentEnabled, _, err := h.st.GetSetting(proxyAuthEnabledKey)
+	if err != nil {
+		return err
 	}
-	newProxyAddrs := in.ProxyAddrs
-	if len(newProxyAddrs) == 0 && in.ProxyAddr != "" {
-		newProxyAddrs = []string{in.ProxyAddr}
+	currentUser, _, err := h.st.GetSetting(proxyAuthUserKey)
+	if err != nil {
+		return err
 	}
-	if len(newProxyAddrs) > 0 && !proxyAddrsEqual(newProxyAddrs, h.currentProxyAddrs()) {
-		newProxyAddrs = normalizeProxyAddrs(newProxyAddrs)
-		if err := validateProxyAddrs(newProxyAddrs); err != nil {
-			httpErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if mr, ok := h.rebind.(MultiProxyRebinder); ok {
-			if err := mr.RebindAddrs(newProxyAddrs); err != nil {
-				httpErr(w, http.StatusBadRequest, "rebind failed: "+err.Error())
-				return
+	currentPassword, _, err := h.st.GetSetting(proxyAuthPasswordKey)
+	if err != nil {
+		return err
+	}
+	on := currentEnabled == "1"
+	if enabled != nil {
+		on = *enabled
+	}
+	if user != nil {
+		currentUser = strings.TrimSpace(*user)
+	}
+	if password != nil {
+		currentPassword = *password
+	}
+	if err := validateProxyBasicAuth(on, currentUser, currentPassword); err != nil {
+		return settingsBadRequest(err)
+	}
+	u.values[proxyAuthEnabledKey] = settingFlag(on)
+	u.values[proxyAuthUserKey] = currentUser
+	u.values[proxyAuthPasswordKey] = currentPassword
+	if h.SetProxyBasicAuth != nil {
+		u.apply = append(u.apply, func() { h.SetProxyBasicAuth(on, currentUser, currentPassword) })
+	}
+	return nil
+}
+
+func (h *settingsAPI) planUpstreamProxyCA(u *settingsUpdate, raw *string) error {
+	if raw == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*raw)
+	previous, _, err := h.st.GetSetting("upstream.proxyCA")
+	if err != nil {
+		return err
+	}
+	u.values["upstream.proxyCA"] = value
+	u.runtime = append(u.runtime, settingsRuntimeStep{
+		do: func() error {
+			if err := h.snd.SetUpstreamProxyCA([]byte(value)); err != nil {
+				return err
 			}
-		} else if h.rebind != nil && len(newProxyAddrs) == 1 {
-			if err := h.rebind.Rebind(newProxyAddrs[0]); err != nil {
-				httpErr(w, http.StatusBadRequest, "rebind failed: "+err.Error())
-				return
+			if h.SetUpstreamProxyCA != nil {
+				if err := h.SetUpstreamProxyCA([]byte(value)); err != nil {
+					_ = h.snd.SetUpstreamProxyCA([]byte(previous))
+					return err
+				}
 			}
-		} else if len(newProxyAddrs) > 1 {
-			httpErr(w, http.StatusBadRequest, "multiple proxy listeners are not supported by this build")
-			return
-		}
-		if !h.persistSetting(w, "proxy.addrs", formatProxyAddrs(newProxyAddrs)) {
-			return
-		}
-		if !h.persistSetting(w, "proxy.addr", newProxyAddrs[0]) {
-			return
-		}
-		if h.SyncSelfPorts != nil {
-			h.SyncSelfPorts()
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
-	}
-	if in.ControlAddr != "" && in.ControlAddr != h.currentControlAddr() {
-		if !isLoopbackHost(in.ControlAddr) && !bind.ExternalBindAllowed() {
-			httpErr(w, http.StatusBadRequest, "control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)")
-			return
-		}
-		if h.ctrlRebind != nil {
-			if err := h.ctrlRebind.Rebind(in.ControlAddr); err != nil {
-				httpErr(w, http.StatusBadRequest, "control rebind failed: "+err.Error())
-				return
+			return nil
+		},
+		undo: func() {
+			if h.SetUpstreamProxyCA != nil {
+				_ = h.SetUpstreamProxyCA([]byte(previous))
 			}
-		}
-		h.SetSelfAddr(in.ControlAddr)
-		if !h.persistSetting(w, "control.addr", in.ControlAddr) {
-			return
-		}
-		if h.SyncSelfPorts != nil {
-			h.SyncSelfPorts()
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+			_ = h.snd.SetUpstreamProxyCA([]byte(previous))
+		},
+	})
+	return nil
+}
+
+func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string) error {
+	if raw == nil {
+		return nil
 	}
-	if in.ProxyAuthEnabled != nil || in.ProxyAuthUser != nil || in.ProxyAuthPassword != nil {
-		if !h.applyProxyBasicAuth(w, in.ProxyAuthEnabled, in.ProxyAuthUser, in.ProxyAuthPassword) {
-			return
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
+	value := *raw
+	previous, _, err := h.st.GetSetting("upstream.proxy")
+	if err != nil {
+		return err
 	}
-	if in.UpstreamProxyCA != nil {
-		applied, err := h.applyUpstreamProxyCA(strings.TrimSpace(*in.UpstreamProxyCA))
-		if err != nil {
-			if applied {
-				httpInternalErr(w, err)
-			} else {
-				httpErr(w, http.StatusBadRequest, err.Error())
+	u.values["upstream.proxy"] = value
+	u.runtime = append(u.runtime, settingsRuntimeStep{
+		do: func() error {
+			if err := h.snd.SetUpstreamProxy(value); err != nil {
+				return err
 			}
-			return
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
-	}
-	if in.UpstreamProxy != nil {
-		previous, _, err := h.st.GetSetting("upstream.proxy")
-		if err != nil {
-			httpInternalErr(w, err)
-			return
-		}
-		if err := h.snd.SetUpstreamProxy(*in.UpstreamProxy); err != nil {
-			httpErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if h.Upstream != nil {
-			if err := h.Upstream(*in.UpstreamProxy); err != nil {
-				_ = h.snd.SetUpstreamProxy(previous)
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
+			if h.Upstream != nil {
+				if err := h.Upstream(value); err != nil {
+					_ = h.snd.SetUpstreamProxy(previous)
+					return err
+				}
 			}
-		}
-		if err := h.setSetting("upstream.proxy", *in.UpstreamProxy); err != nil {
+			return nil
+		},
+		undo: func() {
 			_ = h.snd.SetUpstreamProxy(previous)
 			if h.Upstream != nil {
 				_ = h.Upstream(previous)
 			}
-			httpInternalErr(w, err)
-			return
+		},
+	})
+	return nil
+}
+
+func (h *settingsAPI) rebindProxyAddrs(addrs []string) error {
+	if mr, ok := h.rebind.(MultiProxyRebinder); ok {
+		return mr.RebindAddrs(addrs)
+	}
+	if h.rebind != nil && len(addrs) == 1 {
+		return h.rebind.Rebind(addrs[0])
+	}
+	return nil
+}
+
+func (h *settingsAPI) planProxyAddrs(u *settingsUpdate, addrs []string, addr string) error {
+	if len(addrs) == 0 && addr != "" {
+		addrs = []string{addr}
+	}
+	previous := h.currentProxyAddrs()
+	if len(addrs) == 0 || proxyAddrsEqual(addrs, previous) {
+		return nil
+	}
+	addrs = normalizeProxyAddrs(addrs)
+	if err := validateProxyAddrs(addrs); err != nil {
+		return settingsBadRequest(err)
+	}
+	if _, multi := h.rebind.(MultiProxyRebinder); !multi && len(addrs) > 1 {
+		return settingsBadRequest(errors.New("multiple proxy listeners are not supported by this build"))
+	}
+	u.values["proxy.addrs"] = formatProxyAddrs(addrs)
+	u.values["proxy.addr"] = addrs[0]
+	u.runtime = append(u.runtime, settingsRuntimeStep{
+		do: func() error {
+			if err := h.rebindProxyAddrs(addrs); err != nil {
+				return fmt.Errorf("rebind failed: %w", err)
+			}
+			return nil
+		},
+		undo: func() { _ = h.rebindProxyAddrs(previous) },
+	})
+	if h.SyncSelfPorts != nil {
+		u.apply = append(u.apply, h.SyncSelfPorts)
+	}
+	return nil
+}
+
+func (h *settingsAPI) planControlAddr(u *settingsUpdate, addr string) error {
+	previous := h.currentControlAddr()
+	if addr == "" || addr == previous {
+		return nil
+	}
+	if !isLoopbackHost(addr) && !bind.ExternalBindAllowed() {
+		return settingsBadRequest(errors.New("control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)"))
+	}
+	u.values["control.addr"] = addr
+	if h.ctrlRebind != nil {
+		u.runtime = append(u.runtime, settingsRuntimeStep{
+			do: func() error {
+				if err := h.ctrlRebind.Rebind(addr); err != nil {
+					return fmt.Errorf("control rebind failed: %w", err)
+				}
+				return nil
+			},
+			undo: func() { _ = h.ctrlRebind.Rebind(previous) },
+		})
+	}
+	u.apply = append(u.apply, func() { h.SetSelfAddr(addr) })
+	if h.SyncSelfPorts != nil {
+		u.apply = append(u.apply, h.SyncSelfPorts)
+	}
+	return nil
+}
+
+// commitSettingsUpdate runs the runtime steps, persists every key in one
+// transaction, and only then applies the in-memory setters. Any failure undoes
+// the runtime steps already taken, so the store and the live proxy never
+// diverge and a rejected request changes nothing.
+func (h *settingsAPI) commitSettingsUpdate(u *settingsUpdate) error {
+	done := 0
+	rollback := func() {
+		for i := done - 1; i >= 0; i-- {
+			u.runtime[i].undo()
 		}
+	}
+	for _, step := range u.runtime {
+		if err := step.do(); err != nil {
+			rollback()
+			return settingsBadRequest(err)
+		}
+		done++
+	}
+	if len(u.values) > 0 {
+		if err := h.setSettings(u.values); err != nil {
+			rollback()
+			return err
+		}
+	}
+	for _, apply := range u.apply {
+		apply()
+	}
+	if len(u.values) > 0 {
 		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	return nil
+}
+
+func writeSettingsUpdateErr(w http.ResponseWriter, err error) {
+	var bad *settingsUpdateError
+	if errors.As(err, &bad) {
+		httpErr(w, bad.status, bad.Error())
+		return
+	}
+	httpInternalErr(w, err)
+}
+
+func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
+	var in settingsPut
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
+		return
+	}
+	u, err := h.planSettingsUpdate(&in)
+	if err == nil {
+		err = h.commitSettingsUpdate(u)
+	}
+	if err != nil {
+		writeSettingsUpdateErr(w, err)
+		return
 	}
 	h.getSettings(w, r)
 }

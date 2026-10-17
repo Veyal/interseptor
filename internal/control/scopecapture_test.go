@@ -187,7 +187,7 @@ func TestUpstreamProxyCASettingRollsBackRuntimeOnPersistenceFailure(t *testing.T
 	}
 	var applied []string
 	h.SetUpstreamProxyCA = func(v []byte) error { applied = append(applied, string(v)); return nil }
-	h.setSetting = func(string, string) error { return errors.New("store unavailable") }
+	h.setSettings = func(map[string]string) error { return errors.New("store unavailable") }
 
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
