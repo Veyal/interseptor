@@ -1927,6 +1927,9 @@ func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", uiContentType(name))
+	if name == "index.html" {
+		issueUISessionCookie(w, r)
+	}
 	// The UI is embedded and changes with every build; never let a browser serve a
 	// stale shell or JS module after an upgrade (the modules have no version hash).
 	w.Header().Set("Cache-Control", "no-store")
