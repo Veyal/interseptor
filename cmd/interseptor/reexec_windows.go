@@ -16,7 +16,7 @@ import (
 // listenRetry). The brief delay lets the HTTP "switching" response flush before
 // we exit, and gives the child time to start.
 func reexecProject(exe, target string) error {
-	cmd := exec.Command(exe, "--project", target)
+	cmd := exec.Command(exe, reexecArgs(os.Args[1:], target)...)
 	cmd.Env = append(os.Environ(), "INTERSEPTOR_REEXEC=1")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
