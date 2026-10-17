@@ -897,12 +897,17 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .ui-select-field .ui-select-trigger{width:100%}
 .rules-tbl select.ui-select-native{background:none;border:none;padding:0}
 .android-proxy-seg{width:100%;display:flex;padding:3px;gap:3px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md)}
-.android-proxy-seg button{flex:1;padding:8px 10px;font-size:var(--fs-sm);font-weight:600;border-radius:var(--r-sm);color:var(--fg2)}
+.android-proxy-seg button{flex:1;padding:8px 10px;font-size:var(--fs-sm);font-weight:600;border-radius:var(--r-sm);color:var(--fg2);white-space:nowrap}
 .android-proxy-seg button.on{color:var(--accent);background:var(--accentDim)}
 /* Tucks up under the device toolbar it explains. */
 .android-lan-hint{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 10px;line-height:1.5}
 .android-lan-hint .btn{padding:4px 10px;font-size:var(--fs-xs);flex:none}
 .android-toolbar>.btn{align-self:flex-end;margin-bottom:1px;flex:none}
+/* Phone: device picker and proxy mode each take a full row so the segment
+   labels ("Wi‑Fi (device)") never spill out of their box. */
+@media (max-width:600px){
+  .android-device-field,.android-mode-field{flex:1 1 100%;min-width:0;max-width:none}
+}
 .settings-body .hint{font-size:var(--fs-sm)}
 
 /* Session/auth progressive disclosure — collapse the rare mechanisms (per-host,

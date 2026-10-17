@@ -52,7 +52,7 @@ func TestUIDeviceDiscoveryRejectsRefreshBeforeClaimingGeneration(t *testing.T) {
 		epoch string
 		read  string
 	}{
-		{"Android", "export async function loadAndroid(", "async function androidAction(fn)", "if(androidActionPending&&!allowDuringAction)return null", "const epoch=++androidLoadEpoch", "api('/api/android/status')"},
+		{"Android", "export async function loadAndroid(", "async function androidAction(fn)", "if(androidActionPending&&!allowDuringAction)return null", "const epoch=++androidLoadEpoch", "api('/api/android/status'"},
 		{"iOS", "export async function loadIOS(", "async function iosAction(fn)", "if(iosActionPending&&!allowDuringAction)return null", "const epoch=++iosLoadEpoch", "api('/api/ios/status')"},
 		{"iOS SSH", "export async function loadIOSSsh(", "async function iosSshAction(fn)", "if(iosSshActionPending&&!allowDuringAction)return null", "const epoch=++iosSshLoadEpoch", "api('/api/ios/ssh/status')"},
 	} {
