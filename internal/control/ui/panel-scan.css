@@ -4,6 +4,10 @@
    border style, so there is nothing for prefers-reduced-motion to switch off. */
 
 /* ---- Intercept ---- */
+/* The INTERCEPT ACTIVE banner. intercept.js/app.js show it with style.display,
+   so it is styled here directly instead of through .tls-diag-banner.is-open. */
+.tls-diag-banner.intercept-danger{flex:none;padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--warnLine);box-shadow:inset 3px 0 0 var(--warnLine);background:var(--noteDim);color:var(--warnFg);font-size:var(--fs-sm);font-weight:600;line-height:var(--lh-normal);overflow-wrap:anywhere}
+.tls-diag-banner.intercept-danger .btn{margin-left:var(--sp-2);vertical-align:middle}
 .icpt-work.split{height:auto;flex:1;min-height:0}
 .icpt-work.split>.icpt-queue{width:auto;max-height:none;border-right:0;min-width:0}
 .icpt-work.split>.icpt-main{min-width:0}
@@ -24,6 +28,7 @@
 .icpt-mr>summary .icpt-mr-count{margin-left:var(--sp-2)}
 
 @media (max-width:720px){
+  .tls-diag-banner.intercept-danger{padding:var(--sp-2) var(--sp-3)}
   .icpt-actionbar{padding-bottom:calc(var(--sp-2) + var(--safe-b))}
   .icpt-actionbar .btn{flex:1 1 auto;justify-content:center}
   .icpt-ctx-note{flex-basis:100%}
