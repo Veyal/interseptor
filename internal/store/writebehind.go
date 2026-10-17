@@ -246,6 +246,29 @@ func (s *Store) FlowsDropped() uint64 {
 	return s.flowDropped.Load()
 }
 
+// CaptureStats is the capture pipeline's loss and backlog since this store was
+// opened. Non-zero drop counters mean History is missing traffic that went
+// through the proxy, so every operator-facing status surface reports them.
+type CaptureStats struct {
+	FlowWritesDropped uint64 `json:"flowWritesDropped"`
+	WSFramesDropped   uint64 `json:"wsFramesDropped"`
+	FlowQueue         int    `json:"flowQueue"`
+	FlowQueueCap      int    `json:"flowQueueCap"`
+}
+
+// Lossy reports whether any captured flow write or WebSocket frame was dropped.
+func (c CaptureStats) Lossy() bool { return c.FlowWritesDropped > 0 || c.WSFramesDropped > 0 }
+
+// CaptureStats snapshots the capture drop counters and the flow queue depth.
+func (s *Store) CaptureStats() CaptureStats {
+	return CaptureStats{
+		FlowWritesDropped: s.flowDropped.Load(),
+		WSFramesDropped:   s.wsDropped.Load(),
+		FlowQueue:         s.pendingLen(),
+		FlowQueueCap:      flowBufCap,
+	}
+}
+
 func (s *Store) allocFlowID() int64 {
 	return s.nextFlowID.Add(1)
 }

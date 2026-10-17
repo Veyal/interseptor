@@ -63,6 +63,14 @@ type projectReadiness struct {
 	Evidence projectReadinessEvidence `json:"evidence"`
 	Findings projectReadinessFindings `json:"findings"`
 	Blockers []string                 `json:"blockers"`
+	// Capture carries the capture drop counters so the UI can say when History
+	// is incomplete; it never adds a blocker code.
+	Capture projectReadinessCapture `json:"capture"`
+}
+
+type projectReadinessCapture struct {
+	FlowWritesDropped uint64 `json:"flowWritesDropped"`
+	WSFramesDropped   uint64 `json:"wsFramesDropped"`
 }
 
 // getProjectReadiness serves GET /api/project/readiness.
@@ -99,6 +107,8 @@ func (h *projectAPI) buildProjectReadiness() (projectReadiness, error) {
 	}
 	out.Findings, out.Evidence.Shots = summarizeFindings(fs)
 	out.Blockers = projectBlockers(out)
+	cs := h.st.CaptureStats()
+	out.Capture = projectReadinessCapture{FlowWritesDropped: cs.FlowWritesDropped, WSFramesDropped: cs.WSFramesDropped}
 	return out, nil
 }
 

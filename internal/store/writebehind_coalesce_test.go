@@ -183,4 +183,8 @@ func TestFullBufferDropsWholeFlowNotItsUpdate(t *testing.T) {
 	if n := countRows(t, s, `SELECT COUNT(*) FROM flows`); n != flowBufCap {
 		t.Fatalf("persisted %d flows, want %d", n, flowBufCap)
 	}
+	st := s.CaptureStats()
+	if st.FlowWritesDropped != 1 || !st.Lossy() || st.FlowQueue != 0 || st.FlowQueueCap != flowBufCap {
+		t.Fatalf("CaptureStats = %+v, want 1 dropped write, empty queue", st)
+	}
 }
