@@ -443,7 +443,9 @@ function showEditor(h){
   syncHeldRepeaterButton(h.side);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
-    :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
+    // .icpt-edtitle is a flex row, so a plain space between the method and the
+    // URL collapses ("POSTexample.com/api"); the gap is a margin instead.
+    :`<span style="color:${methodColor(h.method)};font-weight:700;margin-right:8px;flex:none">${esc(h.method)}</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`;
 }
 export async function selectHeld(id,side,opts={}){
   const previousKey=state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id);
