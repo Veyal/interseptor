@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -321,9 +322,29 @@ func EnableProxyWiFi(d Device, host string, port int) error {
 	return enableProxy(d, host, port, false)
 }
 
+// proxyHostname matches a DNS hostname (labels of letters, digits and
+// hyphens, not starting or ending with a hyphen).
+var proxyHostname = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
+
+// ValidProxyHost reports whether host is a plain IP address or DNS hostname.
+// The host is interpolated into an `adb shell` command line, which the
+// device's shell parses, so anything else (spaces, ;, $, quotes) is refused.
+func ValidProxyHost(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	return proxyHostname.MatchString(host)
+}
+
 func enableProxy(d Device, host string, port int, reverse bool) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("invalid proxy port %d", port)
+	}
+	if !ValidProxyHost(host) {
+		return fmt.Errorf("invalid proxy host %q — use an IP address or hostname", host)
 	}
 	p := strconv.Itoa(port)
 	if reverse {
