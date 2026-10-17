@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -73,7 +74,7 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		// requested host/path, even if scope changed since its old issue was
 		// created — so scope filters what is analysed, not what is considered.
 		InScope: h.sc.InScope,
-		Bodies:  h.scanBodies,
+		Bodies:  h.scanBodyLoader(len(checks) > 0),
 		Custom:  h.customChecksRunner(checks, disabled),
 		OnProgress: func(p scanner.Progress) {
 			h.broadcast(scanProgressEvent(p, false))
@@ -168,23 +169,52 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]any{"issues": stored, "scan": coverage})
 }
 
+// scanBodyLoader picks the scan's body loader. Built-in checks inspect only the
+// first scanner.MaxScanBytes of each body, so without custom checks the loader
+// reads just that prefix; custom Starlark checks are handed whole bodies, as
+// before.
+func (h *Hub) scanBodyLoader(custom bool) scanner.BodyLoader {
+	if custom {
+		return h.scanBodies
+	}
+	return func(f *store.Flow) ([]byte, []byte, error) { return h.scanBodiesUpTo(f, scanner.MaxScanBytes) }
+}
+
 // scanBodies is the scan engine's body loader. It reports a missing blob as
 // os.ErrNotExist so the engine skips that one flow, and anything else as a
 // real error that ends the scan.
 func (h *Hub) scanBodies(f *store.Flow) (reqBody, resBody []byte, err error) {
-	if reqBody, err = h.bodyBytesResult(f.ReqBodyHash); err != nil {
+	return h.scanBodiesUpTo(f, 0)
+}
+
+// scanBodiesUpTo loads at most limit bytes of each body (0 = all of it).
+func (h *Hub) scanBodiesUpTo(f *store.Flow, limit int64) (reqBody, resBody []byte, err error) {
+	if reqBody, err = h.bodyPrefix(f.ReqBodyHash, limit); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("scanner: skip flow %d: request body blob %q missing", f.ID, f.ReqBodyHash)
 		}
 		return nil, nil, err
 	}
-	if resBody, err = h.bodyBytesResult(f.ResBodyHash); err != nil {
+	if resBody, err = h.bodyPrefix(f.ResBodyHash, limit); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("scanner: skip flow %d: response body blob %q missing", f.ID, f.ResBodyHash)
 		}
 		return nil, nil, err
 	}
 	return reqBody, resBody, nil
+}
+
+// bodyPrefix reads a stored body, stopping after limit bytes (0 = no limit).
+func (h *Hub) bodyPrefix(hash string, limit int64) ([]byte, error) {
+	if limit <= 0 || hash == "" {
+		return h.bodyBytesResult(hash)
+	}
+	rc, err := h.st.OpenBody(hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(io.LimitReader(rc, limit))
 }
 
 // customChecksRunner adapts the compiled Starlark checks to the scan engine, so
