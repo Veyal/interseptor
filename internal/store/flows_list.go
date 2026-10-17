@@ -153,5 +153,10 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		}
 		where = append(where, "id IN ("+strings.Join(ph, ",")+")")
 	}
+	if f.AnyText != "" {
+		pred, predArgs := anyTextPredicate(f.AnyText, f.AnyTextIDs)
+		where = append(where, pred)
+		args = append(args, predArgs...)
+	}
 	return where, args
 }

@@ -110,6 +110,12 @@ type FlowFilter struct {
 	FlowIDs []int64 // when set, only these ids (used for body search results)
 	HasNote bool    // only rows with a non-empty note
 	Tag     string  // only rows carrying this exact tag
+
+	// AnyText is a lower-cased anywhere-search term matched in SQL against the URL,
+	// method, MIME, client, error, note, header JSON and tags; AnyTextIDs (body hits
+	// from AnywhereSearchFilter) are OR'ed with it. Empty AnyText disables both.
+	AnyText    string
+	AnyTextIDs []int64
 }
 
 // QueryFlowsFilter returns flows matching f, newest first. Filtering and paging

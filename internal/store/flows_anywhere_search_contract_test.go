@@ -39,7 +39,7 @@ func Test_SearchFlowsAnywhere_matches_every_flow_surface_case_insensitively(t *t
 
 	// When / Then
 	for i, term := range []string{"needle-URL", "NEEDLE-REQUEST-HEADER", "needle-response-header", "NEEDLE-request-body", "needle-RESPONSE-body", "needle-METADATA", "NEEDLE-TAG"} {
-		result, _, searchErr := s.FlowIDsAnywhereSearch(FlowFilter{Search: term}, 8000)
+		result, _, searchErr := anywhereSearchIDs(s, FlowFilter{Search: term}, 8000)
 		if searchErr != nil {
 			t.Fatalf("search %q: %v", term, searchErr)
 		}

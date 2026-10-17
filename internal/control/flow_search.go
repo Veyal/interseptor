@@ -240,10 +240,12 @@ func (h *flowAPI) applyFlowSearch(r *http.Request, filter *store.FlowFilter) (st
 	if filter.SearchScope != "anywhere" {
 		return "", false, nil
 	}
-	ids, note, err := h.st.FlowIDsAnywhereSearch(*filter, maxFlowAnywhereCandidates)
-	filter.Search = ""
-	filter.FlowIDs = ids
-	return note, len(ids) == 0, err
+	rewritten, note, err := h.st.AnywhereSearchFilter(*filter, maxFlowAnywhereCandidates)
+	if err != nil {
+		return "", false, err
+	}
+	*filter = rewritten
+	return note, false, nil
 }
 
 func (h *flowAPI) matchFlowScript(r *http.Request, filter *store.FlowFilter, source string) (string, error) {
