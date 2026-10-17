@@ -12,24 +12,43 @@ import (
 )
 
 func TestClientIPTrustsForwardedOnlyFromLoopbackPeer(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966/", nil)
+	h, _, _ := newHub(t)
+	// Tailscale Serve relays from loopback under the machine's *.ts.net name and
+	// appends the real peer; earlier hops are client-supplied.
+	req := httptest.NewRequest(http.MethodGet, "http://mini.tail283fa9.ts.net/", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
-	// The local proxy appends the real peer; earlier hops are client-supplied.
 	req.Header.Set("X-Forwarded-For", "10.0.0.1, 100.65.105.2")
-	if got := clientIP(req); got != "100.65.105.2" {
+	if got := h.clientIP(req); got != "100.65.105.2" {
 		t.Fatalf("xff from loopback peer: %q", got)
 	}
 	req2 := httptest.NewRequest(http.MethodGet, "http://192.168.1.10:9966/", nil)
 	req2.RemoteAddr = "203.0.113.9:9999"
 	req2.Header.Set("X-Forwarded-For", "100.65.105.2")
-	if got := clientIP(req2); got != "203.0.113.9" {
+	if got := h.clientIP(req2); got != "203.0.113.9" {
 		t.Fatalf("spoofed xff ignored: %q", got)
 	}
-	req3 := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966/", nil)
+	h.setTunnelHost("https://quiet-river.trycloudflare.com")
+	req3 := httptest.NewRequest(http.MethodGet, "http://quiet-river.trycloudflare.com/", nil)
 	req3.RemoteAddr = "127.0.0.1:1"
 	req3.Header.Set("CF-Connecting-IP", "1.2.3.4")
-	if got := clientIP(req3); got != "1.2.3.4" {
+	if got := h.clientIP(req3); got != "1.2.3.4" {
 		t.Fatalf("cf: %q", got)
+	}
+	// A loopback peer under any other Host is not a known forwarder: its
+	// forwarded headers may be forged by a rebinding page or local process.
+	for _, host := range []string{"127.0.0.1:9966", "rebind.example.com:9966", "other.trycloudflare.com"} {
+		r := httptest.NewRequest(http.MethodGet, "http://"+host+"/", nil)
+		r.RemoteAddr = "127.0.0.1:2"
+		r.Header.Set("X-Forwarded-For", "100.65.105.2")
+		r.Header.Set("CF-Connecting-IP", "100.65.105.2")
+		if got := h.clientIP(r); got != "127.0.0.1" {
+			t.Errorf("Host %s: clientIP = %q, want the loopback peer", host, got)
+		}
+	}
+	// Stopping the tunnel withdraws its trust.
+	h.setTunnelHost("")
+	if got := h.clientIP(req3); got != "127.0.0.1" {
+		t.Fatalf("stopped tunnel still trusted: %q", got)
 	}
 }
 

@@ -18,7 +18,7 @@ func (h *metaAPI) listAllowlist(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"entries":  entries,
-		"clientIP": clientIP(r),
+		"clientIP": h.clientIP(r),
 	})
 }
 

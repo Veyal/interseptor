@@ -57,7 +57,7 @@ func (l *loginRateLimiter) allow(ip string, nowMs int64) bool {
 // sessionLogin verifies a submitted API token and, on success, sets the session
 // cookie. Returns the granted scope so the UI can adapt (read-only vs full).
 func (h *Hub) sessionLogin(w http.ResponseWriter, r *http.Request) {
-	if !loginRL.allow(clientIP(r), time.Now().UnixMilli()) { // per original client, not the shared tunnel peer
+	if !loginRL.allow(h.clientIP(r), time.Now().UnixMilli()) { // per original client, not the shared tunnel peer
 		httpErr(w, http.StatusTooManyRequests, "too many attempts — wait a minute and retry")
 		return
 	}

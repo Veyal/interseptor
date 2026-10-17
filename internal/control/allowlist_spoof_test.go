@@ -13,15 +13,17 @@ import (
 // granted keyless full access. The hop the proxy appended (right-most) is the
 // one to trust.
 func TestClientIPUsesRightMostForwardedHop(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966/", nil)
+	h, _, _ := newHub(t)
+	h.setTunnelHost("https://tunnel.example.com")
+	req := httptest.NewRequest(http.MethodGet, "http://tunnel.example.com/", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("X-Forwarded-For", "10.9.9.9, 203.0.113.7")
-	if got := clientIP(req); got != "203.0.113.7" {
+	if got := h.clientIP(req); got != "203.0.113.7" {
 		t.Fatalf("clientIP = %q, want the proxy-appended hop 203.0.113.7", got)
 	}
 	// A forwarded header must not outrank the proxy-appended XFF hop.
 	req.Header.Set("CF-Connecting-IP", "10.9.9.9")
-	if got := clientIP(req); got != "203.0.113.7" {
+	if got := h.clientIP(req); got != "203.0.113.7" {
 		t.Fatalf("clientIP with spoofed CF-Connecting-IP = %q, want 203.0.113.7", got)
 	}
 }
@@ -48,6 +50,7 @@ func TestAllowlistRejectsSpoofedForwardedAndRebinding(t *testing.T) {
 	if _, err := st.AddIPAllowlist("10.9.9.9/32", "lab"); err != nil {
 		t.Fatal(err)
 	}
+	h.setTunnelHost("https://tunnel.example.com")
 	// Spoofed first hop through an appending tunnel: closed.
 	if c := allowlistGuardRequest(h, http.MethodGet, "tunnel.example.com", "127.0.0.1:4000", "127.0.0.1", "10.9.9.9, 203.0.113.7"); c != http.StatusUnauthorized {
 		t.Errorf("spoofed XFF through tunnel = %d, want 401", c)
@@ -66,5 +69,21 @@ func TestAllowlistRejectsSpoofedForwardedAndRebinding(t *testing.T) {
 	// The proxy-appended hop is still honoured for a genuine tunnel client.
 	if c := allowlistGuardRequest(h, http.MethodGet, "tunnel.example.com", "127.0.0.1:4000", "127.0.0.1", "203.0.113.7, 10.9.9.9"); c != http.StatusNoContent {
 		t.Errorf("tunnel client with appended allowlisted hop = %d, want 204", c)
+	}
+}
+
+// Regression: a loopback peer was exempt from the rebinding Host check and its
+// X-Forwarded-For was trusted, so a rebinding page in the operator's own
+// browser (or any local process) could claim an allowlisted IP via XFF.
+func TestAllowlistRejectsLoopbackRebindingWithForgedForwardedFor(t *testing.T) {
+	h, st, _ := newHub(t)
+	if _, err := st.AddIPAllowlist("10.9.9.9/32", "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if c := allowlistGuardRequest(h, http.MethodPost, "rebind.example.com:9966", "127.0.0.1:5000", "127.0.0.1", "10.9.9.9"); c != http.StatusUnauthorized && c != http.StatusForbidden {
+		t.Fatalf("loopback rebinding with forged XFF = %d, want 401/403", c)
+	}
+	if c := allowlistGuardRequest(h, http.MethodGet, "rebind.example.com:9966", "127.0.0.1:5000", "127.0.0.1", "10.9.9.9"); c != http.StatusUnauthorized && c != http.StatusForbidden {
+		t.Fatalf("loopback rebinding GET with forged XFF = %d, want 401/403", c)
 	}
 }

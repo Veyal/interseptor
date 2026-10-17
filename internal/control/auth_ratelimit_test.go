@@ -12,11 +12,13 @@ import (
 // every other collaborator out of /login.
 func TestLoginRateLimitIsPerForwardedClient(t *testing.T) {
 	h, _, _ := newHub(t)
+	h.setTunnelHost("https://tunnel.example.com")
 	saved := loginRL
 	loginRL = &loginRateLimiter{window: map[string]*rlEntry{}}
 	t.Cleanup(func() { loginRL = saved })
 	attempt := func(client string) int {
 		r := httptest.NewRequest(http.MethodPost, "/api/session/auth", strings.NewReader(`{"token":"ick_wrong"}`))
+		r.Host = "tunnel.example.com"
 		r.RemoteAddr = "127.0.0.1:5555"
 		r.Header.Set("X-Forwarded-For", client)
 		w := httptest.NewRecorder()

@@ -140,7 +140,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 
-		case h.st != nil && h.st.AllowlistMatch(clientIP(r)):
+		case h.st != nil && h.st.AllowlistMatch(h.clientIP(r)):
 			// Machine-global IP/CIDR allowlist (Settings → API → Allowlist). Full
 			// UI/REST trust without a key. /mcp still requires a full API key.
 			if r.URL.Path == "/mcp" {
@@ -148,9 +148,10 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — IP allowlist does not cover /mcp")
 				return
 			}
-			if !loopbackPeer(r) && !directHostNameOK(r.Host) {
+			if !h.forwardedTrusted(r) && !directHostNameOK(r.Host) {
 				// DNS rebinding: a page under an attacker's public name that
-				// resolves to this listener must not inherit keyless trust.
+				// resolves to this listener (directly or via loopback) must not
+				// inherit keyless trust.
 				httpErr(w, http.StatusForbidden, "unrecognised Host for keyless allowlist access — use the IP address or machine name, or an API key")
 				return
 			}

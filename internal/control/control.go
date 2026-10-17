@@ -148,6 +148,7 @@ type Hub struct {
 	iosTCPReachable  func(string, int) bool
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
+	tunnelHost      atomic.Value  // string: running tunnel's public hostname (trusted forwarder)
 	tunnelCloseOnce sync.Once
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
@@ -212,6 +213,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		return "9966"
 	})
 	h.tun.SetOnURL(func(url string) {
+		h.setTunnelHost(url)
 		h.broadcast(map[string]any{"type": "tunnel.update", "url": url})
 	})
 	h.wireSessionRefresh()
