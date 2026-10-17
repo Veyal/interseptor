@@ -3,16 +3,17 @@ import { $, esc, api, toast, toastError, icon, getHook, uiPrompt, uiConfirm, cop
 import { getShellApi } from './shell-hooks.js';
 import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
-import { S, btn, el, jget, jsend, setStatus } from './collections-core.js';
-import { saveForSend } from './collections-editor.js';
+import { S, X, btn, el, fmtSize, jget, jsend, setStatus } from './collections-core.js';
 import { paintEnvDot, reloadEnvs, setPhone } from './collections-env.js';
-import { openEnvSheet, openScriptsSheet } from './collections-sheets.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { copyCurl, openInRepeater, renderResponse, sendCurrent });
 
 export async function sendCurrent() {
   if (!S.ed) return;
   const verdict = M.decideSend({ url: S.ed.url, busy: S.busy, kind: S.ed.kind });
   if (!verdict.ok) { toast(verdict.reason); return; }
-  if (S.dirty && !(await saveForSend())) return;
+  if (S.dirty && !(await X.saveForSend())) return;
   const gen = ++S.sendGen;
   S.busy = true;
   setSendBusy(true);
@@ -106,9 +107,9 @@ export function renderResponse(opts = {}) {
     if ((S.step.unresolved || []).length) box.append(el('span', '', 'Unresolved: ' + S.step.unresolved.join(', ') + '. Define them in the active environment, or choose one.'));
     (S.step.warnings || []).forEach((w) => box.append(el('span', '', w)));
     const acts = el('div', 'coll-chips');
-    if ((S.step.unresolved || []).length) acts.append(btn('Edit variables', () => openEnvSheet(), 'btn xs'));
+    if ((S.step.unresolved || []).length) acts.append(btn('Edit variables', () => X.openEnvSheet(), 'btn xs'));
     if (M.needsAddHost(S.step)) acts.append(btn('Add host to scope', () => addHostToScope(), 'btn xs'));
-    if (sum.reason === 'scripts_quarantined') acts.append(btn('Review scripts', () => openScriptsSheet(), 'btn xs'));
+    if (sum.reason === 'scripts_quarantined') acts.append(btn('Review scripts', () => X.openScriptsSheet(), 'btn xs'));
     if (acts.childNodes.length) box.append(acts);
     pane.append(box);
     (S.step.scripts || []).forEach((n) => pane.append(el('p', 'coll-note', 'Script ' + n.listen + ': ' + n.reason)));
@@ -161,7 +162,6 @@ export function renderResponse(opts = {}) {
   host.append(acts);
 }
 
-export function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 
 export const BINARY_MIME = /^(image|audio|video|font)\/|octet-stream|zip|pdf|wasm/i;
 

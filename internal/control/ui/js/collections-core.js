@@ -1,7 +1,8 @@
 // collections-core.js — shared state and tiny helpers for the Collections panel
 // modules (tree, editor, response, sheets, env and the collections.js entry).
-// Modules import each other's functions directly; the two loaders the entry
-// module owns are reached through X so no module imports the entry (no cycle).
+// Sibling modules never import each other: each registers the functions the
+// others call on X (below) and calls them as X.name(), so the static import
+// graph stays acyclic (ui_collections_cycle_test.go pins this).
 import { api, icon, projectStorageKey, $ } from './core.js';
 
 export const JSON_HDR = { 'content-type': 'application/json' };
@@ -30,6 +31,7 @@ export function btn(label, onClick, cls = 'btn', iconName) {
 export const lsKey = (k) => projectStorageKey('collections.' + k);
 export const lsGet = (k) => { try { return localStorage.getItem(lsKey(k)) || ''; } catch (e) { return ''; } };
 export const lsSet = (k, v) => { try { localStorage.setItem(lsKey(k), v); } catch (e) { /* not persisted */ } };
+export function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 export const itemByUid = (uid) => S.items.find((i) => i.uid === uid) || null;
 export const panelActive = () => !!$('#panel-collections')?.classList.contains('active');
 
@@ -52,7 +54,8 @@ export function announce(text) {
 
 /* ------------------------------------------------------------------ editor */
 
-// X holds the loaders owned by collections.js (set at boot). repaintTree lets a
-// module repaint the tree without importing it, which would close a cycle
-// (collections-tree.js already imports from collections-env.js).
+// X is the late-bound registry for cross-module calls. collections.js sets the
+// loaders at boot; tree, editor, response and sheets register their shared
+// functions when they load (collections.js imports all of them before any
+// user action can fire), so X.renderTree() and friends need no sibling import.
 export const X = { loadAll: null, loadCollection: null, repaintTree: null };

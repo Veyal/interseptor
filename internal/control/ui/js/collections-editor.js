@@ -7,24 +7,24 @@ import * as V from './varscope-model.js';
 import { S, X, btn, el, itemByUid, jget, jsend, setStatus } from './collections-core.js';
 import * as SF from './collections-safety.js';
 import { paintEnvDot, renderScriptsChip, updateBadge } from './collections-env.js';
-import { copyCurl, openInRepeater, renderResponse, sendCurrent } from './collections-response.js';
-import { openImportSheet, openScriptsSheet, runCollection } from './collections-sheets.js';
-import { addItem, focusRow, renameItem, renderTree, selectRow } from './collections-tree.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem, paintPane, saveForSend, scheduleResolve });
 
 export function renderEmptyEditor() {
   S.ed = null;
   S.edBase = null;
   const host = $('#collEditor');
   renderState(host, S.collection ? 'empty-first' : 'empty-first', S.collection
-    ? { title: 'Select a request', hint: 'Choose a request in the tree, or add one.', actionLabel: 'New request', onAction: () => addItem('request', '') }
-    : { title: 'No collection selected', hint: 'Import a file or create a collection to start.', actionLabel: 'Import a file', onAction: () => openImportSheet() });
-  renderResponse();
+    ? { title: 'Select a request', hint: 'Choose a request in the tree, or add one.', actionLabel: 'New request', onAction: () => X.addItem('request', '') }
+    : { title: 'No collection selected', hint: 'Import a file or create a collection to start.', actionLabel: 'Import a file', onAction: () => X.openImportSheet() });
+  X.renderResponse();
 }
 
 export async function openItem(uid, { focusTree = true } = {}) {
   if (S.dirty && S.ed && S.ed.uid !== uid) {
     const ok = await uiConfirm('Discard unsaved changes', 'The open request has unsaved changes. Discard them and open another request?', 'Discard', 'btn danger');
-    if (!ok) { selectRow(S.ed.uid, false); return; }
+    if (!ok) { X.selectRow(S.ed.uid, false); return; }
   }
   const gen = ++S.itemGen;
   S.selUid = uid;
@@ -44,10 +44,10 @@ export async function openItem(uid, { focusTree = true } = {}) {
   S.flow = null;
   S.scriptEd = {};
   renderEditor();
-  renderResponse();
+  X.renderResponse();
   $('#collTree').querySelectorAll('.coll-row').forEach((r) => r.setAttribute('aria-selected', r.dataset.uid === uid ? 'true' : 'false'));
   scheduleResolve();
-  if (focusTree) focusRow(uid);
+  if (focusTree) X.focusRow(uid);
 }
 
 export function renderFolderEditor(folder) {
@@ -58,10 +58,10 @@ export function renderFolderEditor(folder) {
   pane.append(el('h3', '', folder.name || 'Untitled folder'));
   pane.append(el('p', 'coll-note', 'A folder groups requests. Scripts, auth and variables set on a folder apply to every request below it.'));
   const row = el('div', 'coll-actions');
-  row.append(btn('Run folder', () => runCollection(folder.uid), 'btn accent', 'rocket'), btn('New request', () => addItem('request', folder.uid), 'btn', 'plus'), btn('Rename', () => renameItem(folder), 'btn', 'edit'));
+  row.append(btn('Run folder', () => X.runCollection(folder.uid), 'btn accent', 'rocket'), btn('New request', () => X.addItem('request', folder.uid), 'btn', 'plus'), btn('Rename', () => X.renameItem(folder), 'btn', 'edit'));
   pane.append(row);
   host.append(pane);
-  renderResponse();
+  X.renderResponse();
 }
 
 function folderPath(uid) {
@@ -124,9 +124,9 @@ export function renderEditor() {
     scheduleResolve();
     paintEnvDot();
   });
-  url.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); sendCurrent(); } });
+  url.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); X.sendCurrent(); } });
   wrap.append(url);
-  const send = btn('Send', () => sendCurrent(), 'btn accent', 'rocket');
+  const send = btn('Send', () => X.sendCurrent(), 'btn accent', 'rocket');
   send.id = 'collSend';
   send.title = 'Send (Ctrl+Enter)';
   bar.append(method, wrap, send);
@@ -190,8 +190,8 @@ export function renderEditor() {
   sentOver.hidden = true;
   host.append(sentOver);
   actions.append(save, revert, dirty,
-    btn('Open in Repeater', () => openInRepeater(), 'btn', 'repeater'),
-    btn('Copy as cURL', () => copyCurl(), 'btn', 'copy'));
+    btn('Open in Repeater', () => X.openInRepeater(), 'btn', 'repeater'),
+    btn('Copy as cURL', () => X.copyCurl(), 'btn', 'copy'));
   host.append(actions);
   markDirty();
   paintSentOver();
@@ -425,7 +425,7 @@ export function trustLineFor(uid, t) {
   line.dataset.s = untrusted ? 'untrusted' : 'trusted';
   line.innerHTML = icon(untrusted ? 'lock' : 'check');
   line.append(el('span', '', untrusted ? 'Quarantined: this script will not run until you approve it.' : 'Approved: this script runs when the request is sent.'));
-  if (untrusted) line.append(btn('Review scripts', () => openScriptsSheet(), 'btn xs'));
+  if (untrusted) line.append(btn('Review scripts', () => X.openScriptsSheet(), 'btn xs'));
   return line;
 }
 
@@ -579,7 +579,7 @@ export async function restoreSentOver() {
     SF.forgetSentOver(SENT_OVER, uid);
     S.dirty = false;
     S.tree = M.buildTree(S.items);
-    renderTree();
+    X.renderTree();
     await openItem(uid, { focusTree: false });
     toast('Previous version restored');
   } catch (e) { toastError('Could not restore the previous version', e); }
@@ -677,7 +677,7 @@ export async function saveCurrent() {
     S.edSig = M.editorSignature(S.ed);
     S.dirty = false;
     S.tree = M.buildTree(S.items);
-    renderTree();
+    X.renderTree();
     refreshScriptsQuiet();
     toast('Saved');
     return true;
@@ -689,6 +689,6 @@ export async function saveCurrent() {
 }
 
 export async function refreshScriptsQuiet() {
-  try { S.scripts = await jget('/api/collections/' + encodeURIComponent(S.colUid) + '/scripts'); renderScriptsChip(); updateBadge(); renderTree(); } catch (e) { /* chip keeps its last state */ }
+  try { S.scripts = await jget('/api/collections/' + encodeURIComponent(S.colUid) + '/scripts'); renderScriptsChip(); updateBadge(); X.renderTree(); } catch (e) { /* chip keeps its last state */ }
 }
 

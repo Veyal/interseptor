@@ -4,10 +4,10 @@ import { renderState } from './statepanel.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
 import { S, X, announce, btn, el, itemByUid, jsend, setStatus } from './collections-core.js';
-import { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem } from './collections-editor.js';
 import { expandTo } from './collections-env.js';
-import { sendCurrent } from './collections-response.js';
-import { openImportSheet, runCollection } from './collections-sheets.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { addItem, focusRow, renameItem, renderTree, selectRow });
 
 // The host shared by most requests is not repeated on every row. Computed once
 // per render, memoised on the items array so a re-render without edits is free.
@@ -42,7 +42,7 @@ export function renderTree() {
   if (!S.collection) {
     renderState(state, 'empty-first', {
       title: 'No collections yet', hint: 'Import a Postman collection, an OpenAPI file or a curl command, or start an empty collection.',
-      actionLabel: 'Import a file', onAction: () => openImportSheet(),
+      actionLabel: 'Import a file', onAction: () => X.openImportSheet(),
     });
     return;
   }
@@ -205,7 +205,7 @@ export function focusRow(uid) {
 export function selectRow(uid, open) {
   S.selUid = uid;
   $('#collTree').querySelectorAll('.coll-row').forEach((r) => r.setAttribute('aria-selected', r.dataset.uid === uid ? 'true' : 'false'));
-  if (open) openItem(uid, { focusTree: false });
+  if (open) X.openItem(uid, { focusTree: false });
 }
 
 export function treeKeydown(e, uid) {
@@ -215,7 +215,7 @@ export function treeKeydown(e, uid) {
     const it = itemByUid(uid);
     if (it && it.kind === 'folder') toggleFolder(uid);
     selectRow(uid, !!it && it.kind === 'request');
-    if (it && it.kind === 'request') focusEditorUrl();
+    if (it && it.kind === 'request') X.focusEditorUrl();
     return;
   }
   if (e.key === 'F10' && e.shiftKey || e.key === 'ContextMenu') {
@@ -238,11 +238,11 @@ export function openItemMenu(it, x, y, trigger) {
   const items = [];
   if (!folder) {
     items.push({ label: 'Open', icon: 'search', act: () => selectRow(it.uid, true) });
-    items.push({ label: 'Send', icon: 'rocket', act: async () => { await openItem(it.uid, { focusTree: false }); sendCurrent(); } });
+    items.push({ label: 'Send', icon: 'rocket', act: async () => { await X.openItem(it.uid, { focusTree: false }); X.sendCurrent(); } });
   } else {
     items.push({ label: 'New request here', icon: 'plus', act: () => addItem('request', it.uid) });
     items.push({ label: 'New folder here', icon: 'folder', act: () => addItem('folder', it.uid) });
-    items.push({ label: 'Run folder', icon: 'rocket', act: () => runCollection(it.uid) });
+    items.push({ label: 'Run folder', icon: 'rocket', act: () => X.runCollection(it.uid) });
   }
   const sections = [{ head: folder ? 'FOLDER' : 'REQUEST', items }];
   const more = [{ label: 'Rename', icon: 'edit', act: () => renameItem(it) }];
@@ -275,7 +275,7 @@ export async function addItem(kind, parentUid) {
     const created = await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/items', body);
     if (parentUid) S.expanded.add(parentUid);
     await X.loadCollection(S.colUid);
-    if (created && created.uid && kind === 'request') { expandTo(created.uid); renderTree(); await openItem(created.uid, { focusTree: false }); focusEditorUrl(); }
+    if (created && created.uid && kind === 'request') { expandTo(created.uid); renderTree(); await X.openItem(created.uid, { focusTree: false }); X.focusEditorUrl(); }
   });
 }
 
@@ -292,7 +292,7 @@ export async function duplicateItem(it) {
   await mutate('Could not duplicate', async () => {
     const copy = await jsend('POST', '/api/items/' + encodeURIComponent(it.uid) + '/duplicate');
     await X.loadCollection(S.colUid);
-    if (copy && copy.uid) { expandTo(copy.uid); renderTree(); await openItem(copy.uid, { focusTree: false }); }
+    if (copy && copy.uid) { expandTo(copy.uid); renderTree(); await X.openItem(copy.uid, { focusTree: false }); }
   });
 }
 
@@ -303,12 +303,12 @@ export async function deleteItem(it) {
       + ' will be removed. Captured flows stay in History.'
       // Ask on the truth: Undo is capped by request count, so a large folder
       // cannot be recovered and the dialog has to say so before it is agreed to.
-      + (deleteIsUndoable(it)
+      + (X.deleteIsUndoable(it)
         ? ' You can Undo for 15 seconds; after that it cannot be recovered.'
         : ' This is too large to offer Undo: it cannot be recovered.'), 'Delete', 'btn danger');
   if (!ok) return;
   await mutate('Could not delete', async () => {
-    await deleteItemUndoable(it);
+    await X.deleteItemUndoable(it);
     if (S.selUid === it.uid || (S.ed && kids && M.descendantUids(S.items, it.uid).has(S.ed.uid))) { S.selUid = ''; S.ed = null; }
     await X.loadCollection(S.colUid, { keepSelection: false });
   });

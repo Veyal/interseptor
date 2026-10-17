@@ -4,12 +4,12 @@ import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
-import { S, X, btn, el, itemByUid, jget, jsend, setStatus } from './collections-core.js';
-import { paintPane, scheduleResolve } from './collections-editor.js';
+import { S, X, btn, el, fmtSize, itemByUid, jget, jsend, setStatus } from './collections-core.js';
 import { globalsEnv, reloadEnvs, renderEnvSelect, renderScriptsChip, updateBadge } from './collections-env.js';
-import { fmtSize } from './collections-response.js';
-import { renderTree } from './collections-tree.js';
 import { CONFIRM_PHRASE, buildRunPlan, methodBreakdown, planConfirmed, planSummary } from './collections-run-plan.js';
+
+// Functions sibling modules call through X (see collections-core.js).
+Object.assign(X, { openEnvSheet, openImportSheet, openScriptsSheet, runCollection });
 
 export function openEnvSheet() {
   if (!S.collection) { toast('Create or import a collection first'); return; }
@@ -90,7 +90,7 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
       }
       await reloadEnvs();
       renderEnvSelect();
-      scheduleResolve();
+      X.scheduleResolve();
       status.textContent = 'Saved';
       toast('Variables saved');
     } catch (e) { status.textContent = ''; toastError('Could not save variables', e); } finally { save.disabled = false; }
@@ -191,12 +191,12 @@ export async function paintScriptsSheet(body) {
       if (!all && !picked.size) { toast('Select scripts to approve'); return; }
       const ok = await uiConfirm('Approve scripts', 'Approved scripts run with these capabilities: <b>' + esc([...caps].join(', ') || 'none') + '</b>. Read the source first; a trusted script is trusted code with your network position.', 'Approve', 'btn accent');
       if (!ok) return;
-      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust', M.trustBody({ all, hashes: [...picked], capabilities: [...caps] })); toast('Scripts approved'); body.textContent = ''; await paintScriptsSheet(body); renderTree(); if (S.ed) paintPane(S.tab); } catch (e) { toastError('Could not approve', e); }
+      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust', M.trustBody({ all, hashes: [...picked], capabilities: [...caps] })); toast('Scripts approved'); body.textContent = ''; await paintScriptsSheet(body); X.renderTree(); if (S.ed) X.paintPane(S.tab); } catch (e) { toastError('Could not approve', e); }
     };
     const revoke = async () => {
       const ok = await uiConfirm('Revoke approval', 'Quarantine every script in this collection again?', 'Revoke', 'btn danger');
       if (!ok) return;
-      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust/revoke', { all: true }); toast('Approval revoked'); body.textContent = ''; await paintScriptsSheet(body); renderTree(); } catch (e) { toastError('Could not revoke', e); }
+      try { await jsend('POST', '/api/collections/' + encodeURIComponent(S.colUid) + '/trust/revoke', { all: true }); toast('Approval revoked'); body.textContent = ''; await paintScriptsSheet(body); X.renderTree(); } catch (e) { toastError('Could not revoke', e); }
     };
     foot.append(status, btn('Revoke all', revoke, 'btn danger'), btn('Approve selected', () => approve(false), 'btn'), btn('Approve all', () => approve(true), 'btn accent'));
     holder.append(foot);
