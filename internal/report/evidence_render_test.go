@@ -87,6 +87,21 @@ func TestReportHTMLRefusesRemoteImagesAndPinsCSP(t *testing.T) {
 	}
 }
 
+func TestReportStatesCVSSV31BesideV40AndLabelsLegacyScores(t *testing.T) {
+	f := store.Finding{ID: 1, Severity: "High", Status: "verified", Title: "IDOR",
+		Cvss:   "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+		CvssV3: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"}
+	out := Project([]store.Finding{f}, nil)
+	if !strings.Contains(out, "- **CVSS v3.1:** CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N (6.5, MEDIUM)") {
+		t.Fatalf("v3.1 vector missing:\n%s", out)
+	}
+	legacy := store.Finding{ID: 2, Severity: "Medium", Title: "Old", Cvss: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"}
+	out = Project([]store.Finding{legacy}, nil)
+	if strings.Contains(out, "Calculated CVSS v4.0") || !strings.Contains(out, "- **Calculated CVSS v3.1:** 6.5 (MEDIUM)") {
+		t.Fatalf("a legacy v3.1 score must not be labelled v4.0:\n%s", out)
+	}
+}
+
 func TestPrintCSSUsesA4WithPageNumbers(t *testing.T) {
 	html := HTMLDocument("# Report\n", nil, store.ReportBranding{})
 	for _, want := range []string{"size:A4", "counter(page)", "p:has(+pre)"} {

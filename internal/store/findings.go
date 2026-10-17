@@ -277,6 +277,11 @@ type Finding struct {
 	Ready     bool              `json:"ready"`
 	Missing   []string          `json:"missing,omitempty"`
 	Readiness *FindingReadiness `json:"readiness,omitempty"`
+	// CvssV3 is an optional CVSS v3.1 vector kept beside the v4.0 cvss field for
+	// platforms that still score in v3.1 (stored in findings.structured).
+	CvssV3       string   `json:"cvssV3,omitempty"`
+	CvssV3Score  *float64 `json:"cvssV3Score,omitempty"`  // computed
+	CvssV3Rating string   `json:"cvssV3Rating,omitempty"` // computed
 }
 
 // FindingReadiness is the structured report readiness summary. Ready/Missing
@@ -1303,6 +1308,9 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if patch.RelatedFindings != nil {
 		resulting.RelatedFindings = *patch.RelatedFindings
 	}
+	if patch.CvssV3 != nil {
+		resulting.CvssV3 = *patch.CvssV3
+	}
 	if body != nil {
 		stamped, err := stampFindingImageProvenance(tx, existingBody, *body, patch.Change)
 		if err != nil {
@@ -1350,7 +1358,7 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		sets = append(sets, "proof_review=?")
 		args = append(args, resulting.ProofReview)
 	}
-	if patch.Claims != nil || patch.NotExecuted != nil || patch.RelatedFindings != nil {
+	if patch.Claims != nil || patch.NotExecuted != nil || patch.RelatedFindings != nil || patch.CvssV3 != nil {
 		sets = append(sets, "structured=?")
 		args = append(args, structuredValue(resulting))
 	}

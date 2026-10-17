@@ -1608,6 +1608,7 @@ function renderFindingDetail() {
         <label for="findEnv">Environment</label><select id="findEnv" aria-label="Environment">${envOpts}</select>
         <label for="findCwe">CWE</label><input id="findCwe" class="find-field-text" type="text" value="${escAttr(f.cwe || '')}">
         <div id="findCvssEditor" class="cvss-editor">${renderCvssEditor(cvssPreview)}</div>
+        <label for="findCvssV3">CVSS v3.1 <span class="hint">(optional, for v3.1 platforms)</span></label><input id="findCvssV3" class="find-field-text" type="text" spellcheck="false" autocomplete="off" placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" value="${escAttr(f.cvssV3 || '')}">
         <div class="find-tags-bar"><div class="find-tag-chips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">no tags</span>'}</div><button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg> Tags</button></div>
       </div>`;
   const fixBlock = edit
@@ -1780,6 +1781,7 @@ function renderFindingDetail() {
     blurPatch('#findImpact', 'impact', el => el.value);
     blurPatch('#findWhy', 'why', el => el.value);
     blurPatch('#findCwe', 'cwe', el => el.value);
+    blurPatch('#findCvssV3', 'cvssV3', el => el.value.trim());
     blurPatch('#findConfidence', 'confidence', el => el.value);
     blurPatch('#findFix', 'fix', el => el.value);
     blurPatch('#findSummary', 'summary', el => el.value);

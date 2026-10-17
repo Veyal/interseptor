@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	cvss31 "github.com/pandatix/go-cvss/31"
 )
 
 // Structured finding fields. They are persisted together in one JSON column
@@ -39,6 +41,7 @@ type findingStructured struct {
 	Claims          []FindingClaim       `json:"claims,omitempty"`
 	NotExecuted     []FindingNotExecuted `json:"notExecuted,omitempty"`
 	RelatedFindings []FindingRelation    `json:"relatedFindings,omitempty"`
+	CvssV3          string               `json:"cvssV3,omitempty"`
 }
 
 const maxStructuredItems = 64
@@ -70,16 +73,35 @@ func (s structuredScan) Scan(value any) error {
 	if err := scanFindingJSON(value, &v); err != nil {
 		return err
 	}
-	s.f.Claims, s.f.NotExecuted, s.f.RelatedFindings = v.Claims, v.NotExecuted, v.RelatedFindings
+	s.f.Claims, s.f.NotExecuted, s.f.RelatedFindings, s.f.CvssV3 = v.Claims, v.NotExecuted, v.RelatedFindings, v.CvssV3
 	return nil
 }
 
 func structuredValue(f Finding) string {
-	b, _ := json.Marshal(findingStructured{f.Claims, f.NotExecuted, f.RelatedFindings})
+	b, _ := json.Marshal(findingStructured{f.Claims, f.NotExecuted, f.RelatedFindings, f.CvssV3})
 	return string(b)
 }
 
+// normalizeFindingCVSSV3 validates the optional CVSS v3.1 vector kept for
+// platforms that score in v3.1. It never replaces the v4.0 cvss field.
+func normalizeFindingCVSSV3(f *Finding) error {
+	f.CvssV3 = strings.TrimSpace(f.CvssV3)
+	if f.CvssV3 == "" {
+		return nil
+	}
+	if len(f.CvssV3) > 200 || !strings.HasPrefix(strings.ToUpper(f.CvssV3), "CVSS:3.1/") {
+		return fmt.Errorf("%w: cvssV3 must be a CVSS v3.1 vector starting with \"CVSS:3.1/\" (e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)", ErrInvalidFinding)
+	}
+	if _, err := cvss31.ParseVector(f.CvssV3); err != nil {
+		return fmt.Errorf("%w: cvssV3 is not a valid CVSS v3.1 vector: %v", ErrInvalidFinding, err)
+	}
+	return nil
+}
+
 func normalizeFindingStructured(f *Finding) error {
+	if err := normalizeFindingCVSSV3(f); err != nil {
+		return err
+	}
 	if len(f.Claims) > maxStructuredItems || len(f.NotExecuted) > maxStructuredItems || len(f.RelatedFindings) > maxStructuredItems {
 		return fmt.Errorf("%w: at most %d claims, not-executed requests, or related findings", ErrInvalidFinding, maxStructuredItems)
 	}

@@ -58,6 +58,7 @@ type FindingMetadataPatch struct {
 	Claims          *[]FindingClaim
 	NotExecuted     *[]FindingNotExecuted
 	RelatedFindings *[]FindingRelation
+	CvssV3          *string // "" clears the optional CVSS v3.1 vector
 }
 
 func scanFindingJSON(value any, out any) error {
@@ -221,6 +222,9 @@ func truncateForError(s string) string {
 // validateCVSSWrite enforces the CVSS:4.0 contract for a vector being written.
 func validateCVSSWrite(vector string) error {
 	if err := cvsspkg.ValidateForWrite(vector); err != nil {
+		if cvsspkg.IsLegacy(vector) {
+			return fmt.Errorf("%w: %v; keep a CVSS v3.1 vector for v3.1 platforms in cvssV3 instead", ErrInvalidFinding, err)
+		}
 		return fmt.Errorf("%w: %v", ErrInvalidFinding, err)
 	}
 	return nil
@@ -249,6 +253,12 @@ func (f *Finding) enrichAssessment() {
 	f.CvssRating = ""
 	f.CvssNomenclature = ""
 	f.CvssWarning = ""
+	f.CvssV3Score, f.CvssV3Rating = nil, ""
+	if v3, err := cvss31.ParseVector(strings.TrimSpace(f.CvssV3)); err == nil && f.CvssV3 != "" {
+		score := v3.BaseScore()
+		rating, _ := cvss31.Rating(score)
+		f.CvssV3Score, f.CvssV3Rating = &score, rating
+	}
 	raw := strings.TrimSpace(f.Cvss)
 	if cvsspkg.IsLegacy(raw) {
 		f.CvssWarning = "legacy CVSS 3.1 vector kept as-is; the finding contract requires CVSS:4.0 — re-score it with evaluate_finding_cvss"

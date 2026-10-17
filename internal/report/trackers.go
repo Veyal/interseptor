@@ -20,10 +20,10 @@ import (
 //     vulnerability_information instead.
 //   - structured_scope_id — the programme's asset id. Interseptor knows the URL,
 //     not the programme's identifier for it.
-//   - a CVSS vector. HackerOne's severity object takes CVSS v3.1; Interseptor
-//     records v4.0, which is not the same string in the same field. The v4
-//     vector and its calculated score are stated in the narrative, where they
-//     cannot be misread as a v3 score.
+//   - a CVSS vector field. HackerOne scores in CVSS v3.1; Interseptor's cvss is
+//     v4.0, which is not the same string. Both the v4.0 vector and, when the
+//     finding records one in cvssV3, the v3.1 vector and score are stated in
+//     the narrative, each labelled with its version.
 type HackerOneReport struct {
 	Title                    string `json:"title"`
 	VulnerabilityInformation string `json:"vulnerability_information"`

@@ -277,8 +277,20 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	if f.Cvss != "" {
 		b.WriteString("- **CVSS:** " + sanitizeLine(f.Cvss) + "\n")
 		if f.CvssScore != nil {
-			fmt.Fprintf(b, "- **Calculated CVSS v4.0:** %.1f (%s, %s)\n", *f.CvssScore, f.CvssRating, f.CvssNomenclature)
+			if f.CvssNomenclature == "CVSS-3.1" {
+				// A legacy v3.1 vector in the v4.0 field: label its score honestly.
+				fmt.Fprintf(b, "- **Calculated CVSS v3.1:** %.1f (%s)\n", *f.CvssScore, f.CvssRating)
+			} else {
+				fmt.Fprintf(b, "- **Calculated CVSS v4.0:** %.1f (%s, %s)\n", *f.CvssScore, f.CvssRating, f.CvssNomenclature)
+			}
 		}
+	}
+	if f.CvssV3 != "" {
+		line := "- **CVSS v3.1:** " + sanitizeLine(f.CvssV3)
+		if f.CvssV3Score != nil {
+			line += fmt.Sprintf(" (%.1f, %s)", *f.CvssV3Score, f.CvssV3Rating)
+		}
+		b.WriteString(line + "\n")
 	}
 	if f.Cwe != "" {
 		b.WriteString("- **CWE:** " + sanitizeLine(f.Cwe) + "\n")
