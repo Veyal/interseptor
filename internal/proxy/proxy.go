@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1019,9 +1020,18 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 		w.Header().Set("Trailer", strings.Join(tk, ", "))
 	}
 	w.WriteHeader(resp.StatusCode)
+	dst := io.Writer(w)
+	if shouldFlushResponse(resp) {
+		// Unknown-length and event-stream bodies (SSE, long-poll, chunked
+		// progress) must reach the client as they arrive, not when net/http's
+		// write buffer fills or the response ends — mirror httputil.ReverseProxy.
+		rc := http.NewResponseController(w)
+		_ = rc.Flush() // deliver the head now; a stream may idle before its first byte
+		dst = flushWriter{w: w, rc: rc}
+	}
 
 	if resTee, resFinalize, err := s.teeBody(flow, resp.Body); err == nil && resTee != nil {
-		_, cerr := io.Copy(w, resTee)
+		_, cerr := io.Copy(dst, resTee)
 		h, n, _ := resFinalize()
 		flow.ResBodyHash, flow.ResLen = h, n
 		if cerr != nil {
@@ -1122,6 +1132,88 @@ func restoreBody(prefix []byte, rest io.ReadCloser) io.ReadCloser {
 	}{io.MultiReader(bytes.NewReader(prefix), rest), rest}
 }
 
+// shouldFlushResponse reports whether each body write must be flushed to the
+// client immediately: unknown-length bodies and event streams, the same policy
+// httputil.ReverseProxy uses. Known-length bodies keep net/http's buffering.
+func shouldFlushResponse(resp *http.Response) bool {
+	if isBodylessResponse(resp) {
+		return false
+	}
+	return resp.ContentLength < 0 || isEndlessStream(resp.Header)
+}
+
+// isEndlessStream reports whether a response is an open-ended stream by design
+// (Server-Sent Events, multipart/x-mixed-replace such as MJPEG). Such bodies are
+// never buffered for response body rules or the response hold.
+func isEndlessStream(h http.Header) bool {
+	ct := strings.ToLower(strings.TrimSpace(h.Get("Content-Type")))
+	return strings.HasPrefix(ct, "text/event-stream") || strings.HasPrefix(ct, "multipart/x-mixed-replace")
+}
+
+// flushWriter flushes the client connection after every write so streamed
+// response bytes are not held in a server-side buffer.
+type flushWriter struct {
+	w  io.Writer
+	rc *http.ResponseController
+}
+
+func (f flushWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	if n > 0 && err == nil {
+		if ferr := f.rc.Flush(); ferr != nil && !errors.Is(ferr, http.ErrNotSupported) {
+			err = ferr
+		}
+	}
+	return n, err
+}
+
+var endlessSkipLog atomic.Int64 // unix seconds of the last skip log line
+
+// noteEndlessStreamSkipped logs (at most every 10s) that body rules or the
+// response hold were skipped for an endless stream, so the operator can tell
+// why such a response was neither rewritten nor held.
+func noteEndlessStreamSkipped(flow *proxyFlow) {
+	now := time.Now().Unix()
+	last := endlessSkipLog.Load()
+	if now-last < 10 || !endlessSkipLog.CompareAndSwap(last, now) {
+		return
+	}
+	log.Printf("proxy: response body rules and response hold skipped for streaming response %s%s (forwarded as it arrives)", flow.Host, flow.Path)
+}
+
+// applyResponseHeaderRules runs response rules against the head only and
+// rewrites resp.Header in place, leaving the body to stream. Content-Length is
+// kept from the origin because the body is not rewritten.
+func (s *Server) applyResponseHeaderRules(flow *proxyFlow, resp *http.Response) {
+	orig := headerWithoutHop(resp.Header)
+	nh, _ := s.eng.ApplyResponseRules(orig.Clone(), nil, false)
+	if nh == nil {
+		nh = http.Header{}
+	}
+	nh.Del("Content-Length")
+	nh.Del("Transfer-Encoding")
+	if cl := orig.Values("Content-Length"); len(cl) > 0 {
+		nh["Content-Length"] = append([]string(nil), cl...)
+	}
+	if reflect.DeepEqual(orig, nh) {
+		return
+	}
+	if flow.OriginalResHeaders == nil {
+		flow.OriginalResHeaders = resp.Header.Clone()
+	}
+	resp.Header = nh
+}
+
+// headerWithoutHop returns a copy of h without hop-by-hop headers.
+func headerWithoutHop(h http.Header) http.Header {
+	c := h.Clone()
+	if c == nil {
+		c = http.Header{}
+	}
+	removeHopHeaders(c)
+	return c
+}
+
 // maybeInterceptResponse applies response-side match-&-replace and the response
 // hold gate when active. It returns the final status/header/body to send. When
 // neither rules nor response-interception apply, transformed is false and the
@@ -1136,10 +1228,30 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		return 0, nil, nil, false, false
 	}
 
+	var (
+		scanLimit         int64
+		hasBody, allowBig bool
+	)
+	if hasRules {
+		scanLimit, hasBody, allowBig = s.eng.ResponseBodyScanLimit()
+	}
+	endless := isEndlessStream(resp.Header)
+	if endless || (!hasBody && !hold) {
+		// Header-only rules never need the body, and an endless stream (SSE,
+		// multipart/x-mixed-replace) never completes, so buffering it would hang
+		// the client forever. Rewrite the head in place and let the body stream.
+		if endless && (hasBody || hold) {
+			noteEndlessStreamSkipped(flow)
+		}
+		if hasRules {
+			s.applyResponseHeaderRules(flow, resp)
+		}
+		return 0, nil, nil, false, false
+	}
+
 	readLimit := int64(maxTransformBody)
 	skipLargeBody := false
 	if hasRules {
-		scanLimit, hasBody, allowBig := s.eng.ResponseBodyScanLimit()
 		if hasBody && !allowBig {
 			if hold {
 				// Hold still needs the 64 MB editor buffer. Body rules that did
@@ -1170,8 +1282,11 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 	originalHeaders := h.Clone()
 	if hasRules {
 		h, b = s.eng.ApplyResponseRules(h, b, skipLargeBody && int64(len(b)) > intercept.RuleScanLimit)
-		if !bytes.Equal(originalBody, b) {
+		bodyChanged := !bytes.Equal(originalBody, b)
+		if bodyChanged || !reflect.DeepEqual(originalHeaders, h) {
 			flow.OriginalResHeaders = cloneHeaders(originalHeaders)
+		}
+		if bodyChanged {
 			flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
 		}
 	}
