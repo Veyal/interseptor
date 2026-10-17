@@ -6,7 +6,7 @@
 
 #panel-collections{background:var(--bg)}
 .coll-bar{gap:var(--sp-2)}
-.coll-field{display:inline-flex;align-items:center;min-width:0}
+.coll-field{display:inline-flex;align-items:center;min-width:min(150px,36vw)}
 .coll-field select{max-width:min(240px,40vw)}
 .coll-env{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none}
 .coll-env select{max-width:min(200px,38vw)}
@@ -16,6 +16,15 @@
 .coll-field .ui-select{max-width:min(240px,40vw);min-width:0;flex:1}
 .coll-env .ui-select{max-width:min(200px,38vw);min-width:0}
 .coll-field .ui-select-btn .ui-select-trigger,.coll-env .ui-select-btn .ui-select-trigger{width:100%;max-width:100%}
+/* Below about 1366px the labelled toolbar no longer fits next to a readable
+   collection name, so the three least-used labels fold to icons first (each
+   button keeps its aria-label and tooltip). */
+@media (max-width:1366px){
+  #collImport .lbl-long,#collExport .lbl-long,#collConsoleBtn .lbl-long{display:none}
+}
+@media (max-width:1180px){
+  .coll-bar .lbl-long{display:none}
+}
 .coll-chip{color:var(--warnFg);border-color:var(--warnLine)}
 .coll-chip[data-state="ok"]{color:var(--accent);border-color:var(--line2)}
 .coll-status{flex:none;padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg1);color:var(--fg2);font-size:var(--fs-sm);display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}

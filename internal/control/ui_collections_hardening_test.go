@@ -106,5 +106,8 @@ func TestCollectionsPickersEllipsizeInsteadOfOverlapping(t *testing.T) {
 	requireUIContains(t, css,
 		".coll-field .ui-select{max-width:min(240px,40vw);min-width:0",
 		".coll-field .ui-select-btn .ui-select-trigger,.coll-env .ui-select-btn .ui-select-trigger{width:100%;max-width:100%}",
+		// A readable name wins over button labels: labels fold to icons first.
+		".coll-field{display:inline-flex;align-items:center;min-width:min(150px,36vw)}",
+		"#collImport .lbl-long,#collExport .lbl-long,#collConsoleBtn .lbl-long{display:none}",
 	)
 }
