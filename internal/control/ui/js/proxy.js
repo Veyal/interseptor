@@ -1020,7 +1020,9 @@ function renderEmptyHistory(box){
   if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
   const model=emptyStateModel(state,{proxyAddr:state.proxyAddr});
   if(model.kind==='empty-filtered'){
-    renderState(box,'empty-filtered',{title:model.title,hint:model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
+    // A search still paging through older History has not found nothing yet.
+    const searching=flowSearchCursor>0&&flowHasMore;
+    renderState(box,'empty-filtered',{title:searching?'No matches in recent flows yet':model.title,hint:searching?'The search continues through older History.':model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
     return;
   }
   renderState(box,'empty-first',{title:model.title,hint:model.hint,icon:'proxy'});
@@ -1322,6 +1324,9 @@ export async function loadMoreFlows(){
     if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
     applyPageMore(d,flows.length);
+    // Still empty: repaint the empty state, whose text depends on whether the
+    // search goes on.
+    if(!flows.length&&!state.flows.length)renderRows();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     if(flows.length){
       // appendFlows drops any ids already present (a flow could arrive live between pages).
