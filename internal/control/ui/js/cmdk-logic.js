@@ -45,7 +45,10 @@ export function scoreCommand(q, c) {
   const query = String(q || '').trim().toLowerCase();
   if (!query) return 0;
   const title = String(c.t || '');
-  const s = fuzzyScore(query, title);
+  // "Go to X" is named X: score the destination too, so "collections" ranks the
+  // navigation entry level with (and, by group order, ahead of) X's own actions.
+  const nav = /^Go to (.+)$/.exec(title);
+  const s = Math.max(fuzzyScore(query, title), nav ? fuzzyScore(query, nav[1]) : -1);
   if (s >= 0) return s + 20;
   return (title + ' ' + String(c.kw || '')).toLowerCase().includes(query) ? 1 : -1;
 }
@@ -78,12 +81,19 @@ export function rankFlows(q, flows, { limit = DEFAULT_LIMITS.flows } = {}) {
   if (!query) return list.slice(0, limit);
   const idMatch = /^(?:id:|#)?(\d+)$/i.exec(query);
   const idWant = idMatch ? Number(idMatch[1]) : 0;
+  // Flows match on whole words as typed: every query word must occur in the
+  // method/host/path/id text. A subsequence match alone would let a short word
+  // ("repeater") hit any long URL that happens to contain its letters in order.
+  const needle = query.replace(/^id:/i, '');
+  const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
   const scored = [];
   list.forEach((f, i) => {
     if (!f) return;
     if (idWant && f.id === idWant) { scored.push({ f, s: 1e6, i }); return; }
-    const s = fuzzyScore(query.replace(/^id:/i, ''), `${f.method || ''} ${f.host || ''}${f.path || ''} #${f.id}`);
-    if (s >= 0) scored.push({ f, s, i });
+    const text = `${f.method || ''} ${f.host || ''}${f.path || ''} #${f.id}`;
+    const lower = text.toLowerCase();
+    if (!words.every((w) => lower.includes(w))) return;
+    scored.push({ f, s: Math.max(0, fuzzyScore(needle, text)), i });
   });
   scored.sort((a, b) => b.s - a.s || a.i - b.i);
   return scored.slice(0, limit).map((x) => x.f);
@@ -240,14 +250,14 @@ export const LEGACY_MODALS = [
   { id: 'oobModal', title: 'Open OOB catcher', kw: 'out of band blind ssrf callback', how: { cmd: 'Open OOB catcher' } },
   { id: 'projModal', title: 'Switch or create project', kw: 'projects workspace engagement', how: { cmd: 'Switch or create project' } },
   { id: 'authzModal', title: 'Open Authz test', kw: 'authorization access control roles', how: { cmd: 'Open Authz test' } },
-  { id: 'findGuideModal', title: 'Findings guide (legacy dialog)', kw: 'findings guide help writing', how: { click: '#findGuideDialog', tab: 'findings' } },
-  { id: 'findCreateModal', title: 'Create finding dialog (legacy)', kw: 'new finding create record', how: { click: '#findNewDialog', tab: 'findings' } },
-  { id: 'findPickModal', title: 'Pick a finding for the selected flow (legacy dialog)', kw: 'add attach evidence finding picker', how: { cmd: 'Add selected flow to finding' } },
-  { id: 'findFlowPickModal', title: 'Attach flows to the open finding (legacy dialog)', kw: 'attach flow picker proof evidence', how: { click: '#findAddFlow', tab: 'findings' } },
-  { id: 'findDeletedModal', title: 'Deleted findings dialog (legacy)', kw: 'deleted findings restore trash', how: { click: '#findDeletedOpen', tab: 'findings' } },
+  { id: 'findGuideModal', title: 'Open the findings writing guide', kw: 'findings guide help writing', how: { click: '#findGuideDialog', tab: 'findings' } },
+  { id: 'findCreateModal', title: 'New finding in a dialog', kw: 'new finding create record', how: { click: '#findNewDialog', tab: 'findings' } },
+  { id: 'findPickModal', title: 'Pick a finding for the selected flow', kw: 'add attach evidence finding picker', how: { cmd: 'Add selected flow to finding' } },
+  { id: 'findFlowPickModal', title: 'Attach flows to the open finding', kw: 'attach flow picker proof evidence', how: { click: '#findAddFlow', tab: 'findings' } },
+  { id: 'findDeletedModal', title: 'Show deleted findings', kw: 'deleted findings restore trash', how: { click: '#findDeletedOpen', tab: 'findings' } },
   { id: 'sessionInspectModal', title: 'Inspect session timeline of selected flows', kw: 'session inspection timeline roles', how: { open: 'session' } },
   { id: 'authTimelineModal', title: 'Auth timeline from selected flow', kw: 'authentication timeline login token', how: { open: 'auth-timeline' } },
-  { id: 'compareModal', title: 'Compare selected flows (legacy word diff)', kw: 'compare diff two flows', how: { cmd: 'Compare selected flows (legacy word diff)' } },
+  { id: 'compareModal', title: 'Compare selected flows word by word', kw: 'compare diff two flows', how: { cmd: 'Compare selected flows word by word' } },
   { id: 'decModal', title: 'Open Decoder (base64 / url / jwt / hex…)', kw: 'encode decode smart', how: { cmd: 'Open Decoder (base64 / url / jwt / hex…)' } },
   { id: 'confirmModal', how: { transient: 'confirmation prompt raised by another action' } },
   { id: 'promptModal', how: { transient: 'text prompt raised by another action' } },

@@ -79,6 +79,34 @@ test('rankFlows: id lookups (285, #285, id:285) come first; fuzzy otherwise', ()
   assert.deepEqual(rankFlows('zzzz', flows), []);
 });
 
+test('a Go to entry ranks first when the query names its destination', () => {
+  const list = [
+    { t: 'Collections: Import collection', group: 'Collections' },
+    { t: 'Collections: New collection', group: 'Collections' },
+    { t: 'Go to Collections' },
+    { t: 'Settings: Scope' },
+    { t: 'Go to Settings' },
+  ];
+  assert.equal(flattenResults(buildResults({ raw: 'collections', commands: list }))[0].label, 'Go to Collections');
+  assert.equal(flattenResults(buildResults({ raw: 'settings', commands: list }))[0].label, 'Go to Settings');
+});
+
+test('palette titles never expose internal "legacy" wording', () => {
+  for (const m of LEGACY_MODALS) if (m.title) assert.doesNotMatch(m.title, /legacy/i, m.id);
+});
+
+test('rankFlows: every query word must appear as written; scattered letters do not match', () => {
+  const list = [
+    { id: 7, method: 'GET', host: 'cdn.example.com', path: '/r/e/p/e/a/t/e/r/assets/app.js', status: 200 },
+    { id: 8, method: 'GET', host: 'docs.example.com', path: '/guides/repeater', status: 200 },
+  ];
+  assert.deepEqual(rankFlows('repeater', list).map((f) => f.id), [8]);
+  assert.deepEqual(rankFlows('REPEATER guides', list).map((f) => f.id), [8]);
+  assert.deepEqual(rankFlows('get cdn', list).map((f) => f.id), [7]);
+  assert.deepEqual(rankFlows('#7', list).map((f) => f.id), [7]);
+  assert.deepEqual(rankFlows('rptr', list), []);
+});
+
 test('rankFindings and findingSub display server state only', () => {
   assert.equal(rankFindings('idor', findings)[0].id, 4);
   assert.equal(rankFindings('F-5', findings)[0].id, 5);

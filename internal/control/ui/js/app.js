@@ -526,10 +526,13 @@ function cmdkCommands(){
     {t:'Go to Intercept',kw:'hold forward drop match replace rules',run:go('intercept')},
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
     {t:'Go to Intruder',kw:'fuzz brute force payloads enumerate',run:go('intruder')},
+    {t:'Go to Collections',kw:'collections api requests postman insomnia bruno environments runner',run:go('collections')},
     {t:'Go to Scanner',kw:'passive checks issues vulnerabilities report',run:go('scanner')},
-    {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Map',kw:'endpoints attack surface graph tree headers body search',run:go('map')},
+    {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
+    {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
+    {t:'Go to Settings',kw:'settings preferences configuration options',run:go('settings')},
     {t:'Edit custom scanner checks',kw:'starlark checks passive custom rules',run:openChecks},
     {t:'Edit message codecs',kw:'encrypt decrypt aes codec plaintext decoded',run:openCodecs},
     ...(state.oobEnabled?[{t:'Open OOB catcher',kw:'out of band blind ssrf callback collab',run:()=>{openModal($('#oobModal'));loadOob();}}]:[]),
@@ -542,10 +545,8 @@ function cmdkCommands(){
     {t:'Add selected flow to finding',kw:'add evidence poc finding attach history',run:()=>{if(state.selected?.size)pickFindingForSelection();else{const f=selectedFlow();if(f)addFlowToFinding(f.id);else toast('select a flow in History first');}}},
     {t:'Find inside selected message (Ctrl+F)',kw:'search find text request response body inspector',run:()=>{go('proxy')();openInspectFind();}},
     {t:'Diff selected flows',kw:'compare diff two flows responses hunks side by side',run:()=>openFlowDiff()},
-    {t:'Compare selected flows (legacy word diff)',kw:'compare diff two flows words lines headers modal',run:()=>openCompare()},
+    {t:'Compare selected flows word by word',kw:'compare diff two flows words lines headers modal',run:()=>openCompare()},
     {t:'Copy selected flow as cURL',kw:'curl copy clipboard request reproduce',run:()=>{const f=selectedFlow();if(f)copyCurl(f);else toast('select a flow in History first');}},
-     {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
-
     {t:'Switch or create project',kw:'projects workspace engagement open new default',run:openProjectModal},
     {t:'Run setup wizard',kw:'setup wizard onboarding first run guide proxy ca scope',run:openSetup},
     {t:'Toggle theme (dark / light)',kw:'dark mode light appearance ui color scheme',run:toggleTheme},
@@ -592,7 +593,7 @@ function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
 function sendSelectedFlow(to){const f=selectedFlow();if(f){(to==='intruder'?sendToIntruder:sendToRepeater)(f);return true;}return false;}
-const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
 // isBareCharacterKey: a printable character without Ctrl/Cmd/Alt (Shift allowed,
 // so ? counts). WCAG 2.1.4: these act only while the Single-key switch is on.
 function isBareCharacterKey(e){return e.key.length===1&&e.key!==' '&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
