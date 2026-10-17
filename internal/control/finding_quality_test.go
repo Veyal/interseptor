@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -233,5 +234,59 @@ func TestFindingRevisionHTTPValidation(t *testing.T) {
 		if len(page.Revisions) != want {
 			t.Fatalf("page %q has %d revisions", query, len(page.Revisions))
 		}
+	}
+}
+
+func TestFinalGateSkipsFalsePositiveStubs(t *testing.T) {
+	h, s, _ := newHub(t)
+	ready := store.Finding{Title: "Example ready", Summary: "Observed behavior", Target: "https://example.com/a", Severity: "Critical", Status: "verified",
+		Impact: "Bounded observed impact", Why: "Expected boundary", Fix: "Correct the boundary", Retest: "Confirm secure behavior", Confidence: "certain",
+		Cvss:        "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+		ProofReview: store.FindingProofReview{Execution: "demonstrated"}}
+	readyID, err := s.CreateFinding(&ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, role := range []string{"action", "result", "control"} {
+		flowID, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(int64(i + 1)), Method: "GET", Scheme: "https", Host: "example.com", Port: 443, Path: "/a", Status: 200})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AttachFlowWithMetadata(readyID, flowID, "evidence", -1, role, "Observed "+role, "captured_flow", 0, store.FindingChange{Actor: "test", Source: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stub := store.Finding{Title: "Example false positive", Status: "false_positive"}
+	if _, err := s.CreateFinding(&stub); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, body := getReport(t, ts.URL, "?mode=final&format=json")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("final report with a false-positive stub: %d %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "Example false positive") {
+		t.Fatalf("false positive vanished from the report: %s", body)
+	}
+	r, err := http.Get(ts.URL + "/api/findings/readiness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	var q struct {
+		Ready bool `json:"ready"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&q); err != nil || !q.Ready {
+		t.Fatalf("readiness ready=%v err=%v", q.Ready, err)
+	}
+	// A non-false-positive stub still blocks the final report.
+	other := store.Finding{Title: "Example open stub", Status: "open"}
+	if _, err := s.CreateFinding(&other); err != nil {
+		t.Fatal(err)
+	}
+	if resp, body := getReport(t, ts.URL, "?mode=final&format=json"); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("incomplete open finding passed the gate: %d %s", resp.StatusCode, body)
 	}
 }

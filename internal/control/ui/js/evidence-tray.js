@@ -78,7 +78,7 @@ export function keyMoveDir(e) {
   return 0;
 }
 
-const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#${name}"/></svg>`;
+const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
 
 function tileHTML(t, { editable }) {
   const label = `${t.kind === 'shot' ? 'Screenshot' : 'Flow'} ${t.position} of ${t.total}: ${t.title}${t.missing ? ' (' + t.detail + ')' : ''}`;

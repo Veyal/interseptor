@@ -30,27 +30,64 @@ func TestTrackerNarrativesKeepReportProvenance(t *testing.T) {
 		"jira":      Jira(f, nil).Fields.Description,
 	}
 	for name, body := range bodies {
+		impact, severity, cwe := "**Impact:** Cross-tenant read of invoice records.", "- **Severity:** High", "- **CWE:** CWE-639"
+		if name == "jira" {
+			impact, severity, cwe = "*Impact:* Cross-tenant read of invoice records.", "* *Severity:* High", "* *CWE:* CWE-639"
+		}
 		for _, want := range []string{
 			"role=action",
 			"source=browser_screenshot",
 			"source=flow_preview (generated HTTP preview; not browser proof)",
-			"Reads another tenant's invoice.",
-			"**Impact:** Cross-tenant read of invoice records.",
+			"proof=Reads another tenant's invoice",
+			impact,
 			"GET /invoices/8 HTTP/1.1",
+			"Calculated CVSS v4.0",
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: narrative missing %q", name, want)
 			}
 		}
-		// The classification facts are restated so the ticket stands alone.
-		for _, want := range []string{"- **Severity:** High", "- **CWE:** CWE-639", "calculated v4.0 score"} {
-			if !strings.Contains(body, want) {
-				t.Errorf("%s: header missing %q", name, want)
+		// The classification facts are stated once, so the ticket stands alone
+		// without repeating its own metadata block.
+		for _, want := range []string{severity, cwe} {
+			if n := strings.Count(body, want); n != 1 {
+				t.Errorf("%s: %q appears %d times, want once", name, want, n)
+			}
+		}
+		for _, label := range []string{"Status:", "Confidence:", "Environment:"} {
+			if n := strings.Count(body, label); n != 1 {
+				t.Errorf("%s: %q appears %d times, want once", name, label, n)
 			}
 		}
 		if !strings.Contains(body, "https://example.com/invoices/9") {
 			t.Errorf("%s: second affected target lost", name)
 		}
+	}
+}
+
+// Jira's /rest/api/2/issue description is Jira wiki markup, not Markdown: raw
+// "**bold**", "### heading" and ``` fences would show up as literal noise.
+func TestJiraDescriptionIsWikiMarkup(t *testing.T) {
+	body := Jira(trackerFixture(), nil).Fields.Description
+	for _, bad := range []string{"**", "```", "\n### ", "\n- **"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("Jira description still carries Markdown %q:\n%s", bad, body)
+		}
+	}
+	for _, want := range []string{"{noformat}\nGET /invoices/8 HTTP/1.1", "{{https://example.com/invoices/8}}", "* *Status:* verified"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Jira description missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestMarkdownToJiraWikiEscapesMacroCharacters(t *testing.T) {
+	got := markdownToJiraWiki("Payload {color:red}x{color} and [link|http://example.com] in `a{b}`\n")
+	if !strings.Contains(got, `\{color:red\}`) || !strings.Contains(got, `\[link|http://example.com\]`) {
+		t.Fatalf("prose braces/brackets must be escaped: %q", got)
+	}
+	if !strings.Contains(got, `{{a\{b\}}}`) {
+		t.Fatalf("inline code not converted: %q", got)
 	}
 }
 

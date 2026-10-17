@@ -277,8 +277,20 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	if f.Cvss != "" {
 		b.WriteString("- **CVSS:** " + sanitizeLine(f.Cvss) + "\n")
 		if f.CvssScore != nil {
-			fmt.Fprintf(b, "- **Calculated CVSS v4.0:** %.1f (%s, %s)\n", *f.CvssScore, f.CvssRating, f.CvssNomenclature)
+			if f.CvssNomenclature == "CVSS-3.1" {
+				// A legacy v3.1 vector in the v4.0 field: label its score honestly.
+				fmt.Fprintf(b, "- **Calculated CVSS v3.1:** %.1f (%s)\n", *f.CvssScore, f.CvssRating)
+			} else {
+				fmt.Fprintf(b, "- **Calculated CVSS v4.0:** %.1f (%s, %s)\n", *f.CvssScore, f.CvssRating, f.CvssNomenclature)
+			}
 		}
+	}
+	if f.CvssV3 != "" {
+		line := "- **CVSS v3.1:** " + sanitizeLine(f.CvssV3)
+		if f.CvssV3Score != nil {
+			line += fmt.Sprintf(" (%.1f, %s)", *f.CvssV3Score, f.CvssV3Rating)
+		}
+		b.WriteString(line + "\n")
 	}
 	if f.Cwe != "" {
 		b.WriteString("- **CWE:** " + sanitizeLine(f.Cwe) + "\n")
@@ -324,7 +336,7 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	// Render interleaved PoC timeline (text + flows + images in author's order).
 	// Several affected targets each get the proof linked to that target.
 	if len(f.Blocks) > 0 {
-		hasDetailBlock, hasEvidenceBlock := renderFindingProofSections(b, f)
+		hasDetailBlock, hasEvidenceBlock := renderFindingProofSections(b, n, f)
 		if f.Detail != "" && !hasDetailBlock {
 			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
@@ -371,9 +383,22 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	}
 }
 
-func renderFindingProofSections(b *strings.Builder, f store.Finding) (hasDetailBlock, hasEvidenceBlock bool) {
+// blockRenderState carries what one finding's evidence rendering has already
+// written: flows whose raw exchange is printed (a second citation of the same
+// flow points back instead of repeating it) and the figure counter, numbered
+// "<finding>.<n>" so captions stay stable however the report is sliced.
+type blockRenderState struct {
+	finding int
+	figures int
+	printed map[int64]bool
+	// retestHeading records that the "Retest evidence" heading was written.
+	retestHeading bool
+}
+
+func renderFindingProofSections(b *strings.Builder, n int, f store.Finding) (hasDetailBlock, hasEvidenceBlock bool) {
+	st := &blockRenderState{finding: n, printed: map[int64]bool{}}
 	if len(f.Targets) < 2 {
-		return renderFindingBlocks(b, f.Blocks, f.Detail, f.Evidence)
+		return renderFindingBlocks(b, f.Blocks, f.Detail, f.Evidence, st)
 	}
 	perTarget := make([][]store.FindingBlock, len(f.Targets))
 	var shared []store.FindingBlock
@@ -391,7 +416,7 @@ func renderFindingProofSections(b *strings.Builder, f store.Finding) (hasDetailB
 	}
 	if len(shared) > 0 {
 		b.WriteString("**Shared explanation:**\n\n")
-		detail, evidence := renderFindingBlocks(b, shared, f.Detail, f.Evidence)
+		detail, evidence := renderFindingBlocks(b, shared, f.Detail, f.Evidence, st)
 		hasDetailBlock = hasDetailBlock || detail
 		hasEvidenceBlock = hasEvidenceBlock || evidence
 	}
@@ -401,7 +426,7 @@ func renderFindingProofSections(b *strings.Builder, f store.Finding) (hasDetailB
 			b.WriteString("_No proof recorded for this target yet._\n\n")
 			continue
 		}
-		detail, evidence := renderFindingBlocks(b, perTarget[i], f.Detail, f.Evidence)
+		detail, evidence := renderFindingBlocks(b, perTarget[i], f.Detail, f.Evidence, st)
 		hasDetailBlock = hasDetailBlock || detail
 		hasEvidenceBlock = hasEvidenceBlock || evidence
 	}
@@ -426,14 +451,21 @@ func findingBlockLinkedToTarget(bl store.FindingBlock, t store.FindingTarget) bo
 	return false
 }
 
-func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail, evidence string) (hasDetailBlock, hasEvidenceBlock bool) {
+func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail, evidence string, st *blockRenderState) (hasDetailBlock, hasEvidenceBlock bool) {
 	for _, bl := range blocks {
+		if bl.Role == "retest" && !st.retestHeading {
+			// Retest replays answer "is it fixed?", a different question from
+			// the reproduction above them; give them their own heading.
+			st.retestHeading = true
+			b.WriteString("**Retest evidence:**\n\n")
+		}
 		if meta := blockEvidenceMeta(bl); meta != "" {
 			label := "Evidence"
 			if bl.Type == "text" {
 				label = "Step"
 			}
-			b.WriteString("_" + label + ": " + meta + "._\n\n")
+			// A proof sentence usually ends in its own period; do not double it.
+			b.WriteString("_" + label + ": " + strings.TrimRight(meta, ". ") + "._\n\n")
 		}
 		if bl.Type == "text" && bl.MD != "" {
 			hasDetailBlock = hasDetailBlock || bl.MD == detail
@@ -445,7 +477,7 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 				if bl.Note != "" {
 					line += " — " + sanitizeBody(bl.Note)
 				}
-				b.WriteString(line + "\n>\n")
+				b.WriteString(line + "\n\n")
 				continue
 			}
 			line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
@@ -455,7 +487,16 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 			if bl.Note != "" {
 				line += " — " + sanitizeBody(bl.Note)
 			}
-			b.WriteString(line + "\n>\n")
+			b.WriteString(line + "\n\n")
+			if st.printed[bl.FlowID] {
+				// The same exchange cited again (e.g. as both action and result):
+				// keep this citation's proof, point back at the printed exchange.
+				fmt.Fprintf(b, "_Same exchange as flow #%d above._\n\n", bl.FlowID)
+				continue
+			}
+			if bl.ReqRaw != "" || bl.ResRaw != "" {
+				st.printed[bl.FlowID] = true
+			}
 			renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
 		} else if bl.Type == "image" {
 			cap := bl.Caption
@@ -463,11 +504,15 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 				cap = "screenshot"
 			}
 			if bl.Missing {
-				b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n>\n", code(bl.Hash)))
+				b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n\n", code(bl.Hash)))
 				continue
 			}
 			if bl.URL != "" {
-				b.WriteString(fmt.Sprintf("![%s](%s)\n\n", sanitizeLine(cap), bl.URL))
+				// The caption is printed as a numbered figure line, not left in
+				// the alt text where a reader of the HTML/PDF never sees it.
+				st.figures++
+				fig := fmt.Sprintf("Figure %d.%d: %s", st.finding, st.figures, strings.TrimSpace(sanitizeLine(orVal(bl.Caption, "Screenshot"))))
+				b.WriteString(fmt.Sprintf("![%s](%s)\n\n_%s_\n\n", sanitizeLine(cap), bl.URL, fig))
 			} else {
 				b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
 			}
@@ -478,8 +523,10 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 
 func proofStoryLabel(role string) string {
 	switch role {
-	case "baseline", "control":
+	case "baseline":
 		return " (normal behavior)"
+	case "control":
+		return " (comparison)"
 	case "action", "setup":
 		return " (what we changed)"
 	case "result":
@@ -494,8 +541,10 @@ func blockEvidenceMeta(bl store.FindingBlock) string {
 	if bl.Role != "" {
 		parts = append(parts, "role="+sanitizeLine(bl.Role)+proofStoryLabel(bl.Role))
 	}
-	if bl.Proof != "" {
-		parts = append(parts, "proof="+sanitizeLine(bl.Proof))
+	if proof := strings.TrimRight(sanitizeLine(bl.Proof), ". "); proof != "" {
+		// The list supplies its own punctuation; a proof sentence's final period
+		// would otherwise read "proof=…., source=…".
+		parts = append(parts, "proof="+proof)
 	}
 	if bl.Source != "" {
 		label := bl.Source

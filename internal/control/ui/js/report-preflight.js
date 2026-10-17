@@ -16,11 +16,11 @@ import { setShellApi, setReportOpen, TAB_CHANGE_EVENT } from './shell-hooks.js';
 import { projectState } from './project-state.js';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
-  exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows, STATUS_CHOICES, FORMAT_CHOICES,
+  exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows, STATUS_CHOICES, FORMAT_CHOICES, hiddenNotice,
 } from './report-preflight-model.js';
 
 const OPTIONS_KEY = 'interseptor.report.options';
-const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#${name}"/></svg>`;
+const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
 
 const S = { open: false, loading: false, busy: false, error: '', quality: null, options: sanitizeOptions(), confirming: false, typed: '', seq: 0, sig: '' };
 let mount = null;
@@ -40,7 +40,8 @@ function blockersHTML() {
   const groups = groupBlockers(S.quality);
   if (!groups.length) {
     const s = summarize(S.quality);
-    return `<p class="rp-none">${icon('status-done')}<span>${s.total ? 'No blockers. Every finding in this report is ready.' : 'No findings match the selected statuses.'}</span></p>`;
+    const empty = hiddenNotice(S.quality) ? 'No findings match the selected statuses.' : 'No findings yet. Create one in Findings to start a report.';
+    return `<p class="rp-none">${icon('status-done')}<span>${s.total ? 'No blockers. Every finding in this report is ready.' : empty}</span></p>`;
   }
   return '<ol class="rp-groups">' + groups.map((g) => `<li class="rp-group"><div class="rp-group-h"><span class="rp-id">#${g.id}</span><span class="rp-title">${esc(g.title)}</span>${g.severity ? `<span class="rp-sev">${esc(g.severity)}</span>` : ''}</div><ul class="rp-issues">${g.issues.map((i) => `<li class="rp-issue">${icon('alert')}<span class="rp-issue-text"><strong>${esc(i.label)}</strong>${i.message ? `<small>${esc(i.message)}</small>` : ''}${i.hint ? `<small class="rp-hint">${esc(i.hint)}</small>` : ''}</span><a class="btn xs" href="${escAttr(i.href)}" data-fix="${escAttr(i.href)}" aria-label="Fix ${escAttr(i.label)} in finding ${g.id}">Fix</a></li>`).join('')}</ul></li>`).join('') + '</ol>';
 }
@@ -50,8 +51,18 @@ function optionsHTML() {
   const opts = (list, cur) => list.map((c) => `<option value="${escAttr(c.value)}"${c.value === cur ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
   return `<div class="rp-fields"><label for="reportFormat">Format</label><select id="reportFormat" class="btn btn-field">${opts(FORMAT_CHOICES, o.format)}</select>
 <label for="reportStatuses">Include</label><select id="reportStatuses" class="btn btn-field">${opts(STATUS_CHOICES, o.statuses)}</select>
+${hiddenHTML()}
 <label class="rp-check"><input type="checkbox" id="reportEvidence"${o.includeEvidence ? ' checked' : ''}> Include attached evidence</label>
+<label class="rp-check"><input type="checkbox" id="reportMask"${o.maskHeaders ? ' checked' : ''}> Mask credential headers</label>
 <label class="rp-check"><input type="checkbox" id="reportGroupTag"${o.groupByTag ? ' checked' : ''}> Group by tag</label></div>`;
+}
+
+// hiddenHTML says what the status filter left out and offers to include it, so
+// a narrower filter is never mistaken for "this project has no findings".
+function hiddenHTML() {
+  const h = hiddenNotice(S.quality);
+  if (!h || S.options.statuses === 'all') return '';
+  return `<p class="rp-hidden" role="status">${icon('alert')}<span>${esc(h.text)}</span><button type="button" class="btn xs" id="reportIncludeAll">Include all statuses</button></p>`;
 }
 
 function previewHTML() {
@@ -164,6 +175,8 @@ function wire() {
   $('#reportFormat')?.addEventListener('change', (e) => { S.options = sanitizeOptions({ ...S.options, format: e.target.value }); saveOptions(); });
   $('#reportEvidence')?.addEventListener('change', (e) => { S.options = sanitizeOptions({ ...S.options, includeEvidence: e.target.checked }); saveOptions(); });
   $('#reportGroupTag')?.addEventListener('change', (e) => { S.options = sanitizeOptions({ ...S.options, groupByTag: e.target.checked }); saveOptions(); });
+  $('#reportMask')?.addEventListener('change', (e) => { S.options = sanitizeOptions({ ...S.options, maskHeaders: e.target.checked }); saveOptions(); });
+  $('#reportIncludeAll')?.addEventListener('click', () => { S.options = sanitizeOptions({ ...S.options, statuses: 'all' }); saveOptions(); check(); $('#reportStatuses')?.focus(); });
   $('#reportStatuses')?.addEventListener('change', (e) => { S.options = sanitizeOptions({ ...S.options, statuses: e.target.value }); saveOptions(); check(); });
   mount.querySelectorAll('[data-fix]').forEach((a) => a.addEventListener('click', (e) => {
     e.preventDefault();

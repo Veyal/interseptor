@@ -91,7 +91,13 @@ func NormalizeFindingBody(body string) (string, error) {
 	if err := json.Unmarshal([]byte(body), &recs); err != nil {
 		return "", fmt.Errorf("body must be a JSON array of blocks: %w", err)
 	}
-	seenFlows := make(map[int64]struct{})
+	// The same flow may legitimately appear under several roles (one exchange
+	// is both the action and the result). Only exact copies collapse.
+	type flowCitation struct {
+		id          int64
+		role, proof string
+	}
+	seenFlows := make(map[flowCitation]struct{})
 	normalized := recs[:0]
 	for i := range recs {
 		if strings.TrimSpace(recs[i].Role) != "" && normalizeFindingBlockRole(recs[i].Role) == "" {
@@ -117,10 +123,11 @@ func NormalizeFindingBody(body string) (string, error) {
 				return "", fmt.Errorf("body block[%d]: flow block missing flowId", i)
 			}
 			if !recs[i].Missing {
-				if _, ok := seenFlows[recs[i].FlowID]; ok {
+				key := flowCitation{recs[i].FlowID, recs[i].Role, recs[i].Proof}
+				if _, ok := seenFlows[key]; ok {
 					continue
 				}
-				seenFlows[recs[i].FlowID] = struct{}{}
+				seenFlows[key] = struct{}{}
 			}
 		case "image":
 			recs[i].Type = "image"
@@ -270,6 +277,11 @@ type Finding struct {
 	Ready     bool              `json:"ready"`
 	Missing   []string          `json:"missing,omitempty"`
 	Readiness *FindingReadiness `json:"readiness,omitempty"`
+	// CvssV3 is an optional CVSS v3.1 vector kept beside the v4.0 cvss field for
+	// platforms that still score in v3.1 (stored in findings.structured).
+	CvssV3       string   `json:"cvssV3,omitempty"`
+	CvssV3Score  *float64 `json:"cvssV3Score,omitempty"`  // computed
+	CvssV3Rating string   `json:"cvssV3Rating,omitempty"` // computed
 }
 
 // FindingReadiness is the structured report readiness summary. Ready/Missing
@@ -514,8 +526,11 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 		_ = json.Unmarshal([]byte(bodyJSON), &recs)
 	}
 	// If already present, update the note in-place — don't change position.
+	// A different role for the same flow is a second citation (the action and
+	// the result are often one exchange), so it is inserted, not overwritten.
+	wantRole := normalizeFindingBlockRole(role)
 	for i, r := range recs {
-		if r.Type == "flow" && r.FlowID == flowID {
+		if r.Type == "flow" && r.FlowID == flowID && (wantRole == "" || r.Role == "" || r.Role == wantRole) {
 			recs[i].Note = note
 			if strings.TrimSpace(role) != "" {
 				recs[i].Role = normalizeFindingBlockRole(role)
@@ -534,6 +549,7 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 		}
 	}
 	newBlock := blockRecord{Type: "flow", FlowID: flowID, Note: note, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID}
+	pos = appendBeforeRetest(recs, pos, newBlock.Role)
 	if pos < 0 || pos >= len(recs) {
 		recs = append(recs, newBlock)
 	} else {
@@ -543,6 +559,24 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 	}
 	j, _ := json.Marshal(recs)
 	return string(j)
+}
+
+// appendBeforeRetest resolves an "append" (pos < 0) for a non-retest block to
+// the start of the trailing run of retest blocks, so evidence added after a
+// retest stays in the reproduction story instead of landing in the retest
+// chapter. Explicit positions and retest blocks are left as they are.
+func appendBeforeRetest(recs []blockRecord, pos int, role string) int {
+	if pos >= 0 || role == "retest" {
+		return pos
+	}
+	i := len(recs)
+	for i > 0 && recs[i-1].Role == "retest" {
+		i--
+	}
+	if i == len(recs) {
+		return pos
+	}
+	return i
 }
 
 // removeFlowFromBody removes all flow blocks with the given flowID from the body JSON.
@@ -1293,6 +1327,9 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if patch.RelatedFindings != nil {
 		resulting.RelatedFindings = *patch.RelatedFindings
 	}
+	if patch.CvssV3 != nil {
+		resulting.CvssV3 = *patch.CvssV3
+	}
 	if body != nil {
 		stamped, err := stampFindingImageProvenance(tx, existingBody, *body, patch.Change)
 		if err != nil {
@@ -1340,7 +1377,7 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		sets = append(sets, "proof_review=?")
 		args = append(args, resulting.ProofReview)
 	}
-	if patch.Claims != nil || patch.NotExecuted != nil || patch.RelatedFindings != nil {
+	if patch.Claims != nil || patch.NotExecuted != nil || patch.RelatedFindings != nil || patch.CvssV3 != nil {
 		sets = append(sets, "structured=?")
 		args = append(args, structuredValue(resulting))
 	}
@@ -1479,12 +1516,18 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 		return fmt.Errorf("body must be a JSON array of blocks: %w", err)
 	}
 	ord := 0
+	attached := make(map[int64]bool)
 	for _, r := range recs {
 		if r.Type != "flow" {
 			continue
 		}
 		if r.FlowID <= 0 {
 			return fmt.Errorf("body flow block missing flowId")
+		}
+		if attached[r.FlowID] {
+			// One flow cited by several blocks (e.g. action and result) is
+			// still one attachment.
+			continue
 		}
 		if r.Missing {
 			// Missing evidence is intentionally not an attachment: keeping the
@@ -1506,6 +1549,7 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 		); err != nil {
 			return err
 		}
+		attached[r.FlowID] = true
 		ord++
 	}
 	return nil

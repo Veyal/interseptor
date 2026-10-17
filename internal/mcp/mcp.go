@@ -1447,6 +1447,7 @@ func (s *Server) registerTools() {
 			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
+			"cvssV3":                   p("string", "optional CVSS:3.1 vector kept beside the v4.0 cvss for platforms that score in v3.1 (HackerOne, Bugcrowd); \"\" clears it on update"),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human"),
 			"blocks":                   findingBlocksSchema(),
 			"body":                     p("string", "legacy JSON blocks string; do not send together with blocks"),
@@ -1529,6 +1530,9 @@ func (s *Server) registerTools() {
 			}
 			if v := argStr(a, "cvss"); v != "" {
 				reqBody["cvss"] = v
+			}
+			if v := argStr(a, "cvssV3"); v != "" {
+				reqBody["cvssV3"] = v
 			}
 			if v := argStr(a, "verificationInstructions"); v != "" {
 				reqBody["verificationInstructions"] = v
@@ -1628,6 +1632,7 @@ func (s *Server) registerTools() {
 			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
+			"cvssV3":                   p("string", "optional CVSS:3.1 vector kept beside the v4.0 cvss for platforms that score in v3.1 (HackerOne, Bugcrowd); \"\" clears it on update"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
 			"blocks":                   findingBlocksSchema(),
 			"body":                     p("string", "legacy FULL JSON blocks string; do not send together with blocks"),
@@ -1696,7 +1701,7 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "cvssV3", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
@@ -2057,7 +2062,8 @@ func (s *Server) registerTools() {
 		obj(map[string]any{
 			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
 			"mode":          p("string", "final blocks incomplete findings with actionable checks; draft permits incomplete export (default for legacy clients)"),
-			"format":        p("string", "md (default), html, or json"),
+			"format":        p("string", "md (default), html, json, or sarif (SARIF 2.1.0); PDF is binary and is downloaded from the control API"),
+			"maskHeaders":   p("boolean", "mask Authorization/Cookie/Set-Cookie and other credential header values in attached raw evidence (default false)"),
 			"statuses":      p("string", "comma-separated finding statuses, or all"),
 			"tag":           p("string", "optional finding tag filter"),
 		}),
@@ -2071,8 +2077,8 @@ func (s *Server) registerTools() {
 				q.Set("issues", "1")
 			}
 			format := strings.ToLower(strings.TrimSpace(argStr(a, "format")))
-			if format != "" && format != "md" && format != "html" && format != "json" {
-				return "", fmt.Errorf("format must be md, html, or json")
+			if format != "" && format != "md" && format != "html" && format != "json" && format != "sarif" {
+				return "", fmt.Errorf("format must be md, html, json, or sarif")
 			}
 			if format != "" && format != "md" {
 				q.Set("format", format)
@@ -2082,6 +2088,9 @@ func (s *Server) registerTools() {
 			}
 			if v := strings.TrimSpace(argStr(a, "tag")); v != "" {
 				q.Set("tag", v)
+			}
+			if argBool(a, "maskHeaders", false) {
+				q.Set("maskHeaders", "1")
 			}
 			if len(q) > 0 {
 				p += "?" + q.Encode()

@@ -36,6 +36,9 @@ func projectHTMLDoc(md, lintNotice string, brand store.ReportBranding) string {
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
+	// The document is self-contained: styles and images are inline. Pin that so
+	// the browser that prints the PDF (or opens the download) never fetches.
+	b.WriteString("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<title>" + htmlEsc(brandingTitle(brand)) + "</title>\n")
 	b.WriteString("<style>")
@@ -144,6 +147,8 @@ blockquote p{margin:4px 0}
 .finding-body>p>strong:first-child{color:var(--accent2)}
 .finding-body img{max-width:100%;height:auto;border:1px solid var(--line2);border-radius:8px;margin-top:6px}
 img{max-width:100%}
+figure.shot{margin:12px 0}
+figure.shot figcaption{font-size:12px;color:var(--ink2);margin-top:6px}
 
 /* secret-lint callout */
 .secret-lint{display:block;max-width:900px;margin:0 auto 18px;padding:12px 16px;border:1px solid var(--sev-medium-bd);border-left-width:4px;background:var(--sev-medium-bg);color:#7a3e08;border-radius:9px;font-size:13px}
@@ -159,8 +164,11 @@ img{max-width:100%}
   .m-row{flex-direction:column;gap:2px}
   .m-row .m-k{min-width:0}
 }
+@page{size:A4;margin:16mm 14mm 18mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font:10px system-ui,sans-serif;color:#737e8f}}
 @media print{
   :root{--page:#fff}
+  figure.shot{break-inside:avoid}
+  p:has(+pre),h1,h2,h3{break-after:avoid}
   body{padding:0;font-size:12px}
   article.md{max-width:none;border:0;border-radius:0;box-shadow:none;padding:0}
   .secret-lint{display:none}
@@ -593,6 +601,10 @@ func markdownBlocks(md string) []string {
 			quote = append(quote, inlineMD(strings.TrimPrefix(trim, "> ")))
 			continue
 		}
+		if inQuote && trim == ">" {
+			// A bare ">" only continues the quote in Markdown; it has no text.
+			continue
+		}
 		if inQuote && trim != "" {
 			quote = append(quote, inlineMD(trim))
 			continue
@@ -623,7 +635,18 @@ func markdownBlocks(md string) []string {
 		default:
 			closeList()
 			if alt, src, ok := parseMDImage(trim); ok {
-				out = append(out, `<p><img src="`+htmlEsc(src)+`" alt="`+htmlEsc(alt)+`" style="max-width:100%"></p>`)
+				if !embeddedImageSrc(src) {
+					// Only embedded images render. The PDF is printed by a local
+					// browser, so a remote or file: URL in finding text (which can
+					// come from captured, attacker-controlled content) would make
+					// that browser fetch it.
+					out = append(out, `<p class="meta">Image not embedded: `+htmlEsc(alt)+`</p>`)
+				} else {
+					out = append(out, `<figure class="shot"><img src="`+htmlEsc(src)+`" alt="`+htmlEsc(alt)+`" style="max-width:100%"></figure>`)
+				}
+			} else if cap, ok := figureCaption(trim); ok && len(out) > 0 && strings.HasPrefix(out[len(out)-1], `<figure class="shot">`) {
+				last := out[len(out)-1]
+				out[len(out)-1] = strings.TrimSuffix(last, "</figure>") + "<figcaption>" + htmlEsc(cap) + "</figcaption></figure>"
 			} else if strings.HasPrefix(trim, "_") && strings.HasSuffix(trim, "_") {
 				out = append(out, "<p class=\"meta\">"+inlineMD(trim)+"</p>")
 			} else {
@@ -701,6 +724,21 @@ func htmlEsc(s string) string {
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	return s
+}
+
+// embeddedImageSrc reports whether an image source is an inline data: image,
+// the only kind a report document loads.
+func embeddedImageSrc(src string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(src)), "data:image/")
+}
+
+// figureCaption recognizes the "_Figure N.M: caption_" line the report writes
+// under each screenshot and returns its text without the emphasis markers.
+func figureCaption(line string) (string, bool) {
+	if len(line) < len("_Figure _") || !strings.HasPrefix(line, "_Figure ") || !strings.HasSuffix(line, "_") {
+		return "", false
+	}
+	return line[1 : len(line)-1], true
 }
 
 // parseMDImage recognizes a whole-line markdown image ![alt](src).

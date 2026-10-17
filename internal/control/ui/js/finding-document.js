@@ -196,6 +196,7 @@ export function readPropertiesHTML(f) {
     const bar = f.cvssScore != null ? `<span class="find-cvssbar ${severityTone(f.severity)}" aria-hidden="true">${Array.from({ length: 8 }, (_, i) => `<b${i < cvssFill(f.cvssScore) ? ' class="on"' : ''}></b>`).join('')}</span>` : '';
     row('CVSS', `<span class="find-pval">${f.cvssScore != null ? esc(Number(f.cvssScore).toFixed(1)) : ''}</span>${bar}${f.cvss ? `<span class="find-vector">${esc(f.cvss)}</span>` : ''}`);
   }
+  if (f.cvssV3) row('CVSS v3.1', `<span class="find-pval">${f.cvssV3Score != null ? esc(Number(f.cvssV3Score).toFixed(1)) : ''}</span><span class="find-vector">${esc(f.cvssV3)}</span>`);
   if ((f.tags || []).length) row('Tags', `<span class="find-tagrow">${f.tags.map((t) => `<span class="find-tag-chip">${esc(t)}</span>`).join('')}</span>`);
   return `<dl class="find-props">${rows.join('')}</dl>`;
 }

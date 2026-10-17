@@ -387,13 +387,14 @@ func selectFindingsByID(fs []store.Finding, want map[int64]bool) []store.Finding
 	return out
 }
 
+// filterReportFindings applies ?statuses=. The default is every status: an
+// unverified finding must reach the report (and the final gate, which blocks on
+// it) and false positives belong in the report's own appendix, so nothing is
+// left out unless the caller asked for a narrower set.
 func filterReportFindings(fs []store.Finding, raw string) []store.Finding {
 	raw = strings.TrimSpace(strings.ToLower(raw))
-	if raw == "all" {
+	if raw == "" || raw == "all" {
 		return fs
-	}
-	if raw == "" {
-		raw = "open,verified,fixed"
 	}
 	allowed := make(map[string]bool)
 	for _, status := range splitCSV(raw) {
@@ -559,6 +560,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		Cwe                      string                     `json:"cwe"`
 		Environment              string                     `json:"environment"` // production | staging | development | testing | local; legacy prod
 		Cvss                     string                     `json:"cvss"`
+		CvssV3                   string                     `json:"cvssV3"` // optional CVSS v3.1 vector for platforms that score in v3.1
 		VerificationInstructions string                     `json:"verificationInstructions"`
 		Retest                   string                     `json:"retest"`
 		Body                     string                     `json:"body"`    // JSON blocks (PoC timeline)
@@ -601,7 +603,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
 		Title: in.Title, Summary: in.Summary, Target: in.Target, Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
 		Impact: in.Impact, Why: in.Why, Cwe: in.Cwe, Environment: in.Environment,
-		Cvss: in.Cvss, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
+		Cvss: in.Cvss, CvssV3: in.CvssV3, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
 		Tags: in.Tags,
 	}
 	if msg := checkFindingBodySize(*f); msg != "" {
@@ -736,6 +738,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		Cwe                      *string                     `json:"cwe"`
 		Environment              *string                     `json:"environment"`
 		Cvss                     *string                     `json:"cvss"`
+		CvssV3                   *string                     `json:"cvssV3"` // optional CVSS v3.1 vector for v3.1 platforms; "" clears
 		VerificationInstructions *string                     `json:"verificationInstructions"`
 		Retest                   *string                     `json:"retest"`
 		Body                     *string                     `json:"body"`   // JSON blocks (PoC timeline)
@@ -786,7 +789,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings}); err != nil {
+	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, CvssV3: in.CvssV3}); err != nil {
 		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return

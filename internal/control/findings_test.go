@@ -507,16 +507,48 @@ func TestFindingReportStatusDefaultsAndExplicitAll(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		return string(body)
 	}
+	// No finding is silently left out by default: an unverified Critical must
+	// reach the report (and so the final gate), and false positives land in
+	// their own appendix rather than vanishing.
 	defaultBody := get("")
-	for _, want := range []string{"Open issue", "Verified issue", "Fixed issue"} {
+	for _, want := range []string{"Open issue", "Verified issue", "Fixed issue", "Needs review", "False positive issue", "Accepted risk issue"} {
 		if !strings.Contains(defaultBody, want) {
 			t.Errorf("default report missing %q: %s", want, defaultBody)
 		}
 	}
-	for _, excluded := range []string{"Needs review", "False positive issue", "Accepted risk issue"} {
-		if strings.Contains(defaultBody, excluded) {
-			t.Errorf("default report unexpectedly includes %q: %s", excluded, defaultBody)
-		}
+	resp, err := http.Get(ts.URL + "/api/findings/report?format=md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mdBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(mdBody), "## Excluded — False Positives") || !strings.Contains(string(mdBody), "Needs review") {
+		t.Errorf("default markdown report must list the unverified finding and the false-positive appendix:\n%s", mdBody)
+	}
+	// A narrower filter says what it hid, so the preflight can offer to include it.
+	resp, err = http.Get(ts.URL + "/api/findings/readiness?statuses=open,verified,fixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readiness struct {
+		Total  int            `json:"total"`
+		Hidden map[string]int `json:"hidden"`
+	}
+	json.NewDecoder(resp.Body).Decode(&readiness)
+	resp.Body.Close()
+	if readiness.Total != 3 || readiness.Hidden["needs_verification"] != 1 || readiness.Hidden["false_positive"] != 1 || readiness.Hidden["wont_fix"] != 1 {
+		t.Errorf("readiness hidden counts = %+v", readiness)
+	}
+	// A single unverified finding exports on its own (it used to 404 because the
+	// implicit status filter dropped it before the id selector ran).
+	all, _ := s.ListFindings("", "needs_verification", "")
+	resp, err = http.Get(ts.URL + "/api/findings/report?format=md&mode=draft&ids=" + strconv.FormatInt(all[0].ID, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("single unverified finding export status = %d", resp.StatusCode)
 	}
 	allBody := get("&statuses=all")
 	for _, want := range []string{"Needs review", "False positive issue", "Accepted risk issue"} {
