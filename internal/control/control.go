@@ -736,6 +736,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	if q.Get("hasNote") == "1" {
 		f.HasNote = true
 	}
+	f.HideBrowserNoise = q.Get("hideBrowserNoise") == "1"
 	f.Tag = q.Get("tag")
 	// Negative filters (repeatable): notMethod, notHost, notPath, notStatus.
 	f.NotMethods, f.NotHosts, f.NotPaths = q["notMethod"], q["notHost"], q["notPath"]

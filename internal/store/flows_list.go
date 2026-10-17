@@ -158,5 +158,10 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		where = append(where, pred)
 		args = append(args, predArgs...)
 	}
+	if f.HideBrowserNoise {
+		pred, predArgs := browserNoisePredicate()
+		where = append(where, "NOT "+pred)
+		args = append(args, predArgs...)
+	}
 	return where, args
 }

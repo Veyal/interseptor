@@ -116,6 +116,8 @@ type FlowFilter struct {
 	// from AnywhereSearchFilter) are OR'ed with it. Empty AnyText disables both.
 	AnyText    string
 	AnyTextIDs []int64
+
+	HideBrowserNoise bool // hide the browser's own background traffic (flows_noise.go)
 }
 
 // QueryFlowsFilter returns flows matching f, newest first. Filtering and paging

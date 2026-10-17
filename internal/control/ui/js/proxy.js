@@ -18,7 +18,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
@@ -105,6 +105,7 @@ const FLOW_COLS_ATTACHED_KEY='proxy.cols.attachedAdded'; // one-time: show the e
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
 const FLOW_COL_MIN=40;              // floor width for a resized column
 const HIDE_TLS_KEY='proxy.hideTlsFailed';
+const HIDE_NOISE_KEY='proxy.hideBrowserNoise';
 // History source filters are intentionally client state: the backend already
 // exposes the matching `manual` and `ai` query parameters, and live SSE rows
 // need the same predicates before they are admitted to the in-memory window.
@@ -114,6 +115,8 @@ if(typeof state.showAI!=='boolean')state.showAI=true;
 if(typeof state.showCollection!=='boolean')state.showCollection=true;
 function loadProxyPrefs(){
   try{state.hideTlsFailed=localStorage.getItem(HIDE_TLS_KEY)!=='0';}catch(e){state.hideTlsFailed=true;}
+  // Browser background traffic stays visible until the viewer opts in.
+  try{state.hideBrowserNoise=localStorage.getItem(HIDE_NOISE_KEY)==='1';}catch(e){state.hideBrowserNoise=false;}
 }
 loadProxyPrefs();
 function syncHideTlsFilter(){
@@ -411,6 +414,7 @@ function flowMatchesFilters(f){
   if(!state.showCollection&&(f.flags&FLAG_COLLECTION)!==0)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
+  if(state.hideBrowserNoise&&isBrowserNoise(f.host,f.path))return false;
   // Scope mode is part of the server-side query (buildFlowParams sets inScope=1),
   // so the client-side predicate has to apply it too or an incrementally inserted
   // row could show traffic the same filter set would have excluded on a reload.
@@ -1190,6 +1194,7 @@ function buildFlowParams(){
   if(state.inScopeOnly)q.set('inScope','1');
 
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
+  if(state.hideBrowserNoise)q.set('hideBrowserNoise','1');
   q.set('manual',state.showManual?'1':'0');
   q.set('ai',state.showAI?'1':'0');
   if(!state.showCollection)q.set('collection','0');
@@ -1205,7 +1210,7 @@ function inspectorFilterSignature(){
     scheme:f.scheme||'',search:f.search||'',searchScope:f.searchScope||'anywhere',
     method:f.method||'',status:f.status||'',host:f.host||'',tag:f.tag||'',
     exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
-    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
+    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',hideBrowserNoise:!!state.hideBrowserNoise,
     showManual:!!state.showManual,showAI:!!state.showAI,showCollection:!!state.showCollection,
     sort:(state.sort&&state.sort.key)||'',dir:sortDirParam(),
   });
@@ -1970,6 +1975,17 @@ if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   syncHideTlsFilter();renderChips();renderTagBar();loadFlows();
 };
 syncHideTlsFilter();
+function syncHideNoiseFilter(){
+  const btn=$('#hideNoiseFilter');if(!btn)return;
+  btn.classList.toggle('on',!!state.hideBrowserNoise);
+  btn.setAttribute('aria-pressed',state.hideBrowserNoise?'true':'false');
+}
+if($('#hideNoiseFilter'))$('#hideNoiseFilter').onclick=()=>{
+  state.hideBrowserNoise=!state.hideBrowserNoise;
+  try{localStorage.setItem(HIDE_NOISE_KEY,state.hideBrowserNoise?'1':'0');}catch(e){}
+  syncHideNoiseFilter();renderChips();loadFlows();
+};
+syncHideNoiseFilter();
 // syncScopeToggle keeps the In scope only chip's state, icon and label together
 // (the old code overwrote the whole button text with a Unicode glyph).
 function syncScopeToggle(on){
@@ -2076,8 +2092,9 @@ function applyView(v){
   state.notesOnly=!!f.notesOnly;
   state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;state.showCollection=f.showCollection!==false;
   state.hideTlsFailed=f.hideTlsFailed!==false;
+  state.hideBrowserNoise=!!f.hideBrowserNoise;
   const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
-  syncSourceFilters();syncHideTlsFilter();
+  syncSourceFilters();syncHideTlsFilter();syncHideNoiseFilter();
   syncControls();syncScopeToggle(state.inScopeOnly);
   renderChips();renderTagBar();loadFlows();
   toast('applied view: '+v.name);
@@ -2085,7 +2102,7 @@ function applyView(v){
 async function saveCurrentView(){
   const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
   if(viewsMutationPending)return;
-  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,showCollection:state.showCollection,hideTlsFailed:state.hideTlsFailed};
+  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,showCollection:state.showCollection,hideTlsFailed:state.hideTlsFailed,hideBrowserNoise:!!state.hideBrowserNoise};
   viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
   try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
   catch(e){toastError('Save view failed',e);}
@@ -2224,14 +2241,14 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;
-  try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
-  syncSourceFilters();syncHideTlsFilter();
+  state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;state.hideBrowserNoise=false;
+  try{localStorage.setItem(HIDE_TLS_KEY,'0');localStorage.setItem(HIDE_NOISE_KEY,'0');}catch(e){}
+  syncSourceFilters();syncHideTlsFilter();syncHideNoiseFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncScopeToggle(false);
   syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||!state.showCollection);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||state.hideBrowserNoise||!state.showCollection);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -2284,7 +2301,7 @@ export function renderChips(){
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
   // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),
   // so an active one also shows here as a removable chip: removal clicks the toggle.
-  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent'],[!state.showCollection,'#histCollFilter','hiding collections']].forEach(([on,sel,label])=>{
+  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.hideBrowserNoise,'#hideNoiseFilter','hiding browser noise'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent'],[!state.showCollection,'#histCollFilter','hiding collections']].forEach(([on,sel,label])=>{
     if(on)items.push(`<span class="chip"><span><b>${esc(label)}</b></span><button type="button" class="x" data-toggle="${sel}" title="Remove filter" aria-label="Remove ${escAttr(label)} filter">${icon('close')}</button></span>`);
   });
   const hasFilters=items.length>0;
