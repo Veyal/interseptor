@@ -168,10 +168,19 @@ Modules coordinate without importing each other through three layers, lightest f
 synchronous `bus.js` publish/subscribe bus (a module emits an intent — e.g. "reload History flows" —
 and whichever module owns that behaviour listens), the `core.js` `registerHook`/`getHook` mediator
 (one implementor answers a question), and the `shell-hooks.js` SSE dispatcher. The bus closed the
-`proxy → findings → settings` ESM import cycle so a change in evaluation order can no longer raise a
-Temporal Dead Zone `ReferenceError` at boot. `index.html` `modulepreload`s the root modules
-(`core`, `bus`, `proxy`, `intercept`, `settings`, `findings`) so the first import wave loads in
-parallel instead of one depth at a time.
+`proxy → findings → settings` and `proxy → tags/authz → proxy` ESM import cycles so a change in
+evaluation order can no longer raise a Temporal Dead Zone `ReferenceError` at boot;
+`ui_import_cycles_test.go` fails on any new static import cycle. `index.html` `modulepreload`s the
+root modules (`core`, `bus`, `proxy`, `intercept`, `settings`, `findings`) so the first import wave
+loads in parallel instead of one depth at a time.
+
+The control server serves every embedded UI file with `Cache-Control: no-cache`, a strong per-file
+`ETag` (a reload is a set of body-less 304s, yet an upgrade is picked up at once) and a gzip copy
+built once per file when the browser accepts it (`ui_assets.go`). `core.js` `api()` lets concurrent
+identical option-less GETs share one request (`api-inflight.js`); a mutation or a live event clears
+the shared reads, so a read issued after a change never joins an older one. `app.js` keeps
+`document.title` on the focused panel (`<Panel> · <project> · Interseptor`, `shell-title.js`) and
+gives each panel a visually hidden `h2`.
 
 Findings uses `finding-workspace.js` for section routes and filtering, with
 `findings.js` retaining data and editor ownership. `findings.css` styles its
