@@ -1,9 +1,11 @@
 import { $, requireFindingsEditing, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, renderLoadError, openFlow, icon } from './core.js';
-import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest } from './notes-model.js';
+import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest, mergeNotes } from './notes-model.js';
 registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
-export const notesState={loaded:'',mode:'edit'};
+// loaded/rev mirror the server notebook the local draft is based on; a save sends
+// rev so the server can refuse it when an agent or another tab changed the notes.
+export const notesState={loaded:'',rev:'',mode:'edit'};
 let notesEditGeneration=0;
 let notesLoadGeneration=0;
 
@@ -49,11 +51,41 @@ const notesAutosave=createAutosave({
   delay:800,
   onStatus:setNotesStatus,
   save:async v=>{
-    try{await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({notes:v})});}
-    catch(e){notesSaveError=e.message||'Could not save notes';throw e;}
+    let r;
+    try{r=await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(notesState.rev?{notes:v,baseRev:notesState.rev}:{notes:v})});}
+    catch(e){
+      if(e.status===409){
+        try{await mergeRemoteNotes();return;}
+        catch(err){notesSaveError=err.message||'Could not merge notes';throw err;}
+      }
+      notesSaveError=e.message||'Could not save notes';throw e;
+    }
     notesState.loaded=v;
+    notesState.rev=r&&r.rev?r.rev:'';
   },
 });
+
+// mergeRemoteNotes runs when a save is refused because the notebook changed on
+// the server (typically an agent's append_notes while the user was typing). It
+// merges the server copy into the live draft and queues the merged text, which
+// the autosave loop then saves against the fresh revision.
+async function mergeRemoteNotes(){
+  const d=await api('/api/notes');
+  const remote=d.notes||'';
+  const ta=$('#notesEdit');
+  const m=mergeNotes(notesState.loaded,remote,ta?ta.value:'');
+  notesState.loaded=remote;
+  notesState.rev=d.rev||'';
+  if(ta&&ta.value!==m.text){
+    const start=ta.selectionStart,end=ta.selectionEnd;
+    ta.value=m.text;
+    ta.selectionStart=start;ta.selectionEnd=end;
+  }
+  notesPreviewCache={src:'',html:''};
+  if(notesState.mode==='preview'||notesPanelWide())showNotesPreview();
+  if(m.conflict)toast('Notes were changed elsewhere while you were editing. Both versions are kept: review the "Conflicting copy" section.','error');
+  notesAutosave.schedule(m.text);
+}
 
 export async function loadNotes(){
   const loadGeneration=++notesLoadGeneration;
@@ -68,10 +100,12 @@ export async function loadNotes(){
     if(loadGeneration!==notesLoadGeneration)return;
     const loaded=d.notes||'';
     const preserveLocal=dirty||notesEditGeneration!==generation||(ta&&ta.value!==current);
-    notesState.loaded=loaded;
     notesAutosave.setBaseline(loaded,{preserveCurrent:preserveLocal});
+    // With a local draft, keep loaded/rev at the version the draft is based on:
+    // the next save then either succeeds (this was our own save echoing back)
+    // or gets a 409 and merges the remote change instead of overwriting it.
     if(preserveLocal){if(ta)notesAutosave.schedule(ta.value);}
-    else{if(ta)ta.value=loaded;setNotesStatus('');}
+    else{notesState.loaded=loaded;notesState.rev=d.rev||'';if(ta)ta.value=loaded;setNotesStatus('');}
     if(loadState){loadState.textContent='';loadState.style.display='none';}
     if(notesState.mode==='preview'||notesPanelWide())showNotesPreview();
   }catch(e){

@@ -1,8 +1,10 @@
 package store
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -174,6 +176,32 @@ func gcNotesImagesBefore(db notesImageExecutor, notes string, cutoffMillis int64
 func (s *Store) PersistNotes(notes string) (string, error) {
 	s.notesMu.Lock()
 	defer s.notesMu.Unlock()
+	return s.persistNotes(notes)
+}
+
+// ErrNotesConflict means a conditional notebook save was based on a revision
+// that is no longer current (another client or an agent changed the notes).
+var ErrNotesConflict = errors.New("notes changed since they were loaded")
+
+// NotesRev is a short content revision for the notebook text, used by
+// conditional saves so concurrent editors cannot silently overwrite each other.
+func NotesRev(notes string) string {
+	sum := sha256.Sum256([]byte(notes))
+	return hex.EncodeToString(sum[:12])
+}
+
+// PersistNotesIfRev saves notes only when the stored notebook still has
+// revision baseRev; otherwise it returns ErrNotesConflict and changes nothing.
+func (s *Store) PersistNotesIfRev(baseRev, notes string) (string, error) {
+	s.notesMu.Lock()
+	defer s.notesMu.Unlock()
+	current, _, err := s.GetSetting("project.notes")
+	if err != nil {
+		return "", err
+	}
+	if NotesRev(current) != baseRev {
+		return "", ErrNotesConflict
+	}
 	return s.persistNotes(notes)
 }
 

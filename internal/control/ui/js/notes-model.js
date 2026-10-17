@@ -42,6 +42,24 @@ export function resolveRefs(tokens, { findingIds, flowIds } = {}) {
 
 export const chipLabel = (t) => (t.type === 'finding' ? 'Finding F-' + t.id : 'Flow #' + t.id);
 
+// mergeNotes reconciles a local draft with a notebook that changed on the
+// server since `base` was loaded. An append elsewhere (the common agent case:
+// append_notes) is carried onto the end of the draft. Any other concurrent
+// change keeps both versions: the draft first, then the other copy under a
+// visible heading, so nothing is silently lost.
+export const CONFLICT_HEADING = '## Conflicting copy (changed elsewhere while you were editing)';
+export function mergeNotes(base, remote, local) {
+  const b = String(base == null ? '' : base), r = String(remote == null ? '' : remote), l = String(local == null ? '' : local);
+  if (r === b || r === l) return { text: l, conflict: false };
+  if (l === b) return { text: r, conflict: false };
+  if (!b.trim() && !l.endsWith(r)) return { text: l.replace(/\s*$/, '') + '\n\n' + r, conflict: false };
+  if (r.startsWith(b)) {
+    const added = r.slice(b.length);
+    return { text: l.endsWith(added) ? l : l + added, conflict: false };
+  }
+  return { text: l.replace(/\s*$/, '') + '\n\n' + CONFLICT_HEADING + '\n\n' + r, conflict: true };
+}
+
 const MAX_TITLE = 120;
 const MAX_DETAIL = 8000;
 

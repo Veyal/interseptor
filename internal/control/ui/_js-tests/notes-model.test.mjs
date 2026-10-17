@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNoteRefs, collectRefIds, resolveRefs, promoteRequest, chipLabel, MAX_REFS } from '../js/notes-model.js';
+import { parseNoteRefs, collectRefIds, resolveRefs, promoteRequest, chipLabel, MAX_REFS, mergeNotes, CONFLICT_HEADING } from '../js/notes-model.js';
 
 test('finding and flow references become tokens', () => {
   const t = parseNoteRefs('See #F-02 and flow:123, also #F-7.');
@@ -44,4 +44,22 @@ test('promoteRequest derives a bounded draft from a selection', () => {
   assert.match(r.body.detail, /predictable/);
   assert.equal(promoteRequest('   \n '), null);
   assert.equal(promoteRequest('x'.repeat(500)).body.title.length <= 120, true);
+});
+
+test('mergeNotes carries a remote append onto the local draft', () => {
+  assert.deepEqual(mergeNotes('# base', '# base\n\nagent line', '# base\nlocal'), { text: '# base\nlocal\n\nagent line', conflict: false });
+  // nothing changed remotely, or local untouched, or both already agree
+  assert.equal(mergeNotes('a', 'a', 'a b').text, 'a b');
+  assert.equal(mergeNotes('a', 'a c', 'a').text, 'a c');
+  assert.equal(mergeNotes('a', 'a c', 'a c').text, 'a c');
+  // an append the draft already ends with is not duplicated
+  assert.equal(mergeNotes('a', 'a\n\nx', 'a z\n\nx').text, 'a z\n\nx');
+  // empty base: whatever arrived is appended
+  assert.equal(mergeNotes('', 'agent', 'mine').text, 'mine\n\nagent');
+});
+
+test('mergeNotes keeps both copies when the remote rewrote the notebook', () => {
+  const m = mergeNotes('# base', 'rewritten', '# base\nlocal\n');
+  assert.equal(m.conflict, true);
+  assert.equal(m.text, '# base\nlocal\n\n' + CONFLICT_HEADING + '\n\nrewritten');
 });
