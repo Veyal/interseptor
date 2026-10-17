@@ -1,4 +1,4 @@
-import { configureProjectPicker, openProjectPicker, setProjectSwitchModalBusy } from './project-picker.js';
+import { configureProjectPicker, openProjectPicker, setProjectSwitchModalBusy, showProjectSwitchError } from './project-picker.js';
 import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './project-picker-model.js';
 import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, getHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
@@ -640,7 +640,7 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||docum
 })();
 
 /* ---- first-run checklist (Project & data) ---- */
-{const checklistHost=$('#settingsChecklistMount');if(checklistHost)getHook('mountChecklist')?.(checklistHost);}
+{const checklistHost=$('#settingsChecklistMount');if(checklistHost)getHook('mountChecklist')?.(checklistHost,{persistent:true});}
 
 /* ---- settings ---- */
 let apiLoaded=false;
@@ -1518,7 +1518,7 @@ export async function doSwitchProject(target,path){
   try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
     expected=String(accepted.switching);
-  }catch(e){projectSwitchPending=false;setProjectSwitchModalBusy(false);setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
+  }catch(e){projectSwitchPending=false;setProjectSwitchModalBusy(false);setNote('Project switch failed: '+e.message,'error');showProjectSwitchError(e.message,path);toast(e.message,'error');loadProject();return;}
   setNote(path?`Opening "${target||path}" (${path})… Interseptor is restarting and will reconnect.`:`Opening "${target}"… Interseptor is restarting and will reconnect.`);
   const deadline=Date.now()+30000;
   const poll=async()=>{
