@@ -1,0 +1,35 @@
+name: Vulnerability check
+
+# Reports known vulnerabilities in dependencies and in the Go standard library
+# that are actually reachable from this binary. Runs weekly as well so new
+# advisories surface even when nobody is pushing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vulncheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    # Advisory until the findings known at introduction (golang.org/x/net
+    # v0.57.0 -> v0.60.0) are fixed; then remove this line to make it blocking.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # go.mod pins the minimum language version; scan against the newest
+          # patch release so stdlib advisories reflect what we actually ship.
+          check-latest: true
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

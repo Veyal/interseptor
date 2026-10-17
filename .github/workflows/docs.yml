@@ -3,6 +3,10 @@ on:
   pull_request:
   push:
     branches: [main]
+concurrency:
+  # Pages deploys must finish; only superseded PR validations are cancelled.
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   validate:
     runs-on: ubuntu-latest

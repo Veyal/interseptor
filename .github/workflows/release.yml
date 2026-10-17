@@ -20,12 +20,30 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # go.mod only sets the minimum; ship binaries built with the latest
+          # patch release so they carry current standard-library fixes.
+          check-latest: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: go vet ./...
       - run: go test ./...
       - run: CGO_ENABLED=1 go test -race ./...
+
+  ui-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # go.mod only sets the minimum; ship binaries built with the latest
+          # patch release so they carry current standard-library fixes.
+          check-latest: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: scripts/ui_smoke.sh
 
   candidate:
     needs: test
@@ -37,6 +55,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # go.mod only sets the minimum; ship binaries built with the latest
+          # patch release so they carry current standard-library fixes.
+          check-latest: true
       - name: Build GoReleaser snapshot candidate
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -129,6 +150,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # go.mod only sets the minimum; ship binaries built with the latest
+          # patch release so they carry current standard-library fixes.
+          check-latest: true
       - name: Build unsigned app and DMG
         run: MAKE_DMG=1 make macos-app
       - name: Validate bundle before publication
@@ -161,7 +185,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [validate-candidate, macos-app]
+    needs: [validate-candidate, macos-app, ui-smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,6 +194,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # go.mod only sets the minimum; ship binaries built with the latest
+          # patch release so they carry current standard-library fixes.
+          check-latest: true
       - name: Publish validated GoReleaser release
         uses: goreleaser/goreleaser-action@v6
         with:
