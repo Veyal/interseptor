@@ -1,6 +1,8 @@
 package report
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -156,7 +158,7 @@ func SARIF(findings []store.Finding, toolVersion string) SARIFLog {
 			Level:               level,
 			Message:             SARIFMessage{Text: sarifMessage(f)},
 			Locations:           sarifLocations(f),
-			PartialFingerprints: map[string]string{"interseptorFindingId": strconv.FormatInt(f.ID, 10)},
+			PartialFingerprints: map[string]string{"interseptorFindingId": strconv.FormatInt(f.ID, 10), "interseptorFinding/v1": sarifContentFingerprint(f)},
 			Properties:          sarifResultProperties(f),
 		})
 	}
@@ -185,6 +187,19 @@ func sarifLevel(severity string) string {
 	default: // Low, Info, and anything unrecognised
 		return "note"
 	}
+}
+
+// sarifContentFingerprint identifies a weakness by what it is — normalized
+// title, CWE and primary target — rather than by the project-local id, so the
+// same finding matches across projects and re-exports.
+func sarifContentFingerprint(f store.Finding) string {
+	norm := func(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+	target := ""
+	if urls := findingTargetURLs(f); len(urls) > 0 {
+		target = urls[0]
+	}
+	sum := sha256.Sum256([]byte(norm(f.Title) + "\x00" + norm(f.Cwe) + "\x00" + norm(target)))
+	return hex.EncodeToString(sum[:16])
 }
 
 func sarifMessage(f store.Finding) string {

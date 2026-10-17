@@ -42,6 +42,26 @@ func sarifFixture() []store.Finding {
 	}
 }
 
+// A local finding id repeats in every project, so it cannot be the only
+// fingerprint: the same weakness must match across projects and exports, and
+// different weaknesses that share an id must not.
+func TestSARIFFingerprintIsContentBased(t *testing.T) {
+	a := sarifFixture()[0]
+	b := a
+	b.ID = 99 // same weakness recorded in another project
+	c := a
+	c.Title = "Stored XSS in invoice notes" // different weakness, same local id
+	fp := func(f store.Finding) map[string]string {
+		return SARIF([]store.Finding{f}, testToolVersion).Runs[0].Results[0].PartialFingerprints
+	}
+	if fp(a)["interseptorFinding/v1"] == "" || fp(a)["interseptorFinding/v1"] != fp(b)["interseptorFinding/v1"] {
+		t.Fatalf("same weakness must share a content fingerprint: %v vs %v", fp(a), fp(b))
+	}
+	if fp(a)["interseptorFinding/v1"] == fp(c)["interseptorFinding/v1"] {
+		t.Fatalf("different weaknesses share a fingerprint: %v", fp(c))
+	}
+}
+
 // decodeSARIF renders and decodes, so every assertion below reads the JSON a
 // consumer would actually receive.
 func decodeSARIF(t *testing.T, findings []store.Finding) map[string]any {
