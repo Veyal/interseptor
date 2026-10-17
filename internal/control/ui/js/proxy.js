@@ -249,9 +249,13 @@ function resetColWidth(e){
 function wireFlowSort(){
   const toggle=h=>{
     const k=h.dataset.sort;
+    const hadFocus=h===document.activeElement;
     if(state.sort.key===k)state.sort.dir*=-1;
     else{state.sort.key=k;state.sort.dir=k==='id'||k==='time'?-1:1;}
     renderFlowHead();
+    // The header is re-rendered: keep keyboard focus on the same column, whose
+    // new name announces the sort direction.
+    if(hadFocus)$('#flowHead')?.querySelector(`[data-sort="${CSS.escape(k)}"]`)?.focus();
     loadFlows();
   };
   // Delegate the click across the whole header bar: each column cell is only
@@ -301,7 +305,11 @@ export function renderFlowHead(){
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' '+icon('arrow-up'):' '+icon('arrow-down')):'';
-    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    // The header is a row of sort buttons above a listbox, not a grid, so the
+    // sort state is in the button's name ("Method, sorted ascending") rather
+    // than aria-sort, which is only valid on grid and table column headers.
+    const name=!c.sort?accessible:c.sort===sk?`${accessible}, sorted ${sd>0?'ascending':'descending'}`:`${accessible}, sortable`;
+    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(name)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);

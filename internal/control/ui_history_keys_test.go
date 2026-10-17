@@ -38,3 +38,14 @@ func TestUIHistoryListboxKeyboardModel(t *testing.T) {
 		"revealFlowRow(id,{focus:carryFocus});",
 	)
 }
+
+// The sort headers name their state, and keyboard sorting keeps focus on the
+// re-rendered header.
+func TestUIHistorySortHeadersNameTheirState(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"`${accessible}, sorted ${sd>0?'ascending':'descending'}`",
+		"`${accessible}, sortable`",
+		"if(hadFocus)$('#flowHead')?.querySelector(`[data-sort=\"${CSS.escape(k)}\"]`)?.focus();",
+	)
+}
