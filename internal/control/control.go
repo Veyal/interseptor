@@ -238,7 +238,7 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 
 // Handler returns the control-plane HTTP handler, wrapped in the loopback/CSRF
 // security guard (see securityGuard).
-func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
+func (h *Hub) Handler() http.Handler { return securityHeaders(h.securityGuard(h.mux)) }
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.
@@ -919,6 +919,7 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
+	sandboxDownload(w) // the target's own Content-Type: never let it script our origin
 	if stream != nil {
 		defer stream.Close()
 		if _, err := io.Copy(w, stream); err != nil {
