@@ -3,6 +3,8 @@ import { linkedIndex, endpointLinked, coveragePips, coverageSummary, authState }
 import { renderState } from './statepanel.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
+import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
+import { stepIndex, revealScrollTop } from './list-rows-model.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
 // tabindex + Enter/Space) so endpoints/rows/sorts are reachable without a mouse.
@@ -825,7 +827,7 @@ function mapSortEps(eps){
   });
 }
 
-function mapTableRow(e, showHost){
+function mapTableRow(e, showHost, idx = -1, stop = false){
   const path = e.path || '/';
   const sts = (e.statuses || []).map(s => `<span style="color:${statusColor(s)}">${s}</span>`).join(' ');
   const q = mapState.search;
@@ -836,7 +838,8 @@ function mapTableRow(e, showHost){
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
     clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</span>`;
   }
-  return `<tr data-flow="${e.lastFlowId || ''}" class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
+  const windowed = idx >= 0 ? ` data-i="${idx}" tabindex="${stop ? 0 : -1}"` : '';
+  return `<tr data-flow="${e.lastFlowId || ''}"${windowed} class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
     ${showHost ? `<td style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
     <td class="map-tbl-m" style="color:${methodColor(e.method)}">${esc(e.method)}</td>
     <td class="map-tbl-p" title="${escAttr(path)}">${esc(path)}${clusterCell}</td>
@@ -865,6 +868,107 @@ function wireMapTableRows(box){
   });
 }
 
+// The windowed Map table. Header and rows are ONE table (sticky thead, fixed layout), so the
+// columns cannot drift apart, and the unmounted rows above and below the window are two padding
+// rows whose heights come from the measured row height — the CSS row is not 28px at every density
+// (desktop rows are ~41px, coarse pointers 44px), and a guessed height made the window drift
+// away from the scroll position and cut off the last rows. Keys are handled once on the scroller:
+// a row that is not mounted is scrolled to before it is focused, so Arrow/Page/Home/End walk the
+// whole table instead of wrapping inside the mounted window.
+const MAP_TABLE_BUFFER = 15;
+let mapVt = null;
+function renderMapVirtualTable(box, sorted, showHost, head){
+  const prev = mapVt && mapVt.box === box ? mapVt : null;
+  const active = document.activeElement;
+  const hadFocus = !!(prev && active && (active === prev.scrollEl || (prev.tbody.contains(active) && active.closest('tr[data-i]'))));
+  const keepKey = prev && prev.focusIdx >= 0 && prev.sorted[prev.focusIdx] ? mapEpKey(prev.sorted[prev.focusIdx]) : '';
+  const cols = showHost ? 7 : 6;
+  box.innerHTML = `<div class="map-virt"><div class="map-virt-scroll" tabindex="-1" aria-label="Endpoints table"><table class="map-tbl map-virt-body">${head}<tbody><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr></tbody></table></div></div>`;
+  const scrollEl = box.querySelector('.map-virt-scroll');
+  const tbody = box.querySelector('tbody');
+  const vt = { box, sorted, showHost, scrollEl, tbody, rowH: prev ? prev.rowH : MAP_ROW_H, calibrated: false, focusIdx: -1, win: null };
+  if(keepKey){
+    const i = sorted.findIndex(e => mapEpKey(e) === keepKey);
+    if(i >= 0) vt.focusIdx = i;
+  }
+  mapVt = vt;
+  if(prev && prev.scrollEl) scrollEl.scrollTop = prev.scrollEl.scrollTop;
+  let queued = false;
+  scrollEl.addEventListener('scroll', () => { if(!queued){ queued = true; requestAnimationFrame(() => { queued = false; paintMapVt(vt); }); } }, { passive: true });
+  scrollEl.addEventListener('click', ev => {
+    const tr = ev.target.closest && ev.target.closest('tr[data-i]');
+    if(!tr) return;
+    const rep = ev.target.closest('[data-rep]');
+    vt.focusIdx = Number(tr.dataset.i);
+    if(rep){ ev.stopPropagation(); sendToRepeater({ id: Number(rep.dataset.rep) }); return; }
+    openMapFlow(Number(tr.dataset.flow));
+  });
+  scrollEl.addEventListener('keydown', ev => mapVtKey(vt, ev));
+  paintMapVt(vt);
+  if(hadFocus) focusMapVtRow(vt);
+}
+function mapEpKey(e){ return (e.host || '') + '|' + (e.method || '') + '|' + (e.path || ''); }
+function mapVtTopInset(vt){ return vt.tbody.parentElement.tHead ? vt.tbody.parentElement.tHead.getBoundingClientRect().height : 0; }
+function paintMapVt(vt){
+  if(mapVt !== vt || !vt.scrollEl.isConnected) return;
+  const active = document.activeElement;
+  const focusedRow = active && vt.tbody.contains(active) ? active.closest('tr[data-i]') : null;
+  const win = computeVirtualWindow({ total: vt.sorted.length, scrollTop: vt.scrollEl.scrollTop, viewportH: vt.scrollEl.clientHeight || 400, rowH: vt.rowH, buffer: MAP_TABLE_BUFFER });
+  if(!win) return;
+  if(vt.win && sameWindow(vt.win, win) && vt.tbody.querySelector('tr[data-i]')) return;
+  vt.win = win;
+  const pads = vt.tbody.querySelectorAll(':scope > .map-virt-pad');
+  let html = '';
+  for(let i = win.start; i < win.end; i++) html += mapTableRow(vt.sorted[i], vt.showHost, i, i === vt.focusIdx);
+  vt.tbody.querySelectorAll(':scope > tr[data-i]').forEach(tr => tr.remove());
+  pads[0].insertAdjacentHTML('afterend', html);
+  // An empty table row still takes a line box, so a zero pad is removed from layout entirely.
+  pads[0].hidden = !win.topPad; pads[0].firstElementChild.style.height = win.topPad + 'px';
+  pads[1].hidden = !win.bottomPad; pads[1].firstElementChild.style.height = win.bottomPad + 'px';
+  if(!vt.tbody.querySelector('tr[data-i][tabindex="0"]')){
+    const first = Math.min(win.end - 1, Math.ceil(vt.scrollEl.scrollTop / vt.rowH));
+    vt.tbody.querySelector(`tr[data-i="${first}"]`)?.setAttribute('tabindex', '0');
+  }
+  if(!vt.calibrated){
+    vt.calibrated = true;
+    const h = vt.tbody.querySelector('tr[data-i]')?.getBoundingClientRect().height || 0;
+    if(h > 0 && Math.abs(h - vt.rowH) > 0.5){ vt.rowH = h; vt.win = null; paintMapVt(vt); return; }
+  }
+  // A focused row that was rebuilt (or scrolled out) must not drop focus to <body>.
+  if(focusedRow && !focusedRow.isConnected){
+    const again = vt.tbody.querySelector(`tr[data-i="${focusedRow.dataset.i}"]`);
+    (again || vt.scrollEl).focus({ preventScroll: true });
+  }
+}
+function focusMapVtRow(vt){
+  const row = vt.focusIdx >= 0 ? vt.tbody.querySelector(`tr[data-i="${vt.focusIdx}"]`) : null;
+  (row || vt.tbody.querySelector('tr[data-i][tabindex="0"]') || vt.scrollEl).focus({ preventScroll: true });
+}
+function mapVtKey(vt, ev){
+  const row = ev.target.closest && ev.target.closest('tr[data-i]');
+  if(row && (ev.key === 'Enter' || ev.key === ' ')){
+    if(ev.target.closest('[data-rep]')) return;
+    ev.preventDefault();
+    vt.focusIdx = Number(row.dataset.i);
+    openMapFlow(Number(row.dataset.flow));
+    return;
+  }
+  const cur = row ? Number(row.dataset.i) : vt.focusIdx;
+  const viewH = vt.scrollEl.clientHeight;
+  const inset = mapVtTopInset(vt);
+  const page = Math.max(1, Math.floor((viewH - inset) / vt.rowH) - 1);
+  const next = stepIndex({ current: cur, count: vt.sorted.length, key: ev.key, page });
+  if(next < 0) return;
+  ev.preventDefault();
+  vt.focusIdx = next;
+  // Rows start below the sticky header, which also covers the top of the viewport.
+  vt.scrollEl.scrollTop = revealScrollTop({ rowTop: inset + next * vt.rowH, rowH: vt.rowH, scrollTop: vt.scrollEl.scrollTop, viewportH: viewH, maxTop: inset + vt.sorted.length * vt.rowH - viewH, topInset: inset });
+  vt.tbody.querySelectorAll('tr[data-i][tabindex="0"]').forEach(tr => tr.setAttribute('tabindex', '-1'));
+  vt.win = null;
+  paintMapVt(vt);
+  focusMapVtRow(vt);
+}
+
 function renderMapTable(eps){
   const box = $('#mapTable'); if(!box) return;
   if(!eps.length){
@@ -886,25 +990,7 @@ function renderMapTable(eps){
   </tr></thead>`;
 
   if(sorted.length >= MAP_TABLE_VIRTUAL_MIN){
-    box.innerHTML = `<div class="map-virt"><table class="map-tbl map-virt-head">${head}</table><div class="map-virt-scroll"><div class="map-virt-spacer"></div><table class="map-tbl map-virt-body"><tbody></tbody></table></div></div>`;
-    const scrollEl = box.querySelector('.map-virt-scroll');
-    const bodyTbl = box.querySelector('.map-virt-body');
-    const spacer = box.querySelector('.map-virt-spacer');
-    spacer.style.height = (sorted.length * MAP_ROW_H) + 'px';
-    let paintQueued = false;
-    const paint = () => {
-      paintQueued = false;
-      const st = scrollEl.scrollTop;
-      const vh = scrollEl.clientHeight || 400;
-      const start = Math.max(0, Math.floor(st / MAP_ROW_H) - 15);
-      const end = Math.min(sorted.length, Math.ceil((st + vh) / MAP_ROW_H) + 15);
-      const tbody = bodyTbl.querySelector('tbody');
-      tbody.innerHTML = sorted.slice(start, end).map(e => mapTableRow(e, showHost)).join('');
-      bodyTbl.style.transform = `translateY(${start * MAP_ROW_H}px)`;
-      wireMapTableRows(bodyTbl);
-    };
-    scrollEl.onscroll = () => { if(!paintQueued){ paintQueued = true; requestAnimationFrame(paint); } };
-    paint();
+    renderMapVirtualTable(box, sorted, showHost, head);
   }else{
     const rows = sorted.map(e => mapTableRow(e, showHost)).join('');
     box.innerHTML = `<table class="map-tbl">${head}<tbody>${rows}</tbody></table>`;
