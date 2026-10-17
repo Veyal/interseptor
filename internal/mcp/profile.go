@@ -281,6 +281,7 @@ func instructionSections() []string {
 		sectionRecord,
 		findingFormatGuide + "\n\n",
 		sectionTagging,
+		sectionUntrusted,
 		sectionHumanInput,
 		sectionAskForFindings,
 		sectionImprove,

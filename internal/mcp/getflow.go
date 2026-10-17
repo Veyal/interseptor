@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	untrustedOpen  = "<untrusted-target-data>"
+	untrustedClose = "</untrusted-target-data>"
+)
+
 const getFlowDescription = "Read a flow's request and/or response: the start line and headers always, plus a bounded body window. " +
 	"Bodies larger than maxBytes are paged with offset (the reply names the next offset); grep=<regex> searches the whole (decoded) body and returns matching lines with context instead of a window. " +
 	"Binary bodies are described (size, MIME, hash, hex head) instead of dumped."
@@ -119,7 +124,11 @@ func (s *Server) getFlow(a map[string]any) (string, error) {
 // binary description, then a one-line footer saying what was shown and how to
 // get more.
 func writeFlowSlice(b *strings.Builder, id int, side string, sl flowSlice) {
-	b.WriteString(strings.TrimRight(sl.Head, "\r\n"))
+	// Head and body are captured from the target: wrap them so the agent treats
+	// them as data, and neutralize any planted close marker.
+	b.WriteString(untrustedOpen + "\n")
+	defer b.WriteString("\n" + untrustedClose)
+	b.WriteString(defang(strings.TrimRight(sl.Head, "\r\n")))
 	b.WriteString("\r\n\r\n")
 	size := fmt.Sprintf("%d bytes", sl.BodyBytes)
 	if sl.Mime != "" {
@@ -137,7 +146,7 @@ func writeFlowSlice(b *strings.Builder, id int, side string, sl flowSlice) {
 	case sl.Grep != nil:
 		fmt.Fprintf(b, "[grep %q: %d matching line(s) in %s]", sl.Grep.Pattern, sl.Grep.Count, size)
 		for _, m := range sl.Grep.Matches {
-			fmt.Fprintf(b, "\n@ line %d (byte %d):\n%s", m.Line, m.Offset, m.Text)
+			fmt.Fprintf(b, "\n@ line %d (byte %d):\n%s", m.Line, m.Offset, defang(m.Text))
 		}
 		if sl.Grep.Truncated {
 			fmt.Fprintf(b, "\n[only the first %d matches shown — narrow the pattern]", len(sl.Grep.Matches))
@@ -147,9 +156,9 @@ func writeFlowSlice(b *strings.Builder, id int, side string, sl flowSlice) {
 		if len(hash) > 16 {
 			hash = hash[:16] + "…"
 		}
-		fmt.Fprintf(b, "[binary body: %s, sha256 %s — not shown as text; hex of the first bytes:]\n%s", size, hash, strings.TrimRight(sl.HexHead, "\n"))
+		fmt.Fprintf(b, "[binary body: %s, sha256 %s — not shown as text; hex of the first bytes:]\n%s", size, hash, defang(strings.TrimRight(sl.HexHead, "\n")))
 	default:
-		b.WriteString(sl.Text)
+		b.WriteString(defang(sl.Text))
 		end := sl.Offset + sl.Shown
 		switch {
 		case sl.Shown == 0 && sl.Offset == 0:
@@ -160,4 +169,10 @@ func writeFlowSlice(b *strings.Builder, id int, side string, sl flowSlice) {
 			fmt.Fprintf(b, "\n[body bytes %d-%d of %s — end of body]", sl.Offset, end, size)
 		}
 	}
+}
+
+// defang neutralizes an untrusted-data close marker planted in target content,
+// so a hostile body cannot end the <untrusted-target-data> block early.
+func defang(s string) string {
+	return strings.ReplaceAll(s, untrustedClose, "</untrusted-target-data\u200b>")
 }
