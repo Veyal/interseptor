@@ -860,6 +860,37 @@ func argHeaderLines(a map[string]any, key string) (string, error) {
 	return httplines.ToLines(m), nil
 }
 
+// argHostHeaderLines normalizes a per-host header map whose values are either
+// "Key: Value" lines or header objects, so every host gets header lines.
+func argHostHeaderLines(a map[string]any, key string) (map[string]string, error) {
+	v, ok := a[key]
+	if !ok || v == nil {
+		return nil, nil
+	}
+	m, isMap := v.(map[string]any)
+	if !isMap {
+		return nil, fmt.Errorf("%s must be an object mapping hostname to headers (got %T %s)", key, v, describeValue(key, v))
+	}
+	out := make(map[string]string, len(m))
+	for host, hv := range m {
+		lines, err := argHeaderLines(map[string]any{"h": hv}, "h")
+		if err != nil {
+			return nil, fmt.Errorf("%s[%q]: %w", key, host, err)
+		}
+		out[host] = lines
+	}
+	return out, nil
+}
+
+// headerArgSchema is the shared schema for a header argument that accepts
+// "Key: Value" lines or a header object.
+func headerArgSchema(desc string) map[string]any {
+	return map[string]any{"description": desc, "oneOf": []any{
+		map[string]any{"type": "string", "description": "'Key: Value' lines"},
+		map[string]any{"type": "object", "description": "header map e.g. {\"Authorization\":\"Bearer …\"}"},
+	}}
+}
+
 func truncate(s string, n int) string {
 	if n <= 0 || len(s) <= n {
 		return s
@@ -2551,15 +2582,23 @@ func (s *Server) registerTools() {
 		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop. Use hostHeaders when testing multiple targets simultaneously — each host gets its own auth, overriding the global headers for that hostname.",
 		obj(map[string]any{
 			"enabled":     pt("boolean"),
-			"headers":     p("string", "'Key: Value' lines — global fallback applied to all in-scope hosts"),
-			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} — replaces global headers for matching hosts only"),
+			"headers":     headerArgSchema("global fallback applied to all in-scope hosts"),
+			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} or {\"hostname\": {\"Key\": \"Value\"}} — replaces global headers for matching hosts only"),
 		}, "enabled"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/session", map[string]any{
-				"enabled":     argBool(a, "enabled", false),
-				"headers":     argStr(a, "headers"),
-				"hostHeaders": a["hostHeaders"],
-			})
+			hdr, err := argHeaderLines(a, "headers")
+			if err != nil {
+				return "", fmt.Errorf("headers: %w", err)
+			}
+			hostHeaders, err := argHostHeaderLines(a, "hostHeaders")
+			if err != nil {
+				return "", err
+			}
+			body := map[string]any{"enabled": argBool(a, "enabled", false), "headers": hdr}
+			if hostHeaders != nil {
+				body["hostHeaders"] = hostHeaders
+			}
+			return s.api(http.MethodPost, "/api/session", body)
 		})
 
 	s.add("decode",
