@@ -240,6 +240,23 @@ func TestStartRejectsUnknownAttackType(t *testing.T) {
 	}
 }
 
+func TestStartRejectsUnknownProcessRule(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target:       "http://example.com",
+		Template:     "GET /§id§ HTTP/1.1\nHost: example.com\n\n",
+		AttackType:   "sniper",
+		Payloads:     [][]string{{"1"}},
+		ProcessRules: []string{"base644"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown payload transform") {
+		t.Fatalf("unknown process rule error = %v", err)
+	}
+	if e.State().Running {
+		t.Fatal("engine must not start a run when a process rule is invalid")
+	}
+}
+
 func TestClusterBombRejectsEmptyPayloadList(t *testing.T) {
 	e := newEngine(t)
 	err := e.Start(Spec{
