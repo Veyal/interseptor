@@ -55,6 +55,21 @@ func TestCollectionsToolbarButtonsKeepNameWhenLabelHidden(t *testing.T) {
 	}
 }
 
+// A collection could only be created from the UI; renaming or deleting one
+// needed the REST API. The toolbar actions menu offers both, and its click
+// must not reach the app-wide click-to-close listener that hides the menu.
+func TestCollectionsCanRenameAndDeleteTheCollection(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `id="collMore" aria-label="Collection actions" aria-haspopup="menu"`)
+	js := executableJS(readUIAsset(t, "js/collections.js"))
+	requireUIContains(t, js,
+		"e.stopPropagation(); openCollectionMenu(e.currentTarget)",
+		"'Rename collection'", "'Delete collection'",
+		"jsend('DELETE', '/api/collections/' + encodeURIComponent(co.uid))",
+		"rev: co.rev",
+	)
+}
+
 // The collection and environment pickers are enhanced into .ui-select
 // wrappers; when the toolbar is crowded the wrapper shrinks, so the trigger
 // must fill it (and ellipsize) rather than spill over the next button.
