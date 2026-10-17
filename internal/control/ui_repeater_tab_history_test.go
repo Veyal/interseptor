@@ -121,7 +121,7 @@ func TestUIRepeaterHistoryRetainsTabLifetimeAndPaginatesRendering(t *testing.T) 
 		"index.getAll(repHistoryTabKey(t))",
 		"function repDeleteHistoryKey(tabKey)",
 		"index.openCursor(tabKey)",
-		"onClose:t=>repDeleteHistory(t)",
+		"onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);}",
 		"const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0))",
 		"const visible=flows.slice(0,visibleCount)",
 		"data-rep-history-more",
@@ -143,7 +143,9 @@ func TestUIRepeaterHistoryHydratesOnDemandWithoutBlockingStartup(t *testing.T) {
 	for _, contract := range []string{
 		"function repHistoryVisible()",
 		"function refreshRepHistory(t=repCur())",
-		"if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t)",
+		// Only the tab being shown is hydrated, without awaiting it.
+		"if(repHistoryVisible()){loadRepHistory();return;}",
+		"if(t&&!t.historyHydrationPromise)repHydrateTabHistory(t).then(",
 		"if(show)loadRepHistory()",
 		"t.history=normalizeRepHistory([...(t.history||[]),...embedded,...stored])",
 		"repRetryHistoryCleanup(repTabs.tabs).catch(()=>{})",

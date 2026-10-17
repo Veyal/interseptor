@@ -60,7 +60,10 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		httpFileNotFoundOrInternal(w, err, "request body not found")
 		return
 	}
+	ctx, cancel := sendContext(r, 0)
+	defer cancel()
 	flow, err := h.snd.Send(sender.Request{
+		Context:   ctx,
 		Method:    f.Method,
 		URL:       url,
 		Headers:   f.ReqHeaders,
@@ -104,9 +107,9 @@ func (h *toolsAPI) replayPage(w http.ResponseWriter, r *http.Request) {
 func replayPageHTML(id int64, method, url string, bodyLen int64, session string) string {
 	sel := func(mode string) string {
 		if mode == session {
-			return " active"
+			return ` class="active" aria-pressed="true"`
 		}
-		return ""
+		return ` aria-pressed="false"`
 	}
 	return fmt.Sprintf(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -148,7 +151,7 @@ h1{margin:0 0 4px;font-size:15px;letter-spacing:.3px}
   </div>
   <button class="go" id="go">Replay now</button>
   <div class="hint">The result appears here and as a new flow in History.</div>
-  <div class="res" id="res"></div>
+  <div class="res" id="res" role="status" aria-live="polite"></div>
 </div>
 <script>
 (function(){
@@ -157,7 +160,7 @@ h1{margin:0 0 4px;font-size:15px;letter-spacing:.3px}
   seg.addEventListener('click',function(e){
     var b=e.target.closest('button[data-s]'); if(!b)return;
     session=b.dataset.s;
-    [].forEach.call(seg.children,function(c){c.classList.toggle('active',c===b);});
+    [].forEach.call(seg.children,function(c){c.classList.toggle('active',c===b);c.setAttribute('aria-pressed',c===b?'true':'false');});
   });
   go.addEventListener('click',function(){
     go.disabled=true; go.textContent='Replaying…'; res.className='res';

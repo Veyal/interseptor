@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,7 +32,7 @@ type repeaterSendJSON struct {
 	VerifyTLS       bool   `json:"verifyTls"`    // verify the origin certificate
 	ServerName      string `json:"serverName"`   // SNI / verification name override
 	HTTP2           bool   `json:"http2"`        // offer ALPN h2 (HTTPS only)
-	TimeoutMs       int    `json:"timeoutMs"`    // whole-exchange timeout; 0 -> none
+	TimeoutMs       int    `json:"timeoutMs"`    // whole-exchange timeout; 0 -> defaultSendTimeout
 }
 
 // repeaterOptions builds the per-send options, or nil when every option is at
@@ -52,6 +53,22 @@ func repeaterOptions(in repeaterSendJSON) *sender.SendOptions {
 		o.Timeout = time.Duration(in.TimeoutMs) * time.Millisecond
 	}
 	return o
+}
+
+// defaultSendTimeout bounds a Repeater, replay or retest send whose caller set
+// no timeoutMs, so a hung origin cannot pin a handler and an upstream
+// connection forever. It is generous on purpose: slow endpoints still finish.
+var defaultSendTimeout = 5 * time.Minute
+
+// sendContext ties a control-plane send to the HTTP request that asked for it:
+// a client that disconnects or clicks Cancel aborts the upstream exchange. When
+// the caller set no explicit timeout the default above applies; an explicit
+// timeoutMs is enforced by the sender itself and may be longer than the default.
+func sendContext(r *http.Request, timeoutMs int) (context.Context, context.CancelFunc) {
+	if timeoutMs > 0 {
+		return context.WithCancel(r.Context())
+	}
+	return context.WithTimeout(r.Context(), defaultSendTimeout)
 }
 
 // aiSourceFlag returns store.FlagAI when a request was issued by the AI assistant
@@ -93,6 +110,8 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		}
 		body = wire
 	}
+	ctx, cancel := sendContext(r, in.TimeoutMs)
+	defer cancel()
 	flow, err := h.snd.Send(sender.Request{
 		Method:  in.Method,
 		URL:     in.URL,
@@ -101,6 +120,7 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		Body:    []byte(body),
 		Flags:   store.FlagRepeater | aiSourceFlag(r),
 		Options: repeaterOptions(in),
+		Context: ctx,
 	})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())

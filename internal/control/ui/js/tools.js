@@ -15,7 +15,8 @@ function friendlySendError(raw){
   const m=raw||'';
   const lead=
     /invalid request URL/i.test(m) ? "That doesn't look like a valid URL — check the scheme (http/https) and try again." :
-    /refusing to (send|attack|forward).*own listener/i.test(m) ? "Can't target Interceptor's own address — that would create a loop." :
+    /refusing to (send|attack|forward).*own listener/i.test(m) ? "Can't target Interseptor's own address — that would create a loop." :
+    /context canceled/i.test(m) ? 'The send was cancelled before a response arrived.' :
     /connection refused/i.test(m) ? 'Connection refused — nothing is listening at that address.' :
     /no such host|lookup .* no such host|dns/i.test(m) ? "Couldn't resolve that host — check the domain name." :
     /(deadline exceeded|timeout|timed out)/i.test(m) ? 'The request timed out.' :
@@ -25,14 +26,18 @@ function friendlySendError(raw){
 }
 
 // repStatusLine builds a rich response summary: "200 OK · 142 ms · 4.1 KB".
+// A transport failure is stored as a synthetic 502 flow with an error; it must
+// not read as if the target itself answered 502 Bad Gateway.
 function repStatusLine(f){
-  const head=f.status?f.status+' '+statusText(f.status):(f.error||'sent');
-  return head+(f.durationMs?' · '+fmtDur(f.durationMs):'')+(f.resLen!=null?' · '+fmtSize(f.resLen):'');
+  const head=f.error?'No response from the target':f.status?f.status+' '+statusText(f.status):'sent';
+  return head+(Number.isFinite(f.durationMs)?' · '+fmtDur(f.durationMs):'')+(f.resLen!=null?' · '+fmtSize(f.resLen):'');
 }
 // REP_RES_EMPTY — the response pane's placeholder before any send. #repResView
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+const REP_RES_CANCELLED='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">Send cancelled</div><p class="state-empty-hint">The request was stopped before a response arrived.</p></div>';
+const REP_RES_GONE='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">Response no longer in History</div><p class="state-empty-hint">Its flow was deleted. Send again for a fresh response.</p></div>';
 let repResponseEpoch=0;
 
 function repSyncResView(t){
@@ -52,10 +57,27 @@ function setRepSendState(stateName,label){
   if(stateName!=='idle')button.classList.add('is-'+stateName);
   button.dataset.state=stateName;
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  const hadFocus=document.activeElement===button;
   button.disabled=stateName==='pending';
   const labelEl=$('#repSendLabel');
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
+  // Cancel is offered only while this tab's send is in flight. Disabling Send
+  // would drop keyboard focus to <body>, so focus follows to Cancel instead.
+  const cancel=$('#repCancel');if(!cancel)return;
+  const cancelHadFocus=document.activeElement===cancel;
+  cancel.hidden=stateName!=='pending';
+  if(hadFocus&&!cancel.hidden)cancel.focus();
+  else if(cancelHadFocus&&cancel.hidden)button.focus();
+}
+// repCancelSend aborts the active tab's in-flight send. The control plane ties
+// the upstream exchange to that request, so aborting the fetch also tears down
+// the connection to the target instead of leaving it running in the background.
+export function repCancelSend(){
+  const t=repCur();
+  if(!t||!t.sendPending||!t.sendAbort)return false;
+  t.sendAbort.abort();
+  return true;
 }
 function resetRepSend(delay,t,sendEpoch){setTimeout(()=>{if(repCur()===t&&t.sendEpoch===sendEpoch&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
@@ -273,12 +295,17 @@ function normalizeRepeaterTab(t,normalizedTabs=[]){
   const historyNeedsMigration=t.historyNeedsMigration===true||(!hasPersistedHistoryKey&&!hasHistory);
   const history=normalizeRepHistory(t.history);
   const reqView=['pretty','raw','decoded'].includes(t.reqView)?t.reqView:'pretty';
-  const resView=['pretty','raw','render'].includes(t.resView)?t.resView:'pretty';
-  return {tid:t.tid,method:persistedText(t.method,'GET').slice(0,32)||'GET',url,headers:persistedText(t.headers),body:persistedText(t.body),reqView,resView,resId:null,status:'',color:'',sendError:'',title:'',label:persistedText(t.label),sourceFlowId:Number.isSafeInteger(t.sourceFlowId)&&t.sourceFlowId>0?t.sourceFlowId:null,codecId:persistedText(t.codecId),rawBody:persistedText(t.rawBody),applyOnSend:!!t.applyOnSend,decodedPlain:persistedText(t.decodedPlain),reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:persistedStringList(t.warnings),history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?persistedText(t.historyLegacyURL,url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
+  const resView=['pretty','raw','decoded','hex','render'].includes(t.resView)?t.resView:'pretty';
+  // The last response is restored by flow id so a reload keeps it on screen.
+  const resId=Number.isSafeInteger(t.resId)&&t.resId>0?t.resId:null;
+  const status=resId?persistedText(t.resStatus).slice(0,200):'';
+  const resCode=persistedInteger(t.resCode,0,0,999);
+  return {tid:t.tid,method:persistedText(t.method,'GET').slice(0,32)||'GET',url,headers:persistedText(t.headers),body:persistedText(t.body),reqView,resView,resId,status,color:resId?(/cancelled/i.test(status)?'var(--fg3)':statusColor(resCode)):'',resCode,resMime:resId?persistedText(t.resMime).slice(0,200):'',resLen:resId?persistedInteger(t.resLen,0,0,Number.MAX_SAFE_INTEGER):0,resError:resId?persistedText(t.resError).slice(0,500):'',sendError:'',title:'',label:persistedText(t.label),sourceFlowId:Number.isSafeInteger(t.sourceFlowId)&&t.sourceFlowId>0?t.sourceFlowId:null,codecId:persistedText(t.codecId),rawBody:persistedText(t.rawBody),applyOnSend:!!t.applyOnSend,decodedPlain:persistedText(t.decodedPlain),reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:persistedStringList(t.warnings),history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?persistedText(t.historyLegacyURL,url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
 }
 function serializeRepeaterTab(t){
   const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',requestAdoptionPristine:!!t.requestAdoptionPristine,warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
   if(t.historyStoreNeedsMigration)out.history=normalizeRepHistory(t.history);
+  if(t.resId){out.resId=t.resId;out.resStatus=t.status||'';out.resCode=t.resCode||0;out.resMime=t.resMime||'';out.resLen=t.resLen||0;out.resError=t.resError||'';}
   return out;
 }
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
@@ -571,7 +598,8 @@ export const repTabs=createTabManager({
   onPersist:blob=>persistUIState('repeater',blob),
   storageLabel:'Repeater',
   onStorageWarning:reportWorkspaceStorageWarning,
-  onClose:t=>repDeleteHistory(t),
+  // Closing a tab abandons its in-flight send: stop it at the target too.
+  onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);},
 });
 export function repCur(){return repTabs.cur();}
 export function renderRepTabs(){repTabs.render('#repTabs');}
@@ -581,7 +609,14 @@ export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
 function repHistoryVisible(){const box=$('#repHistory');return !!box&&box.style.display!=='none';}
 function repSetHistoryCount(t){const toggle=$('#repHistToggle'),count=normalizeRepHistory(t?.history).length;if(toggle)toggle.textContent='⟲ History'+(count?' ('+count+')':'');}
-function refreshRepHistory(t=repCur()){if(repCur()!==t)return;if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t);}
+function refreshRepHistory(t=repCur()){
+  if(repCur()!==t)return;
+  if(repHistoryVisible()){loadRepHistory();return;}
+  repSetHistoryCount(t);
+  // After a reload the tab's earlier sends live only in IndexedDB. Load them
+  // even with the rail closed: the count and "Diff vs previous" depend on them.
+  if(t&&!t.historyHydrationPromise)repHydrateTabHistory(t).then(()=>{if(repCur()===t&&!repHistoryVisible()){repSetHistoryCount(t);syncRepActions();}},()=>{});
+}
 export function repSaveEditor({operatorEdit=false}={}){
   const t=repCur();if(!t)return;
   const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
@@ -686,16 +721,19 @@ export async function repSend(){
   t.sendEpoch=(t.sendEpoch||0)+1;
   const sendEpoch=t.sendEpoch;
   const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
+  const abort=new AbortController();
+  t.sendAbort=abort;
   t.sendPending=true;syncRepActions();
   repResponseEpoch++;repSyncResView(t);
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
-    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
     if(!current())return;
-    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
-    t.resMime=flow.mime||'';t.resLen=flow.resLen||0;
+    t.sendAbort=null;
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);t.resCode=flow.status||0;
+    t.resMime=flow.mime||'';t.resLen=flow.resLen||0;t.resError=flow.error||'';
     await repRecordHistory(t,flow);
     if(!current())return;
     t.sendPending=false;repPersist();
@@ -704,17 +742,31 @@ export async function repSend(){
     // tab, but never paint that result into the currently visible tab.
     if(repCur()!==t||!current())return;
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;syncRepActions();
+    // The exchange is done: release Send (and hide Cancel) now rather than after
+    // a large response body has been fetched and painted.
+    setRepSendState('success','Sent');resetRepSend(600,t,sendEpoch);
     if(repExtras)repExtras.afterSend();
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
     if(repCur()!==t||!current())return;
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
     if(repCur()!==t||!current())return;
-    setRepSendState('success','Sent');resetRepSend(600,t,sendEpoch);
     refreshRepHistory(t);
   }catch(e){
     if(!current())return;
-    t.sendPending=false;
+    t.sendPending=false;t.sendAbort=null;
+    if(abort.signal.aborted){
+      // Cancelled by the operator, not an error: the previous response (if
+      // any) stays this tab's response and the status line says what happened.
+      t.sendError='';t.status=t.resId?'Send cancelled · showing the previous response':'Send cancelled';t.color='var(--fg3)';
+      repPersist();
+      if(repCur()!==t)return;
+      setRepSendState('idle','Send ▸');syncRepActions();
+      $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
+      if(t.resId)await renderRepResponse();
+      else $('#repResView').innerHTML=REP_RES_CANCELLED;
+      return;
+    }
     const msg=friendlySendError(e.message);
     t.sendError=msg;t.status='send failed';t.color='var(--red)';
     if(repCur()!==t){repPersist();return;}
@@ -732,8 +784,18 @@ export async function renderRepResponse(){
   const resId=t.resId,resView=t.resView||'pretty';
   const current=()=>repResponseEpoch===epoch&&repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError;
   $('#repResView').innerHTML='<span class="hint">Loading response…</span>';
-  if(resView==='render'&&t.resLen>RENDER_CAP&&t.largeRenderId!==resId){
-    $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.8">Large HTML response · <b>${fmtSize(t.resLen)}</b><br><a class="btn" href="${flowBodyDownloadHref(resId,'res')}" download="${escAttr(flowBodyDownloadName(resId,'res',t.resMime))}">Download body</a> <button type="button" class="btn" data-rep-render-anyway>Show anyway</button></div>`;
+  // A transport failure has no response to show: name the failure instead of
+  // painting the synthetic 502 the flow is stored with.
+  if(t.resError&&!t.resLen){
+    $('#repResView').innerHTML=`<div class="state-empty" role="alert"><div class="state-empty-title">No response from the target</div><p class="state-empty-hint">${esc(friendlySendError(t.resError))}</p></div>`;
+    return;
+  }
+  // Raw and Pretty paint the whole message into the DOM: a multi-megabyte body
+  // stalls the tab for seconds, so it waits for an explicit opt-in like History.
+  const heavyView=resView==='render'||resView==='raw'||resView==='pretty';
+  if(heavyView&&t.resLen>RENDER_CAP&&t.largeRenderId!==resId){
+    const what=resView==='render'?'Large HTML response':'Large response';
+    $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.8">${what} · <b>${fmtSize(t.resLen)}</b> · not shown, to keep the browser responsive.<br><a class="btn" href="${flowBodyDownloadHref(resId,'res')}" download="${escAttr(flowBodyDownloadName(resId,'res',t.resMime))}">Download body</a> <button type="button" class="btn" data-rep-render-anyway>Show anyway</button></div>`;
     const button=$('#repResView').querySelector('[data-rep-render-anyway]');
     if(button)button.onclick=()=>{if(current()){t.largeRenderId=resId;void renderRepResponse();}};
     return;
@@ -770,7 +832,13 @@ export async function renderRepResponse(){
     // now-active tab's shared #repResView pane.
     if(!current())return;
     $('#repResView').innerHTML=resView==='render'?renderHTMLResponse(raw):highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
-  }catch(e){if(current())$('#repResView').textContent='(error: '+e.message+')';}
+  }catch(e){
+    if(!current())return;
+    // A restored or history response whose flow was since deleted is not an
+    // error worth a raw message: say what happened and how to recover.
+    if(e&&e.status===404)$('#repResView').innerHTML=REP_RES_GONE;
+    else $('#repResView').textContent='(error: '+e.message+')';
+  }
 }
 async function migrateLegacyRepHistory(t){
   if(!t.historyNeedsMigration)return true;
@@ -863,8 +931,8 @@ export async function repLoadSend(id){
     t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=false;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
-    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
-    t.resMime=d.mime||'';t.resLen=d.resLen||0;
+    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.resCode=d.status||0;t.title=repTitle(t);
+    t.resMime=d.mime||'';t.resLen=d.resLen||0;t.resError=d.error||'';
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
 }
@@ -888,7 +956,12 @@ export async function sendToRepeater(f){
       &&snapshot.tab.requestAdoptionPristine===true
       &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
       &&snapshot.tab.sendPending!==true);
-    let t=reusable?.tab||null;
+    // An untouched empty tab (the one every fresh Repeater starts with) is
+    // filled instead of being left behind next to a new tab.
+    const blank=reusable?null:tabSnapshots.find(snapshot=>repTabs.tabs.includes(snapshot.tab)
+      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
+      &&repTabIsBlank(snapshot.tab));
+    let t=reusable?.tab||blank?.tab||null;
     if(!t){t=repTabs.create();if(!t)return false;}
     repTabs.active=t.tid;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
@@ -904,6 +977,12 @@ export async function sendToRepeater(f){
     toast('loaded #'+f.id+' into Repeater');
     return true;
   }catch(e){toast(e.message);return false;}
+}
+// repTabIsBlank: a tab with no request, label, response or history yet.
+export function repTabIsBlank(t){
+  return !!t&&!t.sendPending&&!t.resId&&!t.sourceFlowId&&!t.label
+    &&!String(t.url||'').trim()&&!String(t.headers||'').trim()&&!String(t.body||'').trim()
+    &&!(Array.isArray(t.history)&&t.history.length)&&!t.historyNeedsMigration;
 }
 // ---- Repeater response-pane actions: Intruder / + Finding / Copy cURL ----
 function shellQuote(v){return "'"+String(v).replace(/'/g,"'\\''")+"'";}
@@ -921,10 +1000,14 @@ function repBuildRaw(t){
   if(!headers.some(line=>/^host:/i.test(line)))headers.unshift('Host: '+u.host);
   const method=t.method||'GET';
   const raw=`${method} ${u.pathname}${u.search} HTTP/1.1\n${headers.join('\n')}\n\n${repExportBody(t)}`;
-  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(line=>!/^host:/i.test(line)),body:repExportBody(t)};
+  // curl derives Host from the URL, so only a Host that differs from it (a
+  // vhost or Host-header test) is kept as an explicit header.
+  const keepHeader=line=>!/^host:/i.test(line)||line.replace(/^host:\s*/i,'').trim().toLowerCase()!==u.host.toLowerCase();
+  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(keepHeader),body:repExportBody(t)};
 }
 function repCurlCommand(built){
-  const parts=['curl -i -X '+built.method];
+  // curl -X HEAD waits for a body that never comes; -I is curl's HEAD.
+  const parts=[built.method==='HEAD'?'curl -I':'curl -i -X '+built.method];
   built.headers.forEach(line=>parts.push('-H '+shellQuote(line)));
   if(built.body)parts.push('--data-raw '+shellQuote(built.body));
   parts.push(shellQuote(built.url));
@@ -1135,6 +1218,13 @@ async function repDiffTabs(a,b){
   }catch(e){toastError('Diff failed',e);}
 }
 $('#repSend').onclick=repSend;
+$('#repCancel')&&($('#repCancel').onclick=()=>{repCancelSend();$('#repSend')?.focus();});
+// Escape cancels an in-flight send while focus is inside the Repeater. The
+// diff panel and the response finder consume their own Escape first.
+$('#panel-repeater')?.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+  if(repCancelSend())e.preventDefault();
+});
 $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
   const t=repCur();if(!t)return;
   const next=b.dataset.view;
