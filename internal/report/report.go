@@ -541,8 +541,10 @@ func blockEvidenceMeta(bl store.FindingBlock) string {
 	if bl.Role != "" {
 		parts = append(parts, "role="+sanitizeLine(bl.Role)+proofStoryLabel(bl.Role))
 	}
-	if bl.Proof != "" {
-		parts = append(parts, "proof="+sanitizeLine(bl.Proof))
+	if proof := strings.TrimRight(sanitizeLine(bl.Proof), ". "); proof != "" {
+		// The list supplies its own punctuation; a proof sentence's final period
+		// would otherwise read "proof=…., source=…".
+		parts = append(parts, "proof="+proof)
 	}
 	if bl.Source != "" {
 		label := bl.Source

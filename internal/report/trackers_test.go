@@ -38,7 +38,7 @@ func TestTrackerNarrativesKeepReportProvenance(t *testing.T) {
 			"role=action",
 			"source=browser_screenshot",
 			"source=flow_preview (generated HTTP preview; not browser proof)",
-			"Reads another tenant's invoice.",
+			"proof=Reads another tenant's invoice",
 			impact,
 			"GET /invoices/8 HTTP/1.1",
 			"Calculated CVSS v4.0",

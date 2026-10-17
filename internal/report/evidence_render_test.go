@@ -30,6 +30,11 @@ func TestEvidenceProofLinesHaveOneFinalPeriod(t *testing.T) {
 	if !strings.Contains(out, "proof=The response returns record 8 owned by bob._") {
 		t.Fatalf("proof without its own period lost the closing one:\n%s", out)
 	}
+	f := evidenceFinding()
+	f.Blocks[4].Proof, f.Blocks[4].Source = "Late capture of record 8.", "browser_screenshot"
+	if out := Project([]store.Finding{f}, nil); strings.Contains(out, "8., source=") {
+		t.Fatalf("proof period left inside the evidence list:\n%s", out)
+	}
 }
 
 func TestControlRoleIsNotLabelledAsBaseline(t *testing.T) {
