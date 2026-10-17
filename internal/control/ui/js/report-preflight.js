@@ -20,7 +20,7 @@ import {
 } from './report-preflight-model.js';
 
 const OPTIONS_KEY = 'interseptor.report.options';
-const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#${name}"/></svg>`;
+const icon = (name) => `<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
 
 const S = { open: false, loading: false, busy: false, error: '', quality: null, options: sanitizeOptions(), confirming: false, typed: '', seq: 0, sig: '' };
 let mount = null;
