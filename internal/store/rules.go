@@ -118,6 +118,10 @@ type FlowFilter struct {
 	AnyTextIDs []int64
 
 	HideBrowserNoise bool // hide the browser's own background traffic (flows_noise.go)
+
+	// ScanBoundID ends an id-ordered page at the last flow a capped body scan read
+	// (id >= bound newest-first, id <= bound oldest-first); 0 = no bound.
+	ScanBoundID int64
 }
 
 // QueryFlowsFilter returns flows matching f, newest first. Filtering and paging

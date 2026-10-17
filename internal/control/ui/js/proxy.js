@@ -92,6 +92,7 @@ const MAX_LIVE_FLOWS=5000;      // cap the in-memory live list so long capture s
 const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst window
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
+let flowSearchCursor=0;        // id a capped body search stopped at; the next page starts there
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
 let flowPageError=null;
@@ -600,7 +601,7 @@ function updateTruncBanner(){
   }else if(flowRefreshing){
     show('Refreshing flows…');if(retry)retry.hidden=true;
   }else if(loadingMore){
-    show('Loading older flows…');if(retry)retry.hidden=true;
+    show(flowSearchCursor?'Searching older flows…':'Loading older flows…');if(retry)retry.hidden=true;
   }else if(flowHasMore){
     show('Scroll down to load older flows.');if(retry)retry.hidden=true;
   }else{b.style.display='none';if(retry)retry.hidden=true;}
@@ -1203,7 +1204,21 @@ function buildFlowParams(){
   q.set('dir',sortDirParam());
   return q;
 }
-function bodySearchActive(){return false;}
+// applyPageMore reads whether older flows remain. A capped body search ends a
+// page at the last flow it read (searchCursor) even when the page is short, and
+// paging then continues from that id instead of from the last listed row.
+function applyPageMore(d,count){
+  flowSearchCursor=d&&d.searchMore?Number(d.searchCursor)||0:0;
+  flowHasMore=count>FLOW_FETCH||flowSearchCursor>0;
+}
+// continueShortSearch keeps a search paging (one bounded scan per request) while
+// the list is too short to scroll, so a match in older History still turns up.
+function continueShortSearch(){
+  if(!flowSearchCursor||!flowHasMore)return;
+  const box=$('#rows');
+  if(box&&box.scrollHeight-box.clientHeight>400)return;
+  setTimeout(()=>loadMoreFlows(),0);
+}
 
 function inspectorFilterSignature(){
   const f=state.filters;
@@ -1233,6 +1248,7 @@ export async function loadFlows(){
   flowPageError=null;
   flowLoadError=null;
   flowHasMore=false;
+  flowSearchCursor=0;
   updateTruncBanner();
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
@@ -1250,7 +1266,7 @@ export async function loadFlows(){
     const committedSelected=state.selId;
     const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail);
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
+    applyPageMore(d,flows.length);
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
@@ -1274,6 +1290,7 @@ export async function loadFlows(){
     refreshMethodFilter();
     loadTrafficDiagnosis();
     if(!replayExact)scheduleReload();
+    continueShortSearch();
   }catch(e){
     if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}
     if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){
@@ -1287,21 +1304,24 @@ export async function loadFlows(){
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
-  if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
+  if(flowRefreshing||loadingMore||!flowHasMore||(!state.flows.length&&!flowSearchCursor))return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   flowPageError=null;
   updateTruncBanner();
   try{
-    const last=state.flows[state.flows.length-1];
-    if(!last){flowHasMore=false;return;}
     const q=buildFlowParams();
-    appendFlowCursor(q,last);
+    if(flowSearchCursor)q.set('curId',String(flowSearchCursor)); // only sent for the id order
+    else{
+      const last=state.flows[state.flows.length-1];
+      if(!last){flowHasMore=false;return;}
+      appendFlowCursor(q,last);
+    }
     q.set('limit',String(FLOW_FETCH+1));
     const d=await api('/api/flows?'+q.toString());
     if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_FETCH;
+    applyPageMore(d,flows.length);
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     if(flows.length){
       // appendFlows drops any ids already present (a flow could arrive live between pages).
@@ -1315,7 +1335,7 @@ export async function loadMoreFlows(){
   }catch(e){
     if(loadEpoch===flowLoadEpoch&&pageEpoch===flowPageEpoch)flowPageError=e;
   }
-  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
+  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();if(!flowPageError)continueShortSearch();}}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method

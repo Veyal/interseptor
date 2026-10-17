@@ -248,6 +248,17 @@ func (h *flowAPI) applyFlowSearch(r *http.Request, filter *store.FlowFilter) (st
 	return note, false, nil
 }
 
+// withSearchMore marks a History page that a capped body scan ended early: the
+// page is complete down to searchCursor, older flows were not searched yet, and
+// the client continues from searchCursor even though the page is not full.
+func withSearchMore(resp map[string]any, truncated bool, bound int64) map[string]any {
+	if bound > 0 && !truncated {
+		resp["searchMore"] = true
+		resp["searchCursor"] = bound
+	}
+	return resp
+}
+
 func (h *flowAPI) matchFlowScript(r *http.Request, filter *store.FlowFilter, source string) (string, error) {
 	script, err := searchscript.Compile(source)
 	if err != nil {

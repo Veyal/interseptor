@@ -756,7 +756,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if searchScope == "body" && strings.TrimSpace(f.Search) != "" {
-		ids, note, err := h.st.FlowIDsBodySearch(f, 8000)
+		ids, note, bound, err := h.st.FlowIDsBodySearch(f, 8000)
 		if err != nil {
 			httpInternalErr(w, err)
 			return
@@ -764,8 +764,9 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		searchNote = note
 		f.Search = ""
 		f.FlowIDs = ids
+		f.ScanBoundID = bound
 		if len(ids) == 0 {
-			writeJSON(w, http.StatusOK, map[string]any{"flows": []flowJSON{}, "truncated": false, "searchNote": note})
+			writeJSON(w, http.StatusOK, withSearchMore(map[string]any{"flows": []flowJSON{}, "truncated": false, "searchNote": note}, false, bound))
 			return
 		}
 	}
@@ -786,7 +787,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		for _, fl := range matched {
 			out = append(out, toFlowJSON(fl))
 		}
-		resp := map[string]any{"flows": out, "truncated": truncated}
+		resp := withSearchMore(map[string]any{"flows": out, "truncated": truncated}, truncated, f.ScanBoundID)
 		if searchNote != "" {
 			resp["searchNote"] = searchNote
 		}
@@ -807,7 +808,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	for _, fl := range flows {
 		out = append(out, toFlowJSON(fl))
 	}
-	resp := map[string]any{"flows": out, "truncated": truncated}
+	resp := withSearchMore(map[string]any{"flows": out, "truncated": truncated}, truncated, f.ScanBoundID)
 	if searchNote != "" {
 		resp["searchNote"] = searchNote
 	}

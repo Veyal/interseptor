@@ -60,7 +60,7 @@ func Test_FlowSearch_decodes_content_encoded_bodies(t *testing.T) {
 
 	// When / Then
 	for term, want := range map[string]int64{"gz-res-needle": resID, "GZ-REQ-NEEDLE": reqID} {
-		bodyIDs, _, err := s.FlowIDsBodySearch(FlowFilter{Search: term}, 8000)
+		bodyIDs, _, _, err := s.FlowIDsBodySearch(FlowFilter{Search: term}, 8000)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,18 +95,70 @@ func Test_SearchFlowsAnywhere_matches_stored_fields_beyond_the_body_scan_bound(t
 		}
 	}
 
-	// When
-	ids, note, err := anywhereSearchIDs(s, FlowFilter{Search: "needle-host"}, 2)
+	// When: sorted by a column, the body window stays on the newest flows and the
+	// stored-field match covers all history in one page.
+	ids, note, err := anywhereSearchIDs(s, FlowFilter{Search: "needle-host", SortKey: "path", SortDir: 1}, 2)
 
 	// Then
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 2 || ids[0] != oldHeader || ids[1] != oldHost {
-		t.Fatalf("ids = %v, want [%d %d]", ids, oldHeader, oldHost)
+	if len(ids) != 2 || ids[0] != oldHost || ids[1] != oldHeader {
+		t.Fatalf("ids = %v, want [%d %d]", ids, oldHost, oldHeader)
 	}
 	if note == "" {
 		t.Fatal("want a note that the body scan was bounded")
+	}
+}
+
+func Test_SearchFlowsAnywhere_id_pages_stop_at_the_scan_bound_and_continue_from_it(t *testing.T) {
+	// Given (ids ascending): an old metadata match, a body match, then newer flows
+	// that fill the body-scan window.
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	meta, err := s.InsertFlow(&Flow{TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "pager-needle.example.com", Path: "/", Status: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := s.InsertFlow(&Flow{TS: time.UnixMilli(2), Method: "POST", Scheme: "https", Host: "example.com", Path: "/b", Status: 200, ResBodyHash: writeAnywhereTestBody(t, s, "pager-needle")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if _, err := s.InsertFlow(&Flow{TS: time.UnixMilli(int64(10 + i)), Method: "GET", Scheme: "https", Host: "example.com", Path: "/newer", Status: 200}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// When: page newest-first the way History does, continuing from the bound
+	// whenever a page ends there.
+	var got []int64
+	cursor := int64(0)
+	for page := 0; page < 10; page++ {
+		f, _, err := s.AnywhereSearchFilter(FlowFilter{Search: "pager-needle", CursorID: cursor}, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Limit = 100
+		rows, err := s.QueryFlowsListFilter(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			got = append(got, r.ID)
+		}
+		if f.ScanBoundID == 0 {
+			break
+		}
+		cursor = f.ScanBoundID
+	}
+
+	// Then: the body match is not skipped in favour of the older metadata match.
+	if len(got) != 2 || got[0] != body || got[1] != meta {
+		t.Fatalf("paged ids = %v, want [%d %d]", got, body, meta)
 	}
 }
 
@@ -130,11 +182,11 @@ func Test_FlowSearch_body_window_follows_the_id_page_cursor(t *testing.T) {
 
 	// When: the newest window misses it; a page cursor below that window and the
 	// oldest-first order both reach it.
-	first, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "deep-needle"}, 2)
+	first, _, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "deep-needle"}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	paged, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "deep-needle", CursorID: last - 2}, 2)
+	paged, _, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "deep-needle", CursorID: last - 2}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,19 +16,21 @@ const maxFlowBodyScanFlows = 8000
 // so does the page cursor when History is sorted by id, so a later page searches the
 // bodies of older flows instead of re-reading the newest ones. Content-encoded
 // bodies (gzip, br, deflate, zstd) are decoded before matching. Body reads are
-// bounded and cached by hash.
-func (s *Store) FlowIDsBodySearch(f FlowFilter, maxScan int) ([]int64, string, error) {
+// bounded and cached by hash. bound is the id of the last flow the capped scan read
+// when the window follows the id order (0 otherwise): rows past it were not
+// searched, so the caller pages on from there (FlowFilter.ScanBoundID).
+func (s *Store) FlowIDsBodySearch(f FlowFilter, maxScan int) (ids []int64, note string, bound int64, err error) {
 	term := strings.ToLower(strings.TrimSpace(f.Search))
 	if term == "" {
-		return nil, "", nil
+		return nil, "", 0, nil
 	}
 	base := f
 	base.Search = ""
-	ids, capped, err := s.flowIDsBodyScan(base, term, maxScan, false)
+	ids, capped, bound, err := s.flowIDsBodyScan(base, term, maxScan, false)
 	if err != nil || !capped {
-		return ids, "", err
+		return ids, "", 0, err
 	}
-	return ids, fmt.Sprintf("Body search covered %s %d filtered flows. Narrow with host/method filters if results look incomplete.", bodyScanWindowLabel(f), maxScanOrDefault(maxScan)), nil
+	return ids, fmt.Sprintf("Body search covered %s %d filtered flows. Narrow with host/method filters if results look incomplete.", bodyScanWindowLabel(f), maxScanOrDefault(maxScan)), bound, nil
 }
 
 // AnywhereSearchFilter rewrites an anywhere-scoped search into SQL the history list
@@ -37,7 +39,9 @@ func (s *Store) FlowIDsBodySearch(f FlowFilter, maxScan int) ([]int64, string, e
 // are read only for flows those fields do not already match, newest first (or from
 // the page cursor when sorted by id), up to maxScan flows. The returned filter has
 // Search cleared and carries AnyText/AnyTextIDs; note is non-empty when the body
-// scan reached its bound.
+// scan reached its bound. When that window follows the id order, ScanBoundID stops
+// the page at the last scanned flow, so an older metadata match cannot be listed
+// ahead of body matches that were never read; the next page continues from there.
 func (s *Store) AnywhereSearchFilter(f FlowFilter, maxScan int) (FlowFilter, string, error) {
 	term := strings.ToLower(strings.TrimSpace(f.Search))
 	out := f
@@ -45,7 +49,7 @@ func (s *Store) AnywhereSearchFilter(f FlowFilter, maxScan int) (FlowFilter, str
 	if term == "" {
 		return out, "", nil
 	}
-	ids, capped, err := s.flowIDsBodyScan(out, term, maxScan, true)
+	ids, capped, bound, err := s.flowIDsBodyScan(out, term, maxScan, true)
 	if err != nil {
 		return out, "", err
 	}
@@ -54,6 +58,7 @@ func (s *Store) AnywhereSearchFilter(f FlowFilter, maxScan int) (FlowFilter, str
 	if !capped {
 		return out, "", nil
 	}
+	out.ScanBoundID = bound
 	return out, fmt.Sprintf("Bodies were searched in %s %d filtered flows; URLs, headers, notes and tags were searched in all of History.", bodyScanWindowLabel(f), maxScanOrDefault(maxScan)), nil
 }
 
@@ -86,10 +91,10 @@ func bodyScanFollowsCursor(f FlowFilter) bool {
 // ids whose request or response body contains term (already lower-cased). With
 // skipText, rows the AnyText SQL predicate already matches are not read, and the Go
 // metadata check catches matches SQLite's ASCII-only lower() cannot fold.
-func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText bool) ([]int64, bool, error) {
+func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText bool) ([]int64, bool, int64, error) {
 	maxScan = maxScanOrDefault(maxScan)
 	base := f
-	base.AnyText, base.AnyTextIDs = "", nil
+	base.AnyText, base.AnyTextIDs, base.ScanBoundID = "", nil, 0
 	where, filterArgs := buildFlowFilterWhere(base)
 	args := append([]any(nil), filterArgs...)
 	if skipText {
@@ -114,7 +119,7 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	defer rows.Close()
 
@@ -128,13 +133,15 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 	unique := map[bodyRef]int{} // body -> index into keys
 	var keys []bodyRef
 	scanned := 0
+	var lastID int64
 	for rows.Next() {
 		scanned++
 		var id int64
 		var scheme, host, path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders, reqH, resH string
 		if err := rows.Scan(&id, &scheme, &host, &path, &method, &mime, &clientAddr, &flowErr, &note, &reqHeaders, &resHeaders, &reqH, &resH); err != nil {
-			return nil, false, err
+			return nil, false, 0, err
 		}
+		lastID = id
 		if skipText && anyFieldContains(term, scheme+"://"+host+path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders) {
 			ids = append(ids, id)
 			continue
@@ -156,7 +163,7 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	rows.Close()
 
@@ -188,7 +195,12 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 			}
 		}
 	}
-	return ids, scanned == maxScan, nil
+	capped := scanned == maxScan
+	var bound int64
+	if capped && bodyScanFollowsCursor(f) {
+		bound = lastID
+	}
+	return ids, capped, bound, nil
 }
 
 // bodySearchWorkers bounds concurrent body-file reads during one History search.

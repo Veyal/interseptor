@@ -80,7 +80,7 @@ func Test_FlowIDsBodySearch_matches_bodies_only(t *testing.T) {
 
 func flowIDsForBodySearch(t *testing.T, s *Store, term string) ([]int64, error) {
 	t.Helper()
-	ids, _, err := s.FlowIDsBodySearch(FlowFilter{Search: term}, 8000)
+	ids, _, _, err := s.FlowIDsBodySearch(FlowFilter{Search: term}, 8000)
 	return ids, err
 }
 
@@ -104,11 +104,11 @@ func Test_SearchFlowsAnywhere_applies_filters_before_deterministic_candidate_bou
 	}
 
 	// When
-	firstIDs, firstNote, err := s.FlowIDsBodySearch(FlowFilter{Search: "BOUNDED-NEEDLE", Method: "POST", Host: "api.example.com", StatusClass: 2}, 2)
+	firstIDs, firstNote, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "BOUNDED-NEEDLE", Method: "POST", Host: "api.example.com", StatusClass: 2}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondIDs, secondNote, err := s.FlowIDsBodySearch(FlowFilter{Search: "bounded-needle", Method: "POST", Host: "api.example.com", StatusClass: 2}, 2)
+	secondIDs, secondNote, _, err := s.FlowIDsBodySearch(FlowFilter{Search: "bounded-needle", Method: "POST", Host: "api.example.com", StatusClass: 2}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -158,6 +158,14 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		where = append(where, pred)
 		args = append(args, predArgs...)
 	}
+	if f.ScanBoundID > 0 {
+		if _, dir := normalizedFlowSort(f); dir > 0 {
+			where = append(where, "id <= ?")
+		} else {
+			where = append(where, "id >= ?")
+		}
+		args = append(args, f.ScanBoundID)
+	}
 	if f.HideBrowserNoise {
 		pred, predArgs := browserNoisePredicate()
 		where = append(where, "NOT "+pred)
