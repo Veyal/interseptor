@@ -114,6 +114,7 @@ var apiRoutes = []apiRoute{
 	{"DELETE", "/api/flow-searches/{name}", "Delete one project-scoped saved flow search"},
 	{"GET", "/api/flows/{id}", "Flow detail (headers, body hashes, flags)"},
 	{"GET", "/api/flows/{id}/raw", "Reconstructed raw request/response (?side=req|res)"},
+	{"GET", "/api/flows/{id}/slice", "Bounded view of one side for agents: head, body size/MIME/binary flag, and a byte window (?side=req|res&offset=&limit=) or regex matches with context (?grep=&context=&maxMatches=)"},
 	{"GET", "/api/flows/{id}/decoded", "App-layer message codec decode (?side=req|res). Response: {matched, codecId, plaintext, fields?, applyOnSend?, error?} — display-only; never mutates the stored flow"},
 	{"GET", "/api/flows/{id}/preview.png", "Interseptor-styled PNG preview of request/response (?side=both|req|res, pretty=0|1 default 1, layout=vertical|horizontal default vertical with request above response, theme=light|dark default light, maskHeaders=0|1 default 0 to redact Authorization and Cookie values)"},
 	{"GET", "/api/flows/{id}/body", "Body bytes only (?side=req|res) — for download with MIME extension"},

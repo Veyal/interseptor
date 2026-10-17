@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/httplines"
 	"github.com/Veyal/interseptor/internal/preview"
@@ -97,11 +98,7 @@ func firstLine(s string, n int) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	s = strings.TrimSpace(s)
-	if n > 0 && len(s) > n {
-		s = s[:n] + "…"
-	}
-	return s
+	return truncRunes(strings.TrimSpace(s), n)
 }
 
 // New builds an MCP server that talks to the control API at baseURL
@@ -903,7 +900,11 @@ func truncate(s string, n int) string {
 	if n <= 0 || len(s) <= n {
 		return s
 	}
-	return s[:n] + fmt.Sprintf("\n…[truncated %d more bytes — increase maxBytes]", len(s)-n)
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut-- // never split a multi-byte rune: the result must stay valid UTF-8
+	}
+	return s[:cut] + fmt.Sprintf("\n…[truncated %d more bytes — increase maxBytes]", len(s)-cut)
 }
 
 // boundJSON keeps a tool result both VALID and small. Byte-truncating a JSON
@@ -1051,38 +1052,7 @@ func (s *Server) registerTools() {
 			return s.apiGet("/api/flows?" + q.Encode())
 		})
 
-	s.add("get_flow",
-		"Read a flow's raw request and/or response (headers + body).",
-		obj(map[string]any{
-			"id":       pt("integer"),
-			"side":     pe("default both", "req", "res", "both", "request", "response"),
-			"maxBytes": pt("integer"),
-		}, "id"),
-		func(a map[string]any) (string, error) {
-			id, err := reqFlowID(a)
-			if err != nil {
-				return "", err
-			}
-			max := argInt(a, "maxBytes", 4000)
-			side := argStr(a, "side")
-			if side == "" {
-				side = "both"
-			}
-			get := func(sd string) string {
-				raw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/raw?side=%s", id, sd))
-				if err != nil {
-					return "(" + err.Error() + ")"
-				}
-				return truncate(raw, max)
-			}
-			var out string
-			if side == "both" {
-				out = "=== REQUEST ===\n" + get("req") + "\n\n=== RESPONSE ===\n" + get("res")
-			} else {
-				out = get(side)
-			}
-			return out + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
-		})
+	s.add("get_flow", getFlowDescription, getFlowSchema(), s.getFlow)
 
 	s.add("analyze_flow",
 		"Compact triage of a flow: URL/status, security headers, query params (injection points), passive findings, in-scope flag. Cheaper than get_flow for deciding what to inspect.",
