@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SEV_ORDER, sevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity,
-  summaryText, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
+  onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
 } from '../js/scanner-model.js';
 
 const issues = [
@@ -40,6 +40,15 @@ test('count chips filter the list and toggle', () => {
   assert.equal(active.has('High'), true);
   active = toggleSeverity(active, 'High');
   assert.equal(active.size, 0);
+});
+
+test('"Filter this severity" keeps the issue severity as the chips spell it', () => {
+  const g = groupIssues(issues);
+  // The context menu used to lower-case the severity ("medium"), which matched no
+  // group and no chip, so the list emptied with no chip pressed.
+  assert.deepEqual(filterGroups(g, onlySeverity('Medium')).map((x) => x.title), ['Missing HSTS']);
+  assert.deepEqual([...onlySeverity('High')], ['High']);
+  assert.equal(onlySeverity('').size, 0);
 });
 
 test('summary text', () => {

@@ -49,6 +49,12 @@ export function filterGroups(groups, active) {
   return set.size ? list.filter((g) => set.has(g.severity)) : list.slice();
 }
 
+// onlySeverity is the filter "Filter this severity" applies: exactly the issue's own
+// severity, spelled as the chips and filterGroups spell it ("Medium", not "medium").
+export function onlySeverity(severity) {
+  return severity ? new Set([String(severity)]) : new Set();
+}
+
 export function toggleSeverity(active, severity) {
   const next = new Set(active || []);
   if (next.has(severity)) next.delete(severity);

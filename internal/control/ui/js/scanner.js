@@ -6,7 +6,7 @@ import { renderState } from './statepanel.js';
 import { getShellApi } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
 import { stepIndex } from './list-rows-model.js';
-import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -991,7 +991,7 @@ function showScanIssueCtx(e,g){
       {label:'Remediation',disabled:!first.fix,act:()=>copyText(first.fix||'','remediation copied')},
       {label:'Affected targets',act:()=>copyText(g.items.map(i=>i.target||'').filter(Boolean).join('\n'),'targets copied')},
     ]},
-    {label:'Filter this severity',icon:'filter',disabled:!g.severity,act:()=>{scanUI.sevActive=new Set([String(g.severity).toLowerCase()]);renderScan();}},
+    {label:'Filter this severity',icon:'filter',disabled:!g.severity,act:()=>{scanUI.sevActive=onlySeverity(g.severity);renderScan();}},
     {label:'Scan this host again',icon:'scanner',val:host,disabled:!host,act:()=>prefillScanner(host,'')},
     {label:'Open the check editor',icon:'checks',act:openChecks},
   ]}]);
