@@ -50,6 +50,15 @@ type ScopeChecker interface {
 type proxyFlow struct {
 	*store.Flow
 	suppressCapture bool
+	budgetHeld      int64 // transform-buffer bytes reserved for this exchange
+}
+
+// releaseBuffered returns the exchange's transform-buffer reservation.
+func (s *Server) releaseBuffered(flow *proxyFlow) {
+	if flow.budgetHeld > 0 {
+		s.transformBudget().release(flow.budgetHeld)
+		flow.budgetHeld = 0
+	}
 }
 
 // Server is the intercepting forward-proxy HTTP handler.
@@ -68,6 +77,7 @@ type Server struct {
 	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 	timeouts                 connTimeouts
+	budget                   *byteBudget // nil → sharedTransformBudget
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
@@ -927,7 +937,9 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 	// that are not covered by an enabled background-traffic suppression policy.
 	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow.Flow) && !flow.suppressCapture &&
 		(s.Scope == nil || s.Scope.InScope(flow.Flow)) {
-		raw, truncated := dumpRequest(out)
+		raw, truncated, held := dumpRequestWithin(out, s.transformBudget())
+		flow.budgetHeld += held
+		defer s.releaseBuffered(flow)
 		if truncated {
 			// The body is too large or could not be read completely, so a round-tripped
 			// edit could forward a truncated body. Skip the hold and preserve the stream.
@@ -1066,6 +1078,7 @@ func isBodylessResponse(resp *http.Response) bool {
 // while tee'ing the body to the store, then records the flow.
 func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *proxyFlow) {
 	defer resp.Body.Close()
+	defer s.releaseBuffered(flow)
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
@@ -1140,6 +1153,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *proxyFlow) error {
 	upstream := resp.Body
 	defer upstream.Close()
+	defer s.releaseBuffered(flow)
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
@@ -1341,22 +1355,29 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		}
 	}
 
-	lr := io.LimitReader(resp.Body, readLimit+1)
-	b, rerr := io.ReadAll(lr)
+	budget := s.transformBudget()
+	b, held, rerr := readBodyWithinBudget(resp.Body, readLimit, resp.ContentLength, budget)
 	if rerr != nil || int64(len(b)) > readLimit {
-		// Too large to buffer/transform (or a mid-body read error) — restore the
-		// stream and forward it untransformed, rather than buffering unbounded or
-		// forwarding a silently-truncated body. Rules/hold don't apply over the cap.
-		if hasRules {
+		// Too large to buffer/transform, over the shared buffer budget, or a
+		// mid-body read error — restore the stream and forward it untransformed,
+		// rather than buffering unbounded or forwarding a silently-truncated
+		// body. Rules/hold don't apply over the caps.
+		budget.release(held)
+		if errors.Is(rerr, errTransformBudget) {
+			noteOverBudget(budget, "response", flow.Host, flow.Path)
+		} else if hasRules {
 			s.eng.NoteSkippedResponseBodyRules()
 		}
 		resp.Body = restoreBody(b, resp.Body)
 		return 0, nil, nil, false, false
 	}
+	flow.budgetHeld += held // released by the caller once the body is written
 	h := resp.Header.Clone()
 	removeHopHeaders(h)
 	st := resp.StatusCode
-	originalBody := append([]byte(nil), b...)
+	// Rules return a new slice (regexp ReplaceAll never edits its input), so b
+	// can be kept as the original without a full copy.
+	originalBody := b
 	originalHeaders := h.Clone()
 	if hasRules {
 		h, b = s.eng.ApplyResponseRules(h, b, skipLargeBody && int64(len(b)) > intercept.RuleScanLimit)
@@ -1663,11 +1684,22 @@ func headerWithHost(r *http.Request) map[string][]string {
 // when the body exceeded the editor buffer or could not be read completely, in
 // which case the partial stream is restored to r.Body and interception is bypassed.
 func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
+	b := newByteBudget(maxTransformBody + 1)
+	raw, truncated, _ = dumpRequestWithin(r, b)
+	return raw, truncated
+}
+
+// dumpRequestWithin is dumpRequest with the body buffered against budget. held
+// is the reservation the caller must release once the request is forwarded;
+// an exhausted budget is reported as truncated (the hold is bypassed).
+func dumpRequestWithin(r *http.Request, budget *byteBudget) (raw []byte, truncated bool, held int64) {
 	var body []byte
 	if r.Body != nil {
 		var readErr error
-		body, readErr = io.ReadAll(io.LimitReader(r.Body, maxTransformBody+1))
+		body, held, readErr = readBodyWithinBudget(r.Body, maxTransformBody, r.ContentLength, budget)
 		if readErr != nil || int64(len(body)) > maxTransformBody {
+			budget.release(held)
+			held = 0
 			// Body too large to buffer for the intercept editor — restore the full
 			// or unread portion so forwarding isn't replaced by an editable partial dump.
 			r.Body = restoreBody(body, r.Body)
@@ -1701,7 +1733,7 @@ func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
 	}
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes(), truncated
+	return b.Bytes(), truncated, held
 }
 
 func isChunked(te []string, h http.Header) bool {
