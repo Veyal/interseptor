@@ -70,6 +70,24 @@ func TestCollectionsCanRenameAndDeleteTheCollection(t *testing.T) {
 	)
 }
 
+// Opening another request while a send is in flight used to paint the first
+// request's response under the second (and Save example would store it there).
+// sendCurrent pins the item it sent and drops the result once that changes.
+func TestCollectionsSendResultStaysWithItsRequest(t *testing.T) {
+	js := executableJS(readUIAsset(t, "js/collections-response.js"))
+	requireUIContains(t, js,
+		"const uid = S.ed.uid;",
+		"const current = () => gen === S.sendGen && S.ed && S.ed.uid === uid;",
+		"{ itemUid: uid,",
+	)
+	at := strings.Index(js, "export async function sendCurrent()")
+	end := strings.Index(js, "export function setSendBusy")
+	body := js[at:end]
+	if strings.Index(body, "if (!current())") > strings.Index(body, "S.step = res;") {
+		t.Error("sendCurrent must check that the request is still open before it stores the result")
+	}
+}
+
 // The collection and environment pickers are enhanced into .ui-select
 // wrappers; when the toolbar is crowded the wrapper shrinks, so the trigger
 // must fill it (and ellipsize) rather than spill over the next button.

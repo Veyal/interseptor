@@ -15,19 +15,25 @@ export async function sendCurrent() {
   if (!verdict.ok) { toast(verdict.reason); return; }
   if (S.dirty && !(await X.saveForSend())) return;
   const gen = ++S.sendGen;
+  // The user may open another request while this one is in flight; its result
+  // must not be painted (or saved as an example) under that other request.
+  const uid = S.ed.uid;
+  const current = () => gen === S.sendGen && S.ed && S.ed.uid === uid;
   S.busy = true;
   setSendBusy(true);
   S.step = null;
   renderResponse({ loading: true });
   if (S.phone === 'req' && window.matchMedia('(max-width:720px)').matches) setPhone('res');
   try {
-    const res = await jsend('POST', '/api/collections/send', { itemUid: S.ed.uid, envUid: S.envUid || undefined, persist: 'keep' });
-    if (gen !== S.sendGen) return;
+    const res = await jsend('POST', '/api/collections/send', { itemUid: uid, envUid: S.envUid || undefined, persist: 'keep' });
+    let flow = null;
+    const id = M.firstFlowId(res);
+    if (id && current()) { try { flow = await jget('/api/flows/' + id); } catch (e) { flow = null; } }
+    // Kept script variable writes still refresh the environments.
+    if (!current()) { if (gen === S.sendGen && (res.varChanges || []).length) await reloadEnvs(); return; }
     S.step = res;
     S.consoleLines = (res.console || []).slice(0);
-    S.flow = null;
-    const id = M.firstFlowId(res);
-    if (id) { try { S.flow = await jget('/api/flows/' + id); } catch (e) { S.flow = null; } }
+    S.flow = flow;
     S.resTab = (res.tests || []).length && M.stepSummary(res).kind !== 'sent' ? 'tests' : S.resTab;
     renderResponse();
     renderConsole();
@@ -36,7 +42,7 @@ export async function sendCurrent() {
     else setStatus('', '');
     paintEnvDot((res.unresolved || []).length || null);
   } catch (e) {
-    if (gen !== S.sendGen) return;
+    if (!current()) return;
     S.step = null;
     renderResponse({ error: e });
   } finally {
