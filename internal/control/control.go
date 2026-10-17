@@ -1327,7 +1327,9 @@ func (h *interceptAPI) setInterceptFilter(w http.ResponseWriter, r *http.Request
 		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, h.interceptState())
+	// The UI saves the filter as the operator types: answer with the summary
+	// (no held raw bytes), as the SSE stream does; raw loads on demand.
+	writeJSON(w, http.StatusOK, h.interceptStateSummary())
 }
 
 func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) {
