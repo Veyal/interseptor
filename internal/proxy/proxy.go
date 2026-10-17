@@ -1202,13 +1202,52 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 		resFinalize = func() (string, int64, error) { return "", 0, nil }
 	}
 
-	werr := resp.Write(conn)
+	// Response.Write emits the head as many tiny writes (four per header
+	// line) and each chunk as three; on a TLS tunnel every write is its own
+	// record and syscall. Buffer them, and flush whenever the body is about to
+	// wait on upstream, so each chunk still reaches the client immediately.
+	bw := tunnelWriterPool.Get().(*bufio.Writer)
+	bw.Reset(conn)
+	body := resp.Body
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{flushBeforeRead{r: body, w: bw}, body}
+	werr := resp.Write(writerOnly{bw}) // writerOnly hides ReadFrom (see flushBeforeRead)
+	if ferr := bw.Flush(); werr == nil {
+		werr = ferr
+	}
+	bw.Reset(nil)
+	tunnelWriterPool.Put(bw)
 	h, n, _ := resFinalize()
 	flow.ResBodyHash, flow.ResLen = h, n
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
 	s.record(flow)
 	return werr
 }
+
+var tunnelWriterPool = sync.Pool{New: func() any { return bufio.NewWriterSize(nil, 16<<10) }}
+
+// flushBeforeRead flushes w before every read of r, so buffered output goes
+// out exactly when the copy would otherwise block waiting for more input.
+// The writer must not be read into directly (bufio.Writer.ReadFrom would be
+// re-entered by the flush), hence writerOnly.
+type flushBeforeRead struct {
+	r io.Reader
+	w *bufio.Writer
+}
+
+func (f flushBeforeRead) Read(p []byte) (int, error) {
+	if f.w.Buffered() > 0 {
+		if err := f.w.Flush(); err != nil {
+			return 0, err
+		}
+	}
+	return f.r.Read(p)
+}
+
+// writerOnly exposes only Write, hiding optional interfaces such as ReaderFrom.
+type writerOnly struct{ io.Writer }
 
 // maxTransformBody bounds how much of a request/response body is buffered in
 // memory to transform (match-&-replace) or hold for interception. Bodies over the
