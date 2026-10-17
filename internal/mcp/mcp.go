@@ -914,6 +914,29 @@ func boundJSON(raw string, maxRows int) string {
 	return truncate(raw, maxRows*64)
 }
 
+// listIssuesQuery maps list_issues arguments onto GET /api/scanner/issues.
+// Grouping is on by default: repeated checks on one host are the bulk of a
+// passive scan, and an agent needs the pairs, not every URL they fired on.
+func listIssuesQuery(a map[string]any) url.Values {
+	q := url.Values{}
+	grouped := argBool(a, "grouped", true)
+	limit := 100
+	if grouped {
+		q.Set("group", "host")
+		limit = 50
+	}
+	q.Set("limit", strconv.Itoa(argInt(a, "limit", limit)))
+	if off := argInt(a, "offset", 0); off > 0 {
+		q.Set("offset", strconv.Itoa(off))
+	}
+	for _, k := range []string{"severity", "host", "title"} {
+		if v := argStr(a, k); v != "" {
+			q.Set(k, v)
+		}
+	}
+	return q
+}
+
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -2254,12 +2277,25 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("run_scanner",
-		"Passive scan over captured flows → findings (severity/title/target/evidence/fix). No requests sent.",
+		"Passive scan of the newest 5000 captured flows; sends nothing. Returns counts only ({total, groupCount, bySeverity, scan:{flows,capped}}); read the rows with list_issues.",
 		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/scanner/run", nil) })
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/scanner/run?summary=1", nil)
+		})
 
-	s.add("list_issues", "List current scanner findings.", obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/issues") })
+	s.add("list_issues",
+		"List passive scanner issues. Default: one row per (check, host) with count + 3 example flowIds/targets. grouped=false returns raw issues. Filter by severity (comma list), host, title; page with limit/offset (nextOffset).",
+		obj(map[string]any{
+			"severity": p("string", "comma list, e.g. High,Medium"),
+			"host":     p("string", "exact host"),
+			"title":    p("string", "title substring"),
+			"grouped":  p("boolean", "default true"),
+			"limit":    p("integer", "default 50 (grouped) / 100 (raw), max 1000"),
+			"offset":   pt("integer"),
+		}),
+		func(a map[string]any) (string, error) {
+			return s.apiGet("/api/scanner/issues?" + listIssuesQuery(a).Encode())
+		})
 
 	s.add("scan_report",
 		"Passive findings as a Markdown report, grouped by severity.",

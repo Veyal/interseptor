@@ -30,10 +30,15 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 	// captured traffic (host is a substring match; search matches path/host/method).
 	host := r.URL.Query().Get("host")
 	search := r.URL.Query().Get("search")
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit, Host: host, Search: search, ExcludeFlags: store.FlagIntruder})
+	// One extra row tells a capped scan from one that read every match.
+	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit + 1, Host: host, Search: search, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
 		httpInternalErr(w, err)
 		return
+	}
+	capped := len(flows) > limit
+	if capped {
+		flows = flows[:limit]
 	}
 
 	// Compile user checks once; surface compile failures without aborting.
@@ -142,7 +147,25 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		plugin.EmitScanIssue(is.FlowID, is.Severity, is.Title) // extension hooks (best-effort)
 	}
 	h.broadcast(map[string]any{"type": "scanner.update"})
-	h.scannerIssues(w, r)
+	stored, err := h.st.ListIssues()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if stored == nil {
+		stored = []store.Issue{}
+	}
+	// scan says what this run covered: a scan reads at most `limit` of the
+	// newest matching flows, and capped tells the caller older ones were left
+	// out, instead of letting a partial scan pass for a whole one.
+	coverage := map[string]any{"flows": len(flows), "limit": limit, "capped": capped}
+	if r.URL.Query().Get("summary") == "1" {
+		out := issueRunSummary(stored)
+		out["scan"] = coverage
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"issues": stored, "scan": coverage})
 }
 
 // scanBodies is the scan engine's body loader. It reports a missing blob as
@@ -202,6 +225,11 @@ func (h *scannerAPI) scannerCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"cancelled": h.scanJob.cancelAll()})
 }
 
+// scannerIssues lists the stored issues. With no query it returns every issue
+// (the UI groups them itself). ?severity=, ?host= and ?title= filter, ?group=host
+// folds repeats of one check on one host into a single row with a count and a
+// few example flows, and ?limit=/?offset= page either shape — an agent reading
+// 131 issues that are really 2 (check, host) pairs then gets 2 rows, not 74 KB.
 func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
@@ -211,7 +239,17 @@ func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	if issues == nil {
 		issues = []store.Issue{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+	q := r.URL.Query()
+	if !issueQueryActive(q) {
+		writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+		return
+	}
+	opts, err := parseIssueQuery(q)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, queryIssues(issues, opts))
 }
 
 func (h *scannerAPI) clearScannerIssues(w http.ResponseWriter, r *http.Request) {
