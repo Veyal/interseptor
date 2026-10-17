@@ -1516,12 +1516,18 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 		return fmt.Errorf("body must be a JSON array of blocks: %w", err)
 	}
 	ord := 0
+	attached := make(map[int64]bool)
 	for _, r := range recs {
 		if r.Type != "flow" {
 			continue
 		}
 		if r.FlowID <= 0 {
 			return fmt.Errorf("body flow block missing flowId")
+		}
+		if attached[r.FlowID] {
+			// One flow cited by several blocks (e.g. action and result) is
+			// still one attachment.
+			continue
 		}
 		if r.Missing {
 			// Missing evidence is intentionally not an attachment: keeping the
@@ -1543,6 +1549,7 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 		); err != nil {
 			return err
 		}
+		attached[r.FlowID] = true
 		ord++
 	}
 	return nil

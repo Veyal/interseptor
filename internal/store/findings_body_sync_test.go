@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -221,6 +222,35 @@ func TestNormalizeFindingBodyKeepsSameFlowUnderDistinctRolesAndCollapsesExactCop
 	}
 	if len(recs) != 2 || recs[0].Role != "action" || recs[1].Role != "result" || recs[1].Proof != "Response returns record 8 owned by bob." {
 		t.Fatalf("want action+result blocks with the exact copy collapsed, got %+v", recs)
+	}
+}
+
+// Creating or rewriting a finding whose body cites one flow twice must keep
+// a single attachment row (the table is unique per finding and flow).
+func TestBodyCitingOneFlowTwiceKeepsOneAttachment(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	fid, err := s.InsertFlow(&Flow{Method: "GET", Host: "example.com", Path: "/records/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := NormalizeFindingBody(fmt.Sprintf(`[{"type":"flow","flowId":%d,"role":"action","proof":"changed id"},{"type":"flow","flowId":%d,"role":"result","proof":"record 8 returned"}]`, fid, fid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.CreateFinding(&Finding{Title: "IDOR", Body: body})
+	if err != nil {
+		t.Fatalf("create with a twice-cited flow: %v", err)
+	}
+	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("rewrite with a twice-cited flow: %v", err)
+	}
+	got, _ := s.GetFinding(id)
+	if len(got.Flows) != 1 || len(got.Blocks) != 2 || got.Blocks[1].Missing {
+		t.Fatalf("flows=%+v blocks=%+v", got.Flows, got.Blocks)
 	}
 }
 
