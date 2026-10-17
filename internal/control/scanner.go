@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -30,10 +31,15 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 	// captured traffic (host is a substring match; search matches path/host/method).
 	host := r.URL.Query().Get("host")
 	search := r.URL.Query().Get("search")
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit, Host: host, Search: search, ExcludeFlags: store.FlagIntruder})
+	// One extra row tells a capped scan from one that read every match.
+	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit + 1, Host: host, Search: search, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
 		httpInternalErr(w, err)
 		return
+	}
+	capped := len(flows) > limit
+	if capped {
+		flows = flows[:limit]
 	}
 
 	// Compile user checks once; surface compile failures without aborting.
@@ -68,7 +74,7 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		// requested host/path, even if scope changed since its old issue was
 		// created — so scope filters what is analysed, not what is considered.
 		InScope: h.sc.InScope,
-		Bodies:  h.scanBodies,
+		Bodies:  h.scanBodyLoader(len(checks) > 0),
 		Custom:  h.customChecksRunner(checks, disabled),
 		OnProgress: func(p scanner.Progress) {
 			h.broadcast(scanProgressEvent(p, false))
@@ -142,26 +148,73 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		plugin.EmitScanIssue(is.FlowID, is.Severity, is.Title) // extension hooks (best-effort)
 	}
 	h.broadcast(map[string]any{"type": "scanner.update"})
-	h.scannerIssues(w, r)
+	stored, err := h.st.ListIssues()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if stored == nil {
+		stored = []store.Issue{}
+	}
+	// scan says what this run covered: a scan reads at most `limit` of the
+	// newest matching flows, and capped tells the caller older ones were left
+	// out, instead of letting a partial scan pass for a whole one.
+	coverage := map[string]any{"flows": len(flows), "limit": limit, "capped": capped}
+	if r.URL.Query().Get("summary") == "1" {
+		out := issueRunSummary(stored)
+		out["scan"] = coverage
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"issues": stored, "scan": coverage})
+}
+
+// scanBodyLoader picks the scan's body loader. Built-in checks inspect only the
+// first scanner.MaxScanBytes of each body, so without custom checks the loader
+// reads just that prefix; custom Starlark checks are handed whole bodies, as
+// before.
+func (h *Hub) scanBodyLoader(custom bool) scanner.BodyLoader {
+	if custom {
+		return h.scanBodies
+	}
+	return func(f *store.Flow) ([]byte, []byte, error) { return h.scanBodiesUpTo(f, scanner.MaxScanBytes) }
 }
 
 // scanBodies is the scan engine's body loader. It reports a missing blob as
 // os.ErrNotExist so the engine skips that one flow, and anything else as a
 // real error that ends the scan.
 func (h *Hub) scanBodies(f *store.Flow) (reqBody, resBody []byte, err error) {
-	if reqBody, err = h.bodyBytesResult(f.ReqBodyHash); err != nil {
+	return h.scanBodiesUpTo(f, 0)
+}
+
+// scanBodiesUpTo loads at most limit bytes of each body (0 = all of it).
+func (h *Hub) scanBodiesUpTo(f *store.Flow, limit int64) (reqBody, resBody []byte, err error) {
+	if reqBody, err = h.bodyPrefix(f.ReqBodyHash, limit); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("scanner: skip flow %d: request body blob %q missing", f.ID, f.ReqBodyHash)
 		}
 		return nil, nil, err
 	}
-	if resBody, err = h.bodyBytesResult(f.ResBodyHash); err != nil {
+	if resBody, err = h.bodyPrefix(f.ResBodyHash, limit); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("scanner: skip flow %d: response body blob %q missing", f.ID, f.ResBodyHash)
 		}
 		return nil, nil, err
 	}
 	return reqBody, resBody, nil
+}
+
+// bodyPrefix reads a stored body, stopping after limit bytes (0 = no limit).
+func (h *Hub) bodyPrefix(hash string, limit int64) ([]byte, error) {
+	if limit <= 0 || hash == "" {
+		return h.bodyBytesResult(hash)
+	}
+	rc, err := h.st.OpenBody(hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(io.LimitReader(rc, limit))
 }
 
 // customChecksRunner adapts the compiled Starlark checks to the scan engine, so
@@ -202,6 +255,11 @@ func (h *scannerAPI) scannerCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"cancelled": h.scanJob.cancelAll()})
 }
 
+// scannerIssues lists the stored issues. With no query it returns every issue
+// (the UI groups them itself). ?severity=, ?host= and ?title= filter, ?group=host
+// folds repeats of one check on one host into a single row with a count and a
+// few example flows, and ?limit=/?offset= page either shape — an agent reading
+// 131 issues that are really 2 (check, host) pairs then gets 2 rows, not 74 KB.
 func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
@@ -211,7 +269,17 @@ func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	if issues == nil {
 		issues = []store.Issue{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+	q := r.URL.Query()
+	if !issueQueryActive(q) {
+		writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+		return
+	}
+	opts, err := parseIssueQuery(q)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, queryIssues(issues, opts))
 }
 
 func (h *scannerAPI) clearScannerIssues(w http.ResponseWriter, r *http.Request) {

@@ -19,7 +19,9 @@ func TestUIScannerClearInvalidatesPriorResults(t *testing.T) {
 		"clearResultsEpoch!==scanResultsEpoch",
 		"clearRunEpoch!==scanRunEpoch",
 		"setScanRunState('idle','Run scan ▸')",
-		"if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}",
+		// A refresh owed while the clear ran is skipped only when the clear succeeded
+		// (the list is known empty); a failed clear still reloads.
+		"if(scanResultsRefreshPending){scanResultsRefreshPending=false;if(!cleared)loadIssues();}",
 		"if(!confirmed)return",
 	} {
 		if !strings.Contains(src, want) {

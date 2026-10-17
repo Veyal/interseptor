@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	jwtRe          = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{4,}`)
-	passwordRe     = regexp.MustCompile(`(?i)"?password"?\s*[:=]\s*"?[^"&\s,}]{3,}`)
-	tokenRe        = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
+	jwtRe            = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{4,}`)
+	passwordRe       = regexp.MustCompile(`(?i)"?password"?\s*[:=]\s*"?[^"&\s,}]{3,}`)
+	tokenRe          = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
 	versionRe        = regexp.MustCompile(`\d+\.\d+`)
 	urlSensitiveRe   = regexp.MustCompile(`(?i)[?&](access_?token|refresh_?token|id_?token|auth_?token|api_?key|token|session|password|secret|passwd|client_?secret|auth)=([^&\s]{6,})`)
 	protoPollutionRe = regexp.MustCompile(`(?i)(?:["']?__proto__["']?\s*[:=]|["']?constructor["']?\s*\[["']?prototype["']?\]|constructor\.(?:prototype|__proto__))`)
@@ -83,6 +83,11 @@ var (
 )
 
 const maxScanBytes = 256 * 1024 // cap how much of a body we inspect
+
+// MaxScanBytes is how much of each body the built-in checks read. A body loader
+// that serves only built-ins need not read past it: a scan over large
+// responses would otherwise read every byte of every body to inspect 256 KiB.
+const MaxScanBytes = maxScanBytes
 
 // BuiltinCheck is metadata for a built-in passive check — shown in the Checks
 // manager so users can see and toggle each one (built-ins can be disabled but
@@ -180,6 +185,15 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 	target := f.Method + " " + f.Host + f.Path
 	req := clip(reqBody)
 	resp := clip(resBody)
+	// The lower-cased response, built once and only when a gated (?i) check runs.
+	var respFolded string
+	folded := false
+	respFold := func() string {
+		if !folded {
+			respFolded, folded = foldForGate(resp), true
+		}
+		return respFolded
+	}
 	on := func(id string) bool { return disabled == nil || !disabled[id] }
 
 	var out []store.Issue
@@ -391,7 +405,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Possible SQL injection — a database error string in the response body.
 	if on(checkDBError) {
-		if m := dbErrorRe.FindString(resp); m != "" {
+		if m := dbErrorGate.find(resp, respFold()); m != "" {
 			add("High", "Possible SQL injection (DB error in response)",
 				"The response contains a database error message. This strongly suggests user input reached a SQL query without parameterization — inject a single quote and confirm the error changes to validate SQL injection.",
 				trunc(m, 80),
@@ -401,7 +415,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Internal IP address disclosed in the response body (topology leak).
 	if on(checkPrivateIP) {
-		if m := privateIPRe.FindString(resp); m != "" {
+		if m := privateIPGate.find(resp, ""); m != "" {
 			add("Low", "Internal IP address disclosed",
 				"The response body contains what looks like a private/internal IP address (RFC1918 / loopback / link-local), revealing internal network topology.",
 				strings.TrimSpace(m),
@@ -439,7 +453,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 	// Mixed content — HTTPS page references HTTP resources.
 	if on(checkMixedContent) {
 		if f.Scheme == "https" && isHTML(res, f.Mime) {
-			if m := mixedContentRe.FindString(resp); m != "" {
+			if m := mixedContentGate.find(resp, respFold()); m != "" {
 				add("Medium", "Mixed content: HTTPS page loads HTTP resource",
 					"An HTTPS page references at least one resource (script/style/iframe/image) over "+
 						"plain HTTP. Active mixed content (scripts/styles) is blocked by modern browsers, "+
@@ -478,12 +492,12 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Cloud/API credential or private key exposed (in either body).
 	if on(checkCloudKey) {
-		if m := cloudKeyRe.FindString(resp); m != "" {
+		if m := cloudKeyGate.find(resp, ""); m != "" {
 			add("High", "Cloud/API credential or private key exposed in response",
 				"The response body contains what looks like a live API key, cloud credential, or private-key block. Secrets returned to clients are cached, logged, and trivially exfiltrated.",
 				redactSecret(m),
 				"Never return secrets to clients. Revoke and rotate the exposed credential, and move it server-side into a secrets manager.")
-		} else if m := cloudKeyRe.FindString(req); m != "" {
+		} else if m := cloudKeyGate.find(req, ""); m != "" {
 			add("High", "Cloud/API credential or private key exposed in request",
 				"The request body carries what looks like an API key, cloud credential, or private-key block. Even over TLS these end up in proxy/access logs and browser history.",
 				redactSecret(m),
@@ -518,7 +532,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Framework debug page / language stack trace (any status).
 	if on(checkDebugPage) {
-		if m := debugPageRe.FindString(resp); m != "" {
+		if m := debugPageGate.find(resp, respFold()); m != "" {
 			add("High", "Framework debug page or stack trace disclosed",
 				"The response looks like a framework debug page or a language stack trace. These leak source paths, framework versions, SQL, and sometimes an interactive console — a major reconnaissance and, for some debuggers, RCE surface.",
 				trunc(m, 80),
@@ -657,6 +671,9 @@ func redactSecret(s string) string {
 // findPaymentCard returns a masked payment card number found in s (Luhn-valid,
 // known IIN prefix), or "".
 func findPaymentCard(s string) string {
+	if !hasDigitRun(s, 13) { // the candidate pattern needs 13 digits; most bodies have none
+		return ""
+	}
 	for _, cand := range ccCandidateRe.FindAllString(s, 32) {
 		digits := stripNonDigits(cand)
 		if len(digits) < 13 || len(digits) > 19 {

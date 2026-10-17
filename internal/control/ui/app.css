@@ -1135,6 +1135,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .map-ep.map-hit{background:var(--accentDim)}
 .map-cluster-badge,.map-cluster-badge-static{font-size:var(--fs-xs);padding:1px 6px;border-radius:var(--r-sm);border:1px solid var(--line2);background:var(--bg3);color:var(--fg2);cursor:pointer;white-space:nowrap;flex-shrink:0}
 .map-cluster-badge-static{cursor:default}
+/* WCAG 2.5.8: the badge is a button inside a clickable row, so it needs its own 24px target. */
+.map-cluster-badge{display:inline-flex;align-items:center;gap:2px;min-height:24px;min-width:24px}
 .map-cluster-badge:hover{background:var(--bg2)}
 .map-ep.map-cluster-child,.map-tbl tr.map-cluster-child{opacity:.85;padding-left:12px}
 .map-tbl tr.map-hit-row{background:var(--accentDim)}
@@ -1146,10 +1148,15 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .map-crumb a{color:var(--accent);cursor:pointer;text-decoration:none}
 .map-crumb a:hover{text-decoration:underline}
 .map-virt{display:flex;flex-direction:column;height:100%;min-height:0}
-.map-virt-head{flex:none}
 .map-virt-scroll{flex:1;overflow:auto;position:relative;min-height:0}
-.map-virt-spacer{pointer-events:none}
-.map-virt-body{position:absolute;left:0;right:0;top:0}
+#mapTable .map-virt-scroll{overflow-anchor:none}
+/* Fixed layout gives Path whatever the fixed columns leave; a floor keeps it readable on a phone,
+   where the table scrolls sideways inside its own scroller instead. */
+.map-virt-scroll>table{table-layout:fixed;min-width:640px}
+.map-virt-body th{background:var(--bg2)}
+.map-virt-body td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.map-virt-pad td{padding:0;border:0;line-height:0;font-size:0}
+#mapTable .map-virt-scroll:focus-visible,#mapTable .map-virt-body tr[data-i]:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px;box-shadow:none}
 .map-warn{padding:6px 12px;font-size:var(--fs-xs);color:var(--amber);background:var(--noteDim);border-bottom:1px solid var(--line);flex:none}
 .map-discovery{padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg1);flex:none}
 .map-table-wrap{padding:0}

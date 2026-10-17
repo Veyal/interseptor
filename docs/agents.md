@@ -928,7 +928,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `list_finding_tags` | none | List tags in use on findings (with counts) — reuse these for report scoping (cms, website, app, api... |
 | `list_findings` | none | List concise finding summaries, evidence/readiness state, and optional severity/status/tag filters. |
 | `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status). |
-| `list_issues` | none | List current scanner findings. |
+| `list_issues` | none | List passive scanner issues. |
 | `list_packs` | none | List installed rule packs (bundles of Starlark checks). |
 | `list_rules` | none | List match-&-replace rules. |
 | `list_scope` | none | List target-scope rules (which hosts/paths are in scope). |
@@ -955,7 +955,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
 | `run_request` | `itemUid` | Send one collection request through the shared pipeline: variables resolved, trusted scripts run, scope... |
-| `run_scanner` | none | Passive scan over captured flows → findings (severity/title/target/evidence/fix). |
+| `run_scanner` | none | Passive scan of the newest 5000 captured flows; sends nothing. |
 | `save_check` | `id`, `source` | Save a Starlark check by id (letters/digits/-/_); must compile. |
 | `save_codec` | `id`, `source` | Save a project message codec by id (letters/digits/-/_); must compile. |
 | `scan_report` | none | Passive findings as a Markdown report, grouped by severity. |
@@ -1338,9 +1338,9 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/runs/{uid}` | Per-request results of one run |
 | POST | `/api/scanner/cancel` | Stop every running passive scan and return {cancelled:N}, the number stopped. |
 | DELETE | `/api/scanner/issues` | Clear passive scanner issues only; curated Findings are unchanged |
-| GET | `/api/scanner/issues` | List scanner findings |
+| GET | `/api/scanner/issues` | List scanner findings as {issues}. |
 | GET | `/api/scanner/report` | Download scanner findings as a Markdown report |
-| POST | `/api/scanner/run` | Run passive checks over captured flows (no body) |
+| POST | `/api/scanner/run` | Run passive checks over the newest 5000 matching captured flows (no body; ?host=, ?search= narrow it). |
 | GET | `/api/scanner/targets` | List every distinct in-scope scanner host as {hosts:[{host,count}],truncated:false}; exhaustively paginates... |
 | GET | `/api/scope` | List target-scope rules |
 | POST | `/api/scope` | Add a scope rule. |

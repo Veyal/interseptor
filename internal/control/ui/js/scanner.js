@@ -3,10 +3,10 @@ import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
 import { renderState } from './statepanel.js';
-import { getShellApi } from './shell-hooks.js';
+import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
 import { stepIndex } from './list-rows-model.js';
-import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, hostCounts, issuesForHost, groupHostLabel, coverageNote } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -702,14 +702,51 @@ function syncScanActionControls(){
   if(clear){clear.disabled=scanRunPending||scanClearPending;clear.setAttribute('aria-busy',scanClearPending?'true':'false');}
   syncScanProgress();
 }
-// The run is one synchronous POST, so progress is indeterminate (no value) and
-// there is no Stop: aborting the fetch would not stop the server-side scan.
+// The run is one blocking POST. Its progress arrives as scan.progress events
+// (scanned/total flows), which turn the bar determinate; until the first one it
+// is indeterminate. Stop asks the server to cancel (POST /api/scanner/cancel):
+// aborting the fetch alone would leave the scan running.
+let scanStopPending=false;
+function scanTargetLabel(){return (($('#scanTarget')||{}).value)||'all in-scope hosts';}
 function syncScanProgress(){
   const row=$('#scanProgress');if(!row)return;
+  const text=$('#scanProgressText'),bar=$('#scanProgressBar'),stop=$('#scanStop');
+  // Hiding the row drops focus from Stop to <body>; hand it to Run instead.
+  const stopFocused=!!stop&&document.activeElement===stop;
   row.hidden=!scanRunPending;
-  const text=$('#scanProgressText');
-  if(text)text.textContent=scanRunPending?'Scanning '+((($('#scanTarget')||{}).value)||'all in-scope hosts')+' …':'';
+  if(row.hidden&&stopFocused)$('#scanRun')?.focus({preventScroll:true});
+  const count=$('#scanProgressCount');
+  if(!scanRunPending){
+    if(text)text.textContent='';
+    if(count)count.textContent='';
+    if(bar){bar.removeAttribute('value');bar.removeAttribute('max');}
+    scanStopPending=false;
+  }else if(text&&!text.textContent)text.textContent='Scanning '+scanTargetLabel()+' …';
+  // Stop stays enabled while stopping (aria-disabled): disabling the focused button would drop focus.
+  if(stop){stop.setAttribute('aria-disabled',scanStopPending?'true':'false');stop.setAttribute('aria-busy',scanStopPending?'true':'false');stop.textContent=scanStopPending?'Stopping…':'Stop scan';}
 }
+function onScanProgress(m){
+  const p=m&&m.scan;
+  if(!scanRunPending||!p||!(Number(p.total)>0))return;
+  const bar=$('#scanProgressBar'),text=$('#scanProgressText');
+  const total=Number(p.total)||0,done=Math.min(total,Number(p.scanned)||0);
+  // The bar carries the value for assistive tech; the count beside it is visual only, so the
+  // status line is not re-announced on every tick.
+  if(bar){bar.max=total;bar.value=done;}
+  const count=$('#scanProgressCount');
+  if(count)count.textContent=done.toLocaleString()+' / '+total.toLocaleString()+' flows';
+}
+try{registerSseHandler('scan.progress',onScanProgress);}catch(e){/* progress stays indeterminate */}
+// A scope edit changes which hosts a scan covers: refresh the target list (and the Run gate) while
+// the panel is open; it is reloaded anyway whenever the panel is opened.
+try{registerSseHandler('scope.update',()=>{if(document.querySelector('#panel-scanner.active'))loadScanTargets();});}catch(e){/* reloaded on next open */}
+async function stopScan(){
+  if(!scanRunPending||scanStopPending)return;
+  scanStopPending=true;syncScanProgress();
+  try{await api('/api/scanner/cancel',{method:'POST'});}
+  catch(e){scanStopPending=false;syncScanProgress();toastError('Stop scan',e);}
+}
+$('#scanStop')?.addEventListener('click',stopScan);
 function scanRunGate(){return runGate({hostCount:scanUI.hostCount,hostsLoaded:scanUI.hostsLoaded});}
 // Scope line + the reason Run is unavailable (shown, and tied to the button via
 // aria-describedby). An empty scope is NOT a reason: the server treats it as
@@ -741,7 +778,12 @@ export async function runScan(){
   syncScanActionControls();
   const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
   const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
+  const progressText=$('#scanProgressText');if(progressText)progressText.textContent='';
+  syncScanProgress();
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Rescanning selected in-scope traffic…';
+  // The run's own response is the freshest list: a scanner.update that arrived while it ran
+  // (this scan's own commit) must not reload it again and wipe the completion message.
+  let fresh=false;
   try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});
     if(resultsEpoch!==scanResultsEpoch){
       // A newer results load owns the issue list, but this run still owns its
@@ -749,9 +791,10 @@ export async function runScan(){
       if(epoch===scanRunEpoch){setScanRunState('success','Scan complete');resetScanRun(700,epoch);}
       return;
     }
-    scanState.issues=d.issues||[];renderScan();
+    scanState.issues=d.issues||[];fresh=true;renderScan();
     await animateOnce($('#scanPassiveView'),[{opacity:.6},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    if(stateEl)stateEl.textContent='Rescan complete · stale issues reconciled for this scan';
+    const coverage=coverageNote(d.scan);
+    if(stateEl)stateEl.textContent=coverage||'Rescan complete · stale issues reconciled for this scan';
     setScanRunState('success','Scan complete');resetScanRun(700,epoch);
     toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
   catch(e){
@@ -759,11 +802,17 @@ export async function runScan(){
       if(epoch===scanRunEpoch){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);}
       return;
     }
+    // A Stop the operator asked for answers 409: nothing was saved, which is the expected outcome, not an error.
+    if(e&&e.status===409&&scanStopPending){
+      setScanRunState('idle','Run scan ▸');
+      if(stateEl)stateEl.textContent='Scan stopped · nothing was saved; the previous results are unchanged';
+      return;
+    }
     setScanRunState('error','Scan failed');resetScanRun(1000,epoch);renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);
   }
   finally{
     scanRunPending=false;syncScanActionControls();
-    if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}
+    if(scanResultsRefreshPending){scanResultsRefreshPending=false;if(!fresh)loadIssues();}
   }
 }
 // Populate the scanner's target dropdown from in-scope history only.
@@ -775,6 +824,7 @@ export async function loadScanTargets(){
     if(d.truncated)throw new Error('server returned a truncated host list — retry before choosing a target');
     const hosts=(d.hosts||[]).filter(h=>h&&h.host);
     scanUI.hostCount=hosts.length;scanUI.hostsLoaded=true;renderScanContext();
+    if(!scanState.issues.length&&!scanRunPending)renderScan(); // the empty state names what Run will cover
     const cur=sel.value;
     sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${Number(h.count)||0})</option>`).join('');
     if(hosts.some(h=>h.host===cur))sel.value=cur;
@@ -801,7 +851,7 @@ export const sevRank=modelSevRank;
 export function scanGroups(){return groupIssues(scanState.issues);}
 // Scanner view state that is not part of the issue data: the severity filter,
 // the split pane and the scope/target context behind the Run gate.
-const scanUI={sevActive:new Set(),pane:null,hostCount:0,hostsLoaded:false,scope:null};
+const scanUI={sevActive:new Set(),host:'',pane:null,hostCount:0,hostsLoaded:false,scope:null};
 function setScanDetailHTML(html){
   const host=$('#scanDetail');if(!host)return;
   // The SplitPane's Back button lives inside the detail; keep it across renders.
@@ -833,7 +883,7 @@ function scanItemHTML(g,idx){
   const on=idx===scanState.sel;
   return `<div class="scan-item ${on?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" data-key="${escAttr(g.title)}" role="option" tabindex="${on?'0':'-1'}" aria-selected="${on?'true':'false'}" aria-posinset="${idx+1}" aria-setsize="${(scanState.groups||[]).length}">
     ${sevChip(g.severity)}
-    <div class="t" title="${escAttr(g.title)}">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`;
+    <div class="t" title="${escAttr(g.title)}">${esc(g.title)}</div><div class="tg">${esc(groupHostLabel(g))}</div></div>`;
 }
 function ensureScanListWin(list){
   if(scanListWin&&scanListWin.container===list)return scanListWin;
@@ -890,6 +940,28 @@ function moveScanSelection(e,from){
   $('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true});
   requestAnimationFrame(()=>$('#scanList')?.querySelector('#scan-issue-'+next)?.focus({preventScroll:true}));
 }
+// With traffic captured but no scan run yet, say what Run will cover instead of asking for traffic.
+function scanEmptyHint(){
+  const n=scanUI.hostCount;
+  if(scanUI.hostsLoaded&&n>0)return 'Run scan to check '+n+' in-scope host'+(n===1?'':'s')+'. It reads captured traffic only and sends nothing.';
+  return 'Capture some traffic, then Run scan.';
+}
+// The host filter narrows the results to one target, so background traffic from other hosts
+// (a browser's own update and sign-in calls when no scope is set) cannot bury them. It only
+// appears when the issues span more than one host; options are rebuilt only when the hosts change.
+let scanHostSig='';
+function renderScanHosts(hosts){
+  const row=$('#scanHostRow'),sel=$('#scanHostFilter');if(!row||!sel)return;
+  row.hidden=hosts.length<2;
+  const sig=JSON.stringify(hosts);
+  if(sig!==scanHostSig){
+    scanHostSig=sig;
+    const total=hosts.reduce((n,h)=>n+h.count,0);
+    sel.innerHTML='<option value="">All hosts ('+total+')</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${h.count})</option>`).join('');
+  }
+  sel.value=scanUI.host;
+}
+$('#scanHostFilter')?.addEventListener('change',e=>{scanUI.host=e.target.value||'';scanState.sel=null;renderScan();});
 export function renderScan(opts){
   const list=$('#scanList');
   const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||'';
@@ -897,15 +969,19 @@ export function renderScan(opts){
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
   const focusedTitle=opts&&typeof opts.focusTitle==='string'?opts.focusTitle:Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
   list.removeAttribute('data-state');
-  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';if(scanListWin)scanListWin.suspend();list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
-  const all=groupIssues(scanState.issues);
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;scanUI.host='';renderScanHosts([]);renderScanChips([]);$('#scanCount').textContent='';if(scanListWin)scanListWin.suspend();list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">'+esc(scanEmptyHint())+'</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
+  const hosts=hostCounts(scanState.issues);
+  if(scanUI.host&&!hosts.some(h=>h.host===scanUI.host))scanUI.host='';
+  renderScanHosts(hosts);
+  const scoped=issuesForHost(scanState.issues,scanUI.host);
+  const all=groupIssues(scoped);
   const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
   renderScanChips(all);
-  $('#scanCount').textContent=summaryText(all,scanState.issues);
+  $('#scanCount').textContent=summaryText(all,scoped);
   if(!groups.length){
     scanState.sel=null;
     if(scanListWin)scanListWin.suspend();
-    renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size,onClear:()=>{scanUI.sevActive=new Set();renderScan();}});
+    renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size+(scanUI.host?1:0),onClear:()=>{scanUI.sevActive=new Set();scanUI.host='';renderScan();}});
     setScanDetailHTML(SCAN_NO_SELECTION);
     return;
   }
@@ -1021,7 +1097,7 @@ function showScanIssueCtx(e,g){
       {label:'Remediation',disabled:!first.fix,act:()=>copyText(first.fix||'','remediation copied')},
       {label:'Affected targets',act:()=>copyText(g.items.map(i=>i.target||'').filter(Boolean).join('\n'),'targets copied')},
     ]},
-    {label:'Filter this severity',icon:'filter',disabled:!g.severity,act:()=>{scanUI.sevActive=new Set([String(g.severity).toLowerCase()]);renderScan();}},
+    {label:'Filter this severity',icon:'filter',disabled:!g.severity,act:()=>{scanUI.sevActive=onlySeverity(g.severity);renderScan();}},
     {label:'Scan this host again',icon:'scanner',val:host,disabled:!host,act:()=>prefillScanner(host,'')},
     {label:'Open the check editor',icon:'checks',act:openChecks},
   ]}]);
@@ -1087,15 +1163,22 @@ $('#scanClear')&&($('#scanClear').onclick=async()=>{
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}
   setScanRunState('idle','Run scan ▸');
   syncScanActionControls();
+  // The clear's own scanner.update would reload an empty list and wipe the confirmation below.
+  let cleared=false;
   try{
     await api('/api/scanner/issues',{method:'DELETE'});
     if(clearEpoch!==scanClearEpoch||clearRunEpoch!==scanRunEpoch||clearResultsEpoch!==scanResultsEpoch)return;
-    scanState.issues=[];scanState.sel=null;renderScan();
+    scanState.issues=[];scanState.sel=null;cleared=true;renderScan();
     $('#scanRescanState').textContent='Scanner results cleared · curated Findings were not changed';
   }catch(e){
     if(clearEpoch===scanClearEpoch&&clearResultsEpoch===scanResultsEpoch)renderLoadError($('#scanRescanState'),'Clear scanner results',e,()=>$('#scanClear').click(),scanState.issues.length>0);
   }finally{
-    if(clearEpoch===scanClearEpoch){scanClearPending=false;if(button)button.textContent='Clear';syncScanActionControls();if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}}
+    if(clearEpoch===scanClearEpoch){
+      scanClearPending=false;if(button)button.textContent='Clear results';syncScanActionControls();
+      // The button was disabled while it had focus; give focus back instead of leaving it on <body>.
+      if(button&&(!document.activeElement||document.activeElement===document.body))button.focus({preventScroll:true});
+      if(scanResultsRefreshPending){scanResultsRefreshPending=false;if(!cleared)loadIssues();}
+    }
   }
 });
 
