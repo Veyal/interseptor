@@ -34,6 +34,13 @@ func TestMapVirtualTableIsOneMeasuredTableWithWholeTableKeys(t *testing.T) {
 	)
 }
 
+// The Map's "+N identical" badge is a button inside a clickable row, so it
+// needs its own 24px target (it was 47x18).
+func TestMapClusterBadgeHasA24pxTarget(t *testing.T) {
+	requireUIContains(t, readUIAsset(t, "app.css"),
+		".map-cluster-badge{display:inline-flex;align-items:center;gap:2px;min-height:24px;min-width:24px}")
+}
+
 // The scanner shows real progress from scan.progress events and can stop a scan
 // through POST /api/scanner/cancel (a stopped scan saves nothing and is not
 // reported as a failure). Results can be narrowed to one host, so traffic from
