@@ -2783,7 +2783,9 @@ $('#selDelete').onclick=async()=>{
   function applyHeight(h){
     h=clamp(h);
     inspect.style.height=h+'px';
-    inspect.style.flex='none';
+    // No inline flex: panel-proxy.css lets the inspector shrink before the
+    // History list drops below its minimum rows.
+    inspect.style.flex='';
     syncRange();
     try{localStorage.setItem(SPLITTER_KEY,String(h));}catch(e){}
   }
