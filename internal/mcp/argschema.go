@@ -32,11 +32,9 @@ func validateArgs(schema map[string]any, args map[string]any) error {
 		}
 		if !ok || v == nil {
 			problems = append(problems, key+" is required"+expectedSuffix(props[key]))
-			continue
 		}
-		if s, isStr := v.(string); isStr && strings.TrimSpace(s) == "" && schemaAllows(props[key], "string") && !schemaAllows(props[key], "object") {
-			problems = append(problems, key+" is required (got an empty string)")
-		}
+		// A present "" is a value, not a missing key: set_note/set_notes use it
+		// to clear text. Handlers that need non-empty strings use reqStr.
 	}
 	keys := make([]string, 0, len(args))
 	for k := range args {
