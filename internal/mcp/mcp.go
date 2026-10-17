@@ -386,7 +386,15 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 		args = map[string]any{}
 	}
 	start := time.Now()
-	text, err := t.call(args)
+	text, err := "", validateArgs(t.schema, args)
+	if err == nil {
+		text, err = t.call(args)
+	}
+	if err == nil {
+		if msg, failed := errorOnlyResult(text); failed {
+			text, err = "", fmt.Errorf("%s", msg)
+		}
+	}
 	if s.report != nil {
 		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil, Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
 		if err != nil {
@@ -1016,7 +1024,7 @@ func (s *Server) registerTools() {
 			"method":       pt("string"),
 			"search":       p("string", "path substring"),
 			"scheme":       pt("string"),
-			"status":       p("integer", "class 1-5 (4=4xx)"),
+			"status":       pr("class (4=4xx)", 1, 5),
 			"tag":          p("string", "filter by tag (exact, case-insensitive)"),
 			"tlsFailed":    p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
 			"includeTools": p("boolean", "include Repeater/Intruder and other tool-generated flows (default true for agents; false = History UI filter)"),
@@ -1047,7 +1055,7 @@ func (s *Server) registerTools() {
 		"Read a flow's raw request and/or response (headers + body).",
 		obj(map[string]any{
 			"id":       pt("integer"),
-			"side":     p("string", "req | res | both (default both)"),
+			"side":     pe("default both", "req", "res", "both", "request", "response"),
 			"maxBytes": pt("integer"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
@@ -2205,7 +2213,7 @@ func (s *Server) registerTools() {
 			"url":      p("string", "absolute URL"),
 			"headers":  map[string]any{"oneOf": []any{map[string]any{"type": "string", "description": "'Key: Value' lines"}, map[string]any{"type": "object", "description": "header map e.g. {\"User-Agent\":\"bot\"}"}}},
 			"body":     pt("string"),
-			"bodyMode": p("string", "raw (default) | decoded"),
+			"bodyMode": pe("raw (default) | decoded", "raw", "decoded"),
 			"codecId":  p("string", "required when bodyMode=decoded"),
 			"flowId":   p("integer", "optional encode context"),
 			"rawBody":  p("string", "wire body for encode context"),
@@ -2251,12 +2259,12 @@ func (s *Server) registerTools() {
 		obj(map[string]any{
 			"target":       p("string", "scheme://host[:port]"),
 			"template":     p("string", "raw request with §…§"),
-			"attackType":   p("string", "sniper | battering | pitchfork | cluster | repeat"),
+			"attackType":   pe("default sniper, or repeat when no payloads are given and repeat>0", "sniper", "battering", "batteringram", "pitchfork", "cluster", "clusterbomb", "repeat", "null"),
 			"payloads":     map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
 			"repeat":       p("integer", "Race / repeat send count"),
 			"count":        p("integer", "alias for repeat"),
-			"threads":      p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
-			"delayMs":      p("integer", "delay between requests in milliseconds"),
+			"threads":      pr("concurrent in-flight requests (default 1)", 1, 64),
+			"delayMs":      map[string]any{"type": "integer", "minimum": 0, "description": "delay between requests in milliseconds"},
 			"barrier":      p("boolean", "repeat/race only, threads>1: launch the first requests together (separate connections, not single-packet sync); recorded in state.barrier"),
 			"grepMatch":    p("string", "regex that flags matching responses"),
 			"grepExtract":  p("string", "regex whose captures are included in results"),
@@ -2267,9 +2275,16 @@ func (s *Server) registerTools() {
 			if repeat == 0 {
 				repeat = argInt(a, "count", 0)
 			}
+			attackType := strings.TrimSpace(argStr(a, "attackType"))
+			if attackType == "" {
+				attackType = "sniper"
+				if a["payloads"] == nil && repeat > 0 {
+					attackType = "repeat"
+				}
+			}
 			return s.api(http.MethodPost, "/api/intruder/start", map[string]any{
 				"target": argStr(a, "target"), "template": argStr(a, "template"),
-				"attackType": argStr(a, "attackType"), "payloads": a["payloads"],
+				"attackType": attackType, "payloads": a["payloads"],
 				"repeat": repeat, "threads": argInt(a, "threads", 1),
 				"delayMs": argInt(a, "delayMs", 0), "barrier": argBool(a, "barrier", false), "grepMatch": argStr(a, "grepMatch"),
 				"grepExtract": argStr(a, "grepExtract"), "processRules": a["processRules"],
@@ -2340,7 +2355,7 @@ func (s *Server) registerTools() {
 			"source": p("string", "Starlark source (or omit and pass id of a saved codec)"),
 			"id":     p("string", "saved codec id when source omitted"),
 			"flowId": p("integer", "default latest"),
-			"side":   p("string", "req | res (default req)"),
+			"side":   pe("default req", "req", "res"),
 		}),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"flowId": argInt(a, "flowId", 0), "side": argStr(a, "side")}
@@ -2373,7 +2388,7 @@ func (s *Server) registerTools() {
 		"Return app-layer decoded plaintext for a flow when a project message codec matches (display-only). side=req|res.",
 		obj(map[string]any{
 			"id":   pt("integer"),
-			"side": p("string", "req | res (default req)"),
+			"side": pe("default req", "req", "res"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqFlowID(a)
@@ -2394,7 +2409,7 @@ func (s *Server) registerTools() {
 			"source":    p("string", "Starlark source when id omitted"),
 			"plaintext": pt("string"),
 			"flowId":    p("integer", "context flow for encode()"),
-			"side":      p("string", "req | res (default req)"),
+			"side":      pe("default req", "req", "res"),
 			"rawBody":   p("string", "optional wire body for encode context (prefix/fields)"),
 		}, "plaintext"),
 		func(a map[string]any) (string, error) {
@@ -2562,10 +2577,10 @@ func (s *Server) registerTools() {
 	s.add("add_scope_rule",
 		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners.",
 		obj(map[string]any{
-			"action":  p("string", "include | exclude"),
+			"action":  pe("", "include", "exclude"),
 			"host":    p("string", "e.g. *.acme.com"),
 			"path":    p("string", "prefix (optional)"),
-			"scheme":  p("string", "http | https (optional)"),
+			"scheme":  pe("optional", "http", "https"),
 			"enabled": p("boolean", "default true"),
 		}, "action"),
 		func(a map[string]any) (string, error) {
@@ -2604,7 +2619,7 @@ func (s *Server) registerTools() {
 	s.add("decode",
 		"Encode/decode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode, smart (auto-detect one layer).",
 		obj(map[string]any{
-			"op":    p("string", "see list above"),
+			"op":    pe("", "base64encode", "base64decode", "urlencode", "urldecode", "hexencode", "hexdecode", "htmlencode", "htmldecode", "jwtdecode", "smart"),
 			"input": pt("string"),
 		}, "op", "input"),
 		func(a map[string]any) (string, error) {
@@ -2959,7 +2974,7 @@ func (s *Server) registerTools() {
 		"DESTRUCTIVE: delete flows by host pattern to keep the project small. hosts is a comma- or newline-separated list of host patterns (wildcards like *.acme.com are supported). mode=delete removes flows matching the listed hosts; mode=keepOnly removes everything EXCEPT the listed hosts. keepOnly with no hosts is rejected (prevents accidental wipe). Changes are broadcast live to open History views.",
 		obj(map[string]any{
 			"hosts": p("string", "comma- or newline-separated host patterns, e.g. 'noise.com,*.cdn.com'"),
-			"mode":  p("string", "delete (default) | keepOnly"),
+			"mode":  pe("default delete", "delete", "keepOnly"),
 		}, "hosts"),
 		func(a map[string]any) (string, error) {
 			hostsRaw := argStr(a, "hosts")
@@ -3009,7 +3024,7 @@ func (s *Server) registerTools() {
 		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
-			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"mode":       pe("merge (default: upsert by name, keep others) | replace (overwrite the whole list)", "merge", "replace"),
 			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
@@ -3136,7 +3151,7 @@ func (s *Server) registerTools() {
 			"flowId":    pt("integer"),
 			"jwtFlowId": p("integer", "flow whose JWT to extract — defaults to flowId"),
 			"jwt":       p("string", "raw JWT string (alternative to jwtFlowId)"),
-			"mode":      p("string", "auto | bearer | path — auto picks path replay for SSO URL/path tokens"),
+			"mode":      pe("auto picks path replay for SSO URL/path tokens", "auto", "bearer", "path"),
 		}, "flowId"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"flowId": argInt(a, "flowId", 0)}
