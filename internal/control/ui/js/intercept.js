@@ -1,6 +1,6 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, beautifyBody, contentTypeFromRaw, highlightHTTP, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope, wireRowKey } from './core.js';
 import { sendRawToRepeater } from './tools.js';
-import { wireListbox, setListboxSelection } from './listbox.js';
+import { wireListbox, setListboxSelection, focusOption } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
 import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
@@ -585,6 +585,23 @@ export async function toggleIntercept(){
   try{await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
 }
 $('#interceptToggle').onclick=toggleIntercept;
+// Arrow/Home/End over the hold queue. wireListbox binds traversal to the rows of
+// the last full render, but held/released deltas add and remove rows in place,
+// so a new row was unreachable and a removed one could take focus off-page. The
+// keys are handled here instead, in the capture phase (ahead of the per-row
+// handlers), against the live rows.
+const HELD_NAV_KEYS=['ArrowDown','ArrowUp','Home','End'];
+$('#heldList').addEventListener('keydown',e=>{
+  if(!HELD_NAV_KEYS.includes(e.key))return;
+  const row=e.target.closest?.('.icpt-item');
+  if(!row||e.target!==row)return;
+  e.preventDefault();e.stopPropagation();
+  const els=[...$('#heldList').querySelectorAll('.icpt-item')];
+  const from=els.indexOf(row),n=els.length;
+  const to=e.key==='ArrowDown'?(from+1)%n:e.key==='ArrowUp'?(from-1+n)%n:e.key==='Home'?0:n-1;
+  const el=focusOption(els,to);
+  if(el&&to!==from)selectHeld(Number(el.dataset.id),el.dataset.side);
+},true);
 // Forward / Drop act on the selected item, routing to the request or response API.
 function setHeldActionState(button,stateName,label){
   const buttons=[$('#forwardBtn'),$('#dropBtn')];
