@@ -871,7 +871,7 @@ $('#addRuleBtn').onclick=async()=>{
   if(!rule.match){toast('match regex required');return;}
   ruleAddInFlight=true;const addEpoch=++ruleAddEpoch;setRuleAddState('pending');
   try{await ruleMutation(0,()=>api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message,'error');setRuleAddState('idle');}
   finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };
 
