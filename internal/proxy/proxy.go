@@ -1402,8 +1402,13 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		}
 		if d.Edited {
 			if nst, nh, nb, err := parseRawResponse(d.Raw); err == nil {
+				// flow.ResHeaders is not filled in until the caller writes the
+				// response, so keep the origin's head and body from here.
 				if flow.OriginalResHeaders == nil {
-					flow.OriginalResHeaders = cloneHeaders(flow.ResHeaders)
+					flow.OriginalResHeaders = cloneHeaders(originalHeaders)
+				}
+				if flow.OriginalResBodyHash == "" && !bytes.Equal(nb, originalBody) {
+					flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
 				}
 				st, h, b = nst, nh, nb
 				flow.Flags |= store.FlagResponseEdited
