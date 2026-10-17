@@ -261,7 +261,8 @@ func TestUIIntruderClearsOldEvidenceBeforeStartingAnotherRun(t *testing.T) {
 func TestUISelectableRowsExposeTheirCurrentState(t *testing.T) {
 	requireUIContracts(t, "js/proxy.js",
 		"aria-current=\"${f.id===state.selId?'true':'false'}\"",
-		"aria-pressed=\"${state.selected.has(f.id)?'true':'false'}\"",
+		// History is a multi-select listbox: option rows, aria-selected, one roving stop.
+		"role=\"option\" tabindex=\"-1\" aria-selected=\"${rowSelected(f.id)?'true':'false'}\"",
 	)
 	// Findings rows are real links, so "current" there stays aria-current.
 	requireUIContracts(t, "js/findings.js", "aria-current=\"${f.id === selFinding ? 'true' : 'false'}\"")

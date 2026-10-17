@@ -1,5 +1,5 @@
 // tlsdiag.js — surfaces SSL pinning / missing-traffic diagnosis in the UI.
-import { $, esc, state, api, toast, toastError, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, api, toast, toastError, renderLoadError } from './core.js';
 
 const VERDICT = {
   ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-status-done"/></svg>' },
@@ -108,6 +108,26 @@ export function renderTrafficDiagnosis(rep) {
   ${hostsLine(rep)}
   ${rep.verdict === 'tls_blocked' ? bypassNote() : ''}`;
 
+  // History gets a one-line banner: verdict, the short detail, the row-level
+  // actions and a Details toggle that reveals the fix and blocked hosts. The full
+  // explanation would otherwise take 200-400px above the list.
+  const more = `${rep.fix ? `<div class="u-fs-xs u-fg2"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
+  ${hostsLine(rep)}
+  ${rep.verdict === 'tls_blocked' ? bypassNote() : ''}
+  <div class="u-flex u-gap-2 u-wrap u-mt-2">
+    ${rep.verdict !== 'ok' ? `<button type="button" class="btn xs" data-tls-action="open-settings">Settings → TLS</button>` : ''}
+    <button type="button" class="btn xs" data-tls-action="dismiss-forever" title="Never show this banner in Proxy History">Don't show again</button>
+  </div>`;
+  const compact = `<div class="tls-diag-head">
+    <span class="u-bold u-nowrap" style="color:${v.color}">${v.icon} ${esc(v.label)}</span>
+    <span class="tls-diag-detail" title="${escAttr(rep.detail || '')}">${esc(rep.detail || '')}</span>
+    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn xs u-flex-none" data-tls-action="filter-pin">Show TLS-failed rows</button>` : ''}
+    ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn xs accent u-flex-none" data-tls-action="passthrough" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
+    <button type="button" class="btn xs u-flex-none" data-tls-action="details" aria-expanded="false" aria-controls="tlsDiagMore">Details</button>
+    <button type="button" class="btn btn-compact u-flex-none" data-tls-action="dismiss" title="Dismiss until verdict changes" aria-label="Dismiss TLS diagnosis banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="tls-diag-more" id="tlsDiagMore" hidden>${more}</div>`;
+
   if (banner) {
     if (rep.verdict === 'ok' && rep.totalFlows > 0) {
       bannerDismissedVerdict = null;
@@ -117,8 +137,16 @@ export function renderTrafficDiagnosis(rep) {
       setBannerVisible(banner, false);
       banner.innerHTML = '';
     } else {
+      const wasOpen = banner.querySelector('[data-tls-action="details"]')?.getAttribute('aria-expanded') === 'true';
       setBannerVisible(banner, true);
-      banner.innerHTML = body;
+      banner.innerHTML = compact;
+      const toggle = banner.querySelector('[data-tls-action="details"]');
+      const setMore = open => {
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        banner.querySelector('.tls-diag-more').hidden = !open;
+      };
+      setMore(wasOpen);
+      toggle.onclick = () => setMore(toggle.getAttribute('aria-expanded') !== 'true');
       wireTrafficDiagnosisActions(banner,rep);
       wireBannerDismiss(banner, rep);
     }

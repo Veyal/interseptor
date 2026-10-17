@@ -153,5 +153,23 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		}
 		where = append(where, "id IN ("+strings.Join(ph, ",")+")")
 	}
+	if f.AnyText != "" {
+		pred, predArgs := anyTextPredicate(f.AnyText, f.AnyTextIDs)
+		where = append(where, pred)
+		args = append(args, predArgs...)
+	}
+	if f.ScanBoundID > 0 {
+		if _, dir := normalizedFlowSort(f); dir > 0 {
+			where = append(where, "id <= ?")
+		} else {
+			where = append(where, "id >= ?")
+		}
+		args = append(args, f.ScanBoundID)
+	}
+	if f.HideBrowserNoise {
+		pred, predArgs := browserNoisePredicate()
+		where = append(where, "NOT "+pred)
+		args = append(args, predArgs...)
+	}
 	return where, args
 }

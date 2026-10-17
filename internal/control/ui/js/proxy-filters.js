@@ -17,6 +17,7 @@ export function activeFilterCount(st) {
   if (st.showManual === false) n++;
   if (st.showAI === false) n++;
   if (st.showCollection === false) n++;
+  if (st.hideBrowserNoise === true) n++;
   return n;
 }
 
@@ -31,7 +32,47 @@ export function popoverFilterCount(st) {
   if (st.showCollection === false) n++;
   if (f.tag) n++;
   if (st.hideTlsFailed === false) n++;
+  if (st.hideBrowserNoise === true) n++;
   return n;
+}
+
+// BROWSER_NOISE mirrors internal/store/flows_noise.go (the server applies it
+// before the page limit; this copy decides live rows). Keep the two in step:
+// TestBrowserNoiseRulesMatchTheUIMirror compares them.
+export const BROWSER_NOISE = {
+  hosts: [
+    'clients2.google.com',
+    'clients2.googleusercontent.com',
+    'update.googleapis.com',
+    'chromewebstore.googleapis.com',
+    'edgedl.me.gvt1.com',
+    'redirector.gvt1.com',
+    'clientservices.googleapis.com',
+    'chrome-variations.googleapis.com',
+    'content-autofill.googleapis.com',
+    'optimizationguide-pa.googleapis.com',
+    'safebrowsing.googleapis.com',
+    'safebrowsing.google.com',
+    'sb-ssl.google.com',
+    'chromecrashreports-pa.googleapis.com',
+    'crash.chromium.org',
+    'connectivity.gstatic.com',
+  ],
+  suffixes: ['.gvt1.com'],
+  paths: [
+    ['accounts.google.com', '/ListAccounts'],
+    ['www.google.com', '/async/folae'],
+    ['www.googleapis.com', '/chromewebstore/'],
+  ],
+};
+
+// isBrowserNoise reports whether a flow is the browser's own background traffic.
+export function isBrowserNoise(host, path) {
+  const h = String(host || '').toLowerCase();
+  const p = String(path || '');
+  return BROWSER_NOISE.hosts.includes(h)
+    || BROWSER_NOISE.suffixes.some((s) => h.endsWith(s))
+    || BROWSER_NOISE.paths.some(([ph, pp]) => h === ph && p.startsWith(pp));
 }
 
 export function emptyStateModel(st, { proxyAddr = '' } = {}) {

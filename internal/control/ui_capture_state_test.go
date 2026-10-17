@@ -82,7 +82,7 @@ func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 		"flowLoadOverflow=true",
 		"reconcileFlowLoadEvent(event)",
 		"if(!replayExact)scheduleReload()",
-		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
+		"if(flowRefreshing||loadingMore||!flowHasMore||(!state.flows.length&&!flowSearchCursor))return",
 		"const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch",
 		"if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return",
 		"if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}",

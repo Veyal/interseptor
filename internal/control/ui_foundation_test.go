@@ -303,7 +303,7 @@ func TestUIFoundationShortcutContract(t *testing.T) {
 		"isModShortcut(e,'r')",
 		"isModShortcut(e,'i')",
 		"isHelpShortcut(e)",
-		`closest?.('[role="combobox"],[role="listbox"]')`,
+		`closest?.('[role="combobox"],[role="listbox"]:not(#rows)')`,
 		"if(gotoPending&&(typing||hasAnyModifier(e)))resetGoto()",
 		"activePanel()==='intercept'",
 		"function workflowShortcutBlocked()",

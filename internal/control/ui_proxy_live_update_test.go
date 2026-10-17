@@ -82,6 +82,8 @@ const applyFlowGrid=()=>{};
 const consumeFlowSignals=()=>{};
 const captureFlowListFocus=()=>null;
 const restoreFlowListFocus=()=>{};
+const syncRowA11y=()=>{};
+const setRowsListbox=()=>{};
 const anyFilter=()=>false;
 let checklistHandle=null;
 const renderEmptyHistory=()=>{};

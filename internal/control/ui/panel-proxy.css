@@ -22,6 +22,8 @@
 .tr-held .icon{color:var(--accent)}
 .tr-wait{color:var(--fg3)}
 .trow:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
+/* Fallback ring when focus is parked on the list after its row scrolled away. */
+#rows:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
 /* Row actions button (opens the same menu as right-click). It owns the trailing
    --row-more-w grid track so the row height and the virtual list are unchanged.
    Always painted: fine hover-capable pointers only dim it at rest, touch and
@@ -32,6 +34,17 @@
   .trow .tr-more{opacity:0}
   .trow:hover .tr-more,.trow:focus-within .tr-more,.trow.sel .tr-more,.tr-more:focus-visible,.tr-more[aria-expanded="true"]{opacity:1}
 }
+
+/* ---- space budget: with a flow open in the bottom inspector, History keeps at
+   least five rows; the inspector (never below 120px) gives way first, so banners
+   and filter chips can no longer squeeze the list to zero rows. ---- */
+#panel-proxy #rows{min-height:calc(var(--row-h,30px) * 5)}
+#panel-proxy #inspect{flex:0 1 auto;min-height:120px}
+
+/* ---- TLS diagnosis in History: one line, the explanation behind Details ---- */
+#tlsDiagBanner .tls-diag-head{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+#tlsDiagBanner .tls-diag-detail{flex:1 1 12rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+#tlsDiagBanner .tls-diag-more{padding-top:var(--sp-1)}
 
 /* ---- inspector docking: the side drawer replaces the bottom inspector ---- */
 #panel-proxy.dock-drawer #inspect,
@@ -50,6 +63,11 @@
   .proxy-filters-pop{position:fixed;left:var(--safe-l);right:var(--safe-r);bottom:calc(var(--bottomnav-h) + var(--safe-b));z-index:var(--z-popover);max-height:70dvh;overflow:auto;padding:var(--sp-4);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--elev-3)}
   .proxy-toolbar .search{flex:1 1 100%}
   #panel-proxy #flowHead{display:none}
+  /* The phone panel scrolls as a whole; the list keeps four cards above the
+     inspector instead of collapsing to a 100px inner scroller. */
+  #panel-proxy.active #rows{min-height:calc(56px * 4)}
+  #panel-proxy.active #inspect{flex:none}
+  #tlsDiagBanner .tls-diag-detail{display:none}
   #panel-proxy #rows .trow{
     grid-template-columns:auto minmax(0,1fr) auto 7.5rem var(--hit-min);
     grid-template-areas:"m path path st more" "att host len t more";

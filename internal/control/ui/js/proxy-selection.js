@@ -80,3 +80,22 @@ export function createLongPress({ onLong, ms = LONG_PRESS_MS, slop = LONG_PRESS_
     end: cancel,
   };
 }
+
+// listKeyTarget maps a History list key to the index it moves to, or null when
+// the key is not a list-navigation key. `index` is the current position (-1 when
+// nothing is selected); `page` is the number of rows one screen holds. Moves stop
+// at the ends instead of wrapping, matching the j/k walk.
+export function listKeyTarget(key, index, count, page = 10) {
+  if (count <= 0) return null;
+  const last = count - 1;
+  const step = Math.max(1, page | 0);
+  switch (key) {
+    case 'ArrowDown': return index < 0 ? 0 : Math.min(index + 1, last);
+    case 'ArrowUp': return index < 0 ? 0 : Math.max(index - 1, 0);
+    case 'Home': return 0;
+    case 'End': return last;
+    case 'PageDown': return index < 0 ? Math.min(step, last) : Math.min(index + step, last);
+    case 'PageUp': return index < 0 ? 0 : Math.max(index - step, 0);
+    default: return null;
+  }
+}

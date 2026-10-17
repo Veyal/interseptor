@@ -20,3 +20,10 @@ Repeater endpoint.
 - Reproduce page-boundary regressions by inserting the wanted row, more unrelated rows than the
   default limit, and newer wanted rows. Assert that the scoped result still contains all wanted rows
   in the expected order and excludes near-matches for scheme, port, and path.
+- A bounded scan (body search reads at most N flows) is itself a limit. End the page at
+  the last row the scan read and return where it stopped (`searchMore`/`searchCursor` on
+  `/api/flows`), so a cheaper predicate (SQL over URL/headers) cannot list an older row
+  ahead of rows whose bodies were never read; the client pages on from that id even when
+  the page is short or empty.
+- Stored bodies keep their wire Content-Encoding (browsers send Accept-Encoding); decode
+  gzip/br/deflate/zstd before matching body text.

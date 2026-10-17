@@ -17,8 +17,8 @@ import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
-import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
+import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
@@ -92,6 +92,7 @@ const MAX_LIVE_FLOWS=5000;      // cap the in-memory live list so long capture s
 const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst window
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
+let flowSearchCursor=0;        // id a capped body search stopped at; the next page starts there
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
 let flowPageError=null;
@@ -105,6 +106,7 @@ const FLOW_COLS_ATTACHED_KEY='proxy.cols.attachedAdded'; // one-time: show the e
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
 const FLOW_COL_MIN=40;              // floor width for a resized column
 const HIDE_TLS_KEY='proxy.hideTlsFailed';
+const HIDE_NOISE_KEY='proxy.hideBrowserNoise';
 // History source filters are intentionally client state: the backend already
 // exposes the matching `manual` and `ai` query parameters, and live SSE rows
 // need the same predicates before they are admitted to the in-memory window.
@@ -114,6 +116,8 @@ if(typeof state.showAI!=='boolean')state.showAI=true;
 if(typeof state.showCollection!=='boolean')state.showCollection=true;
 function loadProxyPrefs(){
   try{state.hideTlsFailed=localStorage.getItem(HIDE_TLS_KEY)!=='0';}catch(e){state.hideTlsFailed=true;}
+  // Browser background traffic stays visible until the viewer opts in.
+  try{state.hideBrowserNoise=localStorage.getItem(HIDE_NOISE_KEY)==='1';}catch(e){state.hideBrowserNoise=false;}
 }
 loadProxyPrefs();
 function syncHideTlsFilter(){
@@ -249,9 +253,13 @@ function resetColWidth(e){
 function wireFlowSort(){
   const toggle=h=>{
     const k=h.dataset.sort;
+    const hadFocus=h===document.activeElement;
     if(state.sort.key===k)state.sort.dir*=-1;
     else{state.sort.key=k;state.sort.dir=k==='id'||k==='time'?-1:1;}
     renderFlowHead();
+    // The header is re-rendered: keep keyboard focus on the same column, whose
+    // new name announces the sort direction.
+    if(hadFocus)$('#flowHead')?.querySelector(`[data-sort="${CSS.escape(k)}"]`)?.focus();
     loadFlows();
   };
   // Delegate the click across the whole header bar: each column cell is only
@@ -301,7 +309,11 @@ export function renderFlowHead(){
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' '+icon('arrow-up'):' '+icon('arrow-down')):'';
-    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    // The header is a row of sort buttons above a listbox, not a grid, so the
+    // sort state is in the button's name ("Method, sorted ascending") rather
+    // than aria-sort, which is only valid on grid and table column headers.
+    const name=!c.sort?accessible:c.sort===sk?`${accessible}, sorted ${sd>0?'ascending':'descending'}`:`${accessible}, sortable`;
+    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(name)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
@@ -403,6 +415,7 @@ function flowMatchesFilters(f){
   if(!state.showCollection&&(f.flags&FLAG_COLLECTION)!==0)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
+  if(state.hideBrowserNoise&&isBrowserNoise(f.host,f.path))return false;
   // Scope mode is part of the server-side query (buildFlowParams sets inScope=1),
   // so the client-side predicate has to apply it too or an incrementally inserted
   // row could show traffic the same filter set would have excluded on a reload.
@@ -437,6 +450,44 @@ function flowTimeCell(f){
   if(w.kind==='none')return '<div class="tr-t" data-field="time"><span class="when-time">—</span><span class="u-sr">no timestamp</span></div>';
   return `<div class="tr-t" data-field="time" title="${escAttr(w.title)}">${w.date?`<span class="when-date" aria-hidden="true">${esc(w.date)}</span>`:''}<span class="when-time" aria-hidden="true">${esc(w.time)}</span><span class="u-sr">${esc(w.title)}</span></div>`;
 }
+// rowSelected is the listbox selection: the multi-selection when there is one,
+// otherwise the inspected row.
+function rowSelected(id){return state.selected.size?state.selected.has(id):id===state.selId;}
+// setRowsListbox gives #rows its listbox role only while it holds flow rows; the
+// empty and first-run cards inside it are ordinary content with buttons.
+function setRowsListbox(box,on){
+  if(!box)return;
+  if(on){
+    if(box.getAttribute('role')!=='listbox'){
+      box.setAttribute('role','listbox');box.setAttribute('aria-label','Captured flows');box.setAttribute('aria-multiselectable','true');
+    }
+  }else if(box.hasAttribute('role')){
+    box.removeAttribute('role');box.removeAttribute('aria-label');box.removeAttribute('aria-multiselectable');
+  }
+}
+// syncRowA11y stamps position-in-set on the mounted window (outside the row
+// markup, so a live insert does not invalidate every row stamp) and keeps exactly
+// one row in the Tab order: the row holding focus, else the inspected row, else
+// the first row in view. `start` is the window's first index in state.flows.
+function syncRowA11y(box,start){
+  if(!box)return;
+  const rows=box.querySelectorAll('.trow');
+  if(!rows.length)return;
+  const total=String(flowHasMore?-1:state.flows.length);
+  const active=document.activeElement;
+  let stop=null,sel=null;
+  rows.forEach((r,i)=>{
+    r.setAttribute('aria-posinset',String(start+i+1));
+    r.setAttribute('aria-setsize',total);
+    if(active&&r.contains(active))stop=r;
+    else if(r.classList.contains('sel'))sel=r;
+  });
+  if(!stop)stop=sel||rows[Math.min(rows.length-1,Math.max(0,Math.floor(box.scrollTop/ROW_H)-start))];
+  moveTabStop(rows,stop);
+}
+function moveTabStop(rows,stop){
+  rows.forEach(r=>{const want=r===stop?'0':'-1';if(r.getAttribute('tabindex')!==want)r.setAttribute('tabindex',want);});
+}
 function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
   const pending=!f.status&&!f.error;
@@ -457,7 +508,9 @@ function flowRowHTML(f){
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
     time:flowTimeCell(f),
   };
-  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
+  // History is one listbox: rows are options with one roving Tab stop (set by
+  // syncRowA11y after each render, so the stamp stays index-free).
+  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" role="option" tabindex="-1" aria-selected="${rowSelected(f.id)?'true':'false'}" aria-current="${f.id===state.selId?'true':'false'}"${title}>
       ${visibleFlowCols().map(k=>cells[k]).join('')}
       <button type="button" class="tr-more rowOverflow" data-rowmenu="${f.id}" aria-haspopup="menu" aria-label="Actions for flow #${f.id}" tabindex="-1">${icon('chevron')}</button>
     </div>`;
@@ -477,8 +530,10 @@ function wireFlowRow(r){
     : 'Flow #'+id);
   r.querySelectorAll('.flowtag').forEach(chip=>{
     const t=chip.dataset.tagchip;
+    // Not a Tab stop of its own: the row is the list's one stop; the context
+    // menu (Shift+F10) offers the same tag filter from the keyboard.
     chip.setAttribute('role','button');
-    chip.tabIndex=0;
+    chip.tabIndex=-1;
     chip.setAttribute('aria-label','filter by tag '+t);
     chip.addEventListener('keydown',e=>{
       if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();filterByTag(t);}
@@ -546,7 +601,7 @@ function updateTruncBanner(){
   }else if(flowRefreshing){
     show('Refreshing flows…');if(retry)retry.hidden=true;
   }else if(loadingMore){
-    show('Loading older flows…');if(retry)retry.hidden=true;
+    show(flowSearchCursor?'Searching older flows…':'Loading older flows…');if(retry)retry.hidden=true;
   }else if(flowHasMore){
     show('Scroll down to load older flows.');if(retry)retry.hidden=true;
   }else{b.style.display='none';if(retry)retry.hidden=true;}
@@ -587,6 +642,7 @@ export function patchFlowRow(f){
   if(row){
     const hadFocus=row===document.activeElement||row.contains(document.activeElement);
     const nr=buildFlowRowEl(f);
+    copyRowA11y(row,nr);
     row.replaceWith(nr);
     // SSE response updates replace the row's DOM node. Keep keyboard users on
     // the same flow instead of dropping focus to the document body.
@@ -604,6 +660,13 @@ export function patchFlowRow(f){
     const anchor=document.querySelector('#rows .trow[data-id="'+next.id+'"]');
     if(anchor)anchor.before(nr);else box.prepend(nr);
   }else box.prepend(nr);
+  setRowsListbox(box,true);
+  syncRowA11y(box,0); // this path only runs below the virtualization threshold
+}
+// copyRowA11y carries the index-dependent attributes syncRowA11y set over to a
+// row rebuilt in place (same position, same flow).
+function copyRowA11y(from,to){
+  for(const a of ['tabindex','aria-posinset','aria-setsize']){const v=from.getAttribute(a);if(v!=null)to.setAttribute(a,v);}
 }
 // upsertFlow is Proxy's live-update policy layered on the generic flowStore
 // primitive from core.js: it decides *whether* a brand-new flow should be
@@ -876,7 +939,8 @@ function captureFlowListFocus(box){
 }
 function restoreFlowListFocus(box,focus){
   if(!focus)return;
-  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);if(!row)return;
+  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);
+  if(!row){if(box.contains(document.activeElement)||document.activeElement===document.body)box.focus({preventScroll:true});return;}
   const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
   target?.focus({preventScroll:true});
 }
@@ -912,9 +976,10 @@ function reconcileVirtualRows(){
   const plan=diffVisibleRows(mounted.map(r=>Number(r.dataset.id)),slice.map(f=>f.id));
   if(!plan.reusable)return false;
   const byId=new Map(mounted.map(r=>[Number(r.dataset.id),r]));
+  let parkFocus=false;
   for(const id of plan.remove){
     const row=byId.get(id);
-    if(row)row.remove();
+    if(row){parkFocus=parkFocus||row.contains(document.activeElement);row.remove();}
     byId.delete(id);
   }
   const nextById=new Map(slice.map(f=>[f.id,f]));
@@ -924,6 +989,11 @@ function reconcileVirtualRows(){
     (anchor||bottom).before(el);
     byId.set(ins.id,el);
   }
+  // Resize the pads before anything below can force layout (a focus() does):
+  // with rows removed and the old pads, the content is briefly shorter than the
+  // scroll position, and layout would clamp scrollTop and jump the list.
+  top.style.height=win.topPad+'px';
+  bottom.style.height=win.bottomPad+'px';
   for(const f of slice){
     const row=byId.get(f.id);
     if(!row||row._flowHTML===flowRowHTML(f))continue;
@@ -935,8 +1005,10 @@ function reconcileVirtualRows(){
     if(focus)restoreFlowListFocus(box,focus);
     else if(hadFocus)nr.focus({preventScroll:true});
   }
-  top.style.height=win.topPad+'px';
-  bottom.style.height=win.bottomPad+'px';
+  // A focused row scrolled out of the window: park focus on the list itself
+  // (not <body>) so the arrow keys keep working from the selection.
+  if(parkFocus)box.focus({preventScroll:true});
+  syncRowA11y(box,win.start);
   consumeFlowSignals();
   return true;
 }
@@ -948,7 +1020,9 @@ function renderEmptyHistory(box){
   if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
   const model=emptyStateModel(state,{proxyAddr:state.proxyAddr});
   if(model.kind==='empty-filtered'){
-    renderState(box,'empty-filtered',{title:model.title,hint:model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
+    // A search still paging through older History has not found nothing yet.
+    const searching=flowSearchCursor>0&&flowHasMore;
+    renderState(box,'empty-filtered',{title:searching?'No matches in recent flows yet':model.title,hint:searching?'The search continues through older History.':model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
     return;
   }
   renderState(box,'empty-first',{title:model.title,hint:model.hint,icon:'proxy'});
@@ -976,9 +1050,11 @@ export function renderRows(){
   applyFlowGrid();
   const flows=state.flows;
   if(!flows.length){
+    setRowsListbox(box,false);
     renderEmptyHistory(box);
     return;}
   if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
+  setRowsListbox(box,true);
   const win=flowVirt.computeWindow(flows.length);
   if(win){
     // The pads carry data-vpad so reconcileVirtualRows can recognize a window it
@@ -988,6 +1064,7 @@ export function renderRows(){
     stampFlowRows(box,html);
     consumeFlowSignals();
     restoreFlowListFocus(box,focus);
+    syncRowA11y(box,win.start);
     return;
   }
   const html=flows.map(f=>flowRowHTML(f));
@@ -995,6 +1072,7 @@ export function renderRows(){
   stampFlowRows(box,html);
   consumeFlowSignals();
   restoreFlowListFocus(box,focus);
+  syncRowA11y(box,0);
 }
 // stampFlowRows wires every freshly-serialized row and records the markup it came
 // from, so the next keyed reconcile can skip rows whose rendering hasn't changed.
@@ -1030,6 +1108,57 @@ export function walkFlowNav(down,e){
   stepSelection(list.map(f=>f.id),id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
   selectFlow(id);updateSelBar();return id;
 }
+// revealFlowRow scrolls the History list so the row of flow `id` is on screen,
+// mounting it synchronously when the list is virtualized (a key that repeats
+// faster than a frame must land on the new row, not on a stale window), and
+// optionally moves keyboard focus onto it.
+export function revealFlowRow(id,{focus=false,index=-1}={}){
+  const box=$('#rows');if(!box)return null;
+  if(flowVirt.isActive()){
+    const i=state.flows[index]?.id===id?index:state.flows.findIndex(f=>f.id===id);
+    if(i<0)return null;
+    const top=i*ROW_H,bottom=top+ROW_H;
+    if(top<box.scrollTop)box.scrollTop=top;
+    else if(bottom>box.scrollTop+box.clientHeight)box.scrollTop=bottom-box.clientHeight;
+    if(!reconcileVirtualRows())renderRows();
+  }
+  const row=box.querySelector(`.trow[data-id="${id}"]`);
+  if(!row)return null;
+  if(!flowVirt.isActive())row.scrollIntoView({block:'nearest'});
+  if(focus){row.focus({preventScroll:true});moveTabStop(box.querySelectorAll('.trow'),row);}
+  return row;
+}
+// focusInFlowList reports whether keyboard focus is on the History list (or
+// nowhere), the only case in which a j/k walk should carry focus along.
+export function focusInFlowList(){
+  const a=document.activeElement,box=$('#rows');
+  return !a||a===document.body||!!(box&&box.contains(a));
+}
+// The listbox key model: with focus on a row (or the list), Up/Down, Home/End and
+// PageUp/PageDown move the selection and focus together; Shift extends the range.
+{
+  const box=$('#rows');
+  if(box){
+    box.tabIndex=-1;
+    box.addEventListener('keydown',e=>{
+      if(e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey)return;
+      if(e.target!==box&&!(e.target.classList&&e.target.classList.contains('trow')))return;
+      const list=state.flows;
+      const from=e.target===box?state.selId:Number(e.target.dataset.id);
+      const page=Math.max(1,Math.floor(box.clientHeight/ROW_H)-1);
+      const to=listKeyTarget(e.key,list.findIndex(f=>f.id===from),list.length,page);
+      if(to==null)return;
+      e.preventDefault();e.stopPropagation();
+      const id=list[to].id;
+      if(state.selAnchorId==null&&from!=null)state.selAnchorId=from;
+      // Only a Shift range needs the id list; a plain move skips the O(n) copy.
+      stepSelection(e.shiftKey?list.map(f=>f.id):[],id,{mod:false,shift:e.shiftKey});
+      selectFlow(id);updateSelBar();
+      revealFlowRow(id,{focus:true,index:to});
+      if(to>=list.length-1)loadMoreFlows();
+    });
+  }
+}
 // Ctrl+Shift+A: select every flow matching the current filters (the loaded,
 // filtered id list), not just the rendered window; again to clear.
 export function toggleSelectAllShown(){
@@ -1044,12 +1173,9 @@ export function toggleSelectCurrentFlow(){
   }else{
     state.selected.add(id);
   }
-  const row=document.querySelector(`.trow[data-id="${id}"]`);
-  if(row){
-    const has=state.selected.has(id);
-    row.classList.toggle('msel',has);
-    row.setAttribute('aria-pressed',has?'true':'false');
-  }
+  // Going between "no multi-selection" and "some" changes aria-selected on other
+  // mounted rows too; the keyed refresh patches exactly the rows that changed.
+  refreshVisibleRows();
   updateSelBar();
 }
 // buildFlowParams encodes the active filters into a query (without limit/cursor),
@@ -1072,6 +1198,7 @@ function buildFlowParams(){
   if(state.inScopeOnly)q.set('inScope','1');
 
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
+  if(state.hideBrowserNoise)q.set('hideBrowserNoise','1');
   q.set('manual',state.showManual?'1':'0');
   q.set('ai',state.showAI?'1':'0');
   if(!state.showCollection)q.set('collection','0');
@@ -1079,7 +1206,21 @@ function buildFlowParams(){
   q.set('dir',sortDirParam());
   return q;
 }
-function bodySearchActive(){return false;}
+// applyPageMore reads whether older flows remain. A capped body search ends a
+// page at the last flow it read (searchCursor) even when the page is short, and
+// paging then continues from that id instead of from the last listed row.
+function applyPageMore(d,count){
+  flowSearchCursor=d&&d.searchMore?Number(d.searchCursor)||0:0;
+  flowHasMore=count>FLOW_FETCH||flowSearchCursor>0;
+}
+// continueShortSearch keeps a search paging (one bounded scan per request) while
+// the list is too short to scroll, so a match in older History still turns up.
+function continueShortSearch(){
+  if(!flowSearchCursor||!flowHasMore)return;
+  const box=$('#rows');
+  if(box&&box.scrollHeight-box.clientHeight>400)return;
+  setTimeout(()=>loadMoreFlows(),0);
+}
 
 function inspectorFilterSignature(){
   const f=state.filters;
@@ -1087,7 +1228,7 @@ function inspectorFilterSignature(){
     scheme:f.scheme||'',search:f.search||'',searchScope:f.searchScope||'anywhere',
     method:f.method||'',status:f.status||'',host:f.host||'',tag:f.tag||'',
     exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
-    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
+    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',hideBrowserNoise:!!state.hideBrowserNoise,
     showManual:!!state.showManual,showAI:!!state.showAI,showCollection:!!state.showCollection,
     sort:(state.sort&&state.sort.key)||'',dir:sortDirParam(),
   });
@@ -1109,6 +1250,7 @@ export async function loadFlows(){
   flowPageError=null;
   flowLoadError=null;
   flowHasMore=false;
+  flowSearchCursor=0;
   updateTruncBanner();
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
@@ -1126,7 +1268,7 @@ export async function loadFlows(){
     const committedSelected=state.selId;
     const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail);
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
+    applyPageMore(d,flows.length);
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
@@ -1150,6 +1292,7 @@ export async function loadFlows(){
     refreshMethodFilter();
     loadTrafficDiagnosis();
     if(!replayExact)scheduleReload();
+    continueShortSearch();
   }catch(e){
     if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}
     if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){
@@ -1163,21 +1306,27 @@ export async function loadFlows(){
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
-  if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
+  if(flowRefreshing||loadingMore||!flowHasMore||(!state.flows.length&&!flowSearchCursor))return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   flowPageError=null;
   updateTruncBanner();
   try{
-    const last=state.flows[state.flows.length-1];
-    if(!last){flowHasMore=false;return;}
     const q=buildFlowParams();
-    appendFlowCursor(q,last);
+    if(flowSearchCursor)q.set('curId',String(flowSearchCursor)); // only sent for the id order
+    else{
+      const last=state.flows[state.flows.length-1];
+      if(!last){flowHasMore=false;return;}
+      appendFlowCursor(q,last);
+    }
     q.set('limit',String(FLOW_FETCH+1));
     const d=await api('/api/flows?'+q.toString());
     if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_FETCH;
+    applyPageMore(d,flows.length);
+    // Still empty: repaint the empty state, whose text depends on whether the
+    // search goes on.
+    if(!flows.length&&!state.flows.length)renderRows();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     if(flows.length){
       // appendFlows drops any ids already present (a flow could arrive live between pages).
@@ -1191,7 +1340,7 @@ export async function loadMoreFlows(){
   }catch(e){
     if(loadEpoch===flowLoadEpoch&&pageEpoch===flowPageEpoch)flowPageError=e;
   }
-  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
+  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();if(!flowPageError)continueShortSearch();}}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method
@@ -1355,8 +1504,13 @@ function syncSelectedRow(prevId){
     const sel=id===state.selId;
     row.classList.toggle('sel',sel);
     row.setAttribute('aria-current',sel?'true':'false');
+    row.setAttribute('aria-selected',sel?'true':'false');
     row._flowHTML=flowRowHTML(flowStore.byId.get(id));
   });
+  // The Tab stop follows the selection unless focus is inside the list (the
+  // keyboard path moves focus to the new row itself).
+  const next=rows.get(state.selId);
+  if(next&&!box.contains(document.activeElement))moveTabStop(box.querySelectorAll('.trow'),next);
   return true;
 }
 export async function selectFlow(id){
@@ -1785,7 +1939,7 @@ function syncSearchPlaceholder(){
   if(!inp)return;
   inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search method / host / path / #id…';
 }
-if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
+if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
@@ -1847,6 +2001,17 @@ if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   syncHideTlsFilter();renderChips();renderTagBar();loadFlows();
 };
 syncHideTlsFilter();
+function syncHideNoiseFilter(){
+  const btn=$('#hideNoiseFilter');if(!btn)return;
+  btn.classList.toggle('on',!!state.hideBrowserNoise);
+  btn.setAttribute('aria-pressed',state.hideBrowserNoise?'true':'false');
+}
+if($('#hideNoiseFilter'))$('#hideNoiseFilter').onclick=()=>{
+  state.hideBrowserNoise=!state.hideBrowserNoise;
+  try{localStorage.setItem(HIDE_NOISE_KEY,state.hideBrowserNoise?'1':'0');}catch(e){}
+  syncHideNoiseFilter();renderChips();loadFlows();
+};
+syncHideNoiseFilter();
 // syncScopeToggle keeps the In scope only chip's state, icon and label together
 // (the old code overwrote the whole button text with a Unicode glyph).
 function syncScopeToggle(on){
@@ -1859,9 +2024,11 @@ function syncScopeToggle(on){
 {const edit=$('#scopeEdit');if(edit)edit.onclick=()=>{const open=getShellApi().openSettings;if(open)open('scope');};}
 // One-time tip: the project-wide scope switch lives in the Flight Bar now.
 // Seen-state is a per-viewer convenience, so every storage touch is guarded.
+// Only a returning viewer (one with saved History preferences) knew the old
+// place, so a first-run user is not told that something "moved".
 {
   const KEY='interseptor.coach.scopeSwitch';
-  let seen=false;try{seen=localStorage.getItem(KEY)==='1';}catch(e){}
+  let seen=true;try{seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'proxy.dock','inspect.height'].some(k=>localStorage.getItem(k)!==null);}catch(e){}
   const anchor=$('#scopeEdit');
   if(!seen&&anchor&&anchor.parentNode){
     const tip=document.createElement('span');
@@ -1951,8 +2118,9 @@ function applyView(v){
   state.notesOnly=!!f.notesOnly;
   state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;state.showCollection=f.showCollection!==false;
   state.hideTlsFailed=f.hideTlsFailed!==false;
+  state.hideBrowserNoise=!!f.hideBrowserNoise;
   const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
-  syncSourceFilters();syncHideTlsFilter();
+  syncSourceFilters();syncHideTlsFilter();syncHideNoiseFilter();
   syncControls();syncScopeToggle(state.inScopeOnly);
   renderChips();renderTagBar();loadFlows();
   toast('applied view: '+v.name);
@@ -1960,7 +2128,7 @@ function applyView(v){
 async function saveCurrentView(){
   const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
   if(viewsMutationPending)return;
-  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,showCollection:state.showCollection,hideTlsFailed:state.hideTlsFailed};
+  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,showCollection:state.showCollection,hideTlsFailed:state.hideTlsFailed,hideBrowserNoise:!!state.hideBrowserNoise};
   viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
   try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
   catch(e){toastError('Save view failed',e);}
@@ -2099,14 +2267,14 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;
-  try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
-  syncSourceFilters();syncHideTlsFilter();
+  state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;state.hideBrowserNoise=false;
+  try{localStorage.setItem(HIDE_TLS_KEY,'0');localStorage.setItem(HIDE_NOISE_KEY,'0');}catch(e){}
+  syncSourceFilters();syncHideTlsFilter();syncHideNoiseFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncScopeToggle(false);
   syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||!state.showCollection);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||state.hideBrowserNoise||!state.showCollection);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -2154,12 +2322,12 @@ export function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
-  add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
+  add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',f.search);
   if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">${icon('close')}</button></span>`);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
   // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),
   // so an active one also shows here as a removable chip: removal clicks the toggle.
-  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent'],[!state.showCollection,'#histCollFilter','hiding collections']].forEach(([on,sel,label])=>{
+  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.hideBrowserNoise,'#hideNoiseFilter','hiding browser noise'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent'],[!state.showCollection,'#histCollFilter','hiding collections']].forEach(([on,sel,label])=>{
     if(on)items.push(`<span class="chip"><span><b>${esc(label)}</b></span><button type="button" class="x" data-toggle="${sel}" title="Remove filter" aria-label="Remove ${escAttr(label)} filter">${icon('close')}</button></span>`);
   });
   const hasFilters=items.length>0;
@@ -2783,7 +2951,9 @@ $('#selDelete').onclick=async()=>{
   function applyHeight(h){
     h=clamp(h);
     inspect.style.height=h+'px';
-    inspect.style.flex='none';
+    // No inline flex: panel-proxy.css lets the inspector shrink before the
+    // History list drops below its minimum rows.
+    inspect.style.flex='';
     syncRange();
     try{localStorage.setItem(SPLITTER_KEY,String(h));}catch(e){}
   }
