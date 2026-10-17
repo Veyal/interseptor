@@ -74,7 +74,14 @@ export function foldAggregate(agg) {
     evidence: { flows: int(ev.flows), shots: int(ev.shots), ws: int(ev.ws) },
     findings: { total: int(f.total), ready: int(f.ready), items, truncated: !!f.truncated || int(f.total) > items.length },
     serverBlockers: list(a.blockers).filter((c) => typeof c === 'string'),
+    capture: foldCapture(a.capture),
   };
+}
+
+// foldCapture keeps the capture drop counters (never a blocker code).
+export function foldCapture(c) {
+  const x = c && typeof c === 'object' ? c : {};
+  return { flowWritesDropped: int(x.flowWritesDropped), wsFramesDropped: int(x.wsFramesDropped) };
 }
 
 // foldFallback rebuilds the same shape from the individual endpoints when the
@@ -216,6 +223,7 @@ const blankState = () => ({
   identities: [], activeIdentity: '', evidence: { flows: 0, shots: 0, ws: 0 },
   findings: { total: 0, ready: 0, items: [], truncated: false }, blockers: [],
   nextAction: { kind: 'set-target', label: 'Set target' }, stale: blankStale(),
+  capture: foldCapture(null),
 });
 
 export function createProjectState(opts = {}) {
@@ -274,7 +282,8 @@ export function createProjectState(opts = {}) {
     const codes = part.serverBlockers;
     const blockers = buildBlockers(codes, part.findings.items);
     const active = idn.identities.some((i) => i.name === prev.activeIdentity) ? prev.activeIdentity : '';
-    const next = { loaded: true, scope: part.scope, brief: part.brief, identities: idn.identities, activeIdentity: active, evidence: part.evidence, findings: part.findings, blockers, stale, nextAction: null };
+    const capture = res.folded ? res.folded.capture : prev.capture;
+    const next = { loaded: true, scope: part.scope, brief: part.brief, identities: idn.identities, activeIdentity: active, evidence: part.evidence, findings: part.findings, blockers, stale, nextAction: null, capture };
     next.nextAction = nextActionFrom(next);
     return next;
   }
