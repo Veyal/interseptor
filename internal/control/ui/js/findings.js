@@ -3,7 +3,7 @@
 import { emit as busEmit, EVENTS } from './bus.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
 import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref, saveFile } from './core.js';
-import { FORMAT_CHOICES, findingReportURL, findingReportName } from './report-preflight-model.js';
+import { FORMAT_CHOICES, TRACKER_CHOICES, findingReportURL, findingReportName, findingExportURL, findingExportName } from './report-preflight-model.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { findingRouteTarget, ANCHOR_IDS, buildReproductionSteps, timelineHTML, readDocumentHTML, readPropertiesHTML, stepElementId } from './finding-document.js';
@@ -802,6 +802,8 @@ function showFindingRowCtx(event, id) {
     ] },
     { label: 'Export this finding', icon: 'download', children: FORMAT_CHOICES.map(fmt => (
       { label: fmt.label, act: () => exportOneFinding(id, fmt.value) })) },
+    { label: 'Export as ticket', icon: 'external', disabled: f.status === 'false_positive', children: TRACKER_CHOICES.map(t => (
+      { label: t.label, act: () => exportOneFinding(id, t.value, true) })) },
     { sep: true },
     { label: 'Delete finding', icon: 'trash', danger: true, disabled: !write, act: () => deleteFinding(id) },
   ] }]);
@@ -809,16 +811,20 @@ function showFindingRowCtx(event, id) {
 // exportOneFinding downloads a report of just this finding, reusing the report
 // endpoint's ids selector, so an operator can hand over one finding without the
 // rest of the engagement.
-async function exportOneFinding(id, format) {
+// tracker=true shapes it for an issue tracker or bug-bounty platform instead
+// (credential headers masked by the server).
+async function exportOneFinding(id, format, tracker = false) {
   try {
-    const res = await fetch(findingReportURL(id, format), { credentials: 'same-origin' });
+    const url = tracker ? findingExportURL(id, format) : findingReportURL(id, format);
+    if (!url) return;
+    const res = await fetch(url, { credentials: 'same-origin' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error((body && body.error) || ('Export failed (' + res.status + ')'));
     }
     const blob = await res.blob();
-    await saveFile(blob, findingReportName(id, format), blob.type);
-    toast('finding exported');
+    await saveFile(blob, tracker ? findingExportName(id, format) : findingReportName(id, format), blob.type);
+    toast(tracker ? 'ticket payload exported' : 'finding exported');
   } catch (e) {
     toastError(e && e.message ? e.message : 'Export failed');
   }

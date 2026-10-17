@@ -12,10 +12,12 @@ import { findingSectionForGap } from './finding-workspace.js';
 import { blockerLabel, findingHref } from './project-state.js';
 
 export const OVERRIDE_PHRASE = 'DRAFT';
-export const DEFAULT_STATUSES = 'open,verified,fixed';
+// Every status by default: an unverified finding belongs in the report (and
+// blocks a final one), and false positives land in their own appendix.
+export const DEFAULT_STATUSES = 'all';
 export const STATUS_CHOICES = [
-  { value: 'open,verified,fixed', label: 'Open, verified and fixed' },
   { value: 'all', label: 'All statuses' },
+  { value: 'open,verified,fixed', label: 'Open, verified and fixed' },
   { value: 'verified', label: 'Verified only' },
   { value: 'open', label: 'Open only' },
   { value: 'needs_verification', label: 'Needs verification' },
@@ -23,8 +25,18 @@ export const STATUS_CHOICES = [
 export const FORMAT_CHOICES = [
   { value: 'md', label: 'Markdown' },
   { value: 'html', label: 'HTML with images' },
+  { value: 'pdf', label: 'PDF' },
   { value: 'json', label: 'JSON' },
+  { value: 'sarif', label: 'SARIF' },
 ];
+// Per-finding shapes for an issue tracker or bug-bounty platform
+// (GET /api/finding-export/{id}); the server masks credentials by default.
+export const TRACKER_CHOICES = [
+  { value: 'hackerone', label: 'HackerOne' },
+  { value: 'bugcrowd', label: 'Bugcrowd' },
+  { value: 'jira', label: 'Jira' },
+];
+const STATUS_WORDS = { open: 'open', needs_verification: 'needs verification', verified: 'verified', fixed: 'fixed', wont_fix: 'accepted risk', false_positive: 'false positive' };
 
 const list = (a) => (Array.isArray(a) ? a : []);
 const text = (s) => (typeof s === 'string' ? s : '');
@@ -87,7 +99,11 @@ export function exportGate({ quality = null, loading = false, error = '', busy =
   if (error) return { allowed: false, code: 'error', reason: 'Readiness could not be checked: ' + error };
   if (!quality) return { allowed: false, code: 'unknown', reason: 'Readiness has not been checked yet.' };
   const s = summarize(quality);
-  if (s.total === 0) return { allowed: false, code: 'empty', reason: text(quality.message) || 'Select at least one finding for a final report.' };
+  if (s.total === 0) {
+    const hidden = hiddenNotice(quality);
+    if (hidden) return { allowed: false, code: 'empty', reason: 'No findings match the selected statuses. Include all statuses to report them.' };
+    return { allowed: false, code: 'empty', reason: text(quality.message) || 'No findings to report yet.' };
+  }
   if (s.blocked > 0) {
     const verb = s.blocked === 1 ? 'has a blocker' : 'have blockers';
     return { allowed: false, code: 'blocked', reason: `${s.blocked} of ${s.total} ${s.total === 1 ? 'finding' : 'findings'} ${verb}. Resolve them or export a draft.` };
@@ -115,7 +131,27 @@ export function sanitizeOptions(o) {
     statuses: STATUS_CHOICES.some((s) => s.value === x.statuses) ? x.statuses : DEFAULT_STATUSES,
     groupByTag: !!x.groupByTag,
     includeEvidence: o && typeof o === 'object' && 'includeEvidence' in x ? !!x.includeEvidence : true,
+    // A report usually leaves the team, so credential headers are masked
+    // unless the operator turns it off for an internal evidence pack.
+    maskHeaders: o && typeof o === 'object' && 'maskHeaders' in x ? !!x.maskHeaders : true,
   };
+}
+
+// hiddenNotice turns the readiness payload's `hidden` counts (findings the
+// status filter left out) into one sentence, or null when nothing is hidden.
+export function hiddenNotice(quality) {
+  const h = quality && typeof quality === 'object' && quality.hidden && typeof quality.hidden === 'object' ? quality.hidden : null;
+  if (!h) return null;
+  const parts = [];
+  let count = 0;
+  for (const [status, n] of Object.entries(h)) {
+    const k = posInt(n);
+    if (!k) continue;
+    count += k;
+    parts.push(k + ' ' + (STATUS_WORDS[status] || String(status).replace(/_/g, ' ')));
+  }
+  if (!count) return null;
+  return { count, text: `${plural(count, 'finding', 'findings')} hidden by this filter: ${parts.join(', ')}.` };
 }
 
 // exportURL builds the same request the legacy export modal sends, plus the
@@ -126,6 +162,7 @@ export function exportURL(options, mode) {
   let url = '/api/findings/report?format=' + encodeURIComponent(o.format) + '&statuses=' + encodeURIComponent(o.statuses) + '&mode=' + m;
   if (o.groupByTag) url += '&groupBy=tag';
   if (!o.includeEvidence) url += '&includeBodies=0';
+  if (o.maskHeaders) url += '&maskHeaders=1';
   return url;
 }
 
@@ -140,14 +177,24 @@ export function exportFilename(format) {
 // A single finding (or a chosen few) exported in report form, reusing the
 // report endpoint's ids selector. Draft mode, since this is a one-off export of
 // specific findings rather than a gated final deliverable.
+// statuses=all so the selected finding is found whatever its status.
 export function findingReportURL(id, format) {
   const n = posInt(id);
   const fmt = FORMAT_CHOICES.some((f) => f.value === format) ? format : 'md';
-  return '/api/findings/report?ids=' + n + '&format=' + fmt + '&mode=draft';
+  return '/api/findings/report?ids=' + n + '&format=' + fmt + '&mode=draft&statuses=all&maskHeaders=1';
 }
 
 export function findingReportName(id, format) {
   return 'finding-' + posInt(id) + '.' + sanitizeOptions({ format }).format;
+}
+
+export function findingExportURL(id, tracker) {
+  if (!TRACKER_CHOICES.some((t) => t.value === tracker)) return '';
+  return '/api/finding-export/' + posInt(id) + '?format=' + tracker;
+}
+
+export function findingExportName(id, tracker) {
+  return 'finding-' + posInt(id) + '-' + tracker + '.json';
 }
 
 // previewRows is the skeleton preview: the findings the export would contain,

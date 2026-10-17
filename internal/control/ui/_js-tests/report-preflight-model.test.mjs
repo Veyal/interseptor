@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
   exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows, findingReportURL, findingReportName,
+  hiddenNotice, findingExportURL, findingExportName, TRACKER_CHOICES, FORMAT_CHOICES, DEFAULT_STATUSES,
 } from '../js/report-preflight-model.js';
 
 const quality = (over = {}) => ({
@@ -59,9 +60,11 @@ test('exportGate blocks while loading, on error, when empty and when blockers ex
   assert.equal(err.allowed, false);
   assert.match(err.reason, /boom/);
   assert.equal(exportGate({}).allowed, false);
-  const empty = exportGate({ quality: { ready: false, total: 0, summary: { ready: 0, blocked: 0 }, board: [], findings: [], message: 'Select at least one finding for a final report.' } });
+  const empty = exportGate({ quality: { ready: false, total: 0, summary: { ready: 0, blocked: 0 }, board: [], findings: [], message: 'No findings to report yet.' } });
   assert.equal(empty.allowed, false);
-  assert.match(empty.reason, /at least one finding/);
+  assert.match(empty.reason, /No findings to report yet/);
+  const filtered = exportGate({ quality: { ready: false, total: 0, board: [], findings: [], hidden: { needs_verification: 1 } } });
+  assert.match(filtered.reason, /Include/);
   const blocked = exportGate({ quality: quality() });
   assert.equal(blocked.allowed, false);
   assert.match(blocked.reason, /2 of 3 findings have blockers/);
@@ -92,23 +95,36 @@ test('override requires the typed phrase exactly', () => {
   assert.equal(overrideConfirmed(null), false);
 });
 
-test('exportURL targets the legacy report endpoint with the same parameters', () => {
+test('exportURL targets the report endpoint and masks credentials unless turned off', () => {
   const u = exportURL({ format: 'html', statuses: 'all', groupByTag: true, includeEvidence: true }, 'final');
-  assert.equal(u, '/api/findings/report?format=html&statuses=all&mode=final&groupBy=tag');
-  const d = exportURL({ format: 'md', statuses: 'open,verified,fixed', groupByTag: false, includeEvidence: false }, 'draft');
+  assert.equal(u, '/api/findings/report?format=html&statuses=all&mode=final&groupBy=tag&maskHeaders=1');
+  const d = exportURL({ format: 'md', statuses: 'open,verified,fixed', groupByTag: false, includeEvidence: false, maskHeaders: false }, 'draft');
   assert.equal(d, '/api/findings/report?format=md&statuses=open%2Cverified%2Cfixed&mode=draft&includeBodies=0');
+  assert.equal(exportURL({ format: 'pdf' }, 'final'), '/api/findings/report?format=pdf&statuses=all&mode=final&maskHeaders=1');
+  assert.equal(exportURL({ format: 'sarif' }, 'draft'), '/api/findings/report?format=sarif&statuses=all&mode=draft&maskHeaders=1');
 });
 
-test('sanitizeOptions rejects unknown formats and statuses', () => {
-  assert.deepEqual(sanitizeOptions({ format: 'exe', statuses: 'x', groupByTag: 1, includeEvidence: 0 }), { format: 'md', statuses: 'open,verified,fixed', groupByTag: true, includeEvidence: false });
-  assert.deepEqual(sanitizeOptions(undefined), { format: 'md', statuses: 'open,verified,fixed', groupByTag: false, includeEvidence: true });
+test('sanitizeOptions rejects unknown formats and statuses, defaulting to every status', () => {
+  assert.equal(DEFAULT_STATUSES, 'all');
+  assert.deepEqual(sanitizeOptions({ format: 'exe', statuses: 'x', groupByTag: 1, includeEvidence: 0, maskHeaders: 0 }), { format: 'md', statuses: 'all', groupByTag: true, includeEvidence: false, maskHeaders: false });
+  assert.deepEqual(sanitizeOptions(undefined), { format: 'md', statuses: 'all', groupByTag: false, includeEvidence: true, maskHeaders: true });
+  assert.ok(['md', 'html', 'pdf', 'json', 'sarif'].every((f) => FORMAT_CHOICES.some((c) => c.value === f)));
 });
 
 test('readinessURL and exportFilename', () => {
   assert.equal(readinessURL('verified'), '/api/findings/readiness?statuses=verified');
-  assert.equal(readinessURL('bogus'), '/api/findings/readiness?statuses=open%2Cverified%2Cfixed');
+  assert.equal(readinessURL('bogus'), '/api/findings/readiness?statuses=all');
   assert.equal(exportFilename('html'), 'interseptor-findings.html');
+  assert.equal(exportFilename('pdf'), 'interseptor-findings.pdf');
   assert.equal(exportFilename('weird'), 'interseptor-findings.md');
+});
+
+test('hiddenNotice says which statuses the filter left out', () => {
+  assert.equal(hiddenNotice(null), null);
+  assert.equal(hiddenNotice({ hidden: {} }), null);
+  const n = hiddenNotice({ hidden: { needs_verification: 1, false_positive: 2 } });
+  assert.equal(n.count, 3);
+  assert.equal(n.text, '3 findings hidden by this filter: 1 needs verification, 2 false positive.');
 });
 
 test('previewRows lists the server board in order and flags blocked rows with text', () => {
@@ -128,10 +144,18 @@ test('blocker rows closed by reproduction say where to verify', async () => {
   assert.equal(byRule.cvss.hint, undefined, 'other gaps carry no verify hint');
 });
 
-test('findingReportURL selects one finding in a valid format, default md', () => {
-  assert.equal(findingReportURL(41, 'json'), '/api/findings/report?ids=41&format=json&mode=draft');
-  assert.equal(findingReportURL(41, 'pdf'), '/api/findings/report?ids=41&format=md&mode=draft'); // not a UI format → md
-  assert.equal(findingReportURL('x', 'html'), '/api/findings/report?ids=0&format=html&mode=draft');
+test('findingReportURL selects one finding of any status in a valid format, default md', () => {
+  assert.equal(findingReportURL(41, 'json'), '/api/findings/report?ids=41&format=json&mode=draft&statuses=all&maskHeaders=1');
+  assert.equal(findingReportURL(41, 'pdf'), '/api/findings/report?ids=41&format=pdf&mode=draft&statuses=all&maskHeaders=1');
+  assert.equal(findingReportURL(41, 'exe'), '/api/findings/report?ids=41&format=md&mode=draft&statuses=all&maskHeaders=1');
+  assert.equal(findingReportURL('x', 'html'), '/api/findings/report?ids=0&format=html&mode=draft&statuses=all&maskHeaders=1');
   assert.equal(findingReportName(41, 'json'), 'finding-41.json');
   assert.equal(findingReportName(41, 'bogus'), 'finding-41.md');
+});
+
+test('tracker exports target the per-finding endpoint', () => {
+  assert.deepEqual(TRACKER_CHOICES.map((t) => t.value), ['hackerone', 'bugcrowd', 'jira']);
+  assert.equal(findingExportURL(41, 'jira'), '/api/finding-export/41?format=jira');
+  assert.equal(findingExportURL(41, 'csv'), '');
+  assert.equal(findingExportName(41, 'hackerone'), 'finding-41-hackerone.json');
 });

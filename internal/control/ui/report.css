@@ -39,6 +39,9 @@
 .rp-fields label{font-size:var(--fs-sm);color:var(--fg2)}
 .rp-fields select{width:100%}
 .rp-check{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min)}
+.rp-hidden{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:0;padding:var(--sp-2);border:1px solid var(--rd-gap);border-radius:var(--r-sm);font-size:var(--fs-sm);color:var(--fg)}
+.rp-hidden .icon{flex:none;width:16px;height:16px;color:var(--rd-gap)}
+.rp-hidden span{flex:1 1 12rem;min-width:0}
 .rp-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
 .rp-actions .btn[aria-disabled="true"],.rp-confirm .btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
 .rp-reason{display:flex;align-items:flex-start;gap:var(--sp-2);margin:var(--sp-2) 0 0;font-size:var(--fs-sm);color:var(--fg)}
