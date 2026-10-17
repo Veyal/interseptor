@@ -241,6 +241,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/collmatrix/handoff":              "builds an Intruder spec, sends nothing",
 	"/api/decode":                          "pure transform",
 	"/api/engagement-brief":                "stores a note",
+	"/api/evidence-render":                 "renders stored evidence (read via GET; the literal also labels the result)",
 	"/api/export/full/file":                "archive export",
 	"/api/finding-cvss":                    "pure computation",
 	"/api/finding-revisions/{}/{}/restore": "finding bookkeeping",
@@ -295,7 +296,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/vault/merge":                     "vault transfer",
 }
 
-var mcpAPIPathRe = regexp.MustCompile(`^/api/[A-Za-z0-9_./{}%-]+$`)
+var mcpAPIPathRe = regexp.MustCompile(`^/api/[A-Za-z0-9_./{}%-]+(\?.*)?$`)
 var printfVerbRe = regexp.MustCompile(`%[0-9]*[a-z]`)
 
 // normalizeMCPPath turns a path literal from the MCP sources into a comparable
