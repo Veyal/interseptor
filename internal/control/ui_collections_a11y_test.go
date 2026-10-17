@@ -40,4 +40,28 @@ func TestCollectionsToolbarButtonsKeepNameWhenLabelHidden(t *testing.T) {
 	if n < 7 {
 		t.Errorf("expected at least 7 toolbar buttons with .lbl-long labels, found %d", n)
 	}
+	// Icon-only on phones, so two toolbar buttons must not share one icon.
+	iconRe := regexp.MustCompile(`id="(coll\w+)"[^>]*>\s*<svg[^>]*><use href="#(i-[\w-]+)"`)
+	seen := map[string]string{}
+	toolbar := region[:strings.Index(region, `id="collStatus"`)]
+	for _, m := range iconRe.FindAllStringSubmatch(toolbar, -1) {
+		if m[1] == "collEnvNew" { // shown only when there is no environment to manage
+			continue
+		}
+		if prev, ok := seen[m[2]]; ok {
+			t.Errorf("%s and %s both use icon %s", prev, m[1], m[2])
+		}
+		seen[m[2]] = m[1]
+	}
+}
+
+// The collection and environment pickers are enhanced into .ui-select
+// wrappers; when the toolbar is crowded the wrapper shrinks, so the trigger
+// must fill it (and ellipsize) rather than spill over the next button.
+func TestCollectionsPickersEllipsizeInsteadOfOverlapping(t *testing.T) {
+	css := readUIAsset(t, "css/collections.css")
+	requireUIContains(t, css,
+		".coll-field .ui-select{max-width:min(240px,40vw);min-width:0",
+		".coll-field .ui-select-btn .ui-select-trigger,.coll-env .ui-select-btn .ui-select-trigger{width:100%;max-width:100%}",
+	)
 }

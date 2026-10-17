@@ -10,6 +10,12 @@
 .coll-field select{max-width:min(240px,40vw)}
 .coll-env{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none}
 .coll-env select{max-width:min(200px,38vw)}
+/* The pickers are enhanced into .ui-select wrappers; cap the wrapper and make
+   the trigger fill it so a long name ellipsizes instead of spilling over the
+   next toolbar button when the bar is crowded. */
+.coll-field .ui-select{max-width:min(240px,40vw);min-width:0;flex:1}
+.coll-env .ui-select{max-width:min(200px,38vw);min-width:0}
+.coll-field .ui-select-btn .ui-select-trigger,.coll-env .ui-select-btn .ui-select-trigger{width:100%;max-width:100%}
 .coll-chip{color:var(--warnFg);border-color:var(--warnLine)}
 .coll-chip[data-state="ok"]{color:var(--accent);border-color:var(--line2)}
 .coll-status{flex:none;padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg1);color:var(--fg2);font-size:var(--fs-sm);display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
