@@ -57,6 +57,14 @@ Intruder results) or when you touch how those lists render, select or navigate.
   itself it reveals the starting row again and a jump past the window (End, Home, a
   wrap-around arrow) lands back where it began, with the selection moved but the list not.
 - A windowed `role="option"` list needs `aria-posinset` and `aria-setsize`.
+  Stamp them (and the roving `tabindex`) after rendering, outside the row markup that
+  keyed reconciles compare, or every live insert re-renders every mounted row
+  (History: `syncRowA11y`).
+- In a keyed reconcile, resize the pads before anything can force layout: a `focus()`
+  with rows removed and the old pads clamps `scrollTop` to the briefly shorter content
+  and the list jumps (History's End key landed ~90 rows short).
+- app.js treats focus inside `[role="listbox"]` as typing (for select typeahead). A
+  list whose rows take single-key shortcuts must be excluded there (`:not(#rows)`).
 
 ## Verifying
 
