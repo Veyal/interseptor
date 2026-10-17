@@ -119,8 +119,23 @@ export function findingsEditable(){ return !!state.findingsUIEditing; }
 // (keyboard shortcut, palette entry, stale handler): it refuses and says why.
 export function requireFindingsEditing(){
   if(findingsEditable())return true;
-  toast(FINDINGS_EDITING_OFF);
+  // Offer the fix in place instead of sending the user to an unrelated page.
+  const t=toast(FINDINGS_EDITING_OFF,'warn');
+  if(t){
+    const b=document.createElement('button');
+    b.type='button';b.className='btn xs toast-action';b.textContent='Enable editing';
+    b.addEventListener('click',()=>{enableFindingsEditing();dismissToast(t);});
+    t.appendChild(b);
+  }
   return false;
+}
+// enableFindingsEditing turns the Settings switch on through its own handler,
+// so the save, revision check and confirmation stay in one place.
+export function enableFindingsEditing(){
+  const b=$('#findingsUIEditingToggle');
+  if(!b)return false;
+  if(!b.classList.contains('on'))b.click();
+  return true;
 }
 // assertFindingsWritable is the same gate for code that reports failure by
 // throwing (queued saves, deletes, evidence writes): re-check it at the write,

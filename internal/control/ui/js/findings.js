@@ -2,7 +2,7 @@
 // directly — that back-edge was part of the proxy↔findings↔settings ESM cycle.
 import { emit as busEmit, EVENTS } from './bus.js';
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, icon, findingsEditable, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref, saveFile } from './core.js';
+import { $, icon, findingsEditable, enableFindingsEditing, requireFindingsEditing, assertFindingsWritable, FINDINGS_EDITING_OFF, registerProjectSwitchGuard, copyImageButton, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, openCtxMenu, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref, saveFile } from './core.js';
 import { FORMAT_CHOICES, TRACKER_CHOICES, findingReportURL, findingReportName, findingExportURL, findingExportName } from './report-preflight-model.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
@@ -439,9 +439,11 @@ function findingsEmptyHTML() {
   return `<div class="state-empty find-empty">
     <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
     <div class="state-empty-title">No findings yet</div>
-    <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
+    <p class="state-empty-hint">${findingsEditable()
+      ? 'File a vulnerability manually with PoC evidence, or attach captured flows from History.'
+      : 'Agents maintain findings over MCP. To file one here, or attach flows from History and Repeater, turn on findings editing.'}</p>
     <div class="find-empty-actions">
-      ${findingsEditable() ? '<button type="button" class="btn btn-primary" id="findEmptyNew">New finding</button>' : ''}
+      ${findingsEditable() ? '<button type="button" class="btn btn-primary" id="findEmptyNew">New finding</button>' : '<button type="button" class="btn btn-primary" id="findEmptyEnable">Enable findings editing</button>'}
        </div>
   </div>`;
 }
@@ -452,6 +454,8 @@ function wireFindingsEmptyActions(root) {
   const neu = box.querySelector('#findEmptyNew');
 
   if (neu && findingsEditable()) neu.onclick = openFindCreate;
+  const enable = box.querySelector('#findEmptyEnable');
+  if (enable) enable.onclick = () => { enableFindingsEditing(); };
 
 }
 
