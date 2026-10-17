@@ -3,7 +3,7 @@ import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection, focusOption } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { registerSseHandler } from './shell-hooks.js';
@@ -176,6 +176,10 @@ function setHeldModified(raw, original){
   // plain !== would flag every untouched message as MODIFIED.
   const modified=heldIsModified(raw,original);
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
+  // The server rewrites Content-Length from the edited body, so the header in
+  // the editor is stale after a body edit: say what will really be sent.
+  const cl=$('#heldClNote');
+  if(cl){const text=modified?contentLengthText(contentLengthNote(raw)):'';cl.hidden=!text;cl.textContent=text;}
 }
 
 /* ---- Raw | Pretty (editable) ----

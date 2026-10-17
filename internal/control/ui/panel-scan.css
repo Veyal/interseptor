@@ -23,6 +23,9 @@
 .icpt-actionbar .btn{min-height:var(--hit-min)}
 .icpt-actionbar .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
+.icpt-clnote{flex:none;color:var(--warnFg);font-size:var(--fs-xs);font-family:var(--mono);white-space:nowrap}
+.icpt-clnote[hidden]{display:none}
+
 .icpt-item.is-dropping{border-left-style:dashed}
 .icpt-dropping-tag{margin-left:auto;font-size:var(--fs-xs);font-weight:700;color:var(--amber)}
 .icpt-mr>summary .icpt-mr-count{margin-left:var(--sp-2)}
