@@ -1003,7 +1003,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `vault_merge` | `id` | Download a vault project revision and merge (additive union) into the active project. |
 | `ws_send` | `url`, `message` | Open a fresh WebSocket, send one message, return the server's reply frames. |
 
-### Finding fields (95)
+### Finding fields (96)
 
 Generated from the `create_finding` input schema. `update_finding` accepts the same fields plus a required `id`. Over REST, send the same names to `POST /api/findings` and `PATCH /api/findings/{id}`.
 
@@ -1032,6 +1032,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `claims[].verdict` | string | confirmed\|partially_confirmed\|not_reproduced\|refuted |
 | `confidence` | string | tentative\|firm\|certain |
 | `cvss` | string | CVSS:4.0 vector; server calculates score and checks severity for report readiness |
+| `cvssV3` | string | optional CVSS:3.1 vector kept beside the v4.0 cvss for platforms that score in v3.1 (HackerOne, Bugcrowd); "" clears it on update |
 | `cwe` | string | optional CWE id or class, e.g. |
 | `detail` | string | DEPRECATED legacy opening text; use summary/impact/why plus blocks. |
 | `environment` | string | optional: production\|staging\|development\|testing\|local (legacy prod accepted; invalid values rejected) |
@@ -1799,7 +1800,9 @@ bounded before bytes are read.
 
 ### Export a subset or a single finding
 
-By default the report covers every finding in the status set (`open`, `verified`, `fixed`). To
+By default the report covers every finding whatever its status: unverified findings are listed (and
+block a final report until verified), and false positives go to their own appendix. `?statuses=`
+narrows the set, and `GET /api/findings/readiness` then counts what it left out under `hidden`. To
 deliver only part of an engagement, pass `?ids=` a comma-separated list of finding ids:
 `GET /api/findings/report?ids=41` exports one finding, and `?ids=12,41,53` exports those three. The
 selection works in every format (Markdown, HTML, PDF, JSON and SARIF) and keeps the report's own
@@ -1822,8 +1825,9 @@ rest of Interseptor uses: `Authorization`, `Proxy-Authorization`, `Cookie`, `Set
 every format — Markdown, HTML, PDF, JSON and the tracker adapters — and a masked response carries
 `X-Interseptor-Report-Masked: 1`.
 
-It is off by default. Without it an export carries evidence exactly as captured, which is what a
-report is for. Masking is an export-time pass: the stored finding is never rewritten, so a later
+On the report it is off by default: without it an export carries evidence exactly as captured,
+which is what an internal evidence pack is for. The Report view in the UI turns it on by default for
+a client deliverable. The per-finding tracker export masks by default (`?maskHeaders=0` opts out). Masking is an export-time pass: the stored finding is never rewritten, so a later
 unmasked export is unchanged.
 
 Only the header block of a raw message is rewritten. The request line, every other header and the
@@ -1884,16 +1888,17 @@ wrong shape because a parameter was forgotten. A `false_positive` finding return
 Each narrative is rendered by the same function that writes the engagement report, so the evidence
 roles, proof statements and provenance labels — including "generated evidence render from recorded
 data; not browser proof" — travel with the ticket. `?mode=final` applies the same readiness gate as
-a final report, and `?maskHeaders=1` masks credential headers.
+a final report. Credential headers are masked by default here, because a ticket leaves the
+engagement for a third-party platform; `?maskHeaders=0` keeps them verbatim.
 
 A field with no honest equivalent is left out rather than guessed, because a wrong identifier files
 the report against the wrong thing:
 
 | Target | Carried | Omitted, and why |
 |---|---|---|
-| HackerOne | `title`, `vulnerability_information`, `impact`, `severity_rating` | `weakness_id` (HackerOne's own numeric id for a CWE — the CWE itself is stated in the narrative), `structured_scope_id` (the programme's asset id), a CVSS vector (HackerOne's severity object takes v3.1; Interseptor records v4.0, so the v4 vector and score are stated in the narrative where they cannot be read as a v3 score) |
+| HackerOne | `title`, `vulnerability_information`, `impact`, `severity_rating` | `weakness_id` (HackerOne's own numeric id for a CWE — the CWE itself is stated in the narrative), `structured_scope_id` (the programme's asset id), a CVSS vector field (HackerOne scores in v3.1; the v4.0 vector and, when recorded in `cvssV3`, the v3.1 vector and score are stated in the narrative, each labelled with its version) |
 | Bugcrowd | `title`, `description`, `bug_url`, `extra_info`, `severity` as P1–P5 (Critical=1 … Info=5) | `vrt_id` (Bugcrowd's own taxonomy, not derivable from a CWE, and a wrong VRT id changes triage and payout) |
-| Jira | `fields.summary`, `fields.description`, `fields.issuetype` (`Bug`), `fields.priority` (Highest…Lowest), `fields.labels` | `fields.project` — add `{"project":{"key":"ABC"}}` before posting — plus reporter, assignee, components and custom fields. `issuetype` and the default priority scheme are assumptions; rewrite them for an instance with its own scheme. Post to `/rest/api/2/issue`: `description` is Markdown, and Jira Cloud's v3 endpoint expects Atlassian Document Format, which Interseptor does not generate |
+| Jira | `fields.summary`, `fields.description`, `fields.issuetype` (`Bug`), `fields.priority` (Highest…Lowest), `fields.labels` | `fields.project` — add `{"project":{"key":"ABC"}}` before posting — plus reporter, assignee, components and custom fields. `issuetype` and the default priority scheme are assumptions; rewrite them for an instance with its own scheme. Post to `/rest/api/2/issue`: `description` is Jira wiki markup (raw HTTP in `{noformat}` blocks, prose `{`, `}`, `[`, `]` escaped), and Jira Cloud's v3 endpoint expects Atlassian Document Format, which Interseptor does not generate |
 | SARIF 2.1.0 | one run, one rule and one result per finding, `locations` per affected target, `partialFingerprints`, and the finding's evidence with its role, kind, source classification and proof statement in `properties` | `result.kind` — SARIF's kind describes a check's outcome (pass/fail/review), Interseptor's status describes where a reviewed finding sits in a workflow; they are different questions, so status is reported in `properties` instead. Raw captured bytes: a SARIF log is an index of findings, not an evidence bundle |
 
 SARIF severity maps to the three usable levels (Critical/High → `error`, Medium → `warning`,
