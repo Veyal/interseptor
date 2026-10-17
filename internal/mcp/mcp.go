@@ -2069,20 +2069,21 @@ func (s *Server) registerTools() {
 	s.add("export_full_project",
 		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA and custom checks are not included. Returns the path and size.",
 		obj(map[string]any{
-			"path": p("string", "absolute path to write the .zip to, e.g. /backups/acme.zip"),
+			"path":      p("string", "a .zip file name, e.g. acme.zip; it is written to the exports folder under the Interseptor data dir (~/.interseptor/exports/), the only place the AI channel may write archives"),
+			"overwrite": p("boolean", "replace an existing archive of that name (default false)"),
 		}, "path"),
 		func(a map[string]any) (string, error) {
 			path := strings.TrimSpace(argStr(a, "path"))
 			if path == "" {
-				return "", fmt.Errorf("path is required (absolute .zip path to write)")
+				return "", fmt.Errorf("path is required (a .zip file name such as acme.zip)")
 			}
-			return s.api(http.MethodPost, "/api/export/full/file", map[string]any{"path": path})
+			return s.api(http.MethodPost, "/api/export/full/file", map[string]any{"path": path, "overwrite": argBool(a, "overwrite", false)})
 		})
 
 	s.add("import_full_project",
 		"Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project under ~/.interseptor/projects/<name>. Refuses to overwrite an existing project unless overwrite=true. After import, switch to the project to open it.",
 		obj(map[string]any{
-			"path":      p("string", "absolute path to the .zip archive to restore"),
+			"path":      p("string", "the .zip archive to restore: a file name in the exports folder (~/.interseptor/exports/), the only place the AI channel may read archives"),
 			"name":      p("string", "new project name (plain name, no path separators)"),
 			"overwrite": p("boolean", "replace an existing project of that name (default false)"),
 		}, "path", "name"),

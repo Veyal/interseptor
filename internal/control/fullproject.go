@@ -591,18 +591,35 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 
 // exportFullFile writes the archive to an operator-supplied path on the server
 // filesystem and returns the path and size. For the local MCP agent, which
-// works with paths rather than binary downloads.
+// works with paths rather than binary downloads. The path must name a .zip
+// file, an existing file is replaced only with overwrite=true, a bare name is
+// written under <data dir>/exports, and AI callers are confined to that folder
+// (resolveArchivePath).
 func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Path string `json:"path"`
+		Path      string `json:"path"`
+		Overwrite bool   `json:"overwrite"`
 	}
 	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
-	dest := strings.TrimSpace(in.Path)
-	if dest == "" {
-		httpErr(w, http.StatusBadRequest, "path required")
+	dest, err := h.resolveArchivePath(r, in.Path, true)
+	if err != nil {
+		writeArchivePathErr(w, err)
 		return
+	}
+	if info, err := os.Lstat(dest); err == nil {
+		switch {
+		case info.IsDir():
+			httpErr(w, http.StatusBadRequest, "destination is a directory")
+			return
+		case info.Mode()&os.ModeSymlink != 0:
+			httpErr(w, http.StatusBadRequest, "destination is a symbolic link")
+			return
+		case !in.Overwrite:
+			httpErr(w, http.StatusConflict, "destination file already exists (pass overwrite=true to replace it)")
+			return
+		}
 	}
 	snap, err := h.snapshotDB()
 	if err != nil {
@@ -610,10 +627,6 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
-	if info, err := os.Stat(dest); err == nil && info.IsDir() {
-		httpErr(w, http.StatusBadRequest, "destination is a directory")
-		return
-	}
 	out, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+"-*.tmp")
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "create: "+err.Error())
@@ -653,8 +666,9 @@ func (h *projectAPI) importFullFile(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
-	if strings.TrimSpace(in.Path) == "" {
-		httpErr(w, http.StatusBadRequest, "path required")
+	src, err := h.resolveArchivePath(r, in.Path, false)
+	if err != nil {
+		writeArchivePathErr(w, err)
 		return
 	}
 	destDir, err := h.projectImportDir(in.Name)
@@ -666,7 +680,7 @@ func (h *projectAPI) importFullFile(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusConflict, "a project with that name already exists (pass overwrite=true to replace)")
 		return
 	}
-	if err := installFullArchive(strings.TrimSpace(in.Path), destDir, in.Overwrite); err != nil {
+	if err := installFullArchive(src, destDir, in.Overwrite); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
