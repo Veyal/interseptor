@@ -932,7 +932,12 @@ export async function sendToRepeater(f){
       &&snapshot.tab.requestAdoptionPristine===true
       &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
       &&snapshot.tab.sendPending!==true);
-    let t=reusable?.tab||null;
+    // An untouched empty tab (the one every fresh Repeater starts with) is
+    // filled instead of being left behind next to a new tab.
+    const blank=reusable?null:tabSnapshots.find(snapshot=>repTabs.tabs.includes(snapshot.tab)
+      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
+      &&repTabIsBlank(snapshot.tab));
+    let t=reusable?.tab||blank?.tab||null;
     if(!t){t=repTabs.create();if(!t)return false;}
     repTabs.active=t.tid;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
@@ -948,6 +953,12 @@ export async function sendToRepeater(f){
     toast('loaded #'+f.id+' into Repeater');
     return true;
   }catch(e){toast(e.message);return false;}
+}
+// repTabIsBlank: a tab with no request, label, response or history yet.
+export function repTabIsBlank(t){
+  return !!t&&!t.sendPending&&!t.resId&&!t.sourceFlowId&&!t.label
+    &&!String(t.url||'').trim()&&!String(t.headers||'').trim()&&!String(t.body||'').trim()
+    &&!(Array.isArray(t.history)&&t.history.length)&&!t.historyNeedsMigration;
 }
 // ---- Repeater response-pane actions: Intruder / + Finding / Copy cURL ----
 function shellQuote(v){return "'"+String(v).replace(/'/g,"'\\''")+"'";}
