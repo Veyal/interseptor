@@ -124,6 +124,15 @@ func TestExportFullFileAPIKeyCallerConfinedToExports(t *testing.T) {
 	}
 }
 
+// A relative --data-dir must still let an absolute path inside exports through.
+func TestExportsDirIsAbsolute(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.GlobalDir = "relative-data"
+	if d := h.exportsDir(); !filepath.IsAbs(d) {
+		t.Fatalf("exportsDir = %q, want absolute", d)
+	}
+}
+
 func TestImportFullFileAIConfinedToExports(t *testing.T) {
 	h, _, _ := newHub(t)
 	h.GlobalDir = t.TempDir()

@@ -28,7 +28,11 @@ func (h *Hub) exportsDir() string {
 	if h.GlobalDir == "" {
 		return ""
 	}
-	return filepath.Join(h.GlobalDir, exportsDirName)
+	dir := filepath.Join(h.GlobalDir, exportsDirName)
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs // a relative --data-dir must not make containment cwd-dependent
+	}
+	return dir
 }
 
 // resolveArchivePath validates a server-side archive path. It must name a
