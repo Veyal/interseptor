@@ -390,7 +390,10 @@ export function renderIntercept(){
   const total=items.length;
   syncInterceptBanner();
   const list=$('#heldList');
-  if(!total){list.innerHTML='';list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
+  // Phones show the queue alone (the editor's "Nothing on hold" state is in the
+  // hidden detail pane), so the empty queue carries the same message; CSS shows
+  // it only in the stacked layout.
+  if(!total){list.innerHTML=`<p class="icpt-list-empty hint">Nothing on hold. ${esc(hint?hint.textContent:'')}</p>`;list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
   list.innerHTML=items.map(heldRowMarkup).join('');
   // The hold queue is a single-select list: one listbox, one Tab stop, arrows
   // move the selection because selecting *is* what shows the item in the editor.

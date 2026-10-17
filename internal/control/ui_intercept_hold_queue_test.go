@@ -26,3 +26,15 @@ func TestUIHoldQueueKeyboardUsesLiveRows(t *testing.T) {
 		t.Fatal("hold-queue navigation must be one delegated keydown listener on #heldList")
 	}
 }
+
+// On phones the hold queue is shown alone and the editor's "Nothing on hold"
+// state lives in the hidden detail pane, so an empty queue was a blank area.
+// The list now carries the message, shown only in the stacked layout.
+func TestUIHoldQueueEmptyStateOnPhones(t *testing.T) {
+	src := executableJS(readUIAsset(t, "js/intercept.js"))
+	requireUIContains(t, src, "<p class=\"icpt-list-empty hint\">Nothing on hold. ${esc(hint?hint.textContent:'')}</p>")
+	requireUIContains(t, readUIAsset(t, "panel-scan.css"),
+		".icpt-list-empty{display:none;",
+		".icpt-work[data-mode=\"stack\"] .icpt-list-empty{display:block}",
+	)
+}
