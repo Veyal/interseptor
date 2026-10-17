@@ -2039,7 +2039,8 @@ func (s *Server) registerTools() {
 		obj(map[string]any{
 			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
 			"mode":          p("string", "final blocks incomplete findings with actionable checks; draft permits incomplete export (default for legacy clients)"),
-			"format":        p("string", "md (default), html, or json"),
+			"format":        p("string", "md (default), html, json, or sarif (SARIF 2.1.0); PDF is binary and is downloaded from the control API"),
+			"maskHeaders":   p("boolean", "mask Authorization/Cookie/Set-Cookie and other credential header values in attached raw evidence (default false)"),
 			"statuses":      p("string", "comma-separated finding statuses, or all"),
 			"tag":           p("string", "optional finding tag filter"),
 		}),
@@ -2053,8 +2054,8 @@ func (s *Server) registerTools() {
 				q.Set("issues", "1")
 			}
 			format := strings.ToLower(strings.TrimSpace(argStr(a, "format")))
-			if format != "" && format != "md" && format != "html" && format != "json" {
-				return "", fmt.Errorf("format must be md, html, or json")
+			if format != "" && format != "md" && format != "html" && format != "json" && format != "sarif" {
+				return "", fmt.Errorf("format must be md, html, json, or sarif")
 			}
 			if format != "" && format != "md" {
 				q.Set("format", format)
@@ -2064,6 +2065,9 @@ func (s *Server) registerTools() {
 			}
 			if v := strings.TrimSpace(argStr(a, "tag")); v != "" {
 				q.Set("tag", v)
+			}
+			if argBool(a, "maskHeaders", false) {
+				q.Set("maskHeaders", "1")
 			}
 			if len(q) > 0 {
 				p += "?" + q.Encode()

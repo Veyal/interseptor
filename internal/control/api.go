@@ -402,7 +402,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "render_evidence", "desc": "Render recorded authz, flow-diff, flow-waterfall or finding-chain evidence as a PNG and optionally attach it"},
 		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
 		{"name": "delete_finding", "desc": "Permanently delete a finding (cannot be undone)"},
-		{"name": "export_report", "desc": "Export canonical findings as Markdown, self-contained HTML, or JSON"},
+		{"name": "export_report", "desc": "Export canonical findings as Markdown, self-contained HTML, JSON or SARIF, optionally with credential headers masked"},
 		{"name": "export_full_project", "desc": "Write a lossless portable archive of the whole project (DB + captured bodies) to a server-side .zip path"},
 		{"name": "import_full_project", "desc": "Restore a full-project .zip archive into a new named project under ~/.interseptor/projects"},
 		{"name": "vault_list", "desc": "List projects on the configured project vault"},
