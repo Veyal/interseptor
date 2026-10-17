@@ -16,7 +16,8 @@ func TestUINarrowProxyAndMapToolbarsKeepControlsVisible(t *testing.T) {
 	}
 	block := css[narrow:]
 	for _, contract := range []string{
-		"#panel-proxy>.toolbar:first-child",
+		// first-of-type: each panel opens with a visually hidden h2 (app.js).
+		"#panel-proxy>.toolbar:first-of-type",
 		"#panel-proxy>div.toolbar-secondary",
 		"#panel-map>.toolbar",
 		"flex-wrap:wrap",

@@ -30,6 +30,7 @@ import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } fr
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
+import { documentTitle, tabLabel } from './shell-title.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -59,17 +60,38 @@ function setNavDot(id,on){
 function clearNavDot(id){ setNavDot(id,false); }
 
 /* ---- breadcrumb (top bar "Group / Panel" context) ---- */
+// panelLabelOf reads a rail tab's name without its count badges and screen-reader notes.
+function panelLabelOf(t){
+  const label=t.cloneNode(true);
+  label.querySelectorAll('.badge,.nav-dot,.nav-dot-note').forEach(n=>n.remove());
+  return tabLabel(label.textContent,NAV_DOT_NOTE);
+}
 function updateCrumb(t){
   const crumb=$('#crumb'); if(!crumb)return;
   const g=crumb.querySelector('.crumb-group'), p=crumb.querySelector('.crumb-panel');
   if(g)g.textContent=t.dataset.group||'';
-  if(p){
-    // Read the label without the count badges and screen-reader notes inside the tab.
-    const label=t.cloneNode(true);
-    label.querySelectorAll('.badge,.nav-dot,.nav-dot-note').forEach(n=>n.remove());
-    p.textContent=(label.textContent||'').replace(NAV_DOT_NOTE,'').trim();
-  }
+  if(p)p.textContent=panelLabelOf(t);
 }
+
+/* ---- document title + panel headings ---- */
+// The browser tab says which tool is focused ("Proxy · demo · Interseptor"), and
+// each panel opens with a visually hidden heading so screen-reader users can
+// jump between panels (and the split's two panes) by heading.
+let titlePanel='', titleProject='';
+function syncDocumentTitle(){
+  const t=titlePanel&&document.querySelector('.tab[data-tab="'+titlePanel+'"]');
+  document.title=documentTitle(t?panelLabelOf(t):'',titleProject);
+}
+function setTitleProject(name){titleProject=String(name||'');syncDocumentTitle();}
+function ensurePanelHeadings(){
+  $$('.panel[data-panel]').forEach(panel=>{
+    if(panel.querySelector(':scope > .panel-heading'))return;
+    const t=document.querySelector('.tab[data-tab="'+panel.dataset.panel+'"]');if(!t)return;
+    const h=document.createElement('h2');h.className='u-sr panel-heading';h.textContent=panelLabelOf(t);
+    panel.insertBefore(h,panel.firstChild);
+  });
+}
+ensurePanelHeadings();
 
 /* ---- tabs ---- */
 let projectScopedUIReady=false;
@@ -111,6 +133,7 @@ function onCanvasFocusChange(name,prev){
   if(prev==='notes'&&name!=='notes')flushNotesSave();
   try{localStorage.setItem('tab',name);}catch(e){} // remember the focused tab across refresh
   updateCrumbByName(name);
+  titlePanel=name;syncDocumentTitle();
   emitTabChange(name,prev||'');
   loadPanelData(name);
 }
@@ -658,6 +681,7 @@ async function loadVersion(retry){
   try{
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
+    if(d.project)setTitleProject(d.project);
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent=d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
@@ -745,6 +769,8 @@ function completeProjectScopedUIHydration(statuses){
   // the tool panels into the restored (or default) pane layout and takes over the
   // `.panel.active` visibility flag. restoreTab() then focuses the saved tab.
   initCanvas({initialPanel:resolveSavedTab(),onFocusedChange:onCanvasFocusChange,onDocShown:onCanvasDocShown,defaultPanel:'proxy'});
+  // The seeded first document raises no focus change, so name it here.
+  titlePanel=canvasFocusedPanel()||resolveSavedTab();syncDocumentTitle();
   const status=$('#workspaceHydrationStatus');
   if(status){
     status.setAttribute('role','status');status.setAttribute('aria-live','polite');
