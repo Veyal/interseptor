@@ -280,10 +280,11 @@ Deliberate differences from the overhaul spec, recorded so they are not mistaken
   cannot be decided in the browser (regex rules).
 
 Stylesheets load in a fixed order: `app.css` (tokens and legacy components), `surfaces.css`,
-`findings.css`, `workbench.css` (documents the 1100/900/720/480px breakpoints), `primitives.css`,
-`shell.css`, `flow.css`, `panel-proxy.css`, `panel-tools.css`, `panel-scan.css`, `panel-misc.css`,
-`settings.css`, `report.css`, `canvas.css` (the document-tab strip, panes and split sash), and
-`mobile.css` last so the phone model wins the cascade.
+`findings.css`, `primitives.css`, `shell.css`, `flow.css`, `panel-proxy.css`, `panel-tools.css`,
+`panel-scan.css`, `panel-misc.css`, `settings.css`, `report.css`, `canvas.css` (the document-tab
+strip, panes and split sash), and `mobile.css` last so the phone model wins the cascade.
+`workbench.css` documents the 1100/900/720/480px breakpoints; it holds no rules, so it is embedded
+but not linked.
 
 Theme and density are root attributes set by a pre-paint script so there is no layout shift:
 `data-theme` is `dark`, `light` or `hc` (high contrast; `forced-colors` maps borders, focus and

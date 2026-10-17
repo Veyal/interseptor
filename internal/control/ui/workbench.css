@@ -1,4 +1,5 @@
-/* Workbench breakpoint model. Documentation only: each package writes its own
+/* Workbench breakpoint model. Documentation only (embedded, deliberately not
+   linked from index.html, so it costs no request): each package writes its own
    rules in its own stylesheet (shell.css, primitives.css, flow.css, panel-*.css,
    settings.css, report.css, mobile.css), and app.css is frozen after WP0.
 
