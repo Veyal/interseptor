@@ -2207,7 +2207,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("send_request",
-		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body. Optional bodyMode=decoded + codecId re-encodes plaintext via a message codec before send (pass rawBody for encode context when needed).",
+		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body. The URL must be in project scope (out-of-scope sends are refused with code out_of_scope). Optional bodyMode=decoded + codecId re-encodes plaintext via a message codec before send (pass rawBody for encode context when needed).",
 		obj(map[string]any{
 			"method":   pt("string"),
 			"url":      p("string", "absolute URL"),
@@ -2263,7 +2263,7 @@ func (s *Server) registerTools() {
 			"payloads":     map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
 			"repeat":       p("integer", "Race / repeat send count"),
 			"count":        p("integer", "alias for repeat"),
-			"threads":      pr("concurrent in-flight requests (default 1)", 1, 64),
+			"threads":      pr("concurrent in-flight requests (default 1; AI-started attacks are capped at 10)", 1, 10),
 			"delayMs":      map[string]any{"type": "integer", "minimum": 0, "description": "delay between requests in milliseconds"},
 			"barrier":      p("boolean", "repeat/race only, threads>1: launch the first requests together (separate connections, not single-packet sync); recorded in state.barrier"),
 			"grepMatch":    p("string", "regex that flags matching responses"),
@@ -2575,7 +2575,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scope") })
 
 	s.add("add_scope_rule",
-		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners.",
+		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list needs the operator (request_human_input).",
 		obj(map[string]any{
 			"action":  pe("", "include", "exclude"),
 			"host":    p("string", "e.g. *.acme.com"),

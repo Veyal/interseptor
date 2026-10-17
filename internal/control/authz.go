@@ -358,6 +358,9 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 	if h.targetsOwnListener(url) {
 		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
 	}
+	if msg := h.aiScopeRefusal(extra, url, ""); msg != "" {
+		return authzResult{Name: id.Name, Error: msg}
+	}
 	body := bodyOverride
 	if body == nil {
 		var err error

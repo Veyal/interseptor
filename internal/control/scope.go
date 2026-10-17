@@ -57,6 +57,16 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 	if !validScope(w, in) {
 		return
 	}
+	if isAISource(r) {
+		if existing, err := h.identicalScopeRule(in); err == nil && existing != nil {
+			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+		if msg := h.aiScopeWideningRefusal(r, &in); msg != "" {
+			httpErr(w, http.StatusForbidden, msg)
+			return
+		}
+	}
 	if _, err := h.st.CreateScopeRule(&in); err != nil {
 		httpInternalErr(w, err)
 		return
@@ -69,6 +79,10 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	if msg := h.aiScopeWideningRefusal(r, nil); msg != "" {
+		httpErr(w, http.StatusForbidden, msg)
 		return
 	}
 	var in store.ScopeRule
@@ -95,6 +109,10 @@ func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	if msg := h.aiScopeWideningRefusal(r, nil); msg != "" {
+		httpErr(w, http.StatusForbidden, msg)
 		return
 	}
 	if err := h.st.DeleteScopeRule(id); err != nil {

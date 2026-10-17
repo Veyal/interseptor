@@ -55,6 +55,10 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
+	if msg := h.aiScopeRefusal(aiSourceFlag(r), url, ""); msg != "" {
+		writeAIScopeRefusal(w, msg, url)
+		return
+	}
 	body, err := h.bodyBytesResult(f.ReqBodyHash)
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "request body not found")

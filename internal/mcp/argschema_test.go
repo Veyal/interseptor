@@ -69,7 +69,7 @@ func TestValidationNamesEnumValues(t *testing.T) {
 func TestValidationRejectsWrongTypesAndBounds(t *testing.T) {
 	s, hits, _ := countingControl(t, `{}`)
 	cases := []struct{ tool, args, want string }{
-		{"start_intruder", `{"target":"http://example.com","template":"GET / HTTP/1.1","threads":500}`, "threads must be <= 64"},
+		{"start_intruder", `{"target":"http://example.com","template":"GET / HTTP/1.1","threads":500}`, "threads must be <= 10"},
 		{"start_intruder", `{"target":"http://example.com","template":"GET / HTTP/1.1","threads":1.5}`, "threads must be an integer"},
 		{"send_request", `{"url":{"u":"http://example.com"}}`, "url must be a string (got object"},
 		{"list_flows", `{"status":9}`, "status must be <= 5"},
