@@ -244,7 +244,7 @@ func (h *androidAPI) getAndroidMagiskModule(w http.ResponseWriter, r *http.Reque
 	}
 	zipBytes, err := android.GenerateMagiskModule(h.ca.CertPEM())
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
