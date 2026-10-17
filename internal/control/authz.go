@@ -732,6 +732,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	var results []hostResult
 	for _, t := range targets {
 		targetURL := t.scheme + "://" + netutil.URLAuthority(t.scheme, t.host, t.port) + path
+		if msg := h.aiScopeRefusal(aiSourceFlag(r), targetURL, ""); msg != "" {
+			results = append(results, hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL, Error: msg})
+			continue
+		}
 
 		hdrs := cloneHeaders(ref.ReqHeaders)
 		if mode == "bearer" {

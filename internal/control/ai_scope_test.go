@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/store"
@@ -186,5 +187,80 @@ func TestTemplatePath(t *testing.T) {
 		if got := templatePath(in); got != want {
 			t.Errorf("templatePath(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The login macro is a send path too: the AI channel must not point it (or the
+// token-refresh macro) at an out-of-scope host, nor fire one that already does.
+func TestAILoginMacroOutsideScopeIsRefused(t *testing.T) {
+	f := newAIScopeFixture(t)
+	var hits atomic.Int32
+	counter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Set-Cookie", "sid=1")
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer counter.Close()
+	_, cport, _ := strings.Cut(strings.TrimPrefix(counter.URL, "http://"), ":")
+	outMacro := map[string]any{"enabled": true, "target": "http://localhost:" + cport, "request": "POST /login HTTP/1.1\r\nHost: localhost\r\n\r\n"}
+	inMacro := map[string]any{"enabled": true, "target": "http://127.0.0.1:" + cport, "request": "POST /login HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"}
+
+	for _, key := range []string{"loginMacro", "macro"} {
+		code, body := f.do(t, "POST", "/api/session", map[string]any{key: outMacro}, true)
+		if code != http.StatusForbidden || !strings.Contains(body, `"code":"out_of_scope"`) {
+			t.Fatalf("AI set_session %s out of scope = %d %s", key, code, body)
+		}
+	}
+	if m := f.h.loadLoginMacro(); m.Target != "" {
+		t.Fatalf("refused AI login macro was stored: %+v", m)
+	}
+	if code, body := f.do(t, "POST", "/api/session", map[string]any{"loginMacro": inMacro}, true); code != http.StatusOK {
+		t.Fatalf("AI in-scope login macro = %d %s", code, body)
+	}
+
+	// An operator-configured out-of-scope macro still cannot be fired by the AI.
+	if code, body := f.do(t, "POST", "/api/session", map[string]any{"loginMacro": outMacro}, false); code != http.StatusOK {
+		t.Fatalf("UI out-of-scope login macro = %d %s", code, body)
+	}
+	for _, p := range []string{"/api/session/login/run", "/api/session/login/test"} {
+		code, body := f.do(t, "POST", p, nil, true)
+		if code != http.StatusForbidden || !strings.Contains(body, "out_of_scope") {
+			t.Fatalf("AI %s with out-of-scope macro = %d %s", p, code, body)
+		}
+	}
+	if n := hits.Load(); n != 0 {
+		t.Fatalf("refused AI login macro reached the target %d times", n)
+	}
+	if code, body := f.do(t, "POST", "/api/session/login/test", nil, false); code != http.StatusOK || hits.Load() != 1 {
+		t.Fatalf("UI login test = %d %s hits=%d", code, body, hits.Load())
+	}
+
+	// Capturing an out-of-scope flow as the login macro is refused too.
+	seed := &store.Flow{Method: "POST", Scheme: "http", Host: "localhost", Port: atoiOr(cport, 0), Path: "/login", Status: 200}
+	if _, err := f.st.InsertFlow(seed); err != nil {
+		t.Fatal(err)
+	}
+	code, body := f.do(t, "POST", "/api/session/login/from-flow/"+itoa64(seed.ID), map[string]any{}, true)
+	if code != http.StatusForbidden || !strings.Contains(body, "out_of_scope") {
+		t.Fatalf("AI login macro from out-of-scope flow = %d %s", code, body)
+	}
+}
+
+// cross-host-replay falls back to the reference flow's host when no in-scope
+// hosts are known; over the AI channel that fallback must be scope-checked.
+func TestAICrossHostReplayFallbackIsScoped(t *testing.T) {
+	f := newAIScopeFixture(t)
+	seed := &store.Flow{Method: "GET", Scheme: "http", Host: "localhost", Port: atoiOr(f.port, 0), Path: "/me", Status: 200}
+	if _, err := f.st.InsertFlow(seed); err != nil {
+		t.Fatal(err)
+	}
+	before := f.flowCount(t)
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
+	code, body := f.do(t, "POST", "/api/authz/cross-host-replay", map[string]any{"flowId": seed.ID, "jwt": jwt}, true)
+	if code != http.StatusOK || !strings.Contains(body, "out_of_scope") {
+		t.Fatalf("AI cross-host fallback out of scope = %d %s", code, body)
+	}
+	if f.flowCount(t) != before {
+		t.Fatal("a refused AI cross-host replay must not send or record a flow")
 	}
 }

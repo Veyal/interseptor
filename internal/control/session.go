@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Veyal/interseptor/internal/httplines"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -29,6 +30,21 @@ func parseSessionHeaders(text string) []sender.Header {
 		out = append(out, sender.Header{Key: k, Value: strings.TrimSpace(v)})
 	}
 	return out
+}
+
+// macroScopeRefusal scope-checks a session macro's send target (Target plus
+// the raw request's path) for the AI channel. It returns the refusal ("" when
+// allowed) and the URL that was checked.
+func (h *Hub) macroScopeRefusal(flags int64, target, rawReq string) (string, string) {
+	target = strings.TrimRight(strings.TrimSpace(target), "/")
+	if target == "" {
+		return "", ""
+	}
+	u := target + "/"
+	if _, p, _, _, err := httplines.ParseRawRequest(rawReq); err == nil && strings.HasPrefix(p, "/") {
+		u = target + p
+	}
+	return h.aiScopeRefusal(flags, u, ""), u
 }
 
 // loadMacro reads the persisted token-refresh macro ("" setting → disabled).
@@ -169,6 +185,16 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if msg, u := h.macroScopeRefusal(aiSourceFlag(r), in.LoginMacro.Target, in.LoginMacro.Request); msg != "" {
+			writeAIScopeRefusal(w, msg, u)
+			return
+		}
+	}
+	if in.Macro != nil {
+		if msg, u := h.macroScopeRefusal(aiSourceFlag(r), in.Macro.Target, in.Macro.Request); msg != "" {
+			writeAIScopeRefusal(w, msg, u)
+			return
+		}
 	}
 	en := ""
 	if in.Enabled {
@@ -224,7 +250,12 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 
 // runLoginMacro executes the recorded login request now and refreshes session headers.
 func (h *sessionAPI) runLoginMacro(w http.ResponseWriter, r *http.Request) {
-	if err := h.snd.SetLoginMacro(h.loadLoginMacro()); err != nil {
+	m := h.loadLoginMacro()
+	if msg, u := h.macroScopeRefusal(aiSourceFlag(r), m.Target, m.Request); msg != "" {
+		writeAIScopeRefusal(w, msg, u)
+		return
+	}
+	if err := h.snd.SetLoginMacro(m); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -247,7 +278,12 @@ func (h *sessionAPI) runLoginMacro(w http.ResponseWriter, r *http.Request) {
 // it returns the login response status and the session headers it would capture, so
 // the operator can see what the macro does before relying on it.
 func (h *sessionAPI) testLoginMacro(w http.ResponseWriter, r *http.Request) {
-	status, hdrs, err := h.snd.TestLoginMacro(h.loadLoginMacro())
+	m := h.loadLoginMacro()
+	if msg, u := h.macroScopeRefusal(aiSourceFlag(r), m.Target, m.Request); msg != "" {
+		writeAIScopeRefusal(w, msg, u)
+		return
+	}
+	status, hdrs, err := h.snd.TestLoginMacro(m)
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -297,6 +333,10 @@ func (h *sessionAPI) loginMacroFromFlow(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := sender.ValidateLoginMacro(m); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if msg, u := h.macroScopeRefusal(aiSourceFlag(r), m.Target, m.Request); msg != "" {
+		writeAIScopeRefusal(w, msg, u)
 		return
 	}
 	b, err := json.Marshal(m)
