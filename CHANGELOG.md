@@ -9,6 +9,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-10-17
+
+> Minor release: a broad hardening and polish pass across the UI and toolkit. The embedded UI now
+> gzips and caches its assets (about 3x smaller first load, 304 on reload) and de-duplicates boot
+> requests; History gains a keyboard list model, sort indicators, a hide-own-traffic option and a
+> space budget so rows stay visible; Repeater sends can be cancelled; the findings-to-report loop
+> is unblocked with more export formats and fixes to dropped evidence and omitted findings; and
+> Collections, Intercept, Intruder, Scanner, Map, Settings, onboarding and the launcher get
+> accessibility, mobile and correctness fixes. Held for separate review: proxy streaming/timeouts,
+> capture-loss, control-plane security and MCP agent-safety (issues #120-#123).
+
+### Added
+
+- History Filters > Hide browser noise (off by default, remembered per viewer, saved in views) hides Chrome's own background traffic (component and extension updates, variations, autofill votes, Safe Browsing, account sync checks). It is a display filter applied in SQL before the page limit (GET /api/flows?hideBrowserNoise=1); rows stay in the project.
+- Intercept: after a body edit, the editor shows the Content-Length that Forward will actually send ("Content-Length 22 → 26 on Forward"), because the server recalculates the header.
+- Repeater has a Cancel control, also bound to Esc, that appears while a send is in flight. Cancelling leaves the tab in a cancelled state that is not an error and keeps the previous response. Closing a tab aborts its pending send.
+- Intruder payload processing gained the `base64url`, `hex`, `htmlencode`, `md5`, `sha1` and `sha256` transforms alongside the existing urlencode/base64/upper/lower/prefix/suffix set.
+- Collections: a Collection actions menu next to the picker can rename or delete the collection. The delete confirmation says what is removed with it. The menu also opens Identity matrix, OpenAPI coverage, Run timing, Diff saved example and Send to Intruder, which were only in the command palette before.
+- GET /api/scanner/issues accepts severity, host, title, group=host and limit/offset, and returns total and nextOffset. With no parameters the response shape is unchanged. POST /api/scanner/run now also returns scan:{flows,limit,capped}, and with ?summary=1 it returns only counts.
+- Scanner: the progress bar now follows real progress (flows scanned out of total). A new Stop scan button cancels the scan on the server; nothing is saved and it is not reported as a failure. When a scan is capped at the newest 5,000 flows, the panel says that older traffic was not scanned.
+- Scanner: a Host filter (shown when issues span more than one host) narrows results to one target, so a browser's own background traffic cannot bury them. List rows show how many hosts an issue spans. Results are called issues rather than findings. The empty state says what Run will cover.
+- Findings UI exposes PDF, SARIF, credential masking and ticket exports, and offers to enable findings editing where it is refused.
+- Findings keep an optional CVSS v3.1 vector beside CVSS v4.0.
+- The MCP export_report tool can return SARIF and mask credentials.
+- A Setup guide button in the readiness popover reopens the wizard, and the Get started checklist stays visible in Settings > Project & data after being dismissed elsewhere.
+- The browser title follows the focused tool, for example "Proxy · demo · Interseptor". Each panel also opens with a visually hidden h2 heading, so screen-reader users can jump between panels.
+- The command palette now has "Go to Collections" and "Go to Settings", and `g c` jumps to Collections. A "Go to" entry is ranked by its destination name, so "collections" lists the navigation entry first.
+- tools/auditdigest (`make audit-digest`) recomputes runtime_sha256, runtime_files and audit_harness_sha256 in the UI audit manifest, so releases and code changes no longer need hand-edited hashes; CI fails with that remedy when the manifest is stale.
+- CI: headless-Chrome UI boot smoke job (scripts/ui_smoke.sh, `make ui-smoke`), now also a required `needs:` of the release publish job; gofmt check on Go files changed by the branch (scripts/gofmt_check.sh, `make fmt-check`, part of `make check`); weekly and per-push govulncheck workflow (advisory until the known x/net finding is fixed); Dependabot for gomod and GitHub Actions.
+
+### Changed
+
+- Collections UI modules (tree, editor, response, sheets) no longer import each other. Cross-module calls go through the X registry in collections-core.js, and a Go test fails on any import cycle among collections*.js.
+- Map: an empty tree or table now says why it is empty. Either nothing has been captured yet, every endpoint was hidden as 403/404 noise (with a Show all statuses button), or the filters exclude everything (with a Clear filters button that resets them in place).
+- MCP: run_scanner now returns counts only. list_issues now returns one row per (check, host) by default, with a count and three example flows. It accepts the filters severity, host and title, paging with limit and offset, and grouped=false for raw rows. 4,680 issues dropped from 2.4 MB to a 7 KB page.
+- tags.js and authz.js now reach History over bus.js (new PROXY_FILTER_TAG, PROXY_SELECT_FLOW and PROXY_RELOAD_AUTHZ_IDS topics), which removes the proxy-tags-authz import cycle. A generic strongly-connected-component (SCC) test now fails on any new static import cycle.
+- The OOB catcher now says plainly that interactions are kept only in memory (the newest 500, lost on restart or project switch). `/api/oob/state` reports `configured`, `limit`, `dropped` and `retention`. The count shows how many older hits were evicted, an unset base URL is flagged as local-only, and each interaction expands to show time, token, host, path, query, source, user agent and body preview.
+- CONTRIBUTING release steps: UI smoke is now in CI, manifest refresh is one command, PR checklist includes fmt-check and audit-digest.
+
+### Fixed
+
+- History body and Anywhere search now decode gzip, br, deflate and zstd bodies, so responses captured from a browser (which sends Accept-Encoding) match their content.
+- History Anywhere search matches URL, method, MIME, note, request/response headers and tags across all filtered flows in SQL, not only the newest 8000; only body reads stay bounded.
+- A capped History search ends its page at the last flow its body scan read and returns searchMore/searchCursor on GET /api/flows; History continues from there (automatically while the list is short, with a "Searching older flows" status), so matches in older History are no longer skipped or unreachable.
+- History keeps at least five rows visible (four cards on phones) when a flow is open in the bottom inspector; the inspector shrinks first. Previously a selected flow plus the TLS banner left the list 0px tall at 1280x800.
+- The TLS diagnosis banner in History is one line (verdict, short detail, row actions); the fix text, blocked hosts and Settings link sit behind a Details toggle.
+- The flow list is one multi-select listbox with a single Tab stop: Arrow keys, Home/End and PageUp/PageDown move selection and focus together (Shift extends), j/k carry focus, rows expose aria-selected and aria-posinset/aria-setsize, and row shortcuts (r, i, x, c, a) keep working on a focused row.
+- Jumping far in the virtualized History list (End) no longer lands about 90 rows short: the keyed reconcile resizes its pads before moving focus.
+- Sortable History headers name their state ("Method, sorted ascending") and keep keyboard focus after sorting.
+- The search filter chip names the active scope (search, body, id, saved search) instead of always saying "path".
+- The "scope switch moved" tip only shows to viewers with saved History preferences from the old layout.
+- An empty History page while a search is still paging reads "No matches in recent flows yet" instead of "No flows match".
+- Intercept: the INTERCEPT ACTIVE banner is styled again, with an amber warning background, padding and a phone padding variant. Before this it rendered as bare text because its rule required an `.is-open` class that the code never set.
+- Intercept: the held message title shows a space between the method and the URL (`POST 127.0.0.1/api`, not `POST127.0.0.1/api`).
+- Intercept on phones: the sticky action bar no longer covers the held editor. While a message is open, the filter row and the scope sentence are hidden. The "Forward and send to Repeater" button is now labelled "Forward + Repeater", so the action bar fits in two rows. On a 375px screen the editor now shows 240-267px of message, up from about 145px, so the body is visible.
+- Match & Replace: on phones each rule is a card instead of a five-column table. Saved rules use the same type labels as the add form ("Request header") and have placeholders in their match and replace fields.
+- Match & Replace: an invalid regex is reported as "invalid match regex: ..." instead of "rule 0 (req-header): ...". A rejected add now shows an error toast.
+- Intercept hold queue: Arrow, Home and End now reach rows that arrived or left through live updates. Before, ArrowDown stayed stuck on the first row when the other rows arrived after the first render.
+- Intercept: Forward all now sends the held bytes unchanged when a message was edited and then changed back, the same as Forward does. Before, it sent the editor's copy, which changed the body's CRLF line endings to LF.
+- Intercept on phones: an empty hold queue now says "Nothing on hold" instead of showing a blank area.
+- Intercept: while held messages are on screen, toasts (including the drop Undo toast) appear above the action bar instead of covering Forward and Drop.
+- Intercept: typing a filter pattern while "Only hold when" is unchecked no longer shows a "filter off" toast each time you pause. Errors from saving the filter now show as error toasts.
+- Repeater, flow replay and finding retest sends now stop at the target when the caller disconnects, times out or cancels. Before, abandoned sends kept their upstream connections open. Sends that set no timeoutMs are now bounded by a 5 minute default. A retest whose caller has left stops replaying further evidence and does not attach the aborted flow to the finding.
+- Repeater tabs keep their last response across a page reload instead of showing "No response yet". The Hex and Decoded response views are restored too, and a restored response whose flow was deleted shows a clear message.
+- Repeater loads a tab's stored sends after a reload even when the history rail is closed. Before, the history count was missing and "Diff vs previous" stayed disabled.
+- Sending a flow to a fresh Repeater fills the untouched empty starter tab instead of leaving it open next to a new tab.
+- A refused or timed-out Repeater send now reads "No response from the target" with the reason. Before, it looked like the target had answered 502 Bad Gateway, with the real error hidden. A 0 ms send keeps its duration in the status line.
+- Repeater Copy cURL keeps a Host header that differs from the URL, so vhost and Host-header tests are copied correctly. HEAD requests export as curl -I so the command does not hang.
+- The replay confirmation page now shows the selected session on first paint, exposes aria-pressed and announces the result.
+- The Repeater Send shortcut hint now meets WCAG AA contrast (5.5:1, up from 3.81:1). The own-listener error message now spells Interseptor correctly.
+- Intruder now rejects an unknown payload-processing rule with a clear error instead of silently sending the raw, un-transformed payload (a typo like `base644`, or an unsupported op, previously passed the plaintext payload to the target while appearing to be encoded).
+- Collections: at phone width the seven toolbar buttons (New collection, Import, Export, Variables, Environments, Run, Console) now keep an accessible name after their labels hide.
+- Collection runner: concurrent run starts can no longer exceed the active-run limit. Before, 10 runs could start with MaxActive 2.
+- Collection scripts approved without vars.read no longer fail before their first line. A plain pm.test or a write-only pm.environment.set now runs; the legacy environment/globals objects are built only when a script uses them.
+- Collections import: auto-detect now recognises a GraphQL introspection result. Plain text or a JSON array no longer gets a confusing OpenAPI "document root" error, and an empty Burp export names Burp instead of HAR.
+- Collections: a long collection name no longer spills over the next toolbar button. The picker keeps a readable width. Import, Export and Console show only icons below 1366px, and every toolbar label hides below 1180px.
+- Collections: the Console button no longer uses the same icon as Environments.
+- Collections: if you opened another request while a send was still running, the first response appeared under the second request, and Save example could store it there. Results now stay with the request that sent them.
+- Collections Variables sheet: a current value typed before the variable name is no longer lost on save.
+- Collections import: the toast now says what was added, updated or already present. It mentions quarantined scripts only when the file had scripts.
+- Collections: the run plan above the runner view no longer says script variable changes are discarded. The runner's Persist option can keep them.
+- Map: in the windowed endpoint table (400 or more endpoints), the header columns now line up with the rows. The window follows the real row height (about 41px, not the assumed 28px), so the last rows can be reached. Arrow, Page, Home and End now move through the whole table instead of wrapping inside the rows currently mounted. At phone width the table scrolls sideways instead of shrinking the Path column to nothing.
+- Scanner: the issue context-menu action "Filter this severity" lower-cased the severity, which emptied the list and left no chip pressed.
+- Scanner: the scan's own update event triggered a second reload that wiped the "Rescan complete" message and re-downloaded the whole issue list. Clear results had the same problem with its confirmation. Clear results also renamed its button to "Clear" and dropped keyboard focus to the page body.
+- Scanner: when scope changes while the panel is open, the target host list and the Run gate now refresh.
+- Map: the "+N identical" cluster badge now has a 24px target (it was 47×18). "Linked to a finding N/M" now counts only the selected domain.
+- Reports no longer silently omit findings by default: the status filter now includes every status, and false positives land in an 'Excluded - False Positives' appendix.
+- The same flow can be cited under distinct evidence roles, and a twice-cited flow keeps a single attachment row.
+- Report evidence blocks, captions and print layout render cleanly; proof sentences no longer end with a stray period inside the evidence list.
+- Tracker exports are ticket-ready.
+- New evidence is added before trailing retest blocks, and retest replays are set apart under their own heading.
+- SARIF results carry a content-based fingerprint.
+- Report preflight and evidence tray icons point at the icon sprite.
+- False-positive findings are exempt from the final report quality gate: they stay in the excluded appendix and board, but an incomplete false-positive stub no longer returns 409 for mode=final under the default all-status filter.
+- PUT /api/settings is now atomic. It validates every field first, then runs listener rebinds and upstream route/CA changes with undo. It saves all keys in one store.SetSettings transaction, applies the in-memory setters only after that commit, and sends one settings.update broadcast. A rejected or failed request no longer leaves earlier fields saved.
+- Turning off the Settings switch "Single-key shortcuts" now disables the global plain-letter shortcuts (g chords, r, i, c, a, x, /, ?, j/k), not only the keys.js registry ones. The switch now updates keyboard.js state, so the shortcut sheet checkbox no longer goes stale (WCAG 2.1.4).
+- Placeholders use --fg3 at full opacity everywhere (the browser default grey measured 3.1:1 on dark). Opacity was removed from the nav group labels, the Repeater Send key hint, the PoC note placeholder and the breadcrumb separator, so small text meets WCAG AA.
+- Settings save, import and device failures, and client-side validation messages, now show as error toasts (role=alert) instead of info toasts.
+- Settings → Session at phone width no longer draws an extra section rule under Per-host overrides, and the Save session row lines up with the section. The auto-bypass and system proxy hint rows now wrap instead of squeezing into a narrow column.
+- Proxy and control listen addresses with a port outside 1-65535 (0, 99999, a service name) are rejected with a clear 400 before any rebind.
+- Switching projects now keeps the launch flags (--proxy-port, --control-port, --control-addr, --data-dir) instead of restarting on default ports; --open is not repeated.
+- Switching to a save folder that cannot be created or written is rejected with a clear error instead of restarting into a process that exits and takes the instance down.
+- The first-run wizard shows the real proxy and control addresses on non-default ports (and disables Copy until they are known) instead of 127.0.0.1:8080 / :9966.
+- The first-run wizard is no longer skipped just because History already has traffic; it is skipped only when the project already has scope rules.
+- The phone project picker wraps long project paths and names instead of cutting off the distinguishing tail; a failed switch shows its reason next to the Save location field and keeps the picker open.
+- Turning off the "Single-key shortcuts" switch now also disables the global single-key shortcuts: the g-chords, r/i/c/a/x, f/d, / and ?, plus j/k in History (WCAG 2.1.4).
+- The first-run wizard waits for settings before it opens. It no longer shows or copies 127.0.0.1:8080 and :9966 on instances that use other ports.
+- Palette flow results no longer match long URLs on scattered letters: "repeater" no longer matches any path that happens to contain those letters in order.
+- The palette shows "Searching history…" while a server flow search runs, and the findings and identity modes say why their list is empty. Internal "legacy" wording is gone from palette titles, the shortcut sheet appears only once, and the palette button declares aria-haspopup=dialog.
+- Notes no longer silently drop an agent's `append_notes` while you are typing. GET /api/notes returns a `rev` and PUT accepts `baseRev`. A stale save gets 409, and the UI merges the change: appends are carried into your draft, and a full rewrite is kept as a visible "Conflicting copy" section. PUT without `baseRev` still replaces the notes.
+- Activity category chips now classify real MCP tool names (list_flows, create_finding, add_scope_rule, get_settings, android_setup …) instead of filing almost everything under Agent/MCP. The text filter now searches tool, summary and intent.
+- Expanded Activity details are reachable by screen readers. They were nested inside a role="button" row, whose contents assistive tech does not read. Activity rows also stay compact at phone width.
+- The OOB base URL must now be an absolute http(s) URL without a query or fragment. Before, `example.com/oob` was accepted and produced unusable payload URLs.
+- Device setup shows "Device proxy active" only for the selected Android device (before, it could describe another connected device). Duplicate no-device and iOS discovery-failure hints are removed, and the proxy-mode segment no longer overflows at 375px.
+- The Magisk module download no longer returns raw internal error text on a 500.
+- README install command used a literal `<version>` placeholder and could not be copy-pasted; it now uses `gh release download --pattern`. The Go badge now follows go.mod.
+- README and docs/FEATURES.md described Intruder as Sniper/Pitchfork/Race; the engine and UI provide Sniper, Battering, Pitchfork, Cluster and no-payload Repeat (race window).
+
+### Security
+
+- Android Wi-Fi proxy setup no longer runs shell commands on the test device: the proxy host (the per-request wifiHost or the saved manual device host) was placed into `adb shell settings put global http_proxy`, so a value such as `1.2.3.4;reboot` executed on the device. Only IP addresses and DNS hostnames are accepted now.
+- The manual device-proxy endpoint, Android/iOS wifiHost overrides and the iOS profile endpoint now refuse hosts that are not an IP address or hostname. iOS profile URLs query-escape the host, and an invalid profile host or port returns 400 instead of 500.
+- CI and docs workflows now default to read-only `contents` permission with concurrency groups; release builds use `check-latest` so shipped binaries carry the newest Go patch stdlib instead of the go.mod minimum.
+
+### Performance
+
+- History body search reads distinct bodies on a small worker pool; on a 20k-flow project an Anywhere search page takes about 125ms instead of 160ms on an idle machine, and is equal or faster than before under load while doing more work.
+- Intercept: saving the conditional filter now returns the queue summary without held raw bodies. With eight 1 MB requests held, each save while typing dropped from 8.39 MB (21 ms) to under 1 KB (1 ms).
+- Repeater no longer paints multi-megabyte responses in the Raw and Pretty views until you choose "Show anyway". "Download body" is offered beside it. A 20 MB body used to stall the pane for 1.3 s and 57 MB for about 5 s; the pane now shows the choice in about 0.1 s. Send is released as soon as the exchange ends instead of after the body is painted.
+- Passive scanner: slow case-insensitive regex checks (DB errors, debug pages, cloud keys, private IPs, mixed content, card numbers) now run only when a substring every match needs is present. Results are the same; this is fuzz-tested. Without custom checks, only the first 256 KiB of each body is read. Scanning 120 flows with 4 MiB bodies went from 4–20 s to 0.6–1.0 s. Analyzing one large HTML body went from 278 ms to 12 ms.
+- Embedded UI assets are served with `Cache-Control: no-cache`, a strong per-file ETag and a gzip copy when accepted. A reload is now 126 body-less 304s (about 33 KB instead of 2.34 MB). First load drops to 0.75 MB. On a 40 ms / 10 Mbit link, cold boot falls from 2.52 s to 1.65 s and a reload from 2.61 s to 1.46 s.
+- Concurrent identical GETs made through `api()` now share one request. A mutation or a live event clears the shared reads, so a read never returns data from before a change. Workspace autosaves only clear `/api/ui/` reads, and the connect-time `intercept.state` snapshot clears nothing.
+- The rule-less `workbench.css` is no longer linked. It stays embedded as breakpoint documentation, which saves one render-blocking request.
+- Command palette flow ranking now requires every query word to appear in the flow (8 times fewer than before … no, see evidence) and costs 2.5 ms per keystroke over 3,000 flows, down from 12.1 ms.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.15.1` release.
