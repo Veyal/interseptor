@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SEV_ORDER, sevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity,
-  onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
+  onlySeverity, summaryText, coverageNote, scopeLine, runGate, promoteBody, verifyTarget, unreviewedCount,
 } from '../js/scanner-model.js';
 
 const issues = [
@@ -55,6 +55,12 @@ test('summary text', () => {
   const g = groupIssues(issues);
   assert.equal(summaryText(g, issues), '3 findings · 4 targets');
   assert.equal(summaryText([], []), '');
+});
+
+test('a capped scan says older traffic was not scanned', () => {
+  assert.equal(coverageNote({ flows: 5000, capped: false }), '');
+  assert.equal(coverageNote(null), '');
+  assert.match(coverageNote({ flows: 5000, limit: 5000, capped: true }), /newest 5,000 matching flows; older traffic was not scanned/);
 });
 
 test('empty scope does not disable Run (the server treats it as all traffic)', () => {

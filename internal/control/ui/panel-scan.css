@@ -61,6 +61,8 @@
 .scan-passive-view[data-mode="stack"] .scan-list{max-height:none}
 .scan-passive-view.split>.scan-detail-pane{display:block;border-right:0}
 
+.scan-progress #scanStop{flex:none;min-height:var(--hit-min)}
+.scan-progress #scanStop:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .scan-sev-chips{position:sticky;top:0;z-index:var(--z-sticky);display:flex;flex-wrap:wrap;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
 .scan-sev-chips[hidden]{display:none}
 .scan-sev-chip{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-xl);background:var(--bg2);color:var(--fg);font:inherit;font-size:var(--fs-xs);cursor:pointer}

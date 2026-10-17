@@ -581,6 +581,8 @@ Content-Type: application/json
     <div class="scan-progress" id="scanProgress" hidden>
       <progress id="scanProgressBar" aria-label="Scan progress"></progress>
       <span id="scanProgressText" role="status">Scanning</span>
+      <span id="scanProgressCount" class="hint" aria-hidden="true"></span>
+      <button type="button" class="btn xs" id="scanStop">Stop scan</button>
     </div>
     <div id="scanPassiveView" class="scan-passive-view split">
       <div class="split-list scan-list-col" id="scanListCol">

@@ -3,10 +3,10 @@ import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
 import { renderState } from './statepanel.js';
-import { getShellApi } from './shell-hooks.js';
+import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
 import { stepIndex } from './list-rows-model.js';
-import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, coverageNote } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -672,14 +672,48 @@ function syncScanActionControls(){
   if(clear){clear.disabled=scanRunPending||scanClearPending;clear.setAttribute('aria-busy',scanClearPending?'true':'false');}
   syncScanProgress();
 }
-// The run is one synchronous POST, so progress is indeterminate (no value) and
-// there is no Stop: aborting the fetch would not stop the server-side scan.
+// The run is one blocking POST. Its progress arrives as scan.progress events
+// (scanned/total flows), which turn the bar determinate; until the first one it
+// is indeterminate. Stop asks the server to cancel (POST /api/scanner/cancel):
+// aborting the fetch alone would leave the scan running.
+let scanStopPending=false;
+function scanTargetLabel(){return (($('#scanTarget')||{}).value)||'all in-scope hosts';}
 function syncScanProgress(){
   const row=$('#scanProgress');if(!row)return;
+  const text=$('#scanProgressText'),bar=$('#scanProgressBar'),stop=$('#scanStop');
+  // Hiding the row drops focus from Stop to <body>; hand it to Run instead.
+  const stopFocused=!!stop&&document.activeElement===stop;
   row.hidden=!scanRunPending;
-  const text=$('#scanProgressText');
-  if(text)text.textContent=scanRunPending?'Scanning '+((($('#scanTarget')||{}).value)||'all in-scope hosts')+' …':'';
+  if(row.hidden&&stopFocused)$('#scanRun')?.focus({preventScroll:true});
+  const count=$('#scanProgressCount');
+  if(!scanRunPending){
+    if(text)text.textContent='';
+    if(count)count.textContent='';
+    if(bar){bar.removeAttribute('value');bar.removeAttribute('max');}
+    scanStopPending=false;
+  }else if(text&&!text.textContent)text.textContent='Scanning '+scanTargetLabel()+' …';
+  // Stop stays enabled while stopping (aria-disabled): disabling the focused button would drop focus.
+  if(stop){stop.setAttribute('aria-disabled',scanStopPending?'true':'false');stop.setAttribute('aria-busy',scanStopPending?'true':'false');stop.textContent=scanStopPending?'Stopping…':'Stop scan';}
 }
+function onScanProgress(m){
+  const p=m&&m.scan;
+  if(!scanRunPending||!p||!(Number(p.total)>0))return;
+  const bar=$('#scanProgressBar'),text=$('#scanProgressText');
+  const total=Number(p.total)||0,done=Math.min(total,Number(p.scanned)||0);
+  // The bar carries the value for assistive tech; the count beside it is visual only, so the
+  // status line is not re-announced on every tick.
+  if(bar){bar.max=total;bar.value=done;}
+  const count=$('#scanProgressCount');
+  if(count)count.textContent=done.toLocaleString()+' / '+total.toLocaleString()+' flows';
+}
+try{registerSseHandler('scan.progress',onScanProgress);}catch(e){/* progress stays indeterminate */}
+async function stopScan(){
+  if(!scanRunPending||scanStopPending)return;
+  scanStopPending=true;syncScanProgress();
+  try{await api('/api/scanner/cancel',{method:'POST'});}
+  catch(e){scanStopPending=false;syncScanProgress();toastError('Stop scan',e);}
+}
+$('#scanStop')?.addEventListener('click',stopScan);
 function scanRunGate(){return runGate({hostCount:scanUI.hostCount,hostsLoaded:scanUI.hostsLoaded});}
 // Scope line + the reason Run is unavailable (shown, and tied to the button via
 // aria-describedby). An empty scope is NOT a reason: the server treats it as
@@ -711,7 +745,12 @@ export async function runScan(){
   syncScanActionControls();
   const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
   const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
+  const progressText=$('#scanProgressText');if(progressText)progressText.textContent='';
+  syncScanProgress();
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Rescanning selected in-scope traffic…';
+  // The run's own response is the freshest list: a scanner.update that arrived while it ran
+  // (this scan's own commit) must not reload it again and wipe the completion message.
+  let fresh=false;
   try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});
     if(resultsEpoch!==scanResultsEpoch){
       // A newer results load owns the issue list, but this run still owns its
@@ -719,9 +758,10 @@ export async function runScan(){
       if(epoch===scanRunEpoch){setScanRunState('success','Scan complete');resetScanRun(700,epoch);}
       return;
     }
-    scanState.issues=d.issues||[];renderScan();
+    scanState.issues=d.issues||[];fresh=true;renderScan();
     await animateOnce($('#scanPassiveView'),[{opacity:.6},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    if(stateEl)stateEl.textContent='Rescan complete · stale issues reconciled for this scan';
+    const coverage=coverageNote(d.scan);
+    if(stateEl)stateEl.textContent=coverage||'Rescan complete · stale issues reconciled for this scan';
     setScanRunState('success','Scan complete');resetScanRun(700,epoch);
     toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
   catch(e){
@@ -729,11 +769,17 @@ export async function runScan(){
       if(epoch===scanRunEpoch){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);}
       return;
     }
+    // A Stop the operator asked for answers 409: nothing was saved, which is the expected outcome, not an error.
+    if(e&&e.status===409&&scanStopPending){
+      setScanRunState('idle','Run scan ▸');
+      if(stateEl)stateEl.textContent='Scan stopped · nothing was saved; the previous results are unchanged';
+      return;
+    }
     setScanRunState('error','Scan failed');resetScanRun(1000,epoch);renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);
   }
   finally{
     scanRunPending=false;syncScanActionControls();
-    if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}
+    if(scanResultsRefreshPending){scanResultsRefreshPending=false;if(!fresh)loadIssues();}
   }
 }
 // Populate the scanner's target dropdown from in-scope history only.

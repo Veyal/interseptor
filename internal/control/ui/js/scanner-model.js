@@ -69,6 +69,14 @@ export function summaryText(groups, issues) {
   return g + ' finding' + (g === 1 ? '' : 's') + ' · ' + t + ' target' + (t === 1 ? '' : 's');
 }
 
+// coverageNote explains a scan that stopped at its flow cap: the newest flows
+// were scanned and older ones were not, so a clean result is not a clean history.
+export function coverageNote(scan) {
+  if (!scan || !scan.capped) return '';
+  const n = Number(scan.flows) || 0;
+  return 'Scanned the newest ' + n.toLocaleString('en-US') + ' matching flows; older traffic was not scanned. Pick a host or a path filter to reach it.';
+}
+
 // scopeLine describes what a scan covers. The server treats "no include rule"
 // as everything in scope, so an empty scope does not disable Run; only the
 // absence of any scannable traffic does.

@@ -33,3 +33,23 @@ func TestMapVirtualTableIsOneMeasuredTableWithWholeTableKeys(t *testing.T) {
 		".map-virt-pad td{padding:0;border:0;line-height:0;font-size:0}",
 	)
 }
+
+// The scanner shows real progress from scan.progress events and can stop a scan
+// through POST /api/scanner/cancel (a stopped scan saves nothing and is not
+// reported as a failure). A capped scan says older traffic was not scanned.
+func TestUIScannerProgressAndStop(t *testing.T) {
+	region := uiRegion(t, "scanner")
+	requireUIContains(t, region,
+		`<button type="button" class="btn xs" id="scanStop">Stop scan</button>`,
+	)
+	js := readUIAsset(t, "js/scanner.js")
+	requireUIContains(t, js,
+		"registerSseHandler('scan.progress',onScanProgress)",
+		"api('/api/scanner/cancel',{method:'POST'})",
+		"if(e&&e.status===409&&scanStopPending){",
+		"Scan stopped · nothing was saved; the previous results are unchanged",
+		"stateEl.textContent=coverage||",
+		"if(!fresh)loadIssues();",
+		"if(row.hidden&&stopFocused)$('#scanRun')?.focus",
+	)
+}
