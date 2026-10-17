@@ -571,6 +571,12 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 			httpErr(w, http.StatusBadRequest, "invalid path: use an absolute folder, not a drive/filesystem root")
 			return
 		}
+		// The restarted process exits when it cannot open this folder, which
+		// would take the whole instance down. Prove it is usable first.
+		if err := ensureUsableProjectDir(abs); err != nil {
+			httpErr(w, http.StatusBadRequest, "cannot use that folder: "+err.Error())
+			return
+		}
 		name := filepath.Base(abs)
 		if err := rememberExternalProject(h.GlobalDir, name, abs); err != nil {
 			httpInternalErr(w, err)

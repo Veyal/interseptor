@@ -40,6 +40,36 @@ func normalizeCLIArgs(args []string) []string {
 	return out
 }
 
+// reexecArgs builds the argument list for a project-switch restart: every flag
+// the launcher was started with (ports, control address, data dir) is kept so
+// the new process binds the same listeners, while --project is replaced by the
+// target and --open is dropped (the open browser tab reloads itself; a second
+// tab would be noise).
+func reexecArgs(args []string, target string) []string {
+	args = normalizeCLIArgs(args)
+	out := make([]string, 0, len(args)+2)
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		name := strings.TrimLeft(a, "-")
+		if dashes := len(a) - len(name); dashes < 1 || dashes > 2 {
+			out = append(out, a)
+			continue
+		}
+		key, _, hasValue := strings.Cut(name, "=")
+		switch key {
+		case "project":
+			if !hasValue {
+				i++ // skip the separate value
+			}
+		case "open":
+			// bool flag: never consumes a following argument
+		default:
+			out = append(out, a)
+		}
+	}
+	return append(out, "--project", target)
+}
+
 func defaultControlHost() string {
 	if h, _, err := net.SplitHostPort(defaultControlAddr); err == nil && h != "" {
 		return h

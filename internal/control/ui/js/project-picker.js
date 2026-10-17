@@ -368,6 +368,16 @@ function closePicker() {
   closeModal($('#projModal'));
 }
 
+// showProjectSwitchError ties a failed switch to the Save location field it came
+// from, so the reason sits next to the value to fix (the shared note below the
+// dialog still carries it for every other entry point).
+export function showProjectSwitchError(message, path) {
+  const input = $('#pmNewPath'), form = $('#pmCreate');
+  if (!path || !input || !form || form.hidden) return;
+  setFieldError(input, $('#pmNewPathError'), message);
+  const more = $('#pmCreateMore'); if (more) more.open = true;
+}
+
 /* ---- pending switch lock (called by settings.js doSwitchProject) ---- */
 const projectSwitchDisabledControls = new Map();
 export function setProjectSwitchModalBusy(busy) {

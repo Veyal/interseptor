@@ -100,7 +100,7 @@ function paint(m) {
   const show = checklistVisible(model, m.dismissed);
   m.host.hidden = !show;
   if (!show) { m.host.textContent = ''; return; }
-  renderCard(m.host, model, () => { m.dismissed = true; writeDismissed(); paint(m); });
+  renderCard(m.host, model, () => { m.dismissed = true; writeDismissed(); if (m.persistent) { m.dismissed = false; m.host.hidden = true; m.host.textContent = ''; return; } paint(m); });
 }
 
 async function refreshReadiness() {
@@ -114,8 +114,10 @@ async function refreshReadiness() {
 }
 
 // mountChecklist(host) renders the card into host and keeps it current.
-export function mountChecklist(host) {
-  const m = { host, dismissed: readDismissed(), off: null };
+// opts.persistent keeps the card visible after a dismissal (Settings → Project
+// & data), so the steps stay reachable once the operator hid them elsewhere.
+export function mountChecklist(host, opts = {}) {
+  const m = { host, dismissed: opts.persistent ? false : readDismissed(), persistent: !!opts.persistent, off: null };
   host.classList.add('checklist-host');
   mounts.add(m);
   m.off = projectState.subscribe(() => { if (m.host.isConnected) { paint(m); refreshReadiness(); } });

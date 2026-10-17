@@ -84,3 +84,18 @@ func isSafeExternalPath(abs string) bool {
 	rest = strings.Trim(rest, `/\`)
 	return rest != "" && rest != "."
 }
+
+// ensureUsableProjectDir creates dir if needed and proves a project store can be
+// written there, so a switch never restarts into a folder it cannot open.
+func ensureUsableProjectDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	probe, err := os.CreateTemp(dir, ".interseptor-write-check-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	return os.Remove(name)
+}

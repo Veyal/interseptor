@@ -5,6 +5,7 @@
 import { $, esc, escAttr, state, toast, toastError, api, openModal, closeModal, copyText, projectStorageKey, renderLoadError } from './core.js';
 import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
 import { projectState } from './project-state.js';
+import { setupBootAction } from './setup-model.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
@@ -13,6 +14,11 @@ let setupLastScopeHost = '';
 let setupActionBusy = false;
 let setupSystemProxyEpoch = 0;
 let setupReadinessEpoch = 0;
+// The listener addresses the wizard shows. state.proxyAddr / state.controlAddr
+// hold hard-coded defaults until the Settings panel has loaded, and the wizard
+// opens before that, so read the real addresses from /api/settings instead.
+let setupAddrs = { proxy: '', control: '' };
+let setupAddrsEpoch = 0;
 function setSetupNavigationBusy(busy) {
   ['setupNext', 'setupBack', 'setupSkip'].forEach(id => {
     const control = $('#'+id);
@@ -103,6 +109,22 @@ async function setupReadiness(){
   }
 }
 
+function paintSetupAddrs() {
+  const proxy = $('#setupProxyAddr'), control = $('#setupControlAddr'), copy = $('#setupCopyAddr');
+  if (proxy) proxy.textContent = setupAddrs.proxy || '…';
+  if (control) control.textContent = setupAddrs.control || location.host || '…';
+  if (copy) copy.disabled = !setupAddrs.proxy;
+}
+async function loadSetupAddrs() {
+  const epoch = ++setupAddrsEpoch;
+  try {
+    const s = await api('/api/settings');
+    if (epoch !== setupAddrsEpoch) return;
+    setupAddrs = { proxy: s.proxyAddr || '', control: s.controlAddr || '' };
+  } catch (e) { return; }
+  paintSetupAddrs();
+}
+
 function renderStep() {
   if (setupActionBusy) return;
   ++setupSystemProxyEpoch;
@@ -115,19 +137,19 @@ function renderStep() {
   next.textContent = step === LAST ? 'Finish' : 'Next ▸';
   const b = $('#setupBody');
   if (step === 0) {
-    const addr = esc(state.proxyAddr || '127.0.0.1:8080');
     b.innerHTML = `<p class="u-m-0 u-mb-3">Choose the correct project before capture so engagement data stays separated. <button class="btn xs" id="setupChooseProject">Choose project…</button></p>
       <p class="u-m-0 u-mb-3">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
       <div class="row u-gap-2 u-mb-4">
-        <code class="evidence u-flex-1 u-m-0 u-fs-md">${addr}</code>
-        <button class="btn" id="setupCopyAddr">Copy</button>
+        <code class="evidence u-flex-1 u-m-0 u-fs-md" id="setupProxyAddr">${esc(setupAddrs.proxy || '…')}</code>
+        <button class="btn" id="setupCopyAddr"${setupAddrs.proxy ? '' : ' disabled'}>Copy</button>
       </div>
        <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
        <button class="btn u-mb-3" id="setupTestBrowser" hidden>Launch test browser</button>
-      <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
+      <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code id="setupControlAddr">${esc(setupAddrs.control || location.host || '…')}</code>.</p>
       <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
-     $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
+     $('#setupCopyAddr').onclick = () => { if (setupAddrs.proxy) copyText(setupAddrs.proxy, 'proxy address copied'); };
+     loadSetupAddrs();
      const systemProxyEpoch=setupSystemProxyEpoch;
      const systemProxyButton=$('#setupSysProxy');
      const ownsSystemProxy=()=>systemProxyEpoch===setupSystemProxyEpoch&&step===0&&systemProxyButton?.isConnected;
@@ -338,10 +360,20 @@ $('#setupBody').addEventListener('keydown', e => {
   }
 });
 
-// Show on first boot (unless the user already completed/skipped or has traffic).
-export function maybeShowSetup() {
-  try { if (localStorage.getItem(setupDoneKey())) return; } catch (e) {}
-  // Don't pester returning users who already have captured flows.
-  if (state.flows && state.flows.length) { try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {} return; }
-  openSetup();
+// Show on first boot unless the user already completed/skipped. Existing traffic
+// alone is not a reason to skip: a system or browser proxy often fills History
+// before the UI is ever opened. A project that already has a scope rule counts
+// as set up (a returning user on a new browser profile); anything else gets the
+// wizard so the CA and scope guidance is not silently lost.
+export async function maybeShowSetup() {
+  const isDone = () => { try { return !!localStorage.getItem(setupDoneKey()); } catch (e) { return false; } };
+  const hasFlows = !!(state.flows && state.flows.length);
+  let scopeRules = null;
+  if (hasFlows && !isDone()) {
+    try { scopeRules = ((await api('/api/scope')).rules || []).length; } catch (e) { /* unreadable: decided below */ }
+  }
+  // Re-read the flag: the operator may have finished or skipped while the scope read was in flight.
+  const action = setupBootAction({ done: isDone(), hasFlows, scopeRules });
+  if (action === 'mark-done') { try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {} }
+  else if (action === 'open') openSetup();
 }

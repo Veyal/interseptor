@@ -328,6 +328,7 @@ export function initCtxbar(d = {}) {
   $('ctxEvidence').addEventListener('click', leaving(() => { if (deps.activateTab) deps.activateTab('findings'); }));
   $('ctxNext').addEventListener('click', leaving(runNext));
   $('ctxScopeSettings').addEventListener('click', leaving(() => { if (deps.openSettings) deps.openSettings('scope'); }));
+  $('ctxSetupGuide')?.addEventListener('click', leaving(() => { import('./setup.js').then((m) => m.openSetup()).catch(() => {}); }));
   $('ctxBlockerOpen').addEventListener('click', leaving(() => { if (deps.activateTab) deps.activateTab('findings'); }));
   $('ctxRing').addEventListener('click', () => (popOpen ? closeReadinessPopover({ restoreFocus: true }) : openReadinessPopover()));
   $('ctxRingClose').addEventListener('click', () => closeReadinessPopover({ restoreFocus: true }));

@@ -377,3 +377,28 @@ func TestExternalProjectSwitchRejectsRegistryPersistenceFailure(t *testing.T) {
 	case <-time.After(350 * time.Millisecond):
 	}
 }
+
+func TestExternalProjectSwitchRejectsUnusableFolder(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "plain-file")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	global := t.TempDir()
+	fired := make(chan string, 1)
+	h := &Hub{GlobalDir: global, SwitchProject: func(target string) error { fired <- target; return nil }}
+	defer h.Close()
+	body, _ := json.Marshal(map[string]string{"path": filepath.Join(file, "engagement")})
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).switchProject(rec, httptest.NewRequest(http.MethodPost, "/api/project/switch", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if list := readExternalProjects(global); len(list) != 0 {
+		t.Fatalf("unusable folder was remembered: %+v", list)
+	}
+	select {
+	case target := <-fired:
+		t.Fatalf("switch fired for an unusable folder: %q", target)
+	case <-time.After(350 * time.Millisecond):
+	}
+}
