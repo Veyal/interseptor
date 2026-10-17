@@ -36,3 +36,20 @@ func TestUIGlobalSingleKeyShortcutsHonourTheSwitch(t *testing.T) {
 		}
 	}
 }
+
+// The first-run wizard prints the proxy and control addresses from settings;
+// opening it before /api/settings landed showed the 127.0.0.1:8080 fallback on
+// every instance with non-default ports.
+func TestUIBootWaitsForSettingsBeforeSetupWizard(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app, "const bootSettings=loadSettings();")
+	boot := strings.Index(app, "async function bootFirstRunUI(){")
+	if boot < 0 {
+		t.Fatal("bootFirstRunUI not found")
+	}
+	body := app[boot:]
+	wait, show := strings.Index(body, "await bootSettings.catch(()=>{});"), strings.Index(body, "maybeShowSetup();")
+	if wait < 0 || show < 0 || wait > show {
+		t.Fatalf("bootFirstRunUI must await the boot settings load before maybeShowSetup (wait=%d show=%d)", wait, show)
+	}
+}

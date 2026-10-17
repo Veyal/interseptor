@@ -828,6 +828,9 @@ async function bootFirstRunUI(){
     releaseWorkstationReady();
     loadOptionalModules(path=>import(path));
     await loadFlows();
+    // The wizard prints the proxy and control addresses from settings; wait for
+    // them so a non-default port never shows the 127.0.0.1:8080 fallback.
+    await bootSettings.catch(()=>{});
     maybeShowSetup();
   }catch(e){
     const timedOut=e?.name==='WorkspaceBootTimeout';
@@ -883,7 +886,7 @@ projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
 ['scope.update','settings.update','session.update','activity','findings.update','engagement.update'].forEach(type=>registerSseHandler(type,()=>refreshProjectState(type)));
 registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
 
-renderChips();loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
 settleWorkspaceBootWatchdog();
