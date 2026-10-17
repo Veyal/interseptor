@@ -739,6 +739,7 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#proxyAuthToggle')?.dataset.settingsDirty!=='1')setProxyAuth(!!s.proxyAuthEnabled);
   if($('#proxyAuthUser')&&document.activeElement!==$('#proxyAuthUser')&&$('#proxyAuthUser').dataset.settingsDirty!=='1')$('#proxyAuthUser').value=s.proxyAuthUser||'';
   if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value=s.proxyAuthPassword||'';
+  if($('#proxyAuthPassword')){const saved=!!s.proxyAuthPasswordSet&&!s.proxyAuthPassword;$('#proxyAuthPassword').dataset.savedSecret=saved?'1':'';$('#proxyAuthPassword').placeholder=saved?'Saved (leave blank to keep)':'';}
   if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
@@ -825,11 +826,12 @@ $('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($(
   const enabled=$('#proxyAuthEnabled')?.value==='1';
   const user=($('#proxyAuthUser')?.value||'').trim();
   const password=$('#proxyAuthPassword')?.value||'';
-  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password');return;}
+  const keepPassword=!password&&$('#proxyAuthPassword')?.dataset.savedSecret==='1';
+  if(enabled&&(!user||(!password&&!keepPassword))){toast('Proxy authentication needs a username and password');return;}
   const userEl=$('#proxyAuthUser'),passEl=$('#proxyAuthPassword'),enabledEl=$('#proxyAuthEnabled');
   const generation=settingsEditGeneration(enabledEl);
   try{
-    await saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password});
+    await saveSettingsPatch(keepPassword?{proxyAuthEnabled:enabled,proxyAuthUser:user}:{proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password});
     if(settingsEditOwned(enabledEl,generation)&&userEl?.value.trim()===user&&passEl?.value===password){
       clearSettingsDirty(['proxyAuthEnabled','proxyAuthUser','proxyAuthPassword']);
     }

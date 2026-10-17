@@ -379,6 +379,7 @@ type settingsJSON struct {
 	ProxyAuthEnabled           bool     `json:"proxyAuthEnabled"`
 	ProxyAuthUser              string   `json:"proxyAuthUser"`
 	ProxyAuthPassword          string   `json:"proxyAuthPassword"`
+	ProxyAuthPasswordSet       bool     `json:"proxyAuthPasswordSet"`
 	DeviceProxy                string   `json:"deviceProxy,omitempty"`
 	DeviceProxyMode            string   `json:"deviceProxyMode,omitempty"`
 }
@@ -1516,6 +1517,10 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	proxyAuthPassword, _, _ := h.st.GetSetting(proxyAuthPasswordKey)
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
+	passwordSet := proxyAuthPassword != ""
+	if !settingsSecretsVisible(r) {
+		proxyAuthPassword, up = "", redactProxyURL(up)
+	}
 	writeJSON(w, http.StatusOK, settingsJSON{
 		ProxyAddr: displayProxyAddrs(proxyAddrs), ProxyAddrs: proxyAddrs,
 		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
@@ -1527,6 +1532,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
 		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPassword: proxyAuthPassword,
+		ProxyAuthPasswordSet: passwordSet,
 	})
 }
 
@@ -1866,6 +1872,9 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			httpInternalErr(w, err)
 			return
+		}
+		if *in.UpstreamProxy != previous && *in.UpstreamProxy == redactProxyURL(previous) {
+			in.UpstreamProxy = &previous // a masked read echoed back: keep the stored credentials
 		}
 		if err := h.snd.SetUpstreamProxy(*in.UpstreamProxy); err != nil {
 			httpErr(w, http.StatusBadRequest, err.Error())

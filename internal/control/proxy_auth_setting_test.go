@@ -24,8 +24,12 @@ func TestProxyBasicAuthSetting_uiOffersOptionalCredentials(t *testing.T) {
 		}
 	}
 	settings := readUIAsset(t, "js/settings.js")
-	if !strings.Contains(settings, "saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password})") {
+	if !strings.Contains(settings, "{proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password}") {
 		t.Fatal("proxy authentication save does not send the optional basic-auth fields")
+	}
+	// A masked (saved) password is kept when the operator leaves the field blank.
+	if !strings.Contains(settings, "keepPassword?{proxyAuthEnabled:enabled,proxyAuthUser:user}") {
+		t.Fatal("proxy authentication save would clear a saved password the UI cannot see")
 	}
 	if !strings.Contains(settings, "'proxyAuthUser','proxyAuthPassword'") {
 		t.Fatal("proxy authentication fields are not guarded as unsaved drafts")
@@ -105,8 +109,12 @@ func TestProxyBasicAuthSetting_persistsThenApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if saved["proxyAuthEnabled"] != false || saved["proxyAuthUser"] != "proxy" || saved["proxyAuthPassword"] != "secret" {
+	// The password is kept but never echoed outside the UI session.
+	if saved["proxyAuthEnabled"] != false || saved["proxyAuthUser"] != "proxy" || saved["proxyAuthPassword"] != "" || saved["proxyAuthPasswordSet"] != true {
 		t.Fatalf("disabled settings = %#v", saved)
+	}
+	if v, _, _ := st.GetSetting("proxy.authPassword"); v != "secret" {
+		t.Fatalf("stored password = %q, want it kept", v)
 	}
 	if len(applied) != 2 || applied[1] {
 		t.Fatalf("disable did not apply: %v", applied)
