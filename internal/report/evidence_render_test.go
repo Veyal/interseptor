@@ -102,6 +102,20 @@ func TestReportStatesCVSSV31BesideV40AndLabelsLegacyScores(t *testing.T) {
 	}
 }
 
+func TestRetestReplaysGetTheirOwnHeading(t *testing.T) {
+	f := evidenceFinding()
+	f.Blocks = append(f.Blocks,
+		store.FindingBlock{Type: "flow", FlowID: 11, Role: "retest", Proof: "Replay now returns 403", Method: "GET", Host: "example.com", Path: "/records/8", Status: 403},
+		store.FindingBlock{Type: "flow", FlowID: 12, Role: "retest", Method: "GET", Host: "example.com", Path: "/records/7", Status: 200})
+	out := Project([]store.Finding{f}, nil)
+	if n := strings.Count(out, "**Retest evidence:**"); n != 1 {
+		t.Fatalf("retest heading appears %d times:\n%s", n, out)
+	}
+	if strings.Index(out, "**Retest evidence:**") > strings.Index(out, "Replay now returns 403") {
+		t.Fatalf("retest heading must precede the replays:\n%s", out)
+	}
+}
+
 func TestPrintCSSUsesA4WithPageNumbers(t *testing.T) {
 	html := HTMLDocument("# Report\n", nil, store.ReportBranding{})
 	for _, want := range []string{"size:A4", "counter(page)", "p:has(+pre)"} {

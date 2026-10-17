@@ -391,6 +391,8 @@ type blockRenderState struct {
 	finding int
 	figures int
 	printed map[int64]bool
+	// retestHeading records that the "Retest evidence" heading was written.
+	retestHeading bool
 }
 
 func renderFindingProofSections(b *strings.Builder, n int, f store.Finding) (hasDetailBlock, hasEvidenceBlock bool) {
@@ -451,6 +453,12 @@ func findingBlockLinkedToTarget(bl store.FindingBlock, t store.FindingTarget) bo
 
 func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail, evidence string, st *blockRenderState) (hasDetailBlock, hasEvidenceBlock bool) {
 	for _, bl := range blocks {
+		if bl.Role == "retest" && !st.retestHeading {
+			// Retest replays answer "is it fixed?", a different question from
+			// the reproduction above them; give them their own heading.
+			st.retestHeading = true
+			b.WriteString("**Retest evidence:**\n\n")
+		}
 		if meta := blockEvidenceMeta(bl); meta != "" {
 			label := "Evidence"
 			if bl.Type == "text" {
