@@ -294,7 +294,9 @@ A rule created over REST is **disabled** unless the body has `"enabled": true` (
 for you). `PUT /api/scope/{id}` replaces the whole rule, so send `action`, `host`, and `enabled` together.
 Confirm with `GET /api/readiness`. For triage and filing only the `proxy`, `scope`, and `traffic` checks
 matter; `oob`, `auth_identities`, and `login_macro` matter only if you use those features. The top-level
-`ready` flag can be true while `scope` fails, so read each check.
+`ready` flag can be true while `scope` fails, so read each check. A failing `capture` check means the proxy
+dropped flow writes or WebSocket frames under load since start, so History is incomplete: re-capture any
+request you need as evidence.
 
 ### Access guards
 
@@ -871,7 +873,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `authz_differential` | `flowId` | Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify... |
 | `authz_run` | none | Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control. |
 | `ca_info` | none | How to trust the CA so HTTPS can be intercepted (proxy address + CA location). |
-| `check_readiness` | none | Pre-flight setup checklist (structured JSON): proxy, scope, traffic, tls_intercept (pinning/CA detection)... |
+| `check_readiness` | none | Pre-flight setup checklist (structured JSON): proxy, scope, traffic, capture (flow writes or WebSocket frames... |
 | `classify_finding_image` | `findingId`, `hash`, `source` | Reviewer relabel of an already-attached finding image (for example an operator_upload that is a real browser... |
 | `collection_attach_run_evidence` | `collectionUid`, `runUid`, `findingId` | Attach the captured flows of a stored collection run (or selected requests) to a finding as typed evidence... |
 | `collection_example_diff` | `collectionUid`, `itemUid`, `flowId` | Diff a saved response example of a collection request (name or 1-based index) against a captured response... |
@@ -1310,7 +1312,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/project/switch` | Switch to another named project (re-exec). |
 | GET | `/api/proxy/device-endpoint` | Resolved device-facing proxy endpoint (auto/manual) |
 | POST | `/api/proxy/device-endpoint` | Set device proxy mode and optional manual host. |
-| GET | `/api/readiness` | Aggregate pentest readiness checklist (proxy, traffic, scope, TLS interception, OOB, auth identities, login... |
+| GET | `/api/readiness` | Aggregate pentest readiness checklist (proxy, traffic, capture drops, scope, TLS interception, OOB, auth... |
 | POST | `/api/redact` | Describe a secret without storing it. |
 | GET | `/api/reference` | Machine-readable route catalog |
 | GET | `/api/render/authz/{runId}` | Authz differential matrix PNG for a run returned by POST /api/authz/run (runId in its response; kept in... |
