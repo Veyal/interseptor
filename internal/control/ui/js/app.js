@@ -31,6 +31,7 @@ import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShell
 import { openSheet } from './sheet.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
+import { singleKeyShortcutsOn } from './keyboard.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -230,6 +231,7 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key!=='ArrowDown'&&e.key!=='ArrowUp'&&e.key!=='j'&&e.key!=='k')return;
   if(!p||!p.classList.contains('active'))return;
+  if((e.key==='j'||e.key==='k')&&!singleKeyShortcutsOn())return;
   const t=e.target;
   if(isTypingTarget(t))return;
   if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
@@ -591,6 +593,9 @@ function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
 function sendSelectedFlow(to){const f=selectedFlow();if(f){(to==='intruder'?sendToIntruder:sendToRepeater)(f);return true;}return false;}
 const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+// isBareCharacterKey: a printable character without Ctrl/Cmd/Alt (Shift allowed,
+// so ? counts). WCAG 2.1.4: these act only while the Single-key switch is on.
+function isBareCharacterKey(e){return e.key.length===1&&e.key!==' '&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
 let gotoPending=false,gotoTimer=null;
 function resetGoto(){gotoPending=false;clearTimeout(gotoTimer);}
 document.addEventListener('keydown',e=>{
@@ -618,6 +623,7 @@ document.addEventListener('keydown',e=>{
   // Plain-letter workflow shortcuts never act through an editor. In particular,
   // typing an f or d into a held HTTP message must not forward or drop it.
   if(typing)return;
+  if(isBareCharacterKey(e)&&!singleKeyShortcutsOn()){resetGoto();return;}
   // Space also toggles the freeze, but not when a row or control is focused
   // (there Space is activation), so it never steals row selection.
   if(activePanel()==='proxy'&&(e.key===' '||e.code==='Space')&&!hasAnyModifier(e)&&!(e.target&&e.target.closest&&e.target.closest('button,a,input,select,textarea,[role="button"],.trow'))){e.preventDefault();toggleLiveFreeze();return;}
