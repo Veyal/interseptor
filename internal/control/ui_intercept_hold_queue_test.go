@@ -38,3 +38,17 @@ func TestUIHoldQueueEmptyStateOnPhones(t *testing.T) {
 		".icpt-work[data-mode=\"stack\"] .icpt-list-empty{display:block}",
 	)
 }
+
+// Toasts sit 18px above the viewport bottom, where the held action bar is: at
+// 1280x800 three toasts covered Forward, Forward + Repeater and Drop. While the
+// bar is on screen the toast stack is lifted above it, and put back after.
+func TestUIToastsClearTheHeldActionBar(t *testing.T) {
+	src := executableJS(readUIAsset(t, "js/intercept.js"))
+	requireUIContains(t, src,
+		"const bar=$('#heldActions'),host=$('#toast');",
+		"const on=r.height>0&&r.top<innerHeight&&r.bottom>0;",
+		"host.style.bottom=`max(calc(18px + env(safe-area-inset-bottom,0px)),${Math.round(innerHeight-r.top+8)}px)`",
+		"else if(lifted)host.style.bottom='';",
+		"[bar,$('#panel-intercept'),$('#icptWork')].forEach(el=>{if(el)ro.observe(el);});",
+	)
+}

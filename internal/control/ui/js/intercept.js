@@ -1044,3 +1044,24 @@ try{
 // Settings' import/restore asks the intercept rule list to reload over the bus
 // instead of importing it from settings.js (part of breaking the settings cycle).
 busOn(EVENTS.INTERCEPT_RELOAD_RULES, () => { loadRules(); });
+// Toasts sit just above the viewport bottom, which is where the held action bar
+// is: while the bar is on screen, lift them above it so a toast (the drop Undo
+// included) never covers Forward or Drop. The panel and the work area are
+// observed because tab switches and the Match & Replace drawer move the bar
+// without resizing it.
+try{
+  const bar=$('#heldActions'),host=$('#toast');
+  let lifted=false;
+  const syncToastLift=()=>{
+    const r=bar.getBoundingClientRect();
+    const on=r.height>0&&r.top<innerHeight&&r.bottom>0;
+    if(on)host.style.bottom=`max(calc(18px + env(safe-area-inset-bottom,0px)),${Math.round(innerHeight-r.top+8)}px)`;
+    else if(lifted)host.style.bottom='';
+    lifted=on;
+  };
+  if(bar&&host&&typeof ResizeObserver==='function'){
+    const ro=new ResizeObserver(syncToastLift);
+    [bar,$('#panel-intercept'),$('#icptWork')].forEach(el=>{if(el)ro.observe(el);});
+    addEventListener('resize',syncToastLift);
+  }
+}catch(e){/* toasts keep their default position */}
