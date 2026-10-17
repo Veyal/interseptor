@@ -645,7 +645,11 @@ func writeFlowUpdateExec(ex flowExec, f *Flow) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	if _, err := ex.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
+	// An FTS5 column update is a delete plus re-insert of the whole entry, and
+	// a proxied flow's path and method are already final at insert time, so
+	// only rewrite the entry when one of them actually changed.
+	if _, err := ex.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=? AND (path IS NOT ? OR method IS NOT ?)`,
+		f.Path, f.Method, f.ID, f.Path, f.Method); err != nil {
 		return err
 	}
 	return nil

@@ -465,11 +465,12 @@ func (s *Store) applyFlowBatchTx(batch []flowOp) bool {
 	}
 	s.flowTxs.Add(1)
 	defer tx.Rollback()
+	ex := &txStmts{tx: tx}
 	for _, op := range batch {
 		if s.flowIsVoid(op.id) {
 			continue // the insert this write belongs to was dropped
 		}
-		if err := s.applyFlowOpTx(tx, op); err != nil {
+		if err := s.applyFlowOpTx(ex, op); err != nil {
 			if errors.Is(err, errFlowOpSkipped) {
 				continue
 			}
@@ -485,6 +486,55 @@ func (s *Store) applyFlowBatchTx(batch []flowOp) bool {
 		return false
 	}
 	return true
+}
+
+// txStmts runs the flow writers' SQL inside one batch transaction, preparing
+// each distinct statement once per batch instead of once per write. A chunk
+// repeats the same three or four statements up to flowBatchMax times, and
+// re-parsing them was about a third of the flusher's cost. The statements are
+// owned by the transaction and closed when it commits or rolls back.
+type txStmts struct {
+	tx    *sql.Tx
+	stmts map[string]*sql.Stmt
+}
+
+func (t *txStmts) stmt(query string) (*sql.Stmt, error) {
+	if st, ok := t.stmts[query]; ok {
+		return st, nil
+	}
+	st, err := t.tx.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	if t.stmts == nil {
+		t.stmts = map[string]*sql.Stmt{}
+	}
+	t.stmts[query] = st
+	return st, nil
+}
+
+func (t *txStmts) Exec(query string, args ...any) (sql.Result, error) {
+	st, err := t.stmt(query)
+	if err != nil {
+		return nil, err
+	}
+	return st.Exec(args...)
+}
+
+func (t *txStmts) Query(query string, args ...any) (*sql.Rows, error) {
+	st, err := t.stmt(query)
+	if err != nil {
+		return nil, err
+	}
+	return st.Query(args...)
+}
+
+func (t *txStmts) QueryRow(query string, args ...any) *sql.Row {
+	st, err := t.stmt(query)
+	if err != nil {
+		return t.tx.QueryRow(query, args...) // carries the same error to Scan
+	}
+	return st.QueryRow(args...)
 }
 
 // applyFlowOpTx applies one queued write inside the caller's transaction.

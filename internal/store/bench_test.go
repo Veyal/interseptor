@@ -81,6 +81,49 @@ func BenchmarkFlowDrain(b *testing.B) {
 	}
 }
 
+// BenchmarkFlowDrainSlowResponse measures the flusher when responses arrive
+// after their request-time insert was already written (slow origins), so every
+// flow costs a separate insert and update. One iteration is one flow.
+func BenchmarkFlowDrainSlowResponse(b *testing.B) {
+	s, err := Open(b.TempDir())
+	if err != nil {
+		b.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	s.flowMu.Lock()
+	s.flowPaused = true
+	s.flowMu.Unlock()
+	const batch = 512
+	b.ResetTimer()
+	for i := 0; i < b.N; i += batch {
+		n := min(batch, b.N-i)
+		flows := make([]*Flow, n)
+		b.StopTimer()
+		for j := range flows {
+			flows[j] = benchFlow(i + j)
+			if ok, err := s.EnqueueInsertFlow(flows[j]); err != nil || !ok {
+				b.Fatalf("enqueue insert: ok=%v err=%v", ok, err)
+			}
+		}
+		b.StartTimer()
+		if err := s.drainOnce(); err != nil {
+			b.Fatalf("drainOnce: %v", err)
+		}
+		b.StopTimer()
+		for _, f := range flows {
+			f.Status, f.ResLen = 200, 1024
+			f.ResHeaders = map[string][]string{"Content-Type": {"text/html"}}
+			if ok, err := s.EnqueueUpdateFlow(f); err != nil || !ok {
+				b.Fatalf("enqueue update: ok=%v err=%v", ok, err)
+			}
+		}
+		b.StartTimer()
+		if err := s.drainOnce(); err != nil {
+			b.Fatalf("drainOnce: %v", err)
+		}
+	}
+}
+
 // BenchmarkFlowCaptureIngest measures the whole capture path a proxied request
 // pays: enqueue the request-side insert, enqueue the response-side update, and
 // let the flusher apply both. One iteration is one captured flow (two queued
