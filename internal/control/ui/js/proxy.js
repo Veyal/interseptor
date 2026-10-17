@@ -1785,7 +1785,7 @@ function syncSearchPlaceholder(){
   if(!inp)return;
   inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search method / host / path / #id…';
 }
-if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
+if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
@@ -2156,7 +2156,7 @@ export function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
-  add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
+  add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',f.search);
   if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">${icon('close')}</button></span>`);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
   // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),

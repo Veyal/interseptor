@@ -27,6 +27,16 @@ func TestUIHistoryKeepsRowsVisibleWithInspectorAndBanner(t *testing.T) {
 	)
 }
 
+// The search chip named every non-body search "path" even though the default
+// scope searches everywhere.
+func TestUIHistorySearchChipNamesTheScope(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',f.search);",
+		"syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();",
+	)
+}
+
 // The "scope switch moved" tip is for viewers who knew the old layout.
 func TestUIHistoryScopeCoachTipOnlyForReturningViewers(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
