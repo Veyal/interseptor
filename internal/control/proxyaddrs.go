@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/bind"
@@ -92,6 +93,9 @@ func validateListenAddr(addr string) error {
 	}
 	if strings.TrimSpace(port) == "" {
 		return fmt.Errorf("invalid listen address %q: missing port", addr)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("invalid listen address %q: port must be 1-65535", addr)
 	}
 	_ = host // empty host is valid (all interfaces)
 	return nil

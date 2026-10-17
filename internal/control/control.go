@@ -1829,6 +1829,9 @@ func (h *settingsAPI) planControlAddr(u *settingsUpdate, addr string) error {
 	if addr == "" || addr == previous {
 		return nil
 	}
+	if err := validateListenAddr(addr); err != nil {
+		return settingsBadRequest(err)
+	}
 	if !isLoopbackHost(addr) && !bind.ExternalBindAllowed() {
 		return settingsBadRequest(errors.New("control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)"))
 	}
