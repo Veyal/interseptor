@@ -2270,17 +2270,56 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("run_scanner",
-		"Passive scan over captured flows → findings (severity/title/target/evidence/fix). No requests sent.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/scanner/run", nil) })
+		"Passive scan over captured flows (no requests sent). Returns counts only — total, by severity, number of (title, host) groups and the top groups; read them with list_issues. host/search focus the scan on one target.",
+		obj(map[string]any{
+			"host":   p("string", "only scan flows whose host contains this"),
+			"search": p("string", "only scan flows whose path/host/method contains this"),
+		}),
+		func(a map[string]any) (string, error) {
+			q := url.Values{"view": {"summary"}}
+			for _, k := range []string{"host", "search"} {
+				if v := argStr(a, k); v != "" {
+					q.Set(k, v)
+				}
+			}
+			out, err := s.api(http.MethodPost, "/api/scanner/run?"+q.Encode(), nil)
+			if err != nil {
+				return "", err
+			}
+			return out + "\n(call list_issues for the grouped findings; view=list for individual issues with evidence)", nil
+		})
 
-	s.add("list_issues", "List current scanner findings.", obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/issues") })
+	s.add("list_issues",
+		"List passive-scanner issues. Default view=grouped collapses repeats into one row per (title, host) with count and up to 3 exampleFlowIds, most severe first; view=list returns individual issues (evidence capped); view=summary returns counts. Filters: severity (comma list), host and title substrings, flowId. Page with offset/limit; follow nextOffset.",
+		obj(map[string]any{
+			"view":     pe("default grouped", "grouped", "list", "summary"),
+			"severity": p("string", "comma list, e.g. high,medium"),
+			"host":     p("string", "issue host contains"),
+			"title":    p("string", "issue title contains"),
+			"flowId":   pt("integer"),
+			"limit":    pr("default 50", 1, 500),
+			"offset":   map[string]any{"type": "integer", "minimum": 0, "description": "pass the previous reply's nextOffset"},
+		}),
+		func(a map[string]any) (string, error) {
+			q := url.Values{"view": {"grouped"}}
+			if v := strings.ToLower(argStr(a, "view")); v != "" {
+				q.Set("view", v)
+			}
+			for _, k := range []string{"severity", "host", "title", "flowId", "limit", "offset"} {
+				if v := argStr(a, k); v != "" {
+					q.Set(k, v)
+				}
+			}
+			return s.apiGet("/api/scanner/issues?" + q.Encode())
+		})
 
 	s.add("scan_report",
-		"Passive findings as a Markdown report, grouped by severity.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/report") })
+		"Passive findings as a Markdown report, grouped by severity. Long reports are cut at maxBytes (default 20000); prefer list_issues for triage.",
+		obj(map[string]any{"maxBytes": pr("default 20000", 1000, 1000000)}),
+		func(a map[string]any) (string, error) {
+			out, err := s.apiGet("/api/scanner/report")
+			return truncate(out, argInt(a, "maxBytes", 20000)), err
+		})
 
 	s.add("list_checks",
 		"List custom Starlark checks (id, source, compile error). They run on every scan.",

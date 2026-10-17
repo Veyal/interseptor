@@ -211,6 +211,10 @@ func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	if issues == nil {
 		issues = []store.Issue{}
 	}
+	if q := r.URL.Query(); q.Get("view") != "" {
+		writeIssueView(w, q, issues)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
 }
 
