@@ -68,6 +68,9 @@ func (h *androidAPI) androidDeviceAndPort(in androidRequest) (android.Device, in
 
 func (h *androidAPI) androidWiFiHost(override string) (string, error) {
 	host, _ := h.deviceProxyHostPort(override)
+	if !android.ValidProxyHost(host) {
+		return "", fmt.Errorf("invalid Wi‑Fi proxy host %q — use an IP address or hostname", host)
+	}
 	return host, nil
 }
 

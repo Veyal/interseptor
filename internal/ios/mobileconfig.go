@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -200,7 +201,7 @@ func Setup(d Device, certPEM []byte, opts SetupOpts) (*SetupResult, error) {
 
 	profileURL := strings.TrimRight(opts.ProfileURL, "/") + "/api/ios/profile.mobileconfig"
 	if proxyHost != "127.0.0.1" {
-		profileURL += "?host=" + proxyHost + "&port=" + fmt.Sprint(opts.Port)
+		profileURL += "?host=" + url.QueryEscape(proxyHost) + "&port=" + fmt.Sprint(opts.Port)
 	}
 	res.ProfileURL = profileURL
 

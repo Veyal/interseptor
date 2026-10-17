@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -195,7 +196,7 @@ func BuildProfileURL(baseURL, proxyHost string, proxyPort int) string {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	url := base + "/api/ios/profile.mobileconfig"
 	if proxyHost != "" && proxyPort > 0 {
-		url += "?host=" + proxyHost + "&port=" + strconv.Itoa(proxyPort)
+		url += "?host=" + neturl.QueryEscape(proxyHost) + "&port=" + strconv.Itoa(proxyPort)
 	}
 	return url
 }
