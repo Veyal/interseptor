@@ -1881,7 +1881,10 @@ export async function loadAndroid({allowDuringAction=false}={}){
   const lanHint=$('#androidLanHint'),caHint=$('#androidCaHint');
   if(!sec){androidDeviceActionsReady=false;return {ok:false,ready:false};}
   try{
-    const s=await api('/api/android/status');
+    // Ask for the selected device's proxy state; without a serial the server can
+    // only report it when exactly one device is connected.
+    const requested=androidSerial();
+    const s=await api('/api/android/status'+(requested?'?serial='+encodeURIComponent(requested):''));
     if(epoch!==androidLoadEpoch||(androidActionPending&&!allowDuringAction))return null;
     if(!s.available){
       androidDeviceActionsReady=false;
@@ -1909,12 +1912,11 @@ export async function loadAndroid({allowDuringAction=false}={}){
       const sug=cur.suggestedCAMode==='system'?'Suggested: install system CA (emulator)':'Suggested: install user CA (physical device)';
       caHint.textContent=sug;
     }else if(caHint)caHint.textContent='';
+    // With no device the picker's own hint already says how to connect one.
     let msg='';
-    if(!devs.length)msg='Connect a device with USB debugging enabled.';
-    else{
+    if(devs.length){
       const selSerial=androidSerial();
-      const active=selSerial&&s.proxySerial===selSerial&&s.proxyActive?s.proxyValue:(s.proxyActive?s.proxyValue:'');
-      if(active)msg='Device proxy active: '+active;
+      if(selSerial&&s.proxySerial===selSerial&&s.proxyActive)msg='Device proxy active: '+s.proxyValue;
       else if(devs.some(d=>d.state==='unauthorized'))msg='Accept the USB debugging authorization prompt on the device.';
     }
     if(hint)hint.textContent=msg;
@@ -2095,12 +2097,12 @@ export async function loadIOS({allowDuringAction=false}={}){
         html+=`<span>Wi‑Fi mode needs bind <code>0.0.0.0</code> on the proxy listener.</span> <button type="button" class="btn" id="iosOpenProxyBtn">Settings → Proxy</button>`;
       }
       if(!s.simctlAvailable&&devs.every(d=>d.kind!=='simulator'))html+=(html?'<br>':'')+'<span>Install Xcode for simulator automation (<code>xcrun simctl</code>).</span>';
-      if(s.deviceError)html+=(html?'<br>':'')+`<span class="state-error-msg">Device discovery failed: ${esc(s.deviceError)}. Install or select Xcode, or use the manual profile flow.</span>`;
+      if(s.deviceError)html+=(html?'<br>':'')+`<span class="state-error-msg">Device discovery failed: ${esc(s.deviceError)}</span>`;
       lanHint.innerHTML=html;
       lanHint.style.display=html?'':'none';
     }
     let msg='';
-    if(s.deviceError)msg='Device discovery failed. Install or select Xcode, or download the profile for manual installation.';
+    if(s.deviceError)msg='Install or select Xcode for simulator automation, or download the profile for manual installation.';
     else if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
     else if(!s.simctlAvailable)msg='Simulator automation needs Xcode on macOS. Physical devices: download profile → open in Safari on the phone.';
     if(hint)hint.textContent=msg;

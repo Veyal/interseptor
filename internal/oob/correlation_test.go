@@ -94,7 +94,7 @@ func TestCorrelationRetainsEarliestActiveAttributionPastInteractionCap(t *testin
 	first, _ := c.MintCorrelated(0, "first", 0)
 
 	// When
-	for i := 0; i < maxInteractions; i++ {
+	for i := 0; i < MaxInteractions; i++ {
 		c.MintCorrelated(int64(i), "active", int64(i))
 	}
 

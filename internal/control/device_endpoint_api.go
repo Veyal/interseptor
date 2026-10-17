@@ -3,7 +3,10 @@ package control
 import (
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
+
+	"github.com/Veyal/interseptor/internal/android"
 )
 
 const maxDeviceEndpointRequestBytes int64 = 16 << 10
@@ -39,13 +42,9 @@ func (h *settingsAPI) setDeviceProxyEndpoint(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	host := strings.TrimSpace(in.Host)
-	if mode == "manual" && host != "" {
-		if _, _, err := net.SplitHostPort(host); err != nil {
-			if strings.Contains(host, ":") || net.ParseIP(host) == nil {
-				httpErr(w, http.StatusBadRequest, "invalid manual host")
-				return
-			}
-		}
+	if mode == "manual" && host != "" && !validManualDeviceHost(host) {
+		httpErr(w, http.StatusBadRequest, "invalid manual host — use an IP address or hostname, optionally with :port")
+		return
 	}
 	if err := h.st.SetSettings(map[string]string{
 		settingDeviceProxyMode: mode,
@@ -55,4 +54,21 @@ func (h *settingsAPI) setDeviceProxyEndpoint(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	h.getDeviceProxyEndpoint(w, r)
+}
+
+// validManualDeviceHost accepts host or host:port where host is an IP address
+// or DNS hostname and port is 1-65535. The host reaches `adb shell` and iOS
+// profile URLs, so shell or URL metacharacters are refused.
+func validManualDeviceHost(raw string) bool {
+	host := raw
+	if h, p, err := net.SplitHostPort(raw); err == nil {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return false
+		}
+		host = h
+	} else if strings.Contains(raw, ":") && net.ParseIP(raw) == nil {
+		return false
+	}
+	return android.ValidProxyHost(host)
 }

@@ -260,7 +260,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/report-branding", "White-label report settings: {version, reportTitle, companyName, clientName, companyLogo, clientLogo, engagementName, assessmentStart, assessmentEnd, leadAssessor, contact, classification, coverPage}. Version 0 = none recorded, which renders the default report"},
 	{"PUT", "/api/report-branding", "Replace the white-label report settings. Body: any of the fields above; an empty body resets to the default report. Logos must be data: image URIs (png/jpeg/gif/webp, max 512 KiB each) so a delivered report fetches nothing; assessment dates are ISO YYYY-MM-DD. Version increments only when content changes. Response: the saved settings"},
 	{"GET", "/api/notes", "Project markdown notebook"},
-	{"PUT", "/api/notes", "Replace project notebook. Body: {notes} — markdown; inline data-URL images are extracted into SQLite on save"},
+	{"PUT", "/api/notes", "Replace project notebook. Body: {notes, baseRev?} — markdown; inline data-URL images are extracted into SQLite on save. With baseRev (the rev from GET) the save is conditional: 409 when the notebook changed since"},
 	{"PATCH", "/api/notes", "Atomically append a block to the project notebook. Body: {appendText}"},
 	{"POST", "/api/notes/images", "Upload an image for the notebook. Body: {mime, data} — data is raw base64 or a data: URL. Response: {id} for a markdown image ref"},
 	{"GET", "/api/notes/images/{id}", "Serve a notebook image"},

@@ -3,9 +3,11 @@ package control
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/Veyal/interseptor/internal/android"
 	"github.com/Veyal/interseptor/internal/bind"
 	"github.com/Veyal/interseptor/internal/ios"
 )
@@ -45,6 +47,10 @@ func (h *iosAPI) getIOSProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	host := strings.TrimSpace(r.URL.Query().Get("host"))
 	port := atoiOr(r.URL.Query().Get("port"), 0)
+	if host != "" && port > 0 && (port > 65535 || !android.ValidProxyHost(host)) {
+		httpErr(w, http.StatusBadRequest, "invalid proxy host or port — use an IP address or hostname and a port 1-65535")
+		return
+	}
 	if host == "" || port <= 0 {
 		host, port = h.deviceProxyHostPort("")
 	}
@@ -88,6 +94,9 @@ func (h *iosAPI) iosDeviceAndPort(in iosRequest) (ios.Device, int, error) {
 
 func (h *iosAPI) iosWiFiHost(override string) (string, error) {
 	host, _ := h.deviceProxyHostPort(override)
+	if !android.ValidProxyHost(host) {
+		return "", fmt.Errorf("invalid Wi‑Fi proxy host %q — use an IP address or hostname", host)
+	}
 	return host, nil
 }
 
@@ -140,7 +149,7 @@ func (h *iosAPI) postIOSSetup(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			profileURL := h.profileBaseURL(r) + "/api/ios/profile.mobileconfig?host=" + host + "&port=" + strconv.Itoa(port)
+			profileURL := h.profileBaseURL(r) + "/api/ios/profile.mobileconfig?host=" + url.QueryEscape(host) + "&port=" + strconv.Itoa(port)
 			writeJSON(w, http.StatusOK, map[string]any{
 				"ok": true, "profileUrl": profileURL, "proxy": host + ":" + strconv.Itoa(port),
 				"needsUserAction": true,

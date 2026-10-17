@@ -20,16 +20,34 @@ func (h *projectAPI) getNotes(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
+	writeJSON(w, http.StatusOK, map[string]any{"notes": notes, "rev": store.NotesRev(notes)})
 }
 
 // putNotes replaces the project's markdown notebook and tells every client to refresh.
 // Inline data-URL images are extracted into SQLite; unreferenced images are GC'd.
+// With baseRev (the rev from GET) the save is conditional: a notebook changed
+// since then (an agent append, another tab) yields 409 instead of being
+// silently overwritten, and success returns the new rev.
 func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Notes string `json:"notes"`
+		Notes   string `json:"notes"`
+		BaseRev string `json:"baseRev"`
 	}
 	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
+		return
+	}
+	if in.BaseRev != "" {
+		saved, err := h.st.PersistNotesIfRev(in.BaseRev, in.Notes)
+		if errors.Is(err, store.ErrNotesConflict) {
+			httpErr(w, http.StatusConflict, "notes changed elsewhere — reload and merge before saving")
+			return
+		}
+		if err != nil {
+			writeNotesMutationError(w, err)
+			return
+		}
+		h.broadcast(map[string]any{"type": "notes.update"})
+		writeJSON(w, http.StatusOK, map[string]any{"rev": store.NotesRev(saved)})
 		return
 	}
 	if _, err := h.st.PersistNotes(in.Notes); err != nil {

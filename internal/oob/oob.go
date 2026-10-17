@@ -24,7 +24,9 @@ import (
 // oobFallbackSeq backs Token's fallback when crypto/rand is unavailable.
 var oobFallbackSeq atomic.Uint64
 
-const maxInteractions = 500
+// MaxInteractions is how many recent interactions the in-memory ring keeps.
+// Older hits are evicted (and counted, see Dropped); nothing survives a restart.
+const MaxInteractions = 500
 
 // The OOB catcher is intentionally unauthenticated and may be exposed through a
 // public tunnel. Bound every retained attacker-controlled field so the ring's
@@ -59,10 +61,11 @@ type Interaction struct {
 // correlation map (corr/corrOrder) is guarded by its own cmu so correlation is
 // purely additive metadata and never contends with the hot recording path.
 type Catcher struct {
-	mu     sync.Mutex
-	items  []Interaction
-	seq    int64
-	notify func()
+	mu      sync.Mutex
+	items   []Interaction
+	seq     int64
+	dropped int64 // interactions evicted from the ring since the last Clear
+	notify  func()
 
 	cmu       sync.Mutex
 	corr      map[string]Correlation
@@ -147,8 +150,9 @@ func (c *Catcher) Record(r *http.Request, bodyPreview string) {
 	c.seq++
 	it.ID = c.seq
 	c.items = append(c.items, it)
-	if len(c.items) > maxInteractions {
-		c.items = c.items[len(c.items)-maxInteractions:]
+	if len(c.items) > MaxInteractions {
+		c.dropped += int64(len(c.items) - MaxInteractions)
+		c.items = c.items[len(c.items)-MaxInteractions:]
 	}
 	fn := c.notify
 	c.mu.Unlock()
@@ -175,9 +179,17 @@ func (c *Catcher) Count() int {
 	return len(c.items)
 }
 
+// Dropped returns how many older interactions the ring evicted since the last Clear.
+func (c *Catcher) Dropped() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dropped
+}
+
 // Clear drops all recorded interactions.
 func (c *Catcher) Clear() {
 	c.mu.Lock()
 	c.items = nil
+	c.dropped = 0
 	c.mu.Unlock()
 }

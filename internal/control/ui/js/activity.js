@@ -20,7 +20,7 @@ function sameWorkflow(a,b){
   return Math.abs((a.ts||0)-(b.ts||0))<=WORKFLOW_GAP_MS;
 }
 // ---- client-side filtering over the loaded feed ----
-// A single substring filter over each action's stated intent — enough to find
+// A single substring filter over each action's tool, summary and stated intent — enough to find
 // "what was the AI trying to do" without a noisy mode toggle.
 const actFilter={intent:'',cats:new Set()};
 let actDeferredNew=0;
@@ -125,7 +125,7 @@ export function renderActivity(){
     const duration=it.ms == null?'—':it.ms+'ms';
     const status=it.ok?'Success':'Error';
     const activityId=it.id!=null?String(it.id):String(it._uiId||(it._uiId='client-'+Date.now()+'-'+i));
-    const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'');
+    const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'')+(it.intent?'. Intent: '+it.intent:'');
     const expandable=!fid;
     const expanded=expandable&&openIds.has(activityId);
     const cat=ACTIVITY_CATEGORIES.find(c=>c.id===activityCategory(it.tool));
@@ -141,15 +141,16 @@ export function renderActivity(){
     <span class="act-outcome${it.ok?' is-ok':' is-fail'}">${status}</span>
     <span class="act-meta">${duration} · ${actTime(it.ts)}</span>
     ${it.intent?`<span class="act-intent" title="the AI's stated reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-intent"/></svg> ${esc(it.intent)}</span>`:''}
-    ${detail}
-  </div>`;
+  </div>${detail}`;
   }).join('')}</section>`).join('');
   box.querySelectorAll('.act-row').forEach(row=>{const open=()=>{
     if(window.getSelection()?.toString())return;
     const id=Number(row.dataset.flow);
     if(id){if(openFlow(id,{source:'activity'}))return;document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(id);return;}
     if(!row.classList.contains('act-expandable'))return;
-    const detail=row.querySelector('.act-detail');if(!detail)return;
+    // The detail is the row's sibling, not its child: content inside a
+    // role="button" is presentational, so screen readers never reached it.
+    const detail=document.getElementById(row.getAttribute('aria-controls')||'');if(!detail)return;
     const expanded=row.getAttribute('aria-expanded')==='true';
     row.setAttribute('aria-expanded',expanded?'false':'true');
     detail.hidden=expanded;
@@ -220,7 +221,7 @@ $('#actClear').onclick=async()=>{
     if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Clear';}
   }
 };
-// Free-text intent filter (substring, case-insensitive).
+// Free-text filter over tool, summary and intent (substring, case-insensitive).
 const actIntentFilter=$('#actIntentFilter');
 if(actIntentFilter){
   let actFilterTimer=null;

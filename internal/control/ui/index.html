@@ -807,7 +807,7 @@ Content-Type: application/json
   <!-- Activity (live AI feed) -->
   <div class="panel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
-      <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
+      <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter activity by tool, summary or intent" placeholder="Filter activity…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount" role="status" aria-live="polite" aria-atomic="true"></span>
       <button type="button" class="btn" id="actAppendix" title="Copy the filtered log as a Markdown appendix for the report">Copy as report appendix</button>
@@ -1644,9 +1644,10 @@ Content-Type: application/json
       <p class="hint u-lh u-m-0 u-warn"><b>Remote targets cannot reach localhost.</b> Set base URL to something reachable — e.g. ngrok, VPS, or LAN IP.</p>
       <div class="row u-gap-2 u-wrap">
         <span class="hint">Base URL</span>
-        <input id="oobBase" class="btn btn-field field-grow font-mono" aria-label="OOB collector base URL" placeholder="http://your-host:port/oob" spellcheck="false">
+        <input id="oobBase" type="url" class="btn btn-field field-grow font-mono" aria-label="OOB collector base URL" aria-describedby="oobBaseHint" placeholder="https://your-host/oob" spellcheck="false" autocomplete="off">
         <button class="btn" id="oobSaveBase">Save</button>
       </div>
+      <p id="oobBaseHint" class="hint u-m-0 oob-base-hint" aria-live="polite"></p>
       <div class="panel-card">
         <div class="micro-label u-mb-1">QUICK TUNNEL (CLOUDFLARE)</div>
         <p class="hint u-m-0 u-mb-2 u-lh">Run in a terminal, paste the HTTPS URL + <code>/oob</code> as Base URL above.</p>
@@ -1661,7 +1662,8 @@ Content-Type: application/json
         <button class="btn" id="oobCopy"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy</button>
       </div>
       <div class="row u-gap-3"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><span id="oobLoadState" class="hint" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
-      <div id="oobList"><div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div></div>
+      <p class="hint u-m-0 u-lh">Interactions are kept in memory only: the newest 500, cleared on restart or project switch. Record anything you need as a finding.</p>
+      <div id="oobList"></div>
     </div>
   </div>
 </div>

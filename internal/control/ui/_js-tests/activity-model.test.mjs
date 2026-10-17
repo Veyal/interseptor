@@ -88,3 +88,28 @@ test('activityTarget finds a flow id only when one is stated', () => {
   assert.deepEqual(activityTarget({ summary: 'Flow #7' }), { kind: 'flow', id: 7 });
   assert.equal(activityTarget({ summary: 'nothing' }), null);
 });
+
+test('real MCP tool names (verb_noun) land in their category', () => {
+  const cases = {
+    list_flows: 'proxy', get_flow: 'proxy', send_request: 'proxy', run_scanner: 'proxy', start_intruder: 'proxy',
+    list_issues: 'proxy', tag_flow: 'proxy', oob_new: 'proxy', authz_run: 'proxy', prune_history: 'proxy',
+    create_finding: 'findings', list_findings: 'findings', update_finding: 'findings', add_finding_poc: 'findings',
+    record_finding_from_flow: 'findings', export_report: 'findings', set_note: 'findings', append_notes: 'findings',
+    get_notes: 'findings', render_evidence: 'findings',
+    add_scope_rule: 'scope', list_scope: 'scope', scope_from_url: 'scope',
+    get_settings: 'settings', add_rule: 'settings', list_rules: 'settings', android_setup: 'settings',
+    ios_ssh_setup: 'settings', ca_info: 'settings', set_interception_setup: 'settings', export_full_project: 'settings',
+    check_readiness: 'agent', request_human_input: 'agent',
+  };
+  for (const [tool, cat] of Object.entries(cases)) assert.equal(activityCategory(tool), cat, tool);
+});
+
+test('the text filter matches tool, summary and intent', () => {
+  const items = [
+    { id: 1, tool: 'list_flows', summary: 'host=example.com', intent: '' },
+    { id: 2, tool: 'create_finding', summary: 'IDOR', intent: 'Record bug' },
+  ];
+  assert.deepEqual(filterActivity(items, { intent: 'LIST_FL' }).map((i) => i.id), [1]);
+  assert.deepEqual(filterActivity(items, { intent: 'example.com' }).map((i) => i.id), [1]);
+  assert.deepEqual(filterActivity(items, { intent: 'record' }).map((i) => i.id), [2]);
+});
