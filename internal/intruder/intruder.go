@@ -5,7 +5,11 @@ package intruder
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -62,7 +66,7 @@ type Spec struct {
 	// rule captures group 1. A result records a per-rule hit vector and capture.
 	MatchRules   []string
 	ExtractRules []string
-	ProcessRules []string // payload transforms applied in order: "urlencode" | "base64" | "prefix:X" | "suffix:X" | "upper" | "lower"
+	ProcessRules []string // payload transforms applied in order: "urlencode" | "base64" | "base64url" | "hex" | "htmlencode" | "md5" | "sha1" | "sha256" | "upper" | "lower" | "prefix:X" | "suffix:X"
 	ExtraFlags   int64    // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
 	Barrier      bool     `json:"barrier,omitempty"` // repeat mode, Threads>1: launch the first Threads requests together
 }
@@ -175,13 +179,34 @@ func (e *Engine) SetBodyReader(fn func(hash string) []byte) {
 func (e *Engine) SetBodyReaderResult(fn func(hash string) ([]byte, error)) { e.body = fn }
 
 // processPayload applies the configured transforms to a payload value, in order.
+// Blank rules are skipped; any non-blank rule reaching this point has already
+// passed validateProcessRules, so the final default is unreachable in practice
+// and exists only so an unvalidated internal caller still gets a no-op rather
+// than a silently wrong value.
 func processPayload(pl string, rules []string) string {
 	for _, ru := range rules {
 		switch {
+		case ru == "":
+			// skip
 		case ru == "urlencode":
 			pl = url.QueryEscape(pl)
 		case ru == "base64":
 			pl = base64.StdEncoding.EncodeToString([]byte(pl))
+		case ru == "base64url":
+			pl = base64.URLEncoding.EncodeToString([]byte(pl))
+		case ru == "hex":
+			pl = hex.EncodeToString([]byte(pl))
+		case ru == "htmlencode":
+			pl = htmlEscaper.Replace(pl)
+		case ru == "md5":
+			sum := md5.Sum([]byte(pl))
+			pl = hex.EncodeToString(sum[:])
+		case ru == "sha1":
+			sum := sha1.Sum([]byte(pl))
+			pl = hex.EncodeToString(sum[:])
+		case ru == "sha256":
+			sum := sha256.Sum256([]byte(pl))
+			pl = hex.EncodeToString(sum[:])
 		case ru == "upper":
 			pl = strings.ToUpper(pl)
 		case ru == "lower":
@@ -193,6 +218,34 @@ func processPayload(pl string, rules []string) string {
 		}
 	}
 	return pl
+}
+
+// htmlEscaper mirrors html.EscapeString's character set without pulling the
+// html package in: &, <, >, ' and " — the characters that matter when a payload
+// lands in HTML.
+var htmlEscaper = strings.NewReplacer(
+	"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;", "'", "&#39;",
+)
+
+// validateProcessRules rejects any non-blank payload transform the engine does
+// not implement, so a typo (e.g. "base644" or "sha512") returns a clear error
+// instead of silently passing the raw, un-transformed payload to the target.
+func validateProcessRules(rules []string) error {
+	for _, ru := range rules {
+		if ru == "" {
+			continue
+		}
+		switch {
+		case ru == "urlencode", ru == "base64", ru == "base64url", ru == "hex",
+			ru == "htmlencode", ru == "md5", ru == "sha1", ru == "sha256",
+			ru == "upper", ru == "lower",
+			strings.HasPrefix(ru, "prefix:"), strings.HasPrefix(ru, "suffix:"):
+			// known
+		default:
+			return fmt.Errorf("unknown payload transform %q (allowed: urlencode, base64, base64url, hex, htmlencode, md5, sha1, sha256, upper, lower, prefix:X, suffix:X)", ru)
+		}
+	}
+	return nil
 }
 
 // grepRule is one compiled match rule: a regex, or a literal substring when the
@@ -390,6 +443,9 @@ func (e *Engine) Start(spec Spec) error {
 	}
 	if spec.DelayMs < 0 || int64(spec.DelayMs) > maxDispatchDelayMs {
 		return fmt.Errorf("delay must be between 0 and %d milliseconds", maxDispatchDelayMs)
+	}
+	if err := validateProcessRules(spec.ProcessRules); err != nil {
+		return err
 	}
 
 	baselines := make([]string, len(positions))
