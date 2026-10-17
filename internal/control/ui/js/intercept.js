@@ -789,10 +789,14 @@ export async function applyInterceptFilter(draft=pendingFilterMutation||stageInt
   const {input}=draft;
   draft.promise=(async()=>{
     try{
-      const saved=await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),draft);
-      if(saved)toast(input.enabled&&input.pattern?'filter applied':'filter off');
+      // Typing a pattern while "Only hold when" is unchecked saves it but changes
+      // nothing, so it must not toast "filter off" on every pause in typing.
+      let wasOn=false;
+      const saved=await applyFilterMutation(()=>{wasOn=!!(acknowledgedFilterConfig||currentFilterConfig()).filterEnabled;return api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});},draft);
+      const on=!!(input.enabled&&input.pattern);
+      if(saved&&(on||wasOn))toast(on?'filter applied':'filter off');
       return saved;
-    }catch(e){toast(e.message);return false;}
+    }catch(e){toast(e.message,'error');return false;}
   })();
   return draft.promise;
 }
