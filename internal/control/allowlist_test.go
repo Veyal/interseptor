@@ -14,7 +14,8 @@ import (
 func TestClientIPTrustsForwardedOnlyFromLoopbackPeer(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966/", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
-	req.Header.Set("X-Forwarded-For", "100.65.105.2, 10.0.0.1")
+	// The local proxy appends the real peer; earlier hops are client-supplied.
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 100.65.105.2")
 	if got := clientIP(req); got != "100.65.105.2" {
 		t.Fatalf("xff from loopback peer: %q", got)
 	}

@@ -148,6 +148,12 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — IP allowlist does not cover /mcp")
 				return
 			}
+			if !loopbackPeer(r) && !directHostNameOK(r.Host) {
+				// DNS rebinding: a page under an attacker's public name that
+				// resolves to this listener must not inherit keyless trust.
+				httpErr(w, http.StatusForbidden, "unrecognised Host for keyless allowlist access — use the IP address or machine name, or an API key")
+				return
+			}
 			if isMutatingMethod(r.Method) {
 				if o := r.Header.Get("Origin"); o != "" && !sameHostOrigin(o, r.Host) {
 					httpErr(w, http.StatusForbidden, "cross-origin request rejected")
