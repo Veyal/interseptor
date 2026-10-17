@@ -534,7 +534,7 @@ type proxyManager struct {
 }
 
 func (m *proxyManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: m.handler}
+	srv := proxy.NewHTTPServer(m.handler)
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("proxy serve: %v", err)

@@ -169,13 +169,13 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 // upstream proxy's CONNECT if one is configured), for raw TLS passthrough.
 func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	d := s.dialer()
 	if up := s.upstream.Load(); up != nil {
 		if isHTTPUpstream(up) {
 			return dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
 		}
 		if isSOCKSUpstream(up) {
-			return dialViaSOCKS(context.Background(), up, "tcp", addr)
+			return dialViaSOCKS(context.Background(), up, "tcp", addr, d.Timeout)
 		}
 		return nil, fmt.Errorf("unsupported upstream proxy scheme %q", up.Scheme)
 	}

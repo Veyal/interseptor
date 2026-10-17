@@ -67,6 +67,7 @@ type Server struct {
 	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
 	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
+	timeouts                 connTimeouts
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
@@ -110,7 +111,8 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 		MaxIdleConnsPerHost: 64,
 		IdleConnTimeout:     90 * time.Second,
 		// No ResponseHeaderTimeout: slow/long-polling upstreams must not be cut
-		// off by the proxy. Dial still has its own connect bound.
+		// off by the proxy. Connect and TLS handshake have their own bounds
+		// (dialContext, dialTLSContext).
 		// Prefer HTTP/2 to the origin when ALPN negotiates it. The MITM leg to
 		// the client stays HTTP/1.1 (see writeResponseConn ProtoMajor downgrade)
 		// so forwarding never hangs; History records the upstream proto.
@@ -146,11 +148,54 @@ func (s *Server) SetUpstreamProxyCA(pemBytes []byte) error {
 	return nil
 }
 
+// Connection-setup bounds. None of them apply once a connection is set up, so
+// slow bodies, long polls, and idle WebSockets are never cut off.
+const (
+	defaultDialTimeout            = 30 * time.Second // upstream TCP connect (direct or via SOCKS)
+	defaultUpstreamTLSTimeout     = 30 * time.Second // upstream TLS handshake
+	defaultClientHandshakeTimeout = 30 * time.Second // client→proxy MITM TLS handshake
+	clientHeaderTimeout           = 30 * time.Second // client request head on the proxy listener
+	tcpKeepAlive                  = 30 * time.Second
+)
+
+// connTimeouts holds the connection-setup bounds; zero fields use the defaults.
+// Tests shorten them per Server.
+type connTimeouts struct {
+	dial            time.Duration
+	upstreamTLS     time.Duration
+	clientHandshake time.Duration
+}
+
+func orDuration(d, def time.Duration) time.Duration {
+	if d > 0 {
+		return d
+	}
+	return def
+}
+
+func (t connTimeouts) dialOrDefault() time.Duration { return orDuration(t.dial, defaultDialTimeout) }
+func (t connTimeouts) upstreamTLSOrDefault() time.Duration {
+	return orDuration(t.upstreamTLS, defaultUpstreamTLSTimeout)
+}
+func (t connTimeouts) clientHandshakeOrDefault() time.Duration {
+	return orDuration(t.clientHandshake, defaultClientHandshakeTimeout)
+}
+
+func (s *Server) dialer() *net.Dialer {
+	return &net.Dialer{Timeout: s.timeouts.dialOrDefault(), KeepAlive: tcpKeepAlive}
+}
+
+// isTimeout reports whether err is a deadline/timeout error.
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
+}
+
 func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if up := s.upstream.Load(); up != nil && isSOCKSUpstream(up) {
-		return dialViaSOCKS(ctx, up, network, addr)
+		return dialViaSOCKS(ctx, up, network, addr, s.timeouts.dialOrDefault())
 	}
-	return (&net.Dialer{}).DialContext(ctx, network, addr)
+	return s.dialer().DialContext(ctx, network, addr)
 }
 
 type originDialContextKey struct{}
@@ -191,7 +236,13 @@ func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.
 		return nil, err
 	}
 	tc := tls.Client(raw, cfg)
-	if err := tc.HandshakeContext(ctx); err != nil {
+	// http.Transport's TLSHandshakeTimeout does not cover a custom
+	// DialTLSContext, and the request context has no deadline, so bound the
+	// handshake here: a silent origin would otherwise hang the request forever.
+	hctx, cancel := context.WithTimeout(ctx, s.timeouts.upstreamTLSOrDefault())
+	err = tc.HandshakeContext(hctx)
+	cancel()
+	if err != nil {
 		raw.Close()
 		if !isUpstreamProxyTLS && s.OriginTLSVerify() {
 			return nil, originTLSVerificationError(host, err)
@@ -263,7 +314,20 @@ func (s *Server) SetUpstreamProxy(raw string) error {
 
 // Serve accepts connections on ln until it is closed.
 func (s *Server) Serve(ln net.Listener) error {
-	return (&http.Server{Handler: s}).Serve(ln)
+	return NewHTTPServer(s).Serve(ln)
+}
+
+// NewHTTPServer returns the http.Server used for a proxy listener. It bounds
+// how long a client may take to send a request head and how long an idle
+// keep-alive connection is kept, so slowloris-style or abandoned connections
+// cannot pin goroutines and fds forever. Neither bound applies to request
+// bodies, responses, or hijacked CONNECT/upgrade connections.
+func NewHTTPServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: clientHeaderTimeout,
+		IdleTimeout:       tunnelIdleTimeout,
+	}
 }
 
 // hopHeaders are stripped when forwarding (RFC 7230 §6.1).
@@ -396,7 +460,15 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	tlsConn := tls.Server(clientConn, cfg)
+	// Bound the handshake: a client that opens a CONNECT and never sends a
+	// ClientHello would otherwise pin a goroutine and an fd forever.
+	_ = clientConn.SetDeadline(time.Now().Add(s.timeouts.clientHandshakeOrDefault()))
 	if err := tlsConn.Handshake(); err != nil {
+		if isTimeout(err) {
+			// An idle client is not a pinning signal: don't record a TLS
+			// failure or auto-bypass the host, just reap the connection.
+			return
+		}
 		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err, suppression)
 		// The client rejected our leaf (pinning or untrusted CA). If auto-bypass is
 		// on, add this host so the app's next attempt tunnels through and works.
@@ -405,6 +477,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	_ = clientConn.SetDeadline(time.Time{})
 	defer tlsConn.Close()
 
 	// Client selected HTTP/2 on the MITM leg — serve it with an http2.Server
@@ -650,7 +723,7 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	// KeepAlive lets the OS detect a half-open upstream (peer vanished without
 	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
 	// without an application-level timeout that would kill a legitimately idle one.
-	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	d := s.dialer()
 	tlsCfg := func() *tls.Config {
 		return s.tlsConfigForHost(host)
 	}
@@ -666,7 +739,7 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 		case isHTTPUpstream(up):
 			raw, err = dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
 		case isSOCKSUpstream(up):
-			raw, err = dialViaSOCKS(context.Background(), up, "tcp", addr)
+			raw, err = dialViaSOCKS(context.Background(), up, "tcp", addr, d.Timeout)
 		default:
 			return nil, fmt.Errorf("unsupported upstream proxy scheme %q", up.Scheme)
 		}
@@ -786,7 +859,12 @@ func isSupportedUpstreamScheme(scheme string) bool {
 	return scheme == "http" || scheme == "https" || scheme == "socks5" || scheme == "socks5h"
 }
 
-func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string) (net.Conn, error) {
+// dialViaSOCKS opens addr through a SOCKS5 upstream. timeout bounds the whole
+// setup (local DNS for socks5, the TCP connect, and the SOCKS handshake), so a
+// silent SOCKS server cannot pin the caller; the returned conn has no deadline.
+func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string, timeout time.Duration) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, orDuration(timeout, defaultDialTimeout))
+	defer cancel()
 	if up.Scheme == "socks5" {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
@@ -806,7 +884,7 @@ func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string) (net.C
 		password, _ := up.User.Password()
 		auth = &proxy.Auth{User: up.User.Username(), Password: password}
 	}
-	dialer, err := proxy.SOCKS5(network, upstreamProxyAddress(up), auth, &net.Dialer{})
+	dialer, err := proxy.SOCKS5(network, upstreamProxyAddress(up), auth, &net.Dialer{KeepAlive: tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
