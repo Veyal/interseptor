@@ -57,7 +57,7 @@ func TestUIPrimitiveModulesResolveTheirImports(t *testing.T) {
 // The pure modules must not import core.js (it touches the DOM at load), or the
 // node tests could not load them.
 func TestUIPureModulesStayDOMFree(t *testing.T) {
-	for _, name := range []string{"js/layout-math.js", "js/keys.js", "js/diff.js", "js/copyas.js", "js/finder.js", "js/split.js", "js/bus.js", "js/virtual-list-model.js", "js/inspector-structure.js", "js/canvas-model.js"} {
+	for _, name := range []string{"js/layout-math.js", "js/keys.js", "js/diff.js", "js/copyas.js", "js/finder.js", "js/split.js", "js/bus.js", "js/virtual-list-model.js", "js/inspector-structure.js", "js/canvas-model.js", "js/api-inflight.js"} {
 		if regexp.MustCompile(`(?m)^import .* from './core\.js'`).MatchString(readUIAsset(t, name)) {
 			t.Errorf("%s statically imports core.js; keep it loadable under node", name)
 		}

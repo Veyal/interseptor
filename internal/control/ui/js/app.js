@@ -3,7 +3,7 @@
 // switching, the command palette, global keyboard shortcuts, the live SSE event
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
-import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
+import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook, clearSharedReads } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
@@ -414,12 +414,14 @@ function connectEvents(){
     clearTimeout(sseRetryTimer);sseRetryCount=0;
     setSseStatus('ok');
     const reason=sseConnectedOnce?'reconnect':'boot';
+    if(sseConnectedOnce)clearSharedReads();
     if(sseConnectedOnce)refreshVisibleAllowlist();
     if(shouldResyncOnReconnect(reason,sseHadError))scheduleResync();
     sseConnectedOnce=true;
     sseHadError=false;
   });
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    clearSharedReads(); // a refetch this event triggers must not join a read that predates it
     dispatchSseMessage(m);
     runSseHooks(m);
   };

@@ -19,7 +19,10 @@ func shellFeedbackHarness(t *testing.T, body string) {
 		repeaterRenderJS(t, core, "export function toastError(prefix, e)") +
 		repeaterRenderJS(t, core, "async function apiErrorMessage(r)") +
 		repeaterRenderJS(t, core, "function apiFetchError(e, opts)") +
+		strings.ReplaceAll(readUIAsset(t, "js/api-inflight.js"), "export ", "") +
+		"const apiReads=createInflight();\n" +
 		repeaterRenderJS(t, core, "export async function api(path,opts)") +
+		repeaterRenderJS(t, core, "async function apiRequest(path,opts,asText)") +
 		repeaterRenderJS(t, core, "export async function apiTry(path, opts, {toastOnError=true, label=''}={})") +
 		`
 const eq=(got,want,msg)=>{if(got!==want)throw Error(msg+': got '+JSON.stringify(got)+' want '+JSON.stringify(want));};
@@ -142,6 +145,36 @@ eq(out,null,'apiTry returns null on failure');
 const last=container.children[container.children.length-1];
 eq(last.textContent,'Load: nope','apiTry toasts the labelled error');
 eq(last.classes.has('error'),true,'apiTry failures are error toasts');
+`)
+}
+
+// Concurrent identical GETs share one request; every caller still gets its own
+// parsed copy, and a mutation forces later reads to refetch.
+func TestUIApiSharesConcurrentIdenticalReads(t *testing.T) {
+	shellFeedbackHarness(t, `
+globalThis.location={pathname:'/',href:''};
+AbortSignal.timeout??=()=>({});
+let calls=[];const gates=[];
+globalThis.fetch=(p,o)=>{calls.push((o&&o.method||'GET')+' '+p);return new Promise(r=>gates.push(()=>r({ok:true,status:200,headers:{get:()=>'application/json'},text:async()=>JSON.stringify({n:calls.length}),json:async()=>({n:calls.length})})));};
+const flush=()=>new Promise(r=>queueMicrotask(r));
+const a=api('/api/version'),b=api('/api/version'),c=api('/api/project');
+await flush();await flush();
+eq(calls.join(','),'GET /api/version,GET /api/project','identical concurrent GETs share one fetch');
+gates.splice(0).forEach(g=>g());
+const [ra,rb]=await Promise.all([a,b,c]);
+eq(ra.n,rb.n,'sharing callers see the same data');
+ra.n=99;eq(rb.n!==99,true,'each caller gets its own parsed copy');
+calls=[];
+const d=api('/api/version',{cache:'no-store'}),e2=api('/api/version');
+await flush();await flush();
+eq(calls.length,2,'a call with its own options never joins another');
+gates.splice(0).forEach(g=>g());await Promise.all([d,e2]);
+calls=[];
+const before=api('/api/settings');await flush();await flush();
+const post=api('/api/settings',{method:'PUT',body:'{}'});await flush();await flush();
+const after=api('/api/settings');await flush();await flush();
+eq(calls.join(','),'GET /api/settings,PUT /api/settings,GET /api/settings','a read issued after a mutation starts must not join an older read');
+gates.splice(0).forEach(g=>g());await Promise.all([before,post,after]);
 `)
 }
 
