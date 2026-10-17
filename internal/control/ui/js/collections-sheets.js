@@ -345,7 +345,7 @@ export function paintImport(body, initialText) {
     try {
       const r = await post('commit');
       if (!r) return;
-      toast('Imported. Scripts are quarantined until you approve them.');
+      toast(M.importCommitMessage(r));
       closeSheet('collImportSheet');
       if (r.collectionUid) S.colUid = r.collectionUid;
       S.selUid = '';
