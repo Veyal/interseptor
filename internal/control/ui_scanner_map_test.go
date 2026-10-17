@@ -47,6 +47,24 @@ func TestMapCoverageCountsTheSelectedDomain(t *testing.T) {
 		"renderMapCoverage(mapState.domain ? mapState.eps.filter(e => e.host === mapState.domain) : mapState.eps);")
 }
 
+// The tree and table said "No endpoints match — capture traffic or relax the
+// filters" whatever the cause. They now use the shared state panel: nothing
+// captured, everything hidden as 403/404 noise (Show all statuses), or filters
+// that exclude everything (Clear filters, reset in place).
+func TestMapEmptyStatesNameTheCauseAndOfferTheFix(t *testing.T) {
+	js := readUIAsset(t, "js/map.js")
+	requireUIContains(t, js,
+		"function renderMapEmpty(box){",
+		"actionLabel: 'Show all statuses', onClear: mapHiddenNoiseAction",
+		"renderState(box, 'empty-first', { icon: 'map', title: 'No endpoints captured yet'",
+		"renderState(box, 'empty-filtered', { filterCount: n, onClear: clearMapFilters });",
+		"function clearMapFilters(){",
+	)
+	if strings.Contains(js, "Capture traffic or relax the filters.") {
+		t.Fatal("the hand-written Map empty state is still in use")
+	}
+}
+
 // The scanner shows real progress from scan.progress events and can stop a scan
 // through POST /api/scanner/cancel (a stopped scan saves nothing and is not
 // reported as a failure). Results can be narrowed to one host, so traffic from

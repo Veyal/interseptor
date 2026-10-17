@@ -785,10 +785,39 @@ function mapHiddenNoiseAction(){
   loadEndpoints();
 }
 
+// The tree and table say why they are empty and offer the one action that helps: nothing
+// captured yet; every endpoint hidden by the 403/404 noise filter (Show all statuses); or the
+// filters exclude everything (Clear filters, which resets them in place).
+function renderMapEmpty(box){
+  if(!mapState.eps.length && mapState.noiseHiddenCount > 0){
+    const n = mapState.noiseHiddenCount;
+    renderState(box, 'empty-filtered', { title: n.toLocaleString() + ' endpoint' + (n === 1 ? '' : 's') + ' returned only 403/404', hint: 'They are hidden as forced-browse noise.', actionLabel: 'Show all statuses', onClear: mapHiddenNoiseAction });
+    return;
+  }
+  if(!mapState.eps.length){
+    renderState(box, 'empty-first', { icon: 'map', title: 'No endpoints captured yet', hint: 'Browse the target through the proxy; each method and path it answers appears here.' });
+    return;
+  }
+  const n = (mapState.domain ? 1 : 0) + (mapState.method ? 1 : 0) + (mapState.statusClass ? 1 : 0) + (mapState.search ? 1 : 0) + (mapState.onlyUnlinked ? 1 : 0);
+  renderState(box, 'empty-filtered', { filterCount: n, onClear: clearMapFilters });
+}
+function clearMapFilters(){
+  const wasServer = mapUsesServerSearch();
+  mapState.domain = ''; mapState.method = ''; mapState.statusClass = 0; mapState.onlyUnlinked = false;
+  try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),'');}catch(e){}
+  setMapSearchState('', mapState.searchScope);
+  ['#mapDomain', '#mapMethod', '#mapSearch', '#mapStatus'].forEach(sel => { const el = $(sel); if(el) el.value = ''; });
+  mapCollapseHosts();
+  mapState._needFit = true;
+  if(wasServer || mapEndpointDataMode !== 'full') loadEndpoints();
+  else renderMap();
+  $('#mapSearch')?.focus({ preventScroll: true });
+}
+
 export function renderMapTree(eps){
   const box = $('#mapTree'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
+    renderMapEmpty(box);
     mapState._treeHosts = null;
     return;
   }
@@ -974,7 +1003,7 @@ function mapVtKey(vt, ev){
 function renderMapTable(eps){
   const box = $('#mapTable'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
+    renderMapEmpty(box);
     return;
   }
   const sorted = mapSortEps(eps);
