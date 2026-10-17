@@ -16,14 +16,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod only sets the minimum; ship binaries built with the latest
           # patch release so they carry current standard-library fixes.
           check-latest: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: go vet ./...
@@ -33,14 +33,14 @@ jobs:
   ui-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod only sets the minimum; ship binaries built with the latest
           # patch release so they carry current standard-library fixes.
           check-latest: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: scripts/ui_smoke.sh
@@ -49,23 +49,23 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod only sets the minimum; ship binaries built with the latest
           # patch release so they carry current standard-library fixes.
           check-latest: true
       - name: Build GoReleaser snapshot candidate
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --snapshot --clean
         env:
           CGO_ENABLED: 0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-candidate-dist
           path: dist/
@@ -75,7 +75,7 @@ jobs:
     needs: candidate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-candidate-dist
           path: dist
@@ -144,10 +144,10 @@ jobs:
     needs: test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod only sets the minimum; ship binaries built with the latest
@@ -176,7 +176,7 @@ jobs:
           [[ ${#dmgs[@]} -ge 1 ]]
       - name: Archive app bundle
         run: ditto -c -k --keepParent dist/macos/Interseptor.app dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos-assets
           path: |
@@ -188,23 +188,23 @@ jobs:
     needs: [validate-candidate, macos-app, ui-smoke]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod only sets the minimum; ship binaries built with the latest
           # patch release so they carry current standard-library fixes.
           check-latest: true
       - name: Publish validated GoReleaser release
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-macos-assets
           path: validated-macos
