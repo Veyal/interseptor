@@ -109,6 +109,11 @@
   .pm-row{min-height:52px}
   .pm-group-head{min-height:40px}
   .pm-path{direction:ltr}
+  /* The tail of a long path is what tells engagements apart, so wrap it
+     instead of ellipsizing it away on a phone. */
+  .pm-current-path{align-items:flex-start}
+  .pm-path,.pm-row-path{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+  .pm-name{white-space:normal;overflow-wrap:anywhere}
   .pm-mobile-chip{display:inline-flex}
   .pm-filter-input{font-size:var(--fs-xl)}
 }
