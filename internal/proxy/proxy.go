@@ -637,7 +637,11 @@ func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow 
 func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, r *http.Request, flow *proxyFlow) {
 	flow.Flags |= store.FlagWebSocket
 
-	up, err := s.dialUpstream(flow.Scheme, flow.Host, flow.Port)
+	// Dial the address an ordinary request on this tunnel would: for
+	// "CONNECT <IP>" with an SNI hostname that is the CONNECT IP, not a fresh
+	// lookup of the SNI name.
+	dialAddr := originDialAddress(r.Context(), net.JoinHostPort(flow.Host, strconv.Itoa(flow.Port)))
+	up, err := s.dialUpstreamTo(flow.Scheme, flow.Host, flow.Port, dialAddr)
 	if err != nil {
 		s.recordUpgradeError(clientConn, flow, "upgrade dial: "+err.Error())
 		return
@@ -729,6 +733,13 @@ func (s *Server) recordUpgradeError(clientConn net.Conn, flow *proxyFlow, msg st
 // dialUpstream opens a raw connection to the target, using TLS for https so the
 // upgraded stream is end-to-end encrypted to the origin.
 func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
+	return s.dialUpstreamTo(scheme, host, port, net.JoinHostPort(host, strconv.Itoa(port)))
+}
+
+// dialUpstreamTo is dialUpstream with an explicit TCP target: dialAddr is
+// dialed directly or through SOCKS (as dialTLSContext does), while TLS SNI and
+// an HTTP CONNECT upstream keep the logical host, matching ordinary requests.
+func (s *Server) dialUpstreamTo(scheme, host string, port int, dialAddr string) (net.Conn, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	// KeepAlive lets the OS detect a half-open upstream (peer vanished without
 	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
@@ -749,7 +760,7 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 		case isHTTPUpstream(up):
 			raw, err = dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
 		case isSOCKSUpstream(up):
-			raw, err = dialViaSOCKS(context.Background(), up, "tcp", addr, d.Timeout)
+			raw, err = dialViaSOCKS(context.Background(), up, "tcp", dialAddr, d.Timeout)
 		default:
 			return nil, fmt.Errorf("unsupported upstream proxy scheme %q", up.Scheme)
 		}
@@ -768,11 +779,11 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 		}
 		return raw, nil
 	}
-	// Direct (no upstream) — unchanged.
+	// Direct (no upstream).
 	if scheme == "https" {
-		return tls.DialWithDialer(d, "tcp", addr, forceHTTP11TLSConfig(tlsCfg()))
+		return tls.DialWithDialer(d, "tcp", dialAddr, forceHTTP11TLSConfig(tlsCfg()))
 	}
-	return d.Dial("tcp", addr)
+	return d.Dial("tcp", dialAddr)
 }
 
 func forceHTTP11TLSConfig(cfg *tls.Config) *tls.Config {
