@@ -31,6 +31,14 @@
   .act-tool{min-width:0}
   .act-sum{max-width:100%;flex:1 1 100%;white-space:normal;overflow-wrap:anywhere}
 }
+/* Phone: keep status, actor, tool and category on one wrapping line instead of
+   stacking each badge full-width (app.css switches the row to a column). */
+@media (max-width:600px){
+  .act-row{flex-direction:row;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);padding:var(--sp-2) var(--sp-4)}
+  .act-sum,.act-res{flex:1 1 100%}
+  .act-sum:empty,.act-res:empty{display:none}
+  .act-intent{margin-left:0}
+}
 
 /* ---- Notes: status text, reference chips, promote, side-by-side layout ---- */
 .notes-status[data-state="saving"],.notes-status[data-state="saved"],.notes-status[data-state="dirty"],.notes-status[data-state="error"]{opacity:1}
