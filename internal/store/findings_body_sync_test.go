@@ -224,6 +224,26 @@ func TestNormalizeFindingBodyKeepsSameFlowUnderDistinctRolesAndCollapsesExactCop
 	}
 }
 
+// Retest replays are a later chapter: evidence added afterwards (without an
+// explicit position) belongs to the reproduction story, before them.
+func TestAppendedEvidenceLandsBeforeTrailingRetestBlocks(t *testing.T) {
+	body := `[{"type":"text","md":"steps"},{"type":"flow","flowId":1,"role":"action"},{"type":"flow","flowId":9,"role":"retest"}]`
+	var recs []blockRecord
+	json.Unmarshal([]byte(insertFlowIntoBodyWithMetadata(body, 2, "", -1, "result", "", "", 0)), &recs)
+	if len(recs) != 4 || recs[2].FlowID != 2 || recs[3].Role != "retest" {
+		t.Fatalf("flow appended after retest: %+v", recs)
+	}
+	json.Unmarshal([]byte(insertImageIntoBodyRef(body, strings.Repeat("a", 64), "image/png", "", -1, "result", "", "", 0, "")), &recs)
+	if len(recs) != 4 || recs[2].Type != "image" || recs[3].Role != "retest" {
+		t.Fatalf("image appended after retest: %+v", recs)
+	}
+	// A new retest replay still goes last.
+	json.Unmarshal([]byte(insertFlowIntoBodyWithMetadata(body, 10, "", -1, "retest", "", "", 0)), &recs)
+	if len(recs) != 4 || recs[3].FlowID != 10 {
+		t.Fatalf("retest not appended last: %+v", recs)
+	}
+}
+
 func TestAttachFlowWithNewRoleAddsBlockInsteadOfOverwriting(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

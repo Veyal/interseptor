@@ -549,6 +549,7 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 		}
 	}
 	newBlock := blockRecord{Type: "flow", FlowID: flowID, Note: note, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID}
+	pos = appendBeforeRetest(recs, pos, newBlock.Role)
 	if pos < 0 || pos >= len(recs) {
 		recs = append(recs, newBlock)
 	} else {
@@ -558,6 +559,24 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 	}
 	j, _ := json.Marshal(recs)
 	return string(j)
+}
+
+// appendBeforeRetest resolves an "append" (pos < 0) for a non-retest block to
+// the start of the trailing run of retest blocks, so evidence added after a
+// retest stays in the reproduction story instead of landing in the retest
+// chapter. Explicit positions and retest blocks are left as they are.
+func appendBeforeRetest(recs []blockRecord, pos int, role string) int {
+	if pos >= 0 || role == "retest" {
+		return pos
+	}
+	i := len(recs)
+	for i > 0 && recs[i-1].Role == "retest" {
+		i--
+	}
+	if i == len(recs) {
+		return pos
+	}
+	return i
 }
 
 // removeFlowFromBody removes all flow blocks with the given flowID from the body JSON.

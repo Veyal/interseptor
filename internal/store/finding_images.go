@@ -474,6 +474,7 @@ func insertImageIntoBodyRef(bodyJSON, hash, mime, caption string, pos int, role,
 		}
 	}
 	newBlock := blockRecord{Type: "image", Hash: hash, Mime: mime, Caption: caption, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID, SourceRef: sourceRef}
+	pos = appendBeforeRetest(recs, pos, newBlock.Role)
 	if pos < 0 || pos >= len(recs) {
 		recs = append(recs, newBlock)
 	} else {
