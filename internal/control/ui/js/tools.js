@@ -609,7 +609,14 @@ export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
 function repHistoryVisible(){const box=$('#repHistory');return !!box&&box.style.display!=='none';}
 function repSetHistoryCount(t){const toggle=$('#repHistToggle'),count=normalizeRepHistory(t?.history).length;if(toggle)toggle.textContent='⟲ History'+(count?' ('+count+')':'');}
-function refreshRepHistory(t=repCur()){if(repCur()!==t)return;if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t);}
+function refreshRepHistory(t=repCur()){
+  if(repCur()!==t)return;
+  if(repHistoryVisible()){loadRepHistory();return;}
+  repSetHistoryCount(t);
+  // After a reload the tab's earlier sends live only in IndexedDB. Load them
+  // even with the rail closed: the count and "Diff vs previous" depend on them.
+  if(t&&!t.historyHydrationPromise)repHydrateTabHistory(t).then(()=>{if(repCur()===t&&!repHistoryVisible()){repSetHistoryCount(t);syncRepActions();}},()=>{});
+}
 export function repSaveEditor({operatorEdit=false}={}){
   const t=repCur();if(!t)return;
   const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;

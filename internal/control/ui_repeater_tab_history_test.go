@@ -143,7 +143,9 @@ func TestUIRepeaterHistoryHydratesOnDemandWithoutBlockingStartup(t *testing.T) {
 	for _, contract := range []string{
 		"function repHistoryVisible()",
 		"function refreshRepHistory(t=repCur())",
-		"if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t)",
+		// Only the tab being shown is hydrated, without awaiting it.
+		"if(repHistoryVisible()){loadRepHistory();return;}",
+		"if(t&&!t.historyHydrationPromise)repHydrateTabHistory(t).then(",
 		"if(show)loadRepHistory()",
 		"t.history=normalizeRepHistory([...(t.history||[]),...embedded,...stored])",
 		"repRetryHistoryCleanup(repTabs.tabs).catch(()=>{})",
