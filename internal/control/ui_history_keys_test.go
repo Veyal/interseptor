@@ -15,7 +15,7 @@ func TestUIHistoryListboxKeyboardModel(t *testing.T) {
 		"box.setAttribute('role','listbox');box.setAttribute('aria-label','Captured flows');box.setAttribute('aria-multiselectable','true');",
 		"r.setAttribute('aria-posinset',String(start+i+1));",
 		"const to=listKeyTarget(e.key,list.findIndex(f=>f.id===from),list.length,page);",
-		"revealFlowRow(id,{focus:true});",
+		"revealFlowRow(id,{focus:true,index:to});",
 		"chip.tabIndex=-1;",
 	)
 	if strings.Contains(proxy, `aria-pressed="${state.selected.has(f.id)`) {

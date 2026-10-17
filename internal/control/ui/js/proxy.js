@@ -1109,10 +1109,10 @@ export function walkFlowNav(down,e){
 // mounting it synchronously when the list is virtualized (a key that repeats
 // faster than a frame must land on the new row, not on a stale window), and
 // optionally moves keyboard focus onto it.
-export function revealFlowRow(id,{focus=false}={}){
+export function revealFlowRow(id,{focus=false,index=-1}={}){
   const box=$('#rows');if(!box)return null;
   if(flowVirt.isActive()){
-    const i=state.flows.findIndex(f=>f.id===id);
+    const i=state.flows[index]?.id===id?index:state.flows.findIndex(f=>f.id===id);
     if(i<0)return null;
     const top=i*ROW_H,bottom=top+ROW_H;
     if(top<box.scrollTop)box.scrollTop=top;
@@ -1148,9 +1148,10 @@ export function focusInFlowList(){
       e.preventDefault();e.stopPropagation();
       const id=list[to].id;
       if(state.selAnchorId==null&&from!=null)state.selAnchorId=from;
-      stepSelection(list.map(f=>f.id),id,{mod:false,shift:e.shiftKey});
+      // Only a Shift range needs the id list; a plain move skips the O(n) copy.
+      stepSelection(e.shiftKey?list.map(f=>f.id):[],id,{mod:false,shift:e.shiftKey});
       selectFlow(id);updateSelBar();
-      revealFlowRow(id,{focus:true});
+      revealFlowRow(id,{focus:true,index:to});
       if(to>=list.length-1)loadMoreFlows();
     });
   }
