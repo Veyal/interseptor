@@ -873,7 +873,7 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 					flow.OriginalReqHeaders = cloneHeaders(flow.ReqHeaders)
 				}
 				if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
-					flow.OriginalReqBodyHash, _ = s.storeBytes(raw[i+4:])
+					flow.OriginalReqBodyHash, _ = s.storeBytes(flow, raw[i+4:])
 				}
 				flow.Flags |= store.FlagEdited
 
@@ -997,7 +997,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 		w.WriteHeader(st)
 		w.Write(body)
 		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
-		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
+		flow.ResBodyHash, flow.ResLen = s.storeBytes(flow, body)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		return
@@ -1022,8 +1022,9 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 
 	if resTee, resFinalize, err := s.teeBody(flow, resp.Body); err == nil && resTee != nil {
 		_, cerr := io.Copy(w, resTee)
-		h, n, _ := resFinalize()
+		h, n, ferr := resFinalize()
 		flow.ResBodyHash, flow.ResLen = h, n
+		flagCaptureFailure(flow, ferr)
 		if cerr != nil {
 			// Client aborted mid-stream: the stored body is whatever was
 			// tee'd before the write failed. Flag it so history/replay don't
@@ -1059,7 +1060,7 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 		return nil
 	} else if transformed {
 		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
-		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
+		flow.ResBodyHash, flow.ResLen = s.storeBytes(flow, body)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		_, werr := conn.Write(buildRawResponse(st, hdr, body))
 		s.record(flow)
@@ -1101,8 +1102,9 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 	}
 
 	werr := resp.Write(conn)
-	h, n, _ := resFinalize()
+	h, n, ferr := resFinalize()
 	flow.ResBodyHash, flow.ResLen = h, n
+	flagCaptureFailure(flow, ferr)
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
 	s.record(flow)
 	return werr
@@ -1172,7 +1174,7 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		h, b = s.eng.ApplyResponseRules(h, b, skipLargeBody && int64(len(b)) > intercept.RuleScanLimit)
 		if !bytes.Equal(originalBody, b) {
 			flow.OriginalResHeaders = cloneHeaders(originalHeaders)
-			flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
+			flow.OriginalResBodyHash, _ = s.storeBytes(flow, originalBody)
 		}
 	}
 	if hold {
@@ -1209,17 +1211,34 @@ func cloneHeaders(src http.Header) http.Header {
 	return src.Clone()
 }
 
+// flagCaptureFailure marks a flow whose body could not be stored, so history
+// never shows a forwarded body as a silently empty one.
+func flagCaptureFailure(flow *proxyFlow, err error) {
+	if err == nil {
+		return
+	}
+	flow.Flags |= store.FlagCaptureError
+	if flow.Error == "" {
+		flow.Error = "capture resp: " + err.Error()
+	}
+}
+
 // storeBytes captures an in-memory body into the content-addressed store.
-func (s *Server) storeBytes(b []byte) (string, int64) {
+func (s *Server) storeBytes(flow *proxyFlow, b []byte) (string, int64) {
 	if len(b) == 0 {
 		return "", 0
 	}
 	tee, finalize, err := s.cap.TeeBody(bytes.NewReader(b))
-	if err != nil || tee == nil {
+	if err != nil {
+		flagCaptureFailure(flow, err)
+		return "", 0
+	}
+	if tee == nil {
 		return "", 0
 	}
 	io.Copy(io.Discard, tee)
-	h, n, _ := finalize()
+	h, n, ferr := finalize()
+	flagCaptureFailure(flow, ferr)
 	return h, n
 }
 

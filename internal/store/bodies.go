@@ -67,11 +67,13 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 	}
 	if w.tmp == nil {
 		if w.createErr != nil {
+			w.n += int64(len(p))
 			return len(p), nil
 		}
 		tmp, err := os.CreateTemp(w.s.bodiesDir, ".tmp-*")
 		if err != nil {
 			w.createErr = err
+			w.n += int64(len(p))
 			return len(p), nil
 		}
 		w.tmp = tmp
@@ -87,8 +89,9 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 func (w *BodyWriter) Finalize() (string, int64, error) {
 	if w.tmp == nil {
 		// Nothing was written, or the temp file could not be created: no
-		// file, no hash and no GC claim to take.
-		return "", 0, w.createErr
+		// file, no hash and no GC claim to take. After a failed creation the
+		// length stays truthful (bytes forwarded but not stored).
+		return "", w.n, w.createErr
 	}
 	tmpName := w.tmp.Name()
 	if err := w.tmp.Close(); err != nil {

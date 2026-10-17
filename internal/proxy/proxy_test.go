@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -2740,5 +2741,67 @@ func TestParseRawResponseNormalizesLFHead(t *testing.T) {
 	}
 	if want := "body-lf\n"; string(b) != want {
 		t.Fatalf("body=%q, want %q", b, want)
+	}
+}
+
+// A response body that cannot be captured (temp file creation fails) must be
+// flagged, never recorded as a silently empty response.
+func TestProxyFlagsResponseCaptureFailure(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		io.WriteString(w, "payload-body")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	// Make every CreateTemp fail after Open.
+	if err := os.RemoveAll(s.BodiesDir()); err != nil {
+		t.Fatalf("remove bodies dir: %v", err)
+	}
+	srv := New(s, capture.New(s), nil, nil, nil)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+	resp, err := client.Get(upstream.URL + "/x")
+	if err != nil {
+		t.Fatalf("request through proxy: %v", err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(got) != "payload-body" {
+		t.Fatalf("forwarding broken: %q", got)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var flows []*store.Flow
+	for time.Now().Before(deadline) {
+		flows, _ = s.QueryFlows(10)
+		if len(flows) == 1 && flowsComplete(flows) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(flows) != 1 {
+		t.Fatalf("expected 1 flow, got %d", len(flows))
+	}
+	f := flows[0]
+	if f.Flags&store.FlagCaptureError == 0 {
+		t.Fatalf("capture failure not flagged: %+v", f)
+	}
+	if !strings.HasPrefix(f.Error, "capture resp:") {
+		t.Fatalf("Error = %q, want capture resp prefix", f.Error)
+	}
+	if f.ResLen != int64(len("payload-body")) {
+		t.Fatalf("ResLen = %d, want truthful length %d", f.ResLen, len("payload-body"))
 	}
 }

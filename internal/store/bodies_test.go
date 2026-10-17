@@ -259,3 +259,29 @@ func TestBodyWriterConcurrentDedup(t *testing.T) {
 		}
 	}
 }
+
+// A failed lazy temp-file creation surfaces from Finalize with the true byte
+// count, while Write keeps reporting success so forwarding is unaffected.
+func TestBodyWriterCreateFailureSurfacesOnFinalize(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	if err := os.RemoveAll(s.bodiesDir); err != nil {
+		t.Fatal(err)
+	}
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chunk := range []string{"abc", "defg"} {
+		if n, err := w.Write([]byte(chunk)); n != len(chunk) || err != nil {
+			t.Fatalf("Write = %d, %v", n, err)
+		}
+	}
+	h, n, ferr := w.Finalize()
+	if ferr == nil || h != "" || n != 7 {
+		t.Fatalf("Finalize = %q, %d, %v; want empty hash, 7, error", h, n, ferr)
+	}
+}
