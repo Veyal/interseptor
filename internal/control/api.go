@@ -95,7 +95,7 @@ type apiRoute struct {
 
 var apiRoutes = []apiRoute{
 	{"GET", "/api/project/readiness", "Engagement-strip aggregate (counts only): {scope:{enabled,in,out}, brief:{target,ok}, evidence:{flows,shots,ws}, findings:{total,ready,items:[{id,stage,gaps}] (max 200),truncated}, blockers[]}. Blocker codes are project-level (brief_target, scope) then server finding gap codes"},
-	{"GET", "/api/findings/readiness", "Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by severity, per-finding checks and final-gate issues {rule, field, capability, message}; filters statuses and tag"},
+	{"GET", "/api/findings/readiness", "Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by severity, per-finding checks and final-gate issues {rule, field, capability, message}; filters statuses (default every status; hidden counts by status what a narrower filter left out) and tag"},
 	{"GET", "/api/finding-quality/{id}", "Final report-quality gate for one finding; same issues as the project-wide readiness entry"},
 	{"GET", "/api/findings/deleted", "List recoverable deleted findings"},
 	{"GET", "/api/finding-revisions/{id}", "List immutable revision metadata; ?before= for pagination"},

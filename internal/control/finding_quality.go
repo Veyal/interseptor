@@ -42,6 +42,8 @@ type reportQuality struct {
 	Board    []reportBoardRow       `json:"board"`
 	Findings []reportFindingQuality `json:"findings"`
 	Message  string                 `json:"message,omitempty"`
+	// Hidden counts, by status, the findings the status filter left out.
+	Hidden map[string]int `json:"hidden,omitempty"`
 }
 type reportBoardSummary struct {
 	Ready   int `json:"ready"`
@@ -96,7 +98,7 @@ func assessFindingQuality(f store.Finding) (reportFindingQuality, reportBoardRow
 func assessReportQuality(findings []store.Finding) reportQuality {
 	out := reportQuality{Ready: len(findings) > 0, Total: len(findings), Findings: []reportFindingQuality{}, Board: []reportBoardRow{}}
 	if len(findings) == 0 {
-		out.Message = "Select at least one finding for a final report."
+		out.Message = "No findings to report yet."
 	}
 	for _, f := range findings {
 		q, row := assessFindingQuality(f)
@@ -124,7 +126,32 @@ func (h *findingsAPI) reportReadiness(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	writeJSON(w, 200, assessReportQuality(filterReportFindings(fs, r.URL.Query().Get("statuses"))))
+	kept := filterReportFindings(fs, r.URL.Query().Get("statuses"))
+	q := assessReportQuality(kept)
+	q.Hidden = hiddenStatusCounts(fs, kept)
+	if len(kept) == 0 && len(fs) > 0 {
+		q.Message = "No findings match the selected statuses."
+	}
+	writeJSON(w, 200, q)
+}
+
+// hiddenStatusCounts counts, by status, the findings a status filter left out,
+// so a preflight can say what is missing instead of reporting "no findings".
+func hiddenStatusCounts(all, kept []store.Finding) map[string]int {
+	if len(all) == len(kept) {
+		return nil
+	}
+	keep := make(map[int64]bool, len(kept))
+	for _, f := range kept {
+		keep[f.ID] = true
+	}
+	out := map[string]int{}
+	for _, f := range all {
+		if !keep[f.ID] {
+			out[orVal(f.Status, "open")]++
+		}
+	}
+	return out
 }
 
 // findingQuality returns the final-gate result for a single finding, with the

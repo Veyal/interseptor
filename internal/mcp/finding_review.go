@@ -43,7 +43,7 @@ func findingRevisionArg(a map[string]any, key string, optional bool) (int64, err
 }
 
 func (s *Server) registerFindingReviewTools() {
-	s.add("finding_readiness", "Project-wide report readiness board: one row per finding (id, title, severity, status, ready, blocking gaps) sorted by severity, plus per-finding final-gate issues {rule, field, capability, message}. Pass id for one finding's gate result. Same results as the UI and API; these assess completeness, not independent exploit verification. Statuses default to open,verified,fixed; use statuses=all for every finding.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string"), "id": pt("integer")}), func(a map[string]any) (string, error) {
+	s.add("finding_readiness", "Project-wide report readiness board: one row per finding (id, title, severity, status, ready, blocking gaps) sorted by severity, plus per-finding final-gate issues {rule, field, capability, message}. Pass id for one finding's gate result. Same results as the UI and API; these assess completeness, not independent exploit verification. Statuses default to every status (false positives are listed in their own appendix); pass e.g. statuses=open,verified,fixed to narrow it — the response then counts what was left out under hidden.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string"), "id": pt("integer")}), func(a map[string]any) (string, error) {
 		if a["id"] != nil && a["id"] != "" {
 			id, err := findingRevisionArg(a, "id", false)
 			if err != nil {

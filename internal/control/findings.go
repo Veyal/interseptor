@@ -387,13 +387,14 @@ func selectFindingsByID(fs []store.Finding, want map[int64]bool) []store.Finding
 	return out
 }
 
+// filterReportFindings applies ?statuses=. The default is every status: an
+// unverified finding must reach the report (and the final gate, which blocks on
+// it) and false positives belong in the report's own appendix, so nothing is
+// left out unless the caller asked for a narrower set.
 func filterReportFindings(fs []store.Finding, raw string) []store.Finding {
 	raw = strings.TrimSpace(strings.ToLower(raw))
-	if raw == "all" {
+	if raw == "" || raw == "all" {
 		return fs
-	}
-	if raw == "" {
-		raw = "open,verified,fixed"
 	}
 	allowed := make(map[string]bool)
 	for _, status := range splitCSV(raw) {
