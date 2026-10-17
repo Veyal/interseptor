@@ -60,7 +60,10 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		httpFileNotFoundOrInternal(w, err, "request body not found")
 		return
 	}
+	ctx, cancel := sendContext(r, 0)
+	defer cancel()
 	flow, err := h.snd.Send(sender.Request{
+		Context:   ctx,
 		Method:    f.Method,
 		URL:       url,
 		Headers:   f.ReqHeaders,

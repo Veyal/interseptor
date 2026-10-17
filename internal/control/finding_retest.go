@@ -123,8 +123,13 @@ func (h *findingsAPI) retestFinding(w http.ResponseWriter, r *http.Request) {
 	attach := in.Attach == nil || *in.Attach
 	out := retestResult{FindingID: id, Status: f.Status, Flows: []retestObservation{}}
 	for _, flowID := range targets {
+		if r.Context().Err() != nil {
+			break // the caller went away: replay no further evidence at the target
+		}
 		obs := h.retestOneFlow(r, flowID, in)
-		if obs.Observed != nil && attach && obs.RetestFlowID > 0 {
+		// A send cut short because the caller left proves nothing about the
+		// target, so it is never attached to the finding as retest evidence.
+		if obs.Observed != nil && attach && obs.RetestFlowID > 0 && r.Context().Err() == nil {
 			h.attachRetestEvidence(id, &obs)
 		}
 		if obs.Observed != nil {
@@ -223,7 +228,10 @@ func (h *findingsAPI) retestOneFlow(r *http.Request, flowID int64, in retestRequ
 		obs.Error = "the recorded request body is no longer available, so the replay would not be the same request"
 		return obs
 	}
+	ctx, cancel := sendContext(r, 0)
+	defer cancel()
 	flow, err := h.snd.Send(sender.Request{
+		Context:   ctx,
 		Method:    evidence.Method,
 		URL:       url,
 		Headers:   evidence.ReqHeaders,
