@@ -2,7 +2,6 @@ package report
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/store"
@@ -121,10 +120,10 @@ func bugcrowdPriority(severity string) int {
 // default Jira priority scheme (Highest…Lowest). An instance with its own
 // scheme should drop or rewrite fields.priority.
 //
-// Description carries the same Markdown the engagement report uses. Jira's
-// /rest/api/2/issue endpoint stores it as text, so it reads as written; Jira
-// Cloud's v3 endpoint expects Atlassian Document Format, which Interseptor does
-// not generate, so post this body to v2.
+// Description carries the engagement report's narrative converted to Jira wiki
+// markup, which is what Jira's /rest/api/2/issue endpoint renders. Jira Cloud's
+// v3 endpoint expects Atlassian Document Format, which Interseptor does not
+// generate, so post this body to v2.
 type JiraIssue struct {
 	Fields JiraFields `json:"fields"`
 }
@@ -145,7 +144,7 @@ type JiraNamed struct {
 func Jira(f store.Finding, titles map[int64]string) JiraIssue {
 	fields := JiraFields{
 		Summary:     adapterTitle(f, 250),
-		Description: trackerNarrative(f, titles),
+		Description: markdownToJiraWiki(trackerNarrative(f, titles)),
 		IssueType:   JiraNamed{Name: "Bug"},
 		Labels:      jiraLabels(f),
 	}
@@ -195,61 +194,27 @@ func jiraLabels(f store.Finding) []string {
 	return labels
 }
 
-// trackerNarrative is the finding as the engagement report writes it, with the
-// classification facts the report keeps in its metadata bullets restated at the
-// top so a tracker ticket is self-contained.
+// trackerNarrative is the finding as the engagement report writes it. The
+// report states severity in its section heading, which a ticket does not
+// carry, so only that is added on top; status, confidence, CWE, environment,
+// CVSS and the affected targets are already in the finding's own metadata and
+// are not repeated.
 func trackerNarrative(f store.Finding, titles map[int64]string) string {
 	var b strings.Builder
-	rows := [][2]string{
-		{"Severity", f.Severity},
-		{"Status", f.Status},
-		{"Confidence", f.Confidence},
-		{"CWE", f.Cwe},
-		{"Environment", f.Environment},
-		{"CVSS", trackerCVSS(f)},
+	if v := strings.TrimSpace(sanitizeLine(f.Severity)); v != "" {
+		b.WriteString("- **Severity:** " + v + "\n")
 	}
-	for _, row := range rows {
-		if v := strings.TrimSpace(sanitizeLine(row[1])); v != "" {
-			b.WriteString("- **" + row[0] + ":** " + v + "\n")
+	md := FindingMarkdown(f, titles)
+	if b.Len() > 0 && strings.HasPrefix(md, "- **") {
+		// Join the metadata list so it reads as one block.
+		b.WriteString(md)
+	} else {
+		if b.Len() > 0 {
+			b.WriteString("\n")
 		}
+		b.WriteString(md)
 	}
-	if targets := findingTargetURLs(f); len(targets) > 0 {
-		b.WriteString("- **Affected:** ")
-		for i, t := range targets {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString("`" + code(t) + "`")
-		}
-		b.WriteString("\n")
-	}
-	if b.Len() > 0 {
-		b.WriteString("\n")
-	}
-	b.WriteString(FindingMarkdown(f, titles))
 	return strings.TrimRight(b.String(), "\n")
-}
-
-// trackerCVSS states the vector and, when Interseptor calculated one, the score
-// — always labelled v4.0, because the number alone is not comparable with a v3
-// score a tracker may be expecting.
-func trackerCVSS(f store.Finding) string {
-	vector := strings.TrimSpace(f.Cvss)
-	if vector == "" {
-		return ""
-	}
-	if f.CvssScore == nil {
-		return vector
-	}
-	rating := f.CvssRating
-	if rating == "" {
-		rating = "unrated"
-	}
-	return vector + " (calculated v4.0 score " + formatScore(*f.CvssScore) + ", " + rating + ")"
-}
-
-func formatScore(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 func trackerImpact(f store.Finding) string {

@@ -25,8 +25,8 @@ const findingExportFormatError = "format must be hackerone, bugcrowd, jira, or s
 // The payload is the request body for that system minus the identifiers only the
 // caller holds (a Jira project key, a HackerOne weakness id); internal/report
 // documents what each adapter leaves out and why. Raw evidence bodies are
-// included by default, and ?maskHeaders=1 masks credential headers in them,
-// exactly as on the project report.
+// included by default with credential headers masked; ?maskHeaders=0 keeps
+// them verbatim.
 func (h *findingsAPI) exportFinding(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
@@ -77,7 +77,9 @@ func (h *findingsAPI) exportFinding(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("includeBodies"); !(v == "0" || strings.EqualFold(v, "false")) {
 		h.enrichFindingReportBodies(fs)
 	}
-	if boolParam(q.Get("maskHeaders")) {
+	// A ticket leaves the engagement for a third-party platform, so credential
+	// headers are masked unless the caller explicitly asks for maskHeaders=0.
+	if v := strings.TrimSpace(q.Get("maskHeaders")); v == "" || boolParam(v) {
 		fs = report.MaskSensitiveHeaders(fs)
 		w.Header().Set("X-Interseptor-Report-Masked", "1")
 	}

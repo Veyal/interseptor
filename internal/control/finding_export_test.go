@@ -124,10 +124,20 @@ func TestFindingExportMasksOnRequest(t *testing.T) {
 			}
 		}
 	}
-	// And not by default.
-	_, plain := getExport(t, ts.URL, id, "?format=hackerone")
+	// A ticket on a third-party platform masks credentials by default; the
+	// verbatim evidence needs an explicit maskHeaders=0.
+	resp, masked := getExport(t, ts.URL, id, "?format=hackerone")
+	if resp.Header.Get("X-Interseptor-Report-Masked") != "1" {
+		t.Error("default tracker export is not masked")
+	}
+	for _, secret := range secrets {
+		if strings.Contains(masked, secret) {
+			t.Errorf("default tracker export leaked %q", secret)
+		}
+	}
+	_, plain := getExport(t, ts.URL, id, "?format=hackerone&maskHeaders=0")
 	if !strings.Contains(plain, secrets[0]) {
-		t.Error("the default export should carry evidence verbatim")
+		t.Error("maskHeaders=0 should carry evidence verbatim")
 	}
 }
 
