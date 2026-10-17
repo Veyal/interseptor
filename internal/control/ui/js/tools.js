@@ -34,6 +34,7 @@ function repStatusLine(f){
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 const REP_RES_CANCELLED='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">Send cancelled</div><p class="state-empty-hint">The request was stopped before a response arrived.</p></div>';
+const REP_RES_GONE='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">Response no longer in History</div><p class="state-empty-hint">Its flow was deleted. Send again for a fresh response.</p></div>';
 let repResponseEpoch=0;
 
 function repSyncResView(t){
@@ -289,12 +290,17 @@ function normalizeRepeaterTab(t,normalizedTabs=[]){
   const historyNeedsMigration=t.historyNeedsMigration===true||(!hasPersistedHistoryKey&&!hasHistory);
   const history=normalizeRepHistory(t.history);
   const reqView=['pretty','raw','decoded'].includes(t.reqView)?t.reqView:'pretty';
-  const resView=['pretty','raw','render'].includes(t.resView)?t.resView:'pretty';
-  return {tid:t.tid,method:persistedText(t.method,'GET').slice(0,32)||'GET',url,headers:persistedText(t.headers),body:persistedText(t.body),reqView,resView,resId:null,status:'',color:'',sendError:'',title:'',label:persistedText(t.label),sourceFlowId:Number.isSafeInteger(t.sourceFlowId)&&t.sourceFlowId>0?t.sourceFlowId:null,codecId:persistedText(t.codecId),rawBody:persistedText(t.rawBody),applyOnSend:!!t.applyOnSend,decodedPlain:persistedText(t.decodedPlain),reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:persistedStringList(t.warnings),history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?persistedText(t.historyLegacyURL,url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
+  const resView=['pretty','raw','decoded','hex','render'].includes(t.resView)?t.resView:'pretty';
+  // The last response is restored by flow id so a reload keeps it on screen.
+  const resId=Number.isSafeInteger(t.resId)&&t.resId>0?t.resId:null;
+  const status=resId?persistedText(t.resStatus).slice(0,200):'';
+  const resCode=persistedInteger(t.resCode,0,0,999);
+  return {tid:t.tid,method:persistedText(t.method,'GET').slice(0,32)||'GET',url,headers:persistedText(t.headers),body:persistedText(t.body),reqView,resView,resId,status,color:resId?(/cancelled/i.test(status)?'var(--fg3)':statusColor(resCode)):'',resCode,resMime:resId?persistedText(t.resMime).slice(0,200):'',resLen:resId?persistedInteger(t.resLen,0,0,Number.MAX_SAFE_INTEGER):0,sendError:'',title:'',label:persistedText(t.label),sourceFlowId:Number.isSafeInteger(t.sourceFlowId)&&t.sourceFlowId>0?t.sourceFlowId:null,codecId:persistedText(t.codecId),rawBody:persistedText(t.rawBody),applyOnSend:!!t.applyOnSend,decodedPlain:persistedText(t.decodedPlain),reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:persistedStringList(t.warnings),history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?persistedText(t.historyLegacyURL,url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
 }
 function serializeRepeaterTab(t){
   const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',requestAdoptionPristine:!!t.requestAdoptionPristine,warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
   if(t.historyStoreNeedsMigration)out.history=normalizeRepHistory(t.history);
+  if(t.resId){out.resId=t.resId;out.resStatus=t.status||'';out.resCode=t.resCode||0;out.resMime=t.resMime||'';out.resLen=t.resLen||0;}
   return out;
 }
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
@@ -714,7 +720,7 @@ export async function repSend(){
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
     if(!current())return;
     t.sendAbort=null;
-    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);t.resCode=flow.status||0;
     t.resMime=flow.mime||'';t.resLen=flow.resLen||0;
     await repRecordHistory(t,flow);
     if(!current())return;
@@ -802,7 +808,13 @@ export async function renderRepResponse(){
     // now-active tab's shared #repResView pane.
     if(!current())return;
     $('#repResView').innerHTML=resView==='render'?renderHTMLResponse(raw):highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
-  }catch(e){if(current())$('#repResView').textContent='(error: '+e.message+')';}
+  }catch(e){
+    if(!current())return;
+    // A restored or history response whose flow was since deleted is not an
+    // error worth a raw message: say what happened and how to recover.
+    if(e&&e.status===404)$('#repResView').innerHTML=REP_RES_GONE;
+    else $('#repResView').textContent='(error: '+e.message+')';
+  }
 }
 async function migrateLegacyRepHistory(t){
   if(!t.historyNeedsMigration)return true;
@@ -895,7 +907,7 @@ export async function repLoadSend(id){
     t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=false;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
-    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
+    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.resCode=d.status||0;t.title=repTitle(t);
     t.resMime=d.mime||'';t.resLen=d.resLen||0;
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
