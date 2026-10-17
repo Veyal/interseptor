@@ -241,6 +241,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/collmatrix/handoff":              "builds an Intruder spec, sends nothing",
 	"/api/decode":                          "pure transform",
 	"/api/engagement-brief":                "stores a note",
+	"/api/evidence-render":                 "renders an evidence PNG, records no flow",
 	"/api/export/full/file":                "archive export",
 	"/api/finding-cvss":                    "pure computation",
 	"/api/finding-revisions/{}/{}/restore": "finding bookkeeping",
@@ -336,8 +337,13 @@ func mcpSendEndpoints(t *testing.T) map[string]bool {
 				return false
 			}
 			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-				if v, err := strconv.Unquote(lit.Value); err == nil && mcpAPIPathRe.MatchString(v) {
-					out[normalizeMCPPath(v)] = true
+				// Normalize before matching: a send literal may carry a query
+				// (e.g. "/api/scanner/run?summary=1"), and normalizeMCPPath drops
+				// it. Gating the regex on the raw literal would hide such paths.
+				if v, err := strconv.Unquote(lit.Value); err == nil {
+					if np := normalizeMCPPath(v); mcpAPIPathRe.MatchString(np) {
+						out[np] = true
+					}
 				}
 			}
 			return true
