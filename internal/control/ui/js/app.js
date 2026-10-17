@@ -3,7 +3,7 @@
 // switching, the command palette, global keyboard shortcuts, the live SSE event
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
-import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
+import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook, clearSharedReads } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
@@ -31,6 +31,9 @@ import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShell
 import { openSheet } from './sheet.js';
 import { readSingleKeyPref } from './keys.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
+import { documentTitle, tabLabel } from './shell-title.js';
+import { liveEventStalesReads } from './api-inflight.js';
+import { singleKeyShortcutsOn } from './keyboard.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -60,17 +63,38 @@ function setNavDot(id,on){
 function clearNavDot(id){ setNavDot(id,false); }
 
 /* ---- breadcrumb (top bar "Group / Panel" context) ---- */
+// panelLabelOf reads a rail tab's name without its count badges and screen-reader notes.
+function panelLabelOf(t){
+  const label=t.cloneNode(true);
+  label.querySelectorAll('.badge,.nav-dot,.nav-dot-note').forEach(n=>n.remove());
+  return tabLabel(label.textContent,NAV_DOT_NOTE);
+}
 function updateCrumb(t){
   const crumb=$('#crumb'); if(!crumb)return;
   const g=crumb.querySelector('.crumb-group'), p=crumb.querySelector('.crumb-panel');
   if(g)g.textContent=t.dataset.group||'';
-  if(p){
-    // Read the label without the count badges and screen-reader notes inside the tab.
-    const label=t.cloneNode(true);
-    label.querySelectorAll('.badge,.nav-dot,.nav-dot-note').forEach(n=>n.remove());
-    p.textContent=(label.textContent||'').replace(NAV_DOT_NOTE,'').trim();
-  }
+  if(p)p.textContent=panelLabelOf(t);
 }
+
+/* ---- document title + panel headings ---- */
+// The browser tab says which tool is focused ("Proxy · demo · Interseptor"), and
+// each panel opens with a visually hidden heading so screen-reader users can
+// jump between panels (and the split's two panes) by heading.
+let titlePanel='', titleProject='';
+function syncDocumentTitle(){
+  const t=titlePanel&&document.querySelector('.tab[data-tab="'+titlePanel+'"]');
+  document.title=documentTitle(t?panelLabelOf(t):'',titleProject);
+}
+function setTitleProject(name){titleProject=String(name||'');syncDocumentTitle();}
+function ensurePanelHeadings(){
+  $$('.panel[data-panel]').forEach(panel=>{
+    if(panel.querySelector(':scope > .panel-heading'))return;
+    const t=document.querySelector('.tab[data-tab="'+panel.dataset.panel+'"]');if(!t)return;
+    const h=document.createElement('h2');h.className='u-sr panel-heading';h.textContent=panelLabelOf(t);
+    panel.insertBefore(h,panel.firstChild);
+  });
+}
+ensurePanelHeadings();
 
 /* ---- tabs ---- */
 let projectScopedUIReady=false;
@@ -112,6 +136,7 @@ function onCanvasFocusChange(name,prev){
   if(prev==='notes'&&name!=='notes')flushNotesSave();
   try{localStorage.setItem('tab',name);}catch(e){} // remember the focused tab across refresh
   updateCrumbByName(name);
+  titlePanel=name;syncDocumentTitle();
   emitTabChange(name,prev||'');
   loadPanelData(name);
 }
@@ -209,6 +234,7 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='ArrowDown'&&e.key!=='ArrowUp'&&e.key!=='j'&&e.key!=='k')return;
   if((e.key==='j'||e.key==='k')&&!readSingleKeyPref())return;
   if(!p||!p.classList.contains('active'))return;
+  if((e.key==='j'||e.key==='k')&&!singleKeyShortcutsOn())return;
   const t=e.target;
   if(isTypingTarget(t))return;
   if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
@@ -416,12 +442,14 @@ function connectEvents(){
     clearTimeout(sseRetryTimer);sseRetryCount=0;
     setSseStatus('ok');
     const reason=sseConnectedOnce?'reconnect':'boot';
+    if(sseConnectedOnce)clearSharedReads();
     if(sseConnectedOnce)refreshVisibleAllowlist();
     if(shouldResyncOnReconnect(reason,sseHadError))scheduleResync();
     sseConnectedOnce=true;
     sseHadError=false;
   });
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    if(liveEventStalesReads(m.type))clearSharedReads(); // a refetch this event triggers must not join a read that predates it
     dispatchSseMessage(m);
     runSseHooks(m);
   };
@@ -501,10 +529,13 @@ function cmdkCommands(){
     {t:'Go to Intercept',kw:'hold forward drop match replace rules',run:go('intercept')},
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
     {t:'Go to Intruder',kw:'fuzz brute force payloads enumerate',run:go('intruder')},
+    {t:'Go to Collections',kw:'collections api requests postman insomnia bruno environments runner',run:go('collections')},
     {t:'Go to Scanner',kw:'passive checks issues vulnerabilities report',run:go('scanner')},
-    {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Map',kw:'endpoints attack surface graph tree headers body search',run:go('map')},
+    {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
+    {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
+    {t:'Go to Settings',kw:'settings preferences configuration options',run:go('settings')},
     {t:'Edit custom scanner checks',kw:'starlark checks passive custom rules',run:openChecks},
     {t:'Edit message codecs',kw:'encrypt decrypt aes codec plaintext decoded',run:openCodecs},
     ...(state.oobEnabled?[{t:'Open OOB catcher',kw:'out of band blind ssrf callback collab',run:()=>{openModal($('#oobModal'));loadOob();}}]:[]),
@@ -517,10 +548,8 @@ function cmdkCommands(){
     {t:'Add selected flow to finding',kw:'add evidence poc finding attach history',run:()=>{if(state.selected?.size)pickFindingForSelection();else{const f=selectedFlow();if(f)addFlowToFinding(f.id);else toast('select a flow in History first');}}},
     {t:'Find inside selected message (Ctrl+F)',kw:'search find text request response body inspector',run:()=>{go('proxy')();openInspectFind();}},
     {t:'Diff selected flows',kw:'compare diff two flows responses hunks side by side',run:()=>openFlowDiff()},
-    {t:'Compare selected flows (legacy word diff)',kw:'compare diff two flows words lines headers modal',run:()=>openCompare()},
+    {t:'Compare selected flows word by word',kw:'compare diff two flows words lines headers modal',run:()=>openCompare()},
     {t:'Copy selected flow as cURL',kw:'curl copy clipboard request reproduce',run:()=>{const f=selectedFlow();if(f)copyCurl(f);else toast('select a flow in History first');}},
-     {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
-
     {t:'Switch or create project',kw:'projects workspace engagement open new default',run:openProjectModal},
     {t:'Run setup wizard',kw:'setup wizard onboarding first run guide proxy ca scope',run:openSetup},
     {t:'Toggle theme (dark / light)',kw:'dark mode light appearance ui color scheme',run:toggleTheme},
@@ -568,7 +597,10 @@ function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
 function sendSelectedFlow(to){const f=selectedFlow();if(f){(to==='intruder'?sendToIntruder:sendToRepeater)(f);return true;}return false;}
-const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+// isBareCharacterKey: a printable character without Ctrl/Cmd/Alt (Shift allowed,
+// so ? counts). WCAG 2.1.4: these act only while the Single-key switch is on.
+function isBareCharacterKey(e){return e.key.length===1&&e.key!==' '&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
 let gotoPending=false,gotoTimer=null;
 function resetGoto(){gotoPending=false;clearTimeout(gotoTimer);}
 document.addEventListener('keydown',e=>{
@@ -596,6 +628,7 @@ document.addEventListener('keydown',e=>{
   // Plain-letter workflow shortcuts never act through an editor. In particular,
   // typing an f or d into a held HTTP message must not forward or drop it.
   if(typing)return;
+  if(isBareCharacterKey(e)&&!singleKeyShortcutsOn()){resetGoto();return;}
   // Space also toggles the freeze, but not when a row or control is focused
   // (there Space is activation), so it never steals row selection.
   if(activePanel()==='proxy'&&(e.key===' '||e.code==='Space')&&!hasAnyModifier(e)&&!(e.target&&e.target.closest&&e.target.closest('button,a,input,select,textarea,[role="button"],.trow'))){e.preventDefault();toggleLiveFreeze();return;}
@@ -659,6 +692,7 @@ async function loadVersion(retry){
   try{
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
+    if(d.project)setTitleProject(d.project);
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent=d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
@@ -746,6 +780,8 @@ function completeProjectScopedUIHydration(statuses){
   // the tool panels into the restored (or default) pane layout and takes over the
   // `.panel.active` visibility flag. restoreTab() then focuses the saved tab.
   initCanvas({initialPanel:resolveSavedTab(),onFocusedChange:onCanvasFocusChange,onDocShown:onCanvasDocShown,defaultPanel:'proxy'});
+  // The seeded first document raises no focus change, so name it here.
+  titlePanel=canvasFocusedPanel()||resolveSavedTab();syncDocumentTitle();
   const status=$('#workspaceHydrationStatus');
   if(status){
     status.setAttribute('role','status');status.setAttribute('aria-live','polite');
@@ -795,6 +831,9 @@ async function bootFirstRunUI(){
     releaseWorkstationReady();
     loadOptionalModules(path=>import(path));
     await loadFlows();
+    // The wizard prints the proxy and control addresses from settings; wait for
+    // them so a non-default port never shows the 127.0.0.1:8080 fallback.
+    await bootSettings.catch(()=>{});
     maybeShowSetup();
   }catch(e){
     const timedOut=e?.name==='WorkspaceBootTimeout';
@@ -850,7 +889,7 @@ projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
 ['scope.update','settings.update','session.update','activity','findings.update','engagement.update'].forEach(type=>registerSseHandler(type,()=>refreshProjectState(type)));
 registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
 
-renderChips();loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
 settleWorkspaceBootWatchdog();

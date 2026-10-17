@@ -72,7 +72,7 @@ func TestUICmdkComboboxAccessibilityContract(t *testing.T) {
 		"e.shiftKey",
 	)
 	// The result count is announced on a delay so typing does not chatter.
-	requireUIRegex(t, src, `setTimeout\(\(\)=>\{if\(cmdk\.live\)cmdk\.live\.textContent=resultCountText`)
+	requireUIRegex(t, src, `setTimeout\(\(\)=>\{if\(cmdk\.live\)cmdk\.live\.textContent=res\.total\?resultCountText\(res\.total,res\.mode\):cmdkEmptyText\(res\)`)
 	// Hovering moves the selection without repainting (a repaint would eat the click).
 	requireUIContains(t, src, "function cmdkSelectOnly()")
 }

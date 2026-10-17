@@ -3050,3 +3050,7 @@ function pngSelectionFlowId(){
 busOn(EVENTS.PROXY_RELOAD_FLOWS, () => { loadFlows(); });
 busOn(EVENTS.PROXY_RELOAD_SCOPE, () => { loadScope(); });
 busOn(EVENTS.PROXY_REFRESH_ROWS, () => { refreshVisibleRows(); });
+// tags.js and authz.js reach History over the bus for the same reason.
+busOn(EVENTS.PROXY_FILTER_TAG, (tag) => { filterByTag(tag); });
+busOn(EVENTS.PROXY_SELECT_FLOW, (id) => { selectFlow(id); });
+busOn(EVENTS.PROXY_RELOAD_AUTHZ_IDS, () => { refreshAuthzIds(); });

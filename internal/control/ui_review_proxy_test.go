@@ -30,8 +30,8 @@ func TestUIProxyDiffVerbAndKeyOpenSharedDiffView(t *testing.T) {
 	requireUIContains(t, executableJS(readUIAsset(t, "js/core.js")), "'flowDiffModal'")
 	// The legacy modal stays reachable from the palette.
 	app := executableJS(readUIAsset(t, "js/app.js"))
-	requireUIContains(t, app, "Compare selected flows (legacy word diff)", "run:()=>openCompare()", "Diff selected flows", "run:()=>openFlowDiff()")
-	requireUIContains(t, executableJS(readUIAsset(t, "js/cmdk-logic.js")), "how: { cmd: 'Compare selected flows (legacy word diff)' }")
+	requireUIContains(t, app, "Compare selected flows word by word", "run:()=>openCompare()", "Diff selected flows", "run:()=>openFlowDiff()")
+	requireUIContains(t, executableJS(readUIAsset(t, "js/cmdk-logic.js")), "how: { cmd: 'Compare selected flows word by word' }")
 }
 
 func TestUIInspectorAndDrawerUseSharedFinder(t *testing.T) {

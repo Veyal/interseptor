@@ -383,8 +383,19 @@ func TestUIFoundationStylesheetsAreLinkedAndEmbedded(t *testing.T) {
 	for _, m := range regexp.MustCompile(`<link rel="stylesheet" href="/([a-z-]+\.css)">`).FindAllStringSubmatch(index, -1) {
 		linked = append(linked, m[1])
 	}
-	if strings.Join(linked, ",") != strings.Join(foundationStylesheets, ",") {
-		t.Errorf("index.html stylesheet links = %v, want %v (mobile.css last so it wins the cascade)", linked, foundationStylesheets)
+	// workbench.css is documentation only (no rules), so it is embedded but not
+	// linked: a render-blocking request for an empty sheet buys nothing.
+	var want []string
+	for _, name := range foundationStylesheets {
+		if name != "workbench.css" {
+			want = append(want, name)
+		}
+	}
+	if strings.Join(linked, ",") != strings.Join(want, ",") {
+		t.Errorf("index.html stylesheet links = %v, want %v (mobile.css last so it wins the cascade)", linked, want)
+	}
+	if strings.TrimSpace(stripCSSComments(readUIAsset(t, "workbench.css"))) != "" {
+		t.Error("workbench.css gained rules; link it again or move them into the owning sheet")
 	}
 	for _, name := range linked {
 		if _, err := fs.Stat(uiFS, "ui/"+name); err != nil {

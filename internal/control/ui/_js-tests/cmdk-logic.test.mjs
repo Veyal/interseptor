@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseQuery, groupOfCommand, scoreCommand, rankCommands, dedupeCommands, rankFlows, rankFindings, rankIdentities,
   flattenCheatsheet, rankShortcuts, pushRecent, loadRecents, saveRecents, RECENTS_MAX, RECENTS_KEY, MAX_ROWS,
-  buildResults, flattenResults, resultCountText, findingSub, LEGACY_MODALS,
+  buildResults, flattenResults, resultCountText, emptyText, findingSub, LEGACY_MODALS,
 } from '../js/cmdk-logic.js';
 
 const cmds = [
@@ -77,6 +77,34 @@ test('rankFlows: id lookups (285, #285, id:285) come first; fuzzy otherwise', ()
   assert.equal(rankFlows('post api', flows)[0].id, 285);
   assert.equal(rankFlows('', flows, { limit: 2 }).length, 2);
   assert.deepEqual(rankFlows('zzzz', flows), []);
+});
+
+test('a Go to entry ranks first when the query names its destination', () => {
+  const list = [
+    { t: 'Collections: Import collection', group: 'Collections' },
+    { t: 'Collections: New collection', group: 'Collections' },
+    { t: 'Go to Collections' },
+    { t: 'Settings: Scope' },
+    { t: 'Go to Settings' },
+  ];
+  assert.equal(flattenResults(buildResults({ raw: 'collections', commands: list }))[0].label, 'Go to Collections');
+  assert.equal(flattenResults(buildResults({ raw: 'settings', commands: list }))[0].label, 'Go to Settings');
+});
+
+test('palette titles never expose internal "legacy" wording', () => {
+  for (const m of LEGACY_MODALS) if (m.title) assert.doesNotMatch(m.title, /legacy/i, m.id);
+});
+
+test('rankFlows: every query word must appear as written; scattered letters do not match', () => {
+  const list = [
+    { id: 7, method: 'GET', host: 'cdn.example.com', path: '/r/e/p/e/a/t/e/r/assets/app.js', status: 200 },
+    { id: 8, method: 'GET', host: 'docs.example.com', path: '/guides/repeater', status: 200 },
+  ];
+  assert.deepEqual(rankFlows('repeater', list).map((f) => f.id), [8]);
+  assert.deepEqual(rankFlows('REPEATER guides', list).map((f) => f.id), [8]);
+  assert.deepEqual(rankFlows('get cdn', list).map((f) => f.id), [7]);
+  assert.deepEqual(rankFlows('#7', list).map((f) => f.id), [7]);
+  assert.deepEqual(rankFlows('rptr', list), []);
 });
 
 test('rankFindings and findingSub display server state only', () => {
@@ -157,6 +185,17 @@ test('buildResults caps rows at MAX_ROWS across groups', () => {
   assert.ok(buildResults({ raw: 'f:', commands: many, flows: manyFlows }).total <= MAX_ROWS);
   const mixed = buildResults({ raw: 'a', commands: many, flows: manyFlows, findings });
   assert.ok(mixed.total <= MAX_ROWS);
+});
+
+test('emptyText: loading and empty states say what is going on', () => {
+  assert.equal(emptyText('all'), 'No matches');
+  assert.equal(emptyText('findings', { loading: true }), 'Loading findings…');
+  assert.equal(emptyText('flows', { loading: true }), 'Searching history…');
+  assert.equal(emptyText('all', { loading: true }), 'Loading…');
+  assert.equal(emptyText('identity'), 'No identities yet. Add them in the Authz test dialog.');
+  assert.equal(emptyText('identity', { query: 'adm' }), 'No matching identity');
+  assert.equal(emptyText('findings'), 'No findings yet');
+  assert.equal(emptyText('findings', { query: 'x' }), 'No matching finding');
 });
 
 test('resultCountText', () => {

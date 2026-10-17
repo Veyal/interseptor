@@ -13,7 +13,7 @@
 const L = (group, scope, keys, label, source, probe) => ({ group, scope, keys, label, source, probe });
 
 const GO = [
-  ['p', 'Proxy'], ['i', 'Intercept'], ['r', 'Repeater'], ['u', 'Intruder'], ['s', 'Scanner'],
+  ['p', 'Proxy'], ['i', 'Intercept'], ['r', 'Repeater'], ['u', 'Intruder'], ['c', 'Collections'], ['s', 'Scanner'],
   ['m', 'Map'], ['f', 'Findings'], ['n', 'Notes'], ['a', 'Activity'], ['t', 'Settings'],
 ];
 

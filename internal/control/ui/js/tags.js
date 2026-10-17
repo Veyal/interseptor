@@ -3,7 +3,12 @@
 // flow list, and lets you color a tag via its right-click menu. Tag colors are also
 // applied to the per-row tag chips (rendered in proxy.js via state.tagColors).
 import { $, esc, escAttr, api, state, toast, toastError, openCtxMenu, renderLoadError } from './core.js';
-import { filterByTag, refreshVisibleRows } from './proxy.js';
+import { emit as busEmit, EVENTS } from './bus.js';
+
+// History owns the tag filter and the row rendering; ask it over the bus (a
+// static import of proxy.js would close the proxy -> tags -> proxy ESM cycle).
+const filterByTag = (tag) => busEmit(EVENTS.PROXY_FILTER_TAG, tag);
+const refreshVisibleRows = () => busEmit(EVENTS.PROXY_REFRESH_ROWS);
 
 // Persist stable hex values; render presets with theme colors for contrast.
 export const TAG_COLORS = [

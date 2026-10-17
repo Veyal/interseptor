@@ -8,7 +8,6 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/surfaces.css">
 <link rel="stylesheet" href="/findings.css">
-<link rel="stylesheet" href="/workbench.css">
 <link rel="stylesheet" href="/primitives.css">
 <link rel="stylesheet" href="/shell.css">
 <link rel="stylesheet" href="/flow.css">
@@ -165,7 +164,7 @@
         <button type="button" id="ctxScope" class="ctx-chip ctx-scope" role="switch" aria-checked="false" aria-label="Scope: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg><span class="ctx-key">Scope</span><span id="ctxScopeText" class="ctx-text">…</span></button>
       </div>
     </div>
-    <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel, flow or finding" aria-keyshortcuts="Control+K Meta+K"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span class="cmdk-label-text">Search<span class="cmdk-label-more"> flows, findings, actions</span></span></span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
+    <button id="cmdkBtn" class="btn" aria-haspopup="dialog" title="Ctrl/⌘+K — jump to any panel, flow or finding" aria-keyshortcuts="Control+K Meta+K"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span class="cmdk-label-text">Search<span class="cmdk-label-more"> flows, findings, actions</span></span></span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
     <div class="fb-zone fb-end">
       <button type="button" id="mobileProjectChip" class="pm-mobile-chip" aria-haspopup="dialog" aria-label="Project: loading. Switch or create a project."><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><span id="mobileProjectChipText" class="pm-mobile-chip-text">Project</span></button>
       <span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span>

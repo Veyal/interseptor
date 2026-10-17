@@ -2,7 +2,12 @@
 // under each saved identity (role) and diffs responses to surface IDOR / broken
 // access control. Launched from History right-click or command palette.
 import { $, esc, escAttr, state, api, toast, toastError, openModal, closeModal, statusColor, fmtSize, wireRowKey, renderLoadError, copyPreviewPng } from './core.js';
-import { selectFlow, refreshAuthzIds } from './proxy.js';
+import { emit as busEmit, EVENTS } from './bus.js';
+
+// History owns flow selection and the "Send as" identity cache; reach it over the
+// bus (a static import of proxy.js would close the proxy -> authz -> proxy cycle).
+const selectFlow = (id) => busEmit(EVENTS.PROXY_SELECT_FLOW, id);
+const refreshAuthzIds = () => busEmit(EVENTS.PROXY_RELOAD_AUTHZ_IDS);
 
 let authzFlowId = null;
 let authzSelectionAtOpen=null;

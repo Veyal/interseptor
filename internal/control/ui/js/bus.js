@@ -23,6 +23,9 @@ export const EVENTS = Object.freeze({
   PROXY_RELOAD_FLOWS: 'proxy:reload-flows',
   PROXY_RELOAD_SCOPE: 'proxy:reload-scope',
   PROXY_REFRESH_ROWS: 'proxy:refresh-rows',
+  PROXY_FILTER_TAG: 'proxy:filter-tag',        // payload: tag name (toggles the History tag filter)
+  PROXY_SELECT_FLOW: 'proxy:select-flow',      // payload: flow id
+  PROXY_RELOAD_AUTHZ_IDS: 'proxy:reload-authz-ids',
   // intercept.js owns the intercept rule list.
   INTERCEPT_RELOAD_RULES: 'intercept:reload-rules',
   // settings.js owns the Settings panel + its section router.

@@ -10,6 +10,7 @@ import { placeFloatingSurface } from './surface-position.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
+import { createInflight, shareableRead, mutationScope } from './api-inflight.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -901,7 +902,24 @@ function apiFetchError(e, opts) {
   err.code = timedOut ? 'timeout' : 'network';
   return err;
 }
+// Concurrent identical GETs share one request (api-inflight.js). Mutations and
+// live events clear the table so a read issued after a change never joins an
+// older request.
+const apiReads=createInflight();
+export function clearSharedReads(prefix){apiReads.clear(prefix);}
 export async function api(path,opts){
+  if(shareableRead(opts)){
+    const {ct,text}=await apiReads.share(String(path),()=>apiRequest(path,opts,true));
+    return ct.includes('json')?JSON.parse(text):text;
+  }
+  const method=((opts&&opts.method)||'GET').toUpperCase();
+  if(method==='GET'||method==='HEAD')return apiRequest(path,opts,false);
+  const scope=mutationScope(path);
+  apiReads.clear(scope);
+  try{return await apiRequest(path,opts,false);}
+  finally{apiReads.clear(scope);}
+}
+async function apiRequest(path,opts,asText){
   opts=Object.assign({},opts);
   // Remote (cookie-authed) sessions must carry an anti-CSRF header on mutations;
   // it is harmless on the loopback path. Safe methods (GET/HEAD) skip it.
@@ -922,7 +940,9 @@ export async function api(path,opts){
     throw new Error('unauthorized');
   }
   if(!r.ok){const err=new Error(await apiErrorMessage(r));err.status=r.status;throw err;}
-  const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
+  const ct=r.headers.get('content-type')||'';
+  if(asText)return {ct,text:await r.text()}; // each sharing caller parses its own copy
+  return ct.includes('json')?r.json():r.text();
 }
 
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */

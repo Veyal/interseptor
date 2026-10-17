@@ -1341,9 +1341,9 @@ details.acc>summary.acc-h>*{margin:7px 0}
 @media (max-width:480px){
   .icpt-cond{display:grid;grid-template-columns:auto minmax(0,1fr) auto}
   .icpt-cond .field-grow{grid-column:1/-1;width:100%;min-width:0}
-  #panel-proxy>.toolbar:first-child,#panel-proxy>div.toolbar-secondary,#panel-map>.toolbar{flex-wrap:wrap;overflow-x:visible}
-  #panel-proxy>.toolbar:first-child .search{flex:1 1 100%;max-width:none;min-width:0}
-  #panel-proxy>.toolbar:first-child>.spacer,#panel-map>.toolbar>.spacer{display:none}
+  #panel-proxy>.toolbar:first-of-type,#panel-proxy>div.toolbar-secondary,#panel-map>.toolbar{flex-wrap:wrap;overflow-x:visible}
+  #panel-proxy>.toolbar:first-of-type .search{flex:1 1 100%;max-width:none;min-width:0}
+  #panel-proxy>.toolbar:first-of-type>.spacer,#panel-map>.toolbar>.spacer{display:none}
   #panel-map>.toolbar>.btn-field{flex:1 1 110px;min-width:0;max-width:none}
   #mapViewSeg{flex:1 1 100%;justify-content:stretch}
   #mapViewSeg button{flex:1}
