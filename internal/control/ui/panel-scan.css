@@ -32,6 +32,22 @@
   .icpt-actionbar{padding-bottom:calc(var(--sp-2) + var(--safe-b))}
   .icpt-actionbar .btn{flex:1 1 auto;justify-content:center}
   .icpt-ctx-note{flex-basis:100%}
+  /* Phones show one pane at a time. While a held message is open, the filter
+     row (it shapes future holds, not this one) and the scope sentence (the chip
+     already says it) give their height to the editor, which then fits above the
+     sticky action bar instead of running under it. */
+  #panel-intercept:has(#icptWork[data-view="detail"]) .icpt-cond,
+  #icptWork[data-view="detail"] .icpt-ctx-note{display:none}
+  .icpt-main .icpt-raw{min-height:160px}
+  /* Match & Replace: five table columns leave a 3-character regex field on a
+     phone, so each rule becomes a card: on/type/delete, then match, then
+     replacement, each full width (the inputs carry their own labels). */
+  .icpt-mr .rules-tbl thead{display:none}
+  .icpt-mr .rules-tbl,.icpt-mr .rules-tbl tbody{display:block}
+  .icpt-mr .rules-tbl tr[data-id]{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--sp-2);padding:var(--sp-2) 0;border-bottom:1px solid var(--line)}
+  .icpt-mr .rules-tbl tr[data-id]>td{padding:0;border:0;min-width:0}
+  .icpt-mr .rules-tbl tr[data-id]>td:nth-child(3),.icpt-mr .rules-tbl tr[data-id]>td:nth-child(4){grid-column:1/-1}
+  .icpt-mr .rules-tbl tr[data-id]>td:nth-child(5){grid-column:3;grid-row:1}
 }
 
 /* ---- Scanner ---- */
