@@ -41,6 +41,12 @@ func TestMapClusterBadgeHasA24pxTarget(t *testing.T) {
 		".map-cluster-badge{display:inline-flex;align-items:center;gap:2px;min-height:24px;min-width:24px}")
 }
 
+// "Linked to a finding N/M" counted every host even with one domain selected.
+func TestMapCoverageCountsTheSelectedDomain(t *testing.T) {
+	requireUIContains(t, readUIAsset(t, "js/map.js"),
+		"renderMapCoverage(mapState.domain ? mapState.eps.filter(e => e.host === mapState.domain) : mapState.eps);")
+}
+
 // The scanner shows real progress from scan.progress events and can stop a scan
 // through POST /api/scanner/cancel (a stopped scan saves nothing and is not
 // reported as a failure). Results can be narrowed to one host, so traffic from

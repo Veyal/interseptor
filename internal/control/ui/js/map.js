@@ -768,7 +768,9 @@ export function renderMap(){
     }
   }
   renderMapCrumb(eps);
-  renderMapCoverage(mapState.eps);
+  // Coverage counts the selected domain (not every host) and ignores the "Without evidence"
+  // toggle, which would otherwise always read "Linked 0/N".
+  renderMapCoverage(mapState.domain ? mapState.eps.filter(e => e.host === mapState.domain) : mapState.eps);
   if(mapState.view === 'graph') renderMapGraph(eps);
   else if(mapState.view === 'table') renderMapTable(eps);
   else renderMapTree(eps);
