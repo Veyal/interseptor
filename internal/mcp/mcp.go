@@ -1036,11 +1036,14 @@ func (s *Server) registerTools() {
 				}
 				return truncate(raw, max)
 			}
+			// Target-controlled bytes are framed with a per-call nonce so a
+			// response cannot fake the end of the data (see sectionUntrusted).
+			nonce := untrustedNonce()
 			var out string
 			if side == "both" {
-				out = "=== REQUEST ===\n" + get("req") + "\n\n=== RESPONSE ===\n" + get("res")
+				out = "=== REQUEST ===\n" + untrustedBlock(nonce, get("req")) + "\n\n=== RESPONSE ===\n" + untrustedBlock(nonce, get("res"))
 			} else {
-				out = get(side)
+				out = untrustedBlock(nonce, get(side))
 			}
 			return out + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
 		})
