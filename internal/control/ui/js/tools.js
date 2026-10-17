@@ -33,6 +33,7 @@ function repStatusLine(f){
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+const REP_RES_CANCELLED='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">Send cancelled</div><p class="state-empty-hint">The request was stopped before a response arrived.</p></div>';
 let repResponseEpoch=0;
 
 function repSyncResView(t){
@@ -52,10 +53,25 @@ function setRepSendState(stateName,label){
   if(stateName!=='idle')button.classList.add('is-'+stateName);
   button.dataset.state=stateName;
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  const hadFocus=document.activeElement===button;
   button.disabled=stateName==='pending';
   const labelEl=$('#repSendLabel');
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
+  // Cancel is offered only while this tab's send is in flight. Disabling Send
+  // would drop keyboard focus to <body>, so focus follows to Cancel instead.
+  const cancel=$('#repCancel');if(!cancel)return;
+  cancel.hidden=stateName!=='pending';
+  if(hadFocus&&!cancel.hidden)cancel.focus();
+}
+// repCancelSend aborts the active tab's in-flight send. The control plane ties
+// the upstream exchange to that request, so aborting the fetch also tears down
+// the connection to the target instead of leaving it running in the background.
+export function repCancelSend(){
+  const t=repCur();
+  if(!t||!t.sendPending||!t.sendAbort)return false;
+  t.sendAbort.abort();
+  return true;
 }
 function resetRepSend(delay,t,sendEpoch){setTimeout(()=>{if(repCur()===t&&t.sendEpoch===sendEpoch&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
@@ -571,7 +587,8 @@ export const repTabs=createTabManager({
   onPersist:blob=>persistUIState('repeater',blob),
   storageLabel:'Repeater',
   onStorageWarning:reportWorkspaceStorageWarning,
-  onClose:t=>repDeleteHistory(t),
+  // Closing a tab abandons its in-flight send: stop it at the target too.
+  onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);},
 });
 export function repCur(){return repTabs.cur();}
 export function renderRepTabs(){repTabs.render('#repTabs');}
@@ -686,14 +703,17 @@ export async function repSend(){
   t.sendEpoch=(t.sendEpoch||0)+1;
   const sendEpoch=t.sendEpoch;
   const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
+  const abort=new AbortController();
+  t.sendAbort=abort;
   t.sendPending=true;syncRepActions();
   repResponseEpoch++;repSyncResView(t);
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
-    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:abort.signal});
     if(!current())return;
+    t.sendAbort=null;
     t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
     t.resMime=flow.mime||'';t.resLen=flow.resLen||0;
     await repRecordHistory(t,flow);
@@ -714,7 +734,19 @@ export async function repSend(){
     refreshRepHistory(t);
   }catch(e){
     if(!current())return;
-    t.sendPending=false;
+    t.sendPending=false;t.sendAbort=null;
+    if(abort.signal.aborted){
+      // Cancelled by the operator, not an error: the previous response (if
+      // any) stays this tab's response and the status line says what happened.
+      t.sendError='';t.status=t.resId?'Send cancelled · showing the previous response':'Send cancelled';t.color='var(--fg3)';
+      repPersist();
+      if(repCur()!==t)return;
+      setRepSendState('idle','Send ▸');syncRepActions();
+      $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
+      if(t.resId)await renderRepResponse();
+      else $('#repResView').innerHTML=REP_RES_CANCELLED;
+      return;
+    }
     const msg=friendlySendError(e.message);
     t.sendError=msg;t.status='send failed';t.color='var(--red)';
     if(repCur()!==t){repPersist();return;}
@@ -1135,6 +1167,13 @@ async function repDiffTabs(a,b){
   }catch(e){toastError('Diff failed',e);}
 }
 $('#repSend').onclick=repSend;
+$('#repCancel')&&($('#repCancel').onclick=()=>{repCancelSend();$('#repSend')?.focus();});
+// Escape cancels an in-flight send while focus is inside the Repeater. The
+// diff panel and the response finder consume their own Escape first.
+$('#panel-repeater')?.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+  if(repCancelSend())e.preventDefault();
+});
 $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
   const t=repCur();if(!t)return;
   const next=b.dataset.view;

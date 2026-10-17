@@ -1310,6 +1310,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;overflow:visible}
   #repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}
   #repHistToggle{grid-column:1;grid-row:2}#repPostmanImport{grid-column:2/4;grid-row:2;justify-self:start}
+  #repCancel{grid-column:3;grid-row:2}
   #repSend .kbd{display:none}
   .intr-results .pane-head{overflow-x:auto;scrollbar-width:thin}
   .scan-passive-view{flex-direction:column;overflow-y:auto}

@@ -121,7 +121,7 @@ func TestUIRepeaterHistoryRetainsTabLifetimeAndPaginatesRendering(t *testing.T) 
 		"index.getAll(repHistoryTabKey(t))",
 		"function repDeleteHistoryKey(tabKey)",
 		"index.openCursor(tabKey)",
-		"onClose:t=>repDeleteHistory(t)",
+		"onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);}",
 		"const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0))",
 		"const visible=flows.slice(0,visibleCount)",
 		"data-rep-history-more",
