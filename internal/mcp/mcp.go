@@ -1016,24 +1016,27 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 func (s *Server) registerTools() {
 	s.registerFindingReviewTools()
 	s.registerEvidenceRenderTools()
+	s.registerReconTools()
 	s.registerCollectionTools()
 	s.registerCollmatrixTools()
 	s.add("list_flows",
-		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
+		"Search captured flows → compact rows (id, method, host, path, status), newest first. Filters optional. search matches anywhere (path, headers and body) by default; pass searchScope=id|body to narrow it. Page older flows by passing the smallest id you have seen as cursor; when the reply has truncated:true, more remain. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
 			"host":         p("string", "substring"),
 			"method":       pt("string"),
-			"search":       p("string", "path substring"),
+			"search":       p("string", "substring matched across path, headers and body (see searchScope)"),
+			"searchScope":  pe("default anywhere", "anywhere", "body", "id"),
 			"scheme":       pt("string"),
 			"status":       pr("class (4=4xx)", 1, 5),
 			"tag":          p("string", "filter by tag (exact, case-insensitive)"),
 			"tlsFailed":    p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
 			"includeTools": p("boolean", "include Repeater/Intruder and other tool-generated flows (default true for agents; false = History UI filter)"),
-			"limit":        p("integer", "default 50"),
+			"cursor":       map[string]any{"type": "integer", "minimum": 1, "description": "page older flows: pass the smallest id from the previous page"},
+			"limit":        pr("default 50", 1, 5000),
 		}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
-			for _, k := range []string{"host", "method", "search", "scheme", "tag"} {
+			for _, k := range []string{"host", "method", "search", "scheme", "tag", "searchScope"} {
 				if v := argStr(a, k); v != "" {
 					q.Set(k, v)
 				}
@@ -1047,6 +1050,9 @@ func (s *Server) registerTools() {
 			// Agents need tool traffic after scans; History UI keeps ExcludeFlags.
 			if argBool(a, "includeTools", true) {
 				q.Set("includeTools", "1")
+			}
+			if c := argInt(a, "cursor", 0); c > 0 {
+				q.Set("before", strconv.Itoa(c))
 			}
 			q.Set("limit", strconv.Itoa(argInt(a, "limit", 50)))
 			return s.apiGet("/api/flows?" + q.Encode())
@@ -2262,11 +2268,15 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("intruder_state",
-		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId.",
-		obj(map[string]any{}),
+		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId. A big run keeps every result on disk: page with offset/limit (the reply carries total and nextOffset), and onlyAnomalies/onlyFlagged surface the interesting rows wherever they fall in the run.",
+		obj(map[string]any{
+			"offset":        map[string]any{"type": "integer", "minimum": 0, "description": "result index to start at (default 0)"},
+			"limit":         pr("results per page (default 200)", 1, 5000),
+			"onlyAnomalies": p("boolean", "only results flagged as length/behaviour anomalies"),
+			"onlyFlagged":   p("boolean", "only results a grep-match rule hit"),
+		}),
 		func(a map[string]any) (string, error) {
-			out, err := s.apiGet("/api/intruder/state")
-			return boundJSON(out, 200), err
+			return s.intruderState(a)
 		})
 
 	s.add("run_scanner",

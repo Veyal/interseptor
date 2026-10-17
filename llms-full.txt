@@ -863,7 +863,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (133)
+### MCP tools (135)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -918,7 +918,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `get_engagement_brief` | none | Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch... |
 | `get_finding` | `id` | Read one complete finding in the canonical evidence-first format, including structured blocks, readiness... |
 | `get_finding_revision` | `id`, `revisionId` | Read one historical finding snapshot and its field-level diff. |
-| `get_flow` | `id` | Read a flow's raw request and/or response (headers + body). |
+| `get_flow` | `id` | Read a flow's request and/or response: the start line and headers always, plus a bounded body window. |
 | `get_flow_auth` | `flowId` | Extract Cookie/Authorization/XSRF headers from a captured flow for authz or session setup. |
 | `get_flow_decoded` | `id` | Return app-layer decoded plaintext for a flow when a project message codec matches (display-only). |
 | `get_human_response` | `id` | Retrieve the human's answer to an earlier request_human_input (poll this until they've answered). |
@@ -939,12 +939,14 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `list_checks` | none | List custom Starlark checks (id, source, compile error). |
 | `list_codecs` | none | List project Starlark message codecs (id, source, meta, compile error). |
 | `list_collections` | none | List request collections (Postman-style trees) and environments. |
+| `list_endpoints` | none | The deduplicated attack-surface map: one row per (method, host, path) with the statuses seen, hit count and... |
 | `list_finding_revisions` | `id` | List immutable finding revision metadata, including deleted findings. |
 | `list_finding_tags` | none | List tags in use on findings (with counts) — reuse these for report scoping (cms, website, app, api... |
 | `list_findings` | none | List concise finding summaries, evidence/readiness state, and optional severity/status/tag filters. |
-| `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status). |
-| `list_issues` | none | List current scanner findings. |
+| `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status), newest first. |
+| `list_issues` | none | List passive-scanner issues. |
 | `list_packs` | none | List installed rule packs (bundles of Starlark checks). |
+| `list_params` | none | Mined request parameters per host (name, where it appears — query/form/json — hit count and a sample path... |
 | `list_rules` | none | List match-&-replace rules. |
 | `list_scope` | none | List target-scope rules (which hosts/paths are in scope). |
 | `list_tags` | none | List the tags in use across the project's flows, with how many flows carry each — so you can reuse existing... |
@@ -970,7 +972,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
 | `run_request` | `itemUid` | Send one collection request through the shared pipeline: variables resolved, trusted scripts run, scope... |
-| `run_scanner` | none | Passive scan over captured flows → findings (severity/title/target/evidence/fix). |
+| `run_scanner` | none | Passive scan over captured flows (no requests sent). |
 | `save_check` | `id`, `source` | Save a Starlark check by id (letters/digits/-/_); must compile. |
 | `save_codec` | `id`, `source` | Save a project message codec by id (letters/digits/-/_); must compile. |
 | `scan_report` | none | Passive findings as a Markdown report, grouped by severity. |
@@ -1105,7 +1107,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (293)
+### REST routes (294)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1241,6 +1243,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/flows/{id}/preview.png` | Interseptor-styled PNG preview of request/response (?side=both\|req\|res, pretty=0\|1 default 1... |
 | GET | `/api/flows/{id}/raw` | Reconstructed raw request/response (?side=req\|res) |
 | POST | `/api/flows/{id}/replay` | Re-send a captured flow's request as a new Repeater flow. |
+| GET | `/api/flows/{id}/slice` | Bounded view of one side for agents: head, body size/MIME/binary flag, and a byte window... |
 | PUT | `/api/flows/{id}/tags` | Replace a flow's tags. |
 | GET | `/api/flows/{id}/ws` | Captured WebSocket frames for a flow |
 | PUT | `/api/flows/{id}/ws/{frameId}/note` | Annotate one captured WebSocket frame. |
@@ -1353,9 +1356,9 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/runs/{uid}` | Per-request results of one run |
 | POST | `/api/scanner/cancel` | Stop every running passive scan and return {cancelled:N}, the number stopped. |
 | DELETE | `/api/scanner/issues` | Clear passive scanner issues only; curated Findings are unchanged |
-| GET | `/api/scanner/issues` | List scanner findings |
+| GET | `/api/scanner/issues` | List scanner findings. |
 | GET | `/api/scanner/report` | Download scanner findings as a Markdown report |
-| POST | `/api/scanner/run` | Run passive checks over captured flows (no body) |
+| POST | `/api/scanner/run` | Run passive checks over captured flows (no body; optional ?host=&search= focus). |
 | GET | `/api/scanner/targets` | List every distinct in-scope scanner host as {hosts:[{host,count}],truncated:false}; exhaustively paginates... |
 | GET | `/api/scope` | List target-scope rules |
 | POST | `/api/scope` | Add a scope rule. |

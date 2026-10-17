@@ -374,6 +374,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},
 		{"name": "analyze_flow", "desc": "Compact summary: headers, params, scanner hits, scope"},
 		{"name": "audit_endpoint", "desc": "Consolidated triage: attack surfaces, auth context, passive findings, next steps"},
+		{"name": "list_endpoints", "desc": "Deduplicated attack-surface map (method, host, path, statuses, hits)"},
+		{"name": "list_params", "desc": "Mined request parameters per host (injection points)"},
 		{"name": "flow_as_curl", "desc": "Reconstruct a flow's request as a runnable curl command"},
 		{"name": "diff_flows", "desc": "Diff two flows' responses: status, length, headers, body (baseline vs exploit)"},
 		{"name": "set_note", "desc": "Annotate a flow with a note (\"\" clears it)"},
