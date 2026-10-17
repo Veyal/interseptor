@@ -792,6 +792,8 @@ function scheduleInterceptFilter(){
 });
 
 /* ---- rules ---- */
+// Same wording as the add-rule picker, so a saved rule reads like the one added.
+const RULE_TYPES=[['req-header','Request header'],['req-body','Request body'],['res-header','Response header'],['res-body','Response body']];
 let rulesLoadEpoch=0,ruleMutationEpoch=0,ruleMutationLanes=new Map(),ruleMutationRevision=new Map(),ruleDrafts=new Map();
 export function renderRules(){
   const body=$('#rulesBody');
@@ -805,9 +807,9 @@ export function renderRules(){
   const rows=state.rules.map(r=>({...r,...(ruleDrafts.get(r.id)||{})}));
   body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable interception rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
-    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
-    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" value="${escAttr(r.replace)}"></td>
+    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${RULE_TYPES.map(([tp,label])=>`<option value="${tp}" ${r.type===tp?'selected':''}>${label}</option>`).join('')}</select></td>
+    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" placeholder="match regex" spellcheck="false" value="${escAttr(r.match)}"></td>
+    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" placeholder="replacement" spellcheck="false" value="${escAttr(r.replace)}"></td>
     <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete interception rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);
