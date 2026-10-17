@@ -17,11 +17,12 @@ type Manager struct {
 	// Keep is how many finished runs stay queryable in memory (default 20).
 	Keep int
 
-	mu     sync.Mutex
-	runs   map[string]*LiveRun
-	order  []string
-	ctx    context.Context
-	cancel context.CancelFunc
+	mu       sync.Mutex
+	runs     map[string]*LiveRun
+	order    []string
+	starting int // slots reserved by Start calls not yet registered in runs
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // NewManager returns a Manager. Close aborts every active run.
@@ -92,10 +93,13 @@ func (m *Manager) Start(b Backend, rs RunStore, o Options) (*LiveRun, error) {
 	if max <= 0 {
 		max = 4
 	}
-	if active >= max {
+	if active+m.starting >= max {
 		m.mu.Unlock()
 		return nil, ErrTooManyRuns
 	}
+	// Reserve the slot until the run is registered (or failed to start), so
+	// concurrent Start calls cannot all pass the check above.
+	m.starting++
 	m.mu.Unlock()
 
 	lr := &LiveRun{runner: New(b, rs), status: "starting", subs: map[int]chan Event{},
@@ -117,14 +121,15 @@ func (m *Manager) Start(b Backend, rs RunStore, o Options) (*LiveRun, error) {
 	lr.mu.Lock()
 	startErr, uid := lr.err, lr.UID
 	lr.mu.Unlock()
-	if startErr != nil {
-		return nil, startErr
-	}
 	m.mu.Lock()
-	if uid != "" {
+	m.starting--
+	if startErr == nil && uid != "" {
 		m.runs[uid] = lr
 	}
 	m.mu.Unlock()
+	if startErr != nil {
+		return nil, startErr
+	}
 	return lr, nil
 }
 

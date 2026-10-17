@@ -161,6 +161,39 @@ func TestManagerLimitsActiveRuns(t *testing.T) {
 	}
 }
 
+// Concurrent Start calls must not slip past MaxActive while earlier runs are
+// still between the slot check and their registration.
+func TestManagerLimitsActiveRunsUnderConcurrentStarts(t *testing.T) {
+	m := NewManager()
+	m.MaxActive = 2
+	defer m.Close()
+	gate := make(chan struct{})
+	defer close(gate)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	started := 0
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f := newFake("a")
+			f.step = func(collexec.StepInput, int) *collexec.StepResult { <-gate; return nil }
+			if _, err := m.Start(f, nil, Options{CollectionUID: "c1"}); err == nil {
+				mu.Lock()
+				started++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if started > 2 {
+		t.Fatalf("%d runs started with MaxActive 2", started)
+	}
+	if n := len(m.Active()); n > 2 {
+		t.Fatalf("%d active runs with MaxActive 2", n)
+	}
+}
+
 func TestManagerStartErrorsAndQuarantine(t *testing.T) {
 	m := NewManager()
 	defer m.Close()
