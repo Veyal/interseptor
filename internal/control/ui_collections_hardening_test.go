@@ -68,6 +68,17 @@ func TestCollectionsCanRenameAndDeleteTheCollection(t *testing.T) {
 		"jsend('DELETE', '/api/collections/' + encodeURIComponent(co.uid))",
 		"rev: co.rev",
 	)
+	// The matrix/coverage/timing tools are listed by their palette titles; the
+	// titles must stay in step with what collections-matrix.js registers.
+	matrix := executableJS(readUIAsset(t, "js/collections-matrix.js"))
+	for _, title := range []string{"Collections: Identity matrix", "Collections: OpenAPI coverage", "Collections: Run timing breakdown", "Collections: Diff saved example", "Collections: Send item to Intruder (auto positions)"} {
+		if !strings.Contains(js, "'"+title+"'") || !strings.Contains(matrix, "t: '"+title+"'") {
+			t.Errorf("collection actions menu and collections-matrix.js disagree on %q", title)
+		}
+	}
+	if regexp.MustCompile(`(?m)^import .* from './collections-matrix\.js'`).MatchString(js) {
+		t.Error("collections.js must reach the matrix tools through listCommands, not an import")
+	}
 }
 
 // Opening another request while a send is in flight used to paint the first

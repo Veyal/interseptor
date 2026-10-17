@@ -5,7 +5,7 @@
 // Pure shaping lives in collections-model.js, varscope-model.js and scriptedit.js
 // (tested under node). Server strings are only ever inserted with textContent or esc().
 import { $, api, esc, toast, toastError, getHook, openCtxMenu, projectStorageKey, uiPrompt, uiConfirm } from './core.js';
-import { registerCommand, TAB_CHANGE_EVENT, getShellApi } from './shell-hooks.js';
+import { registerCommand, listCommands, TAB_CHANGE_EVENT, getShellApi } from './shell-hooks.js';
 import { renderState } from './statepanel.js';
 import { createSplitPane } from './split.js';
 import * as M from './collections-model.js';
@@ -112,15 +112,33 @@ async function newCollection() {
   } catch (e) { toastError('Could not create the collection', e); }
 }
 
+// The analysis tools live in collections-matrix.js and were reachable only from
+// the command palette; the actions menu lists the ones that registered, found
+// by title so this module never imports that one.
+const TOOL_COMMANDS = [
+  ['Collections: Identity matrix', 'identity'],
+  ['Collections: OpenAPI coverage', 'checks'],
+  ['Collections: Run timing breakdown', 'clock'],
+  ['Collections: Diff saved example', 'diff'],
+  ['Collections: Send item to Intruder (auto positions)', 'intruder'],
+];
+
 // The collection itself (not an item) can be renamed or deleted from the
 // actions menu next to the picker; the server owns what a delete cascades to.
 function openCollectionMenu(trigger) {
   if (!S.collection) { toast('Create or import a collection first'); return; }
   const r = trigger.getBoundingClientRect();
-  openCtxMenu(r.left, r.bottom + 4, [{ head: 'COLLECTION', items: [
+  const cmds = listCommands();
+  const tools = TOOL_COMMANDS.map(([t, ic]) => {
+    const c = cmds.find((x) => x.t === t);
+    return c && { label: t.replace(/^Collections: /, ''), icon: ic, act: () => c.run() };
+  }).filter(Boolean);
+  const sections = [{ head: 'COLLECTION', items: [
     { label: 'Rename collection', icon: 'edit', act: () => renameCollection() },
     { label: 'Delete collection', icon: 'trash', danger: true, act: () => deleteCollection() },
-  ] }], trigger);
+  ] }];
+  if (tools.length) sections.push({ head: 'TOOLS', items: tools });
+  openCtxMenu(r.left, r.bottom + 4, sections, trigger);
 }
 
 async function renameCollection() {
