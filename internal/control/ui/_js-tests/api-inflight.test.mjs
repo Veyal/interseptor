@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInflight, shareableRead } from '../js/api-inflight.js';
+import { createInflight, shareableRead, mutationScope, liveEventStalesReads } from '../js/api-inflight.js';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
@@ -67,4 +67,28 @@ test('shareableRead: only option-less GETs may share', () => {
   assert.equal(shareableRead({ signal: {} }), false);
   assert.equal(shareableRead({ cache: 'no-store' }), false);
   assert.equal(shareableRead({ headers: { Accept: 'text/plain' } }), false);
+});
+
+test('clear(prefix) drops only the matching reads', async () => {
+  const inflight = createInflight();
+  const d = deferred();
+  const ui = inflight.share('/api/ui/repeater', () => d.promise);
+  const other = inflight.share('/api/readiness', () => d.promise);
+  inflight.clear('/api/ui/');
+  assert.notEqual(inflight.share('/api/ui/repeater', () => 'fresh'), ui);
+  assert.equal(inflight.share('/api/readiness', () => assert.fail('must join')), other);
+  d.resolve('x');
+  await Promise.all([ui, other]);
+});
+
+test('mutationScope: workspace autosaves only stale workspace reads', () => {
+  assert.equal(mutationScope('/api/ui/repeater'), '/api/ui/');
+  assert.equal(mutationScope('/api/scope'), '');
+  assert.equal(mutationScope('/api/uix'), '');
+  assert.equal(mutationScope(undefined), '');
+});
+
+test('liveEventStalesReads: the connect snapshot is not a change', () => {
+  assert.equal(liveEventStalesReads('intercept.state'), false);
+  for (const t of ['intercept.update', 'settings.update', 'flow.new', 'scope.update', undefined]) assert.equal(liveEventStalesReads(t), true);
 });

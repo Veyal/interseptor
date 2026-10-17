@@ -25,11 +25,30 @@ export function createInflight() {
       p.then(done, done);
       return p;
     },
-    // clear() forgets every pending read; callers already waiting keep their
-    // promise, later callers start a new request.
-    clear() { pending.clear(); },
+    // clear(prefix) forgets every pending read (or only those whose key starts
+    // with prefix); callers already waiting keep their promise, later callers
+    // start a new request.
+    clear(prefix) {
+      if (!prefix) { pending.clear(); return; }
+      for (const key of [...pending.keys()]) if (key.startsWith(prefix)) pending.delete(key);
+    },
     size() { return pending.size; },
   };
+}
+
+// mutationScope is the key prefix a mutation of path can make stale. The
+// per-panel workspace store (/api/ui/<panel>) is a plain key-value store that
+// no other endpoint derives from, so its frequent autosave PUTs only clear
+// /api/ui/ reads; every other mutation clears everything ('').
+export function mutationScope(path) {
+  return String(path || '').startsWith('/api/ui/') ? '/api/ui/' : '';
+}
+
+// liveEventStalesReads reports whether a live event may describe a server-side
+// change. intercept.state is the snapshot every new stream receives on connect,
+// not a change, so it leaves shared reads alone.
+export function liveEventStalesReads(type) {
+  return type !== 'intercept.state';
 }
 
 // shareableRead reports whether an api() call may join another caller's

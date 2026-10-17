@@ -31,6 +31,7 @@ import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShell
 import { openSheet } from './sheet.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
+import { liveEventStalesReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
@@ -446,7 +447,7 @@ function connectEvents(){
     sseHadError=false;
   });
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
-    clearSharedReads(); // a refetch this event triggers must not join a read that predates it
+    if(liveEventStalesReads(m.type))clearSharedReads(); // a refetch this event triggers must not join a read that predates it
     dispatchSseMessage(m);
     runSseHooks(m);
   };

@@ -10,7 +10,7 @@ import { placeFloatingSurface } from './surface-position.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
-import { createInflight, shareableRead } from './api-inflight.js';
+import { createInflight, shareableRead, mutationScope } from './api-inflight.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -891,7 +891,7 @@ function apiFetchError(e, opts) {
 // live events clear the table so a read issued after a change never joins an
 // older request.
 const apiReads=createInflight();
-export function clearSharedReads(){apiReads.clear();}
+export function clearSharedReads(prefix){apiReads.clear(prefix);}
 export async function api(path,opts){
   if(shareableRead(opts)){
     const {ct,text}=await apiReads.share(String(path),()=>apiRequest(path,opts,true));
@@ -899,9 +899,10 @@ export async function api(path,opts){
   }
   const method=((opts&&opts.method)||'GET').toUpperCase();
   if(method==='GET'||method==='HEAD')return apiRequest(path,opts,false);
-  apiReads.clear();
+  const scope=mutationScope(path);
+  apiReads.clear(scope);
   try{return await apiRequest(path,opts,false);}
-  finally{apiReads.clear();}
+  finally{apiReads.clear(scope);}
 }
 async function apiRequest(path,opts,asText){
   opts=Object.assign({},opts);
