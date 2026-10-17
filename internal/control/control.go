@@ -1916,8 +1916,8 @@ func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := uiFS.ReadFile("ui/" + name)
-	if err != nil {
+	asset, ok := loadUIAsset(name)
+	if !ok {
 		if name == "index.html" {
 			httpErr(w, http.StatusInternalServerError, "ui missing")
 			return
@@ -1925,11 +1925,10 @@ func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", uiContentType(name))
-	// The UI is embedded and changes with every build; never let a browser serve a
-	// stale shell or JS module after an upgrade (the modules have no version hash).
-	w.Header().Set("Cache-Control", "no-store")
-	w.Write(data)
+	// The UI is embedded and changes with every build, and the modules have no
+	// version hash: writeUIAsset makes the browser revalidate every asset
+	// (no-cache + ETag, 304 when unchanged) and gzips text when accepted.
+	writeUIAsset(w, r, name, asset)
 }
 
 // uiContentType maps a UI asset's extension to a Content-Type, independent of any
