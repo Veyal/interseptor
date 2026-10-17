@@ -52,6 +52,63 @@ func TestBodyWriterEmptyBodyCreatesNoFile(t *testing.T) {
 	}
 }
 
+// TestFinalizeDoesNotHoldBodyLockDuringFileSystemWork pins the lock scope of
+// Finalize: once the hash is claimed, stat/rename/unlink run without bodyMu, so
+// one slow file system call cannot stall every other capture and enqueue.
+func TestFinalizeDoesNotHoldBodyLockDuringFileSystemWork(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	bodyCommitHook = func() { close(entered); <-release }
+	t.Cleanup(func() { bodyCommitHook = nil })
+
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	io.WriteString(w, "slow file system")
+	type result struct {
+		hash string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		h, _, err := w.Finalize()
+		done <- result{h, err}
+	}()
+	<-entered
+	locked := s.bodyMu.TryLock()
+	if locked {
+		pending := s.pendingBodies
+		claimed := len(pending)
+		s.bodyMu.Unlock()
+		if claimed != 1 {
+			t.Errorf("hash not claimed before the file system phase: %d pending", claimed)
+		}
+	}
+	bodyCommitHook = nil
+	close(release)
+	res := <-done
+	if !locked {
+		t.Fatal("Finalize held bodyMu during its file system phase")
+	}
+	if res.err != nil {
+		t.Fatalf("Finalize: %v", res.err)
+	}
+	rc, err := s.OpenBody(res.hash)
+	if err != nil {
+		t.Fatalf("OpenBody: %v", err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "slow file system" {
+		t.Fatalf("stored %q", b)
+	}
+}
+
 func TestFlowBodyWriterReleasesOwnershipWhenFinalizeFails(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

@@ -90,13 +90,6 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 		// file, no hash and no GC claim to take.
 		return "", 0, w.createErr
 	}
-	// bodyMu makes "this blob is on disk" and "a writer has claimed its hash"
-	// one step as far as a body GC pass is concerned. A caller that already
-	// holds the lock for a wider window says so with lockHeld.
-	if !w.lockHeld {
-		w.s.bodyMu.Lock()
-		defer w.s.bodyMu.Unlock()
-	}
 	tmpName := w.tmp.Name()
 	if err := w.tmp.Close(); err != nil {
 		os.Remove(tmpName)
@@ -108,27 +101,67 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 	defer os.Remove(tmpName)
 
 	sum := hex.EncodeToString(w.h.Sum(nil))
-	if err := w.protectPending(sum); err != nil {
+	if err := w.claim(sum); err != nil {
 		return "", 0, err
 	}
-	// Recorded with bodyMu held, by us or by the caller, so a GC pass that is
-	// already walking cannot reclaim this blob — including when the rename
-	// below deduplicates onto a file the walk has already listed.
+	// The file system work runs after the claim and outside bodyMu. The claim
+	// already keeps a GC pass from reclaiming the blob — including when the
+	// rename deduplicates onto a file a running walk has listed, because removal
+	// re-checks ownership under bodyMu — so the lock only has to cover the
+	// bookkeeping. Holding the store-wide lock across stat, rename and unlink
+	// serialised every capture behind the slowest file system call, which
+	// stalled proxied requests for seconds under load.
+	if err := w.commit(tmpName, sum); err != nil {
+		w.unclaim()
+		return "", 0, err
+	}
+	return sum, w.n, nil
+}
+
+// bodyCommitHook, when set by a test, runs at the start of the lock-free file
+// system phase of Finalize.
+var bodyCommitHook func()
+
+// claim records ownership of sum under bodyMu (taken here unless the caller
+// already holds it): the pending-publication count for flow captures, and the
+// claim a running GC pass checks before it removes a file.
+func (w *BodyWriter) claim(sum string) error {
+	if !w.lockHeld {
+		w.s.bodyMu.Lock()
+		defer w.s.bodyMu.Unlock()
+	}
+	if err := w.protectPending(sum); err != nil {
+		return err
+	}
 	w.s.noteBodyGCClaimLocked(sum)
-	finalized := false
-	defer func() {
-		if w.pendingPublication && !finalized {
-			w.s.releasePendingBody(w.pendingHash)
-			w.pendingHash = ""
-		}
-	}()
+	return nil
+}
+
+// unclaim drops the pending-publication claim of a body that failed to commit.
+func (w *BodyWriter) unclaim() {
+	if !w.pendingPublication || w.pendingHash == "" {
+		return
+	}
+	if !w.lockHeld {
+		w.s.bodyMu.Lock()
+		defer w.s.bodyMu.Unlock()
+	}
+	w.s.releasePendingBody(w.pendingHash)
+	w.pendingHash = ""
+}
+
+// commit moves the finished temp file to its content-addressed path, or
+// deduplicates onto an identical body that is already stored.
+func (w *BodyWriter) commit(tmpName, sum string) error {
+	if bodyCommitHook != nil {
+		bodyCommitHook()
+	}
 	dst := w.s.bodyPath(sum)
 	if _, err := os.Stat(dst); err == nil {
-		finalized = true
-		return sum, w.n, nil // identical body already stored; temp removed by defer
+		return nil // identical body already stored; the caller removes the temp
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return "", 0, err
+		return err
 	}
 	if err := os.Rename(tmpName, dst); err != nil {
 		// A concurrent writer with identical content may have created dst
@@ -136,13 +169,11 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 		// existing file fails; treat an already-present dst as a successful
 		// dedup rather than a spurious capture error.
 		if _, statErr := os.Stat(dst); statErr == nil {
-			finalized = true
-			return sum, w.n, nil
+			return nil
 		}
-		return "", 0, err
+		return err
 	}
-	finalized = true
-	return sum, w.n, nil
+	return nil
 }
 
 const maxPendingBodies = 4096
