@@ -988,7 +988,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `vault_merge` | `id` | Download a vault project revision and merge (additive union) into the active project. |
 | `ws_send` | `url`, `message` | Open a fresh WebSocket, send one message, return the server's reply frames. |
 
-### Finding fields (95)
+### Finding fields (96)
 
 Generated from the `create_finding` input schema. `update_finding` accepts the same fields plus a required `id`. Over REST, send the same names to `POST /api/findings` and `PATCH /api/findings/{id}`.
 
@@ -1017,6 +1017,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `claims[].verdict` | string | confirmed\|partially_confirmed\|not_reproduced\|refuted |
 | `confidence` | string | tentative\|firm\|certain |
 | `cvss` | string | CVSS:4.0 vector; server calculates score and checks severity for report readiness |
+| `cvssV3` | string | optional CVSS:3.1 vector kept beside the v4.0 cvss for platforms that score in v3.1 (HackerOne, Bugcrowd); "" clears it on update |
 | `cwe` | string | optional CWE id or class, e.g. |
 | `detail` | string | DEPRECATED legacy opening text; use summary/impact/why plus blocks. |
 | `environment` | string | optional: production\|staging\|development\|testing\|local (legacy prod accepted; invalid values rejected) |

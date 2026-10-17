@@ -35,7 +35,7 @@ func TestGatedPatternsStillMatchEveryAlternative(t *testing.T) {
 			"ya29." + strings.Repeat("a", 20), "SG." + strings.Repeat("a", 22) + "." + strings.Repeat("a", 43),
 			"-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----",
 		},
-		"privateIP": {"host 127.0.0.1 down", "at 10.1.2.3:", "172.16.0.9", "192.168.1.1", "169.254.169.254"},
+		"privateIP":    {"host 127.0.0.1 down", "at 10.1.2.3:", "172.16.0.9", "192.168.1.1", "169.254.169.254"},
 		"mixedContent": {`<img SRC="HTTP://example.com/a.png">`, "<a href=http://example.com/>"},
 	}
 	for name, list := range samples {
