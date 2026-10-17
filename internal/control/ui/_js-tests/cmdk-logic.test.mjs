@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseQuery, groupOfCommand, scoreCommand, rankCommands, dedupeCommands, rankFlows, rankFindings, rankIdentities,
   flattenCheatsheet, rankShortcuts, pushRecent, loadRecents, saveRecents, RECENTS_MAX, RECENTS_KEY, MAX_ROWS,
-  buildResults, flattenResults, resultCountText, findingSub, LEGACY_MODALS,
+  buildResults, flattenResults, resultCountText, emptyText, findingSub, LEGACY_MODALS,
 } from '../js/cmdk-logic.js';
 
 const cmds = [
@@ -185,6 +185,17 @@ test('buildResults caps rows at MAX_ROWS across groups', () => {
   assert.ok(buildResults({ raw: 'f:', commands: many, flows: manyFlows }).total <= MAX_ROWS);
   const mixed = buildResults({ raw: 'a', commands: many, flows: manyFlows, findings });
   assert.ok(mixed.total <= MAX_ROWS);
+});
+
+test('emptyText: loading and empty states say what is going on', () => {
+  assert.equal(emptyText('all'), 'No matches');
+  assert.equal(emptyText('findings', { loading: true }), 'Loading findings…');
+  assert.equal(emptyText('flows', { loading: true }), 'Searching history…');
+  assert.equal(emptyText('all', { loading: true }), 'Loading…');
+  assert.equal(emptyText('identity'), 'No identities yet. Add them in the Authz test dialog.');
+  assert.equal(emptyText('identity', { query: 'adm' }), 'No matching identity');
+  assert.equal(emptyText('findings'), 'No findings yet');
+  assert.equal(emptyText('findings', { query: 'x' }), 'No matching finding');
 });
 
 test('resultCountText', () => {

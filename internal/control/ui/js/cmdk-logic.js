@@ -226,6 +226,16 @@ export function resultCountText(total, mode) {
   return `${total} ${noun}${total === 1 ? '' : 's'}`;
 }
 
+// emptyText is the list's text when a mode has nothing to show: a loading line
+// while a fetch the results depend on is pending, else why the list is empty.
+export function emptyText(mode, { loading = false, query = '' } = {}) {
+  if (loading) return mode === 'flows' ? 'Searching history…' : mode === 'findings' ? 'Loading findings…' : 'Loading…';
+  const q = String(query || '').trim();
+  if (mode === 'identity') return q ? 'No matching identity' : 'No identities yet. Add them in the Authz test dialog.';
+  if (mode === 'findings') return q ? 'No matching finding' : 'No findings yet';
+  return 'No matches';
+}
+
 // Hint line under the field: what the active mode does and how to leave it.
 export function modeHint(mode, { hasSelection = false } = {}) {
   if (mode === 'actions') return hasSelection ? 'Actions on the selected flows' : 'Select flows in History first';

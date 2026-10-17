@@ -15,11 +15,11 @@
 import { esc, state, api, $, openModal, closeModal, toast, toastError } from './core.js';
 import { listCommands } from './shell-hooks.js';
 import { projectState } from './project-state.js';
-import { buildResults, dedupeCommands, flattenResults, flattenCheatsheet, resultCountText, modeHint, parseQuery, loadRecents, saveRecents, pushRecent } from './cmdk-logic.js';
+import { buildResults, dedupeCommands, flattenResults, flattenCheatsheet, resultCountText, emptyText, modeHint, parseQuery, loadRecents, saveRecents, pushRecent } from './cmdk-logic.js';
 import { builtinActions, selectionActions, openFlowFor, openFindingRoute, setIdentity } from './cmdk-actions.js';
 import { shortcutSheet, mountShortcutSheet } from './keyboard.js';
 
-const cmdk = { el: null, input: null, list: null, hint: null, live: null, items: [], res: null, sel: 0, open: false, prefill: '', findings: null, findingsBusy: false, remote: [], remoteQ: '', keepRemote: false, flowTimer: 0, flowEpoch: 0, liveTimer: 0, recents: null };
+const cmdk = { el: null, input: null, list: null, hint: null, live: null, items: [], res: null, sel: 0, open: false, prefill: '', findings: null, findingsBusy: false, remote: [], remoteQ: '', keepRemote: false, flowTimer: 0, flowEpoch: 0, remotePending: false, liveTimer: 0, recents: null };
 const cmdkEnv = { commands: () => [], ready: () => true, blocked: () => false, openFlow: () => {} };
 const FLOW_SCAN_CAP = 3000;
 
@@ -68,13 +68,13 @@ function cmdkLoadFindings(){
 }
 function cmdkLoadRemoteFlows(mode,query){
   clearTimeout(cmdk.flowTimer);
-  if(mode!=='flows'||query.length<2||/^(?:id:|#)?\d+$/i.test(query)){cmdk.remote=[];cmdk.remoteQ='';return;}
-  const mine=++cmdk.flowEpoch;
+  if(mode!=='flows'||query.length<2||/^(?:id:|#)?\d+$/i.test(query)){cmdk.flowEpoch++;cmdk.remote=[];cmdk.remoteQ='';cmdk.remotePending=false;return;}
+  const mine=++cmdk.flowEpoch;cmdk.remotePending=true;
   cmdk.flowTimer=setTimeout(()=>{
     api('/api/flows?limit=20&search='+encodeURIComponent(query)).then(d=>{
       if(mine!==cmdk.flowEpoch||!cmdk.open)return;
-      cmdk.remote=Array.isArray(d&&d.flows)?d.flows:[];cmdk.remoteQ=query;cmdkRerender();
-    }).catch(()=>{});
+      cmdk.remote=Array.isArray(d&&d.flows)?d.flows:[];cmdk.remoteQ=query;cmdk.remotePending=false;cmdkRerender();
+    }).catch(()=>{if(mine!==cmdk.flowEpoch||!cmdk.open)return;cmdk.remotePending=false;cmdkRerender();});
   },250);
 }
 function cmdkRerender(){cmdk.keepRemote=true;cmdkRender();}
@@ -89,9 +89,14 @@ function cmdkRender(){
   cmdk.hint.textContent=modeHint(mode,{hasSelection:!!(state.selected&&state.selected.size)||!!state.selId});
   cmdkPaint();cmdkAnnounce(res);
 }
+// cmdkEmptyText: what an empty list means right now (loading vs. no results).
+function cmdkEmptyText(res){
+  const loading=(res.mode==='findings'&&!cmdk.findings)||(res.mode==='flows'&&cmdk.remotePending);
+  return emptyText(res.mode,{loading,query:res.query});
+}
 function cmdkAnnounce(res){
   clearTimeout(cmdk.liveTimer);
-  cmdk.liveTimer=setTimeout(()=>{if(cmdk.live)cmdk.live.textContent=resultCountText(res.total,res.mode);},350);
+  cmdk.liveTimer=setTimeout(()=>{if(cmdk.live)cmdk.live.textContent=res.total?resultCountText(res.total,res.mode):cmdkEmptyText(res);},350);
 }
 function cmdkPaint(){
   let n=0,html='';
@@ -105,7 +110,7 @@ function cmdkPaint(){
     });
     html+='</div>';
   });
-  cmdk.list.innerHTML=html||'<div class="cmdk-empty">No matches</div>';
+  cmdk.list.innerHTML=html||'<div class="cmdk-empty">'+esc(cmdk.res?cmdkEmptyText(cmdk.res):'No matches')+'</div>';
   cmdk.input.setAttribute('aria-expanded',cmdk.items.length?'true':'false');
   if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
   else cmdk.input.removeAttribute('aria-activedescendant');
@@ -131,6 +136,6 @@ function cmdkExec(it,opts){
   else if(it.kind==='shortcut')openModal($('#shortcutsModal'));
 }
 export function cmdkOpen(){if(cmdkEnv.blocked())return;if(!cmdkEnv.ready()){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value=cmdk.prefill||'';cmdk.prefill='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
-export function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;clearTimeout(cmdk.flowTimer);clearTimeout(cmdk.liveTimer);cmdk.findings=null;cmdk.remote=[];cmdk.remoteQ='';closeModal(cmdk.el);}
+export function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;clearTimeout(cmdk.flowTimer);clearTimeout(cmdk.liveTimer);cmdk.findings=null;cmdk.remote=[];cmdk.remoteQ='';cmdk.remotePending=false;cmdk.flowEpoch++;closeModal(cmdk.el);}
 
 mountShortcutSheet();
