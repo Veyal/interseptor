@@ -81,7 +81,9 @@ export function forwardAllPlan(items, { dropping = new Set(), rawCache = new Map
     if (dropping.has(key)) continue;
     const step = { side: h.side, id: h.id };
     const raw = rawCache.get(key);
-    if (typeof raw === 'string' && raw !== (originalCache.get(key) ?? raw)) step.raw = raw;
+    // Same test as a single Forward: a line-ending-only difference (the textarea
+    // LF-normalizes the CRLF original) is not an edit, so the held bytes go out.
+    if (typeof raw === 'string' && heldIsModified(raw, originalCache.get(key) ?? raw)) step.raw = raw;
     plan.push(step);
   }
   return plan;

@@ -185,3 +185,14 @@ test('auto-forward tally: only proxy-captured out-of-scope requests count while 
   t.sync(false); t.sync(true);
   assert.equal(t.count(), 0, 'turning interception back on restarts the tally');
 });
+
+test('forward all treats a line-ending-only difference as untouched, like Forward', async () => {
+  const { forwardAllPlan: plan } = await import('../js/intercept-model.js');
+  // The textarea LF-normalizes the CRLF original; typing then undoing leaves an
+  // LF copy in the cache. Forward omits raw for it, so Forward all must too, or
+  // the body's CRLF bytes are silently rewritten to LF.
+  const original = 'POST /a HTTP/1.1\r\nHost: example.com\r\n\r\nline1\r\nline2';
+  const rawCache = new Map([[heldKey('req', 1), original.replace(/\r\n/g, '\n')]]);
+  const originalCache = new Map([[heldKey('req', 1), original]]);
+  assert.deepEqual(plan([{ side: 'req', id: 1 }], { rawCache, originalCache }), [{ side: 'req', id: 1 }]);
+});
