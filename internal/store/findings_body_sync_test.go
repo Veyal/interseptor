@@ -199,8 +199,76 @@ func TestFindingBlockMetadataRoundTripAndDuplicateFlowNormalization(t *testing.T
 	if err := json.Unmarshal([]byte(out), &recs); err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 1 || recs[0].Role != "baseline" || recs[0].Proof != "baseline request is authenticated" || recs[0].Source != "captured_flow" || recs[0].SourceFlowID != 7 {
+	// The same flow cited under two different roles is two evidence blocks: a
+	// baseline → action → result story often reuses one exchange for both the
+	// action and the result, and dropping either silently loses its proof text.
+	if len(recs) != 2 || recs[0].Role != "baseline" || recs[0].Proof != "baseline request is authenticated" || recs[0].Source != "captured_flow" || recs[0].SourceFlowID != 7 || recs[1].Role != "result" || recs[1].Note != "duplicate" {
 		t.Fatalf("normalized records=%+v", recs)
+	}
+}
+
+func TestNormalizeFindingBodyKeepsSameFlowUnderDistinctRolesAndCollapsesExactCopies(t *testing.T) {
+	body := `[{"type":"flow","flowId":2,"role":"action","proof":"Alice changes id to 8."},` +
+		`{"type":"flow","flowId":2,"role":"result","proof":"Response returns record 8 owned by bob."},` +
+		`{"type":"flow","flowId":2,"role":"result","proof":"Response returns record 8 owned by bob."}]`
+	out, err := NormalizeFindingBody(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(out), &recs); err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 2 || recs[0].Role != "action" || recs[1].Role != "result" || recs[1].Proof != "Response returns record 8 owned by bob." {
+		t.Fatalf("want action+result blocks with the exact copy collapsed, got %+v", recs)
+	}
+}
+
+func TestAttachFlowWithNewRoleAddsBlockInsteadOfOverwriting(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	fid, err := s.InsertFlow(&Flow{Method: "GET", Host: "example.com", Path: "/records/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.CreateFinding(&Finding{Title: "IDOR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AttachFlowWithMetadata(id, fid, "", -1, "action", "changed the id", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AttachFlowWithMetadata(id, fid, "", -1, "result", "record 8 returned", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	// Re-attaching with the same role stays idempotent.
+	if err := s.AttachFlowWithMetadata(id, fid, "", -1, "result", "record 8 owned by bob returned", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles []string
+	for _, b := range got.Blocks {
+		if b.Type == "flow" {
+			roles = append(roles, b.Role+":"+b.Proof)
+		}
+	}
+	if len(roles) != 2 || roles[0] != "action:changed the id" || roles[1] != "result:record 8 owned by bob returned" {
+		t.Fatalf("flow blocks=%v", roles)
+	}
+	if err := s.DetachFlow(id, fid); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFinding(id)
+	for _, b := range got.Blocks {
+		if b.Type == "flow" {
+			t.Fatalf("detach must remove every block citing the flow: %+v", got.Blocks)
+		}
 	}
 }
 

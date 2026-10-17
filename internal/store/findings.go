@@ -91,7 +91,13 @@ func NormalizeFindingBody(body string) (string, error) {
 	if err := json.Unmarshal([]byte(body), &recs); err != nil {
 		return "", fmt.Errorf("body must be a JSON array of blocks: %w", err)
 	}
-	seenFlows := make(map[int64]struct{})
+	// The same flow may legitimately appear under several roles (one exchange
+	// is both the action and the result). Only exact copies collapse.
+	type flowCitation struct {
+		id          int64
+		role, proof string
+	}
+	seenFlows := make(map[flowCitation]struct{})
 	normalized := recs[:0]
 	for i := range recs {
 		if strings.TrimSpace(recs[i].Role) != "" && normalizeFindingBlockRole(recs[i].Role) == "" {
@@ -117,10 +123,11 @@ func NormalizeFindingBody(body string) (string, error) {
 				return "", fmt.Errorf("body block[%d]: flow block missing flowId", i)
 			}
 			if !recs[i].Missing {
-				if _, ok := seenFlows[recs[i].FlowID]; ok {
+				key := flowCitation{recs[i].FlowID, recs[i].Role, recs[i].Proof}
+				if _, ok := seenFlows[key]; ok {
 					continue
 				}
-				seenFlows[recs[i].FlowID] = struct{}{}
+				seenFlows[key] = struct{}{}
 			}
 		case "image":
 			recs[i].Type = "image"
@@ -514,8 +521,11 @@ func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, 
 		_ = json.Unmarshal([]byte(bodyJSON), &recs)
 	}
 	// If already present, update the note in-place — don't change position.
+	// A different role for the same flow is a second citation (the action and
+	// the result are often one exchange), so it is inserted, not overwritten.
+	wantRole := normalizeFindingBlockRole(role)
 	for i, r := range recs {
-		if r.Type == "flow" && r.FlowID == flowID {
+		if r.Type == "flow" && r.FlowID == flowID && (wantRole == "" || r.Role == "" || r.Role == wantRole) {
 			recs[i].Note = note
 			if strings.TrimSpace(role) != "" {
 				recs[i].Role = normalizeFindingBlockRole(role)
