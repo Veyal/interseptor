@@ -1,174 +1,179 @@
 # Interseptor website design
 
-The website at `https://veyal.github.io/interseptor/` is the **boss stage of veyal.land**. The main
-site, [veyal.github.io](https://veyal.github.io), is a candy-sticker game world (player stats,
-collected abilities, a "Boss stage" ribbon on the Interseptor card). This site uses the same
-materials and tokens, but turns the volume down where people read. The landing page plays, and the
-docs stay calm. Every page links back to veyal.land from the header and the footer.
+The website at `https://veyal.github.io/interseptor/` shares its design language with the main site,
+[veyal](https://veyal.github.io): Kirby's Dream Land, grown up. Kirby art carries the personality
+and the layout stays disciplined. The landing page plays once, and the docs stay calm. Every page
+links back to veyal from the header, the drawer and the footer, marked with a Warp Star.
 
 Design read: a product landing page and documentation for pentesters and agent-driven security
-testing, in a candy-sticker game language that stays legible and credible.
+testing, in a soft pastel language that stays legible and credible.
 
 ## 1. Visual theme and atmosphere
 
-Cream dotted paper, thick ink outlines, hard offset shadows, candy fills, chunky rounded type.
-Things look like stickers you could peel off: every surface has a 2px ink edge and a shadow with
-no blur. There is one playful, orchestrated moment per page:
+A pink-tinted Cloud ground, Blush bands, puffy shapes and Plum Ink text. Hierarchy comes from bands,
+not outlines: Sky for the landing hero, Dream Night for the product recording, code and the footer,
+Blush and Cloud for reading. Surfaces have a 1px hairline at most; the Kirby art has the outlines.
+There is one playful moment per page:
 
-- On the landing page, a playable intercept tray.
+- On the landing page, Kirby inhales a request into the hold tray (inhale pose, then cheeks-full).
+  Forward makes Kirby spit it out as a Warp Star flying right. Drop makes Kirby swallow it.
 - On docs, nothing moves unless you touch it.
 
-Game vernacular, such as "boss stage", "stage map", "abilities" and "boss stats", is used where it
-maps to something true about the product. It never replaces a plain label a reader needs to find
-their way.
+Game vernacular is used only where it maps to something true ("inhale" is intercept, "copy ability"
+is capability). There are no game levels or start prompts. The site does not carry
+the author's name beyond the "veyal" handle.
 
 ## 2. Color palette and roles
 
 All values are defined once in `website/assets/site.css`. Components use the semantic tokens, never
-raw hex.
+raw hex. Ratios are WCAG 2.x, computed from the hex values.
 
-| Token | Light | Dark | Role |
+| Token | Hex | Role | Contrast |
 |---|---|---|---|
-| `--bg` | Cream Paper `#FFF8EB` | Night Ink `#1A1722` | page ground; veyal `--background` |
-| `--bg-band` | Butter Band `#FFE5AC` | Plum Band `#2A2433` | footer and alternating landing bands; veyal footer |
-| `--card` | Card White `#FFFFFF` | Raised Ink `#272331` | stickers, docs sheet, inputs, tables |
-| `--card-alt` | Butter Cream `#FFF3D6` | `#2F2A3B` | window bars, panels; veyal `--secondary` |
-| `--muted` | Oat `#F7EFDE` | Deep Ink `#211D2A` | zebra rows, inline code, hover wash |
-| `--fg` | Ink `#2B2735` | Cream `#FFF8EB` | text |
-| `--fg-muted` | Dusk `#645E71` | Lilac Mist `#BDB6CA` | secondary text (5.9:1 and 9:1) |
-| `--edge` | Ink `#2B2735` | Cream `#FFF8EB` | every 2px outline and hard shadow |
-| `--focus` | Ink | Butter `#FFC94D` | focus outline |
-| `--on-candy` | Ink | Ink | text on any candy fill, never themed |
-| `--candy-pink` | Bubblegum `#FF6FA5` | same | primary action, links underline, "Start here" group |
-| `--candy-yellow` | Butter `#FFC94D` | same | labels, ribbons, current page, hover |
-| `--candy-mint` | Mint `#4CD4A9` | same | success, "proved", "Extend" group, the mascot |
-| `--candy-sky` | Sky `#5AB8FF` | same | notes, info, "Use Interseptor" group |
-| `--candy-grape` | Grape `#A78BFA` | same | agents, "Reference" group |
-| `--tint-*` | `#FFE3EE` `#FFF3D6` `#DCF7EE` `#E2F1FF` `#EEE8FE` | dark tints | callout and group washes |
+| `--cloud` / `--bg` | Cloud `#FFF8FB` | page ground | Plum Ink 14.4:1, Dusk 6.7:1 |
+| `--blush` / `--bg-band`, `--muted`, `--card-alt` | Blush `#FFE6F0` | bands, hover washes, inline code, zebra rows | Plum 12.8:1, Dusk 5.9:1 |
+| `--card` | Card `#FFFFFF` | panels, inputs, tables | Plum 15.1:1, Dusk 7.0:1 |
+| `--fg`, `--plum` | Plum Ink `#2A2140` | text, focus ring on light | see above |
+| `--fg-muted`, `--dusk` | Dusk `#5E5474` | secondary text | 6.7:1 on Cloud, 4.8:1 on Sky |
+| `--candy-pink`, `--kirby-pink` | Kirby Pink `#FF9EC4` | primary fills, current nav | Plum on it 7.9:1 |
+| `--cheek` | Cheek `#D93A7A` | link underlines, small accents only | 4.2:1 on Cloud, so never body text |
+| `--candy-yellow`, `--warp` | Warp Yellow `#FFD44D` | highlights, stars, focus ring on night | Plum on it 10.6:1 |
+| `--candy-sky`, `--sky` | Sky `#A8DCFF` | hero band, notes | Plum on it 10.3:1 |
+| `--candy-mint`, `--meadow` | Meadow `#8FD694` (shade `#6CC27A`) | hills, success | Plum on it 8.8:1 |
+| `--candy-grape` | Wisp `#C9B6FF` | agents and reference group | Plum on it 9.1:1 |
+| `--night` | Dream Night `#221A3A` | product, code and footer bands | Moon 14.7:1 |
+| `--night-raised` | Night Raised `#2E2550` | cards and bars on night | Moon 12.5:1 |
+| `--night-deep` | Night Deep `#170F2B` | page bands and code in the dark theme | Moon 16.5:1 |
+| `--lilac` | Lilac `#C9C0E0` | secondary text on night | 9.5:1 on Dream Night, 8.1:1 on Night Raised |
+| `--moon` | Moon `#F4F0FF` | primary text on night | see above |
+| `--tint-*` | `#FFE6F0` `#FFF4CC` `#E5F6E6` `#E4F4FF` `#F1EBFF` | callout and group washes | Plum 12:1 or better |
 
-Code always uses veyal's terminal card: an Ink body (`--code-bg`) with Cream text and candy tokens.
-The token colours are comment `#A9A1BA`, string Mint, number Butter, keyword `#FF8AB8`, key `#7CC6FF`
-and flag `#BBA6FF`, each at least 5.9:1 on the code ground.
+Code tokens on Dream Night: comment `#A99FC4` (6.6:1), string `#8FE3B0` (10.8:1), number `#FFD44D`
+(11.6:1), keyword `#FF9EC4` (8.6:1), key `#A8DCFF` (11.2:1), flag `#C9B6FF` (9.1:1). All also pass on
+Night Raised (5.6:1 or better).
 
-Candy colours are fills. Ink on every candy fill is 5.3:1 or better. White on pink (2.6:1) and
-pink text on cream (2.4:1) fail, so links are ink with a pink underline. Navigation groups keep one
-colour each so a reader always knows which part of the docs they are in:
+Lines are derived from the ink: `--hair` (12%) for dividers and panel edges, `--line` (25%) for
+secondary button and chip borders, `--line-input` (58%, 3.6:1 on white) for text fields and the search
+trigger, so WCAG 1.4.11 holds where a border is the only cue.
 
-- Start here: pink
-- Use Interseptor: sky
-- Extend: mint
-- Reference: grape
+The **dark theme** keeps the same system: Dream Night is the ground, Night Raised the cards, Moon the
+text, Warp Yellow the focus ring. A `.on-night` band (and the footer, code cards and window bars)
+re-themes everything inside it through the same tokens, in both themes.
+
+Navigation groups keep one fill each and also print their name: Start here is pink, Use Interseptor
+sky, Extend meadow and Reference wisp.
 
 ## 3. Typography
 
-| Role | Font | Size | Weight | Line height | Tracking | Notes |
-|---|---|---|---|---|---|---|
-| Hero | Baloo 2 | `--text-5xl` 44 to 76px | 800 | 1.0 | -0.02em | landing h1 only |
-| Page title | Baloo 2 | `--text-4xl` 36 to 56px | 800 | 1.05 | -0.01em | one h1 per page |
-| Section | Baloo 2 | `--text-3xl` 28 to 38px | 800 | 1.1 | -0.01em | h2 |
-| Subsection | Baloo 2 | 20px | 700 | 1.25 | 0 | h3 |
-| Lede | Nunito | 18px | 600 | 1.6 | 0 | `--fg-muted` |
-| Body (UI) | Nunito | 16px | 600 | 1.6 | 0 | veyal's body weight |
-| Body (docs prose) | Nunito | 17px | 500 | 1.7 | 0 | 72ch measure |
-| Label | Nunito | 12px | 800 | 1.3 | 0.08em | uppercase, `.mono-label` only |
-| Code | Geist Mono | 0.86em inline, 14px blocks | 500 | 1.65 | 0 | same mono as veyal's terminal |
+| Role | Font | Size | Weight | Line height | Notes |
+|---|---|---|---|---|---|
+| Hero | Fredoka | `--text-5xl` 44 to 76px | 650 | 1.02 | landing h1 only, -0.015em |
+| Page title | Fredoka | `--text-4xl` 36 to 56px | 650 | 1.04 | one h1 per page, -0.01em |
+| Section | Fredoka | `--text-3xl` 28 to 38px | 650 | 1.1 | h2 |
+| Subsection | Fredoka | 20px | 600 | 1.25 | h3 |
+| Lede | Recursive | 18px | 400 | 1.6 | `--fg-muted` |
+| Body (UI) | Recursive | 16px | 400 to 500 | 1.6 | Sans Linear (MONO 0) |
+| Body (docs prose) | Recursive | 17px | 400 | 1.7 | 72ch measure |
+| Code | Recursive Mono | 0.86em inline, 14px blocks | 400 | 1.65 | `font-variation-settings: 'MONO' 1` |
 
-The three families are self-hosted woff2 under the SIL OFL. They are the documented exception to the
-system-font default because they are the brand's voice on veyal.land. Latin is preloaded and
-latin-ext loads on demand. `font-display: swap` is set, with metric-matched fallbacks. Uppercase is
-reserved for `.mono-label` and ribbons. A headline may carry one pink `.squiggle` underline, which is
-veyal's signature move, and nothing else is accented inside headlines.
+Both families are self-hosted woff2 under the SIL OFL (`website/assets/fonts`, latin subset, axes
+pinned as described in `fonts/README.txt`). They are the documented exception to the system-font
+default because they are the brand's voice. Latin is preloaded; other scripts fall back to the system
+stack. `font-display: swap` is set, with metric-matched fallbacks. There are no all-caps labels, no
+tracked eyebrows and no single-word colour accents inside headlines.
 
 ## 4. Components
 
-Use veyal's class names so both sites read as one system:
+Class names are stable across both sites:
 
-- **`.card-surface`**: a white sticker with a 2px ink edge, 16px radius and a `5px 5px 0` shadow.
-  **`.card-hover`** lifts it by `translate(-2px,-2px) rotate(-0.4deg)` with an 8px shadow, and only
-  on things that are links.
-- **`.btn-primary`** (pink) and **`.btn-ghost`** (white, butter on hover): 12px radius, 44px minimum
-  height, 4px shadow. Hover lifts 2px and the shadow grows to 6px. Press moves 2px in and the shadow
-  shrinks to 1px. `.btn-sm` and `.btn-lg` are the size variants. One label per intent per page.
-- **`.icon-btn`**: a 40px square sticker (theme, menu, close). On hover it turns butter and rotates
-  -6deg.
-- **`.chip`**: a pill with a 2px shadow, for tags, version and copy buttons. `.chip-pink`, `-yellow`,
-  `-mint`, `-sky` and `-grape` are fills, like veyal's certification chips.
-- **`.mono-label`**: a butter uppercase pill with a 3px shadow, for a short section label. At most
-  one per section, and only when it adds information.
-- **`.ribbon`**: a rotated butter corner sticker on a positioned parent, such as "Boss stage" or
-  "Real recording".
-- **`.window`**: veyal's terminal card. A butter-cream bar holds pink, yellow and mint dots and a mono
-  title, then the body. It frames every real screenshot, the demo video, the intercept tray and code
-  blocks.
-- **`.field-input`**: 12px radius, 2px edge. Focus adds the outline plus a `3px 3px 0` pink shadow.
+- **`.card-surface`**: a white panel with a 1px hairline and a 16px radius. **`.card-hover`** lifts it
+  2px with a soft shadow, and only on things that are links.
+- **`.btn-primary`** (Kirby Pink, Plum Ink text) and **`.btn-ghost`** (1.5px Plum/25% line): pills, 44px
+  minimum height. Press is a squish: `transform: scale(0.96)` over 120ms. `.btn-sm` and `.btn-lg` are
+  the size variants. One label per intent per page.
+- **`.icon-btn`**: a 40px round button (theme, menu, close).
+- **`.chip`**: a pill for tags, version and copy buttons. `.chip-pink`, `-yellow`, `-mint`, `-sky` and
+  `-grape` are fills with Plum Ink text.
+- **`.mono-label`**: a Blush pill in sentence case for a short section label. At most one per section.
+- **`.ribbon`**: a small Warp Yellow badge pinned to a corner ("Try it", "Real recording"), unrotated.
+- **`.window`**: a 28px-radius frame for screenshots, the tray and the recording. A Dream Night bar
+  holds pink, yellow and sky dots and a mono title.
+- **`.field-input`**: pill, 1.5px `--line-input` border. Focus is the 3px outline.
 - **Code card** (server markup): `div.code-card > div.code-bar (span.code-lang, button.code-copy[hidden]) + pre.code > code.language-x`
-  with `span.tok-*` tokens. It is a window: a butter-cream bar over an ink body. Long lines scroll
-  inside the card.
-- **Table**: `div.table-wrap[role=region][tabindex=0]` holds a table with a butter header row, Oat
-  zebra rows and a 2px outer edge. The header stays sticky inside the scroll region.
+  with `span.tok-*` tokens. Dream Night body, Night Raised bar, 16px radius. Long lines scroll inside.
+- **Table**: `div.table-wrap[role=region][tabindex=0]` with a Blush header row, Blush zebra rows and a
+  1px hairline frame. The header stays sticky inside the scroll region.
 - **Callouts**: a blockquote is a Note (sky tint). GitHub alerts render as
   `aside.callout.callout-{note,tip,important,warning,caution}` with a printed title, so colour is
   never the only signal.
-- **Mascot**: an original candy-mint frog whose tongue intercepts things mid-flight. The art is in
-  `website/assets/img/mascot/frog-{catch,drop,search,agent,boss}-{512,1024}.webp`. It appears in at
-  most one place per screen, always decorative (`alt=""`) unless it carries meaning.
-- **Icons**: lucide-static 0.453.0 (ISC), the same family as veyal.github.io, inlined by the `icon`
-  template function. Use 2.25 stroke and no hand-drawn icon paths.
+- **Stars**: `.stars` holds a few static Warp Yellow stars on a night band. `.stars-twinkle` lets three
+  of them twinkle three times under no-preference motion, and never on docs pages.
+- **Icons**: lucide-static 0.453.0 (ISC), inlined by the `icon` template function.
+
+### Kirby art
+
+Transparent WebP stickers in `website/assets/img/kirby/`, 640px wide. Use them decoratively
+(`alt=""`), at most one per screen.
+
+| File | Where |
+|---|---|
+| `kirby-idle` | tray at rest, scorecard avatar |
+| `kirby-inhale` | tray while pulling a request in |
+| `kirby-full` | tray holding a request, and its no-JavaScript view |
+| `kirby-spit` | tray while a request is forwarded as a Warp Star |
+| `kirby-detective` | search palette empty state, features filter with no match |
+| `kirby-book` | Getting started header |
+| `kirby-laptop` | For agents header and the landing agents band |
+| `kirby-sleep` | 404 |
+| `kirby-warpstar` | back to veyal link (header, drawer, footer) and the install band |
 
 ## 5. Layout
 
 - 8px grid with a 4px half step (`--space-1` to `--space-10`).
-- Containers: `.wrap` (1152px, veyal `max-w-6xl`) and `.wrap-wide` (1440px, the docs frame). The
-  gutter is `clamp(16px, 4vw, 24px)`.
-- Radii: 8 (inline), 12 (controls), 16 (cards and windows), pill.
-- The header is a 64px sticky bar on cream with a 2px bottom edge, as on veyal.
-- **Landing** sections, in order: hero with the intercept tray, the real recording, the stage map
-  (Capture, Replay, Fuzz, Prove, Report, a true sequence so it is numbered), abilities, agents, boss
-  stats (the honest limits), questions, install. Alternate cream and butter-band grounds. Section
-  padding is 96px on desktop and 64px on mobile. The page uses no stat strip, no gradient and no
-  orb.
-- **Docs**: three columns at 1200px and up. The sidebar is 264px, the article sits on a white sticker
+- Containers: `.wrap` (1152px) and `.wrap-wide` (1440px, the docs frame). The gutter is
+  `clamp(16px, 4vw, 24px)`.
+- Radii: 8 (inline), 12 (inner boxes), 16 (cards, code), 28 (panels, windows, the doc sheet), pill.
+- The header is a 64px sticky bar on Cloud with a hairline.
+- **Landing** sections, in order: Sky hero with the tray and Meadow hills, the real recording (Dream
+  Night, with sparse stars), the workflow (Capture, Replay, Fuzz, Prove, Report, a true sequence so it
+  is numbered), capabilities, agents, honest limits, questions, install. Bands alternate Cloud and
+  Blush. Section padding is 96px on desktop and 64px on mobile. No stat strip, no gradient, no orb.
+- **Docs**: three columns at 1200px and up. The sidebar is 264px, the article sits on a white 28px
   sheet with a 72ch measure, and the outline is 220px. From 960 to 1199px the outline becomes a
   disclosure above the article. Below 960px the sidebar becomes a drawer behind a menu button. Each
-  page has a breadcrumb, an h1, a lede, a meta row (reading time, last updated, view source), the
-  article, and then previous and next cards.
+  page has a breadcrumb, an h1, a lede, a meta row, the article, and previous and next cards.
 
 ## 6. Depth
 
-Shadows are the only elevation: xs 2px, sm 3px, md 4px, lg 5px and xl 8px, all `0` blur in `--edge`.
-Light comes from the top left, so shadows fall to the bottom right. Nothing uses blur except the
-sticky header's backdrop, which is veyal's `backdrop-blur-md`. Layers are: doodles at -1, content
-at 0, the sticky header at 50, the drawer and search palette at 100, and the skip link at 1000.
+Hierarchy is bands first. Shadows are soft and ambient (`--shadow-md`, `-lg`, `-xl`) and appear only
+on things that float: the tray, the recording, the search palette, hovered cards. `--shadow-xs` and
+`-sm` are `none`. There are no offset shadows. Layers are: content at 0, the sticky header at 50, the
+drawer and search palette at 100, and the skip link at 1000.
 
 ## 7. Do and don't
 
-- DO keep every surface on the sticker recipe: 2px edge, radius from the scale, hard shadow.
-- DON'T use gradients, glass, blurred shadows, orbs, or a stat strip of big numbers.
+- DO let the band carry the hierarchy and keep boxes to a hairline, a puffy radius and a wash.
+- DON'T add 2px outlines, offset shadows, gradients, glass, orbs, or a stat strip of big numbers.
 - DO show the real product: the recording and stills come from the real binary with synthetic
-  `*.example.com` data.
-- DON'T build fake screenshots or fake terminals out of divs. The intercept tray is labelled as a toy,
-  and it works.
-- DO use one bold moment per page. Everything around it stays quiet.
-- DON'T animate on scroll or fade each section in.
+  `*.example.com` data. DON'T build fake screenshots out of divs. The tray is labelled as a toy.
+- DO use one playful moment per page. DON'T animate on scroll or fade sections in.
 - DO write in plain, specific sentences in sentence case. CTAs say what happens.
-- DON'T use filler verbs, em dashes in new UI copy, or "→" glued onto every link.
-- DO let colour carry group identity (pink, sky, mint, grape) and also print the group name.
+- DON'T use filler verbs, em dashes in new UI copy, game levels, or the author's name as a tagline.
+- DO let colour carry group identity and also print the group name.
 
 ## 8. Responsive and accessibility
 
 - Breakpoints: 390 (base), 640, 960, 1200 and 1440.
 - Work at 375px with no horizontal page scroll. Wide tables and code scroll inside their own region.
-- Primary actions are at least 44px tall. Smaller stickers keep their visual size and get an
-  invisible 44px hit area on coarse pointers: chips, copy buttons, `.btn-sm`, heading anchors and
-  the 40px `.icon-btn`. Nothing is smaller than WCAG 2.5.8's 24px.
-- Body text is at least 16px on mobile. Dense data tables may use 13px, which keeps wide rows
-  compact without sideways scrolling.
-- Focus is always a 3px outline (Butter in dark mode). Shadows are additions, never replacements.
-- `prefers-reduced-motion` stops the doodles, hover movement, smooth scrolling and the tray
-  animation. The tray stays fully usable step by step.
-- `forced-colors` swaps shadows for system borders.
+- Primary actions are at least 44px tall. Smaller controls keep their visual size and get an invisible
+  44px hit area on coarse pointers. Nothing is smaller than WCAG 2.5.8's 24px.
+- Body text is at least 16px on mobile. Dense data tables may use 13px.
+- Focus is always a 3px outline: Plum Ink on light, Warp Yellow on night.
+- `prefers-reduced-motion` removes the twinkle, squish, hover lift, smooth scrolling and the tray
+  animation. The tray stays fully usable step by step, and no content ships at opacity 0.
+- `forced-colors` swaps fills for system borders and hides decorative stars.
 - Every interactive element is a real `button` or `a`. Dialogs trap focus and close on Escape.
-- WCAG AA contrast for every pairing listed above, in both themes.
+- WCAG AA contrast for every pairing in section 2, in both themes.
 
 ## 9. Agent prompt guide
 
@@ -206,15 +211,12 @@ reimplementing them.
 
 Page structure:
 - The landing page lives in `website/pages/index.html`, with `css/landing.css` and `js/landing.js`.
-  The hold tray is a no-network state machine. If the frog art changes, the tongue origin is in
-  `snap()`.
+  The hold tray is a no-network state machine. Kirby's poses are in `data-pose-*` attributes on the
+  tray image, and the suction lines are positioned from the mouth fraction `MOUTH` in `snap()`.
 - Features, compare, reference and the 404 page bring `css/pages.css` and `js/pages.js`.
 - The compare scoreboard is counted from the matrix against the best other tool, so keep the two in
   step when a row changes.
-- The mascot sources are `website/assets/img/mascot/src/frog-*.svg`. Rasters are rendered from them
-  at 512 and 1024.
 
 The build does not use Jekyll. `go run ./tools/docscheck build` renders `docs/*.md` and
 `website/pages/*` through `website/templates/` into a static `_site/` that GitHub Actions deploys.
-Canonical guides live in `docs/`. `_data` is gone, and the navigation and feature data live in
-`website/data/`.
+Canonical guides live in `docs/`. The navigation and feature data live in `website/data/`.
