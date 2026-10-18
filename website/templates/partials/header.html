@@ -8,7 +8,7 @@
 <header class="site-header">
   <div class="site-header-inner wrap-wide">
     <div class="brand-trail">
-      <a class="brand-parent" href="{{.Site.Parent}}" aria-label="Back to veyal.land">veyal.land</a>
+      <a class="brand-parent" href="{{.Site.Parent}}" aria-label="Back to veyal"><img src="{{asset "img/kirby/kirby-warpstar.webp"}}" alt="" width="22" height="21" decoding="async"><span>veyal</span></a>
       <span class="brand-slash" aria-hidden="true">/</span>
       <a class="brand" href="{{url "/"}}"{{if eq .Page.Kind "landing"}} aria-current="page"{{end}}><span class="brand-mark" aria-hidden="true">{{template "brand-mark"}}</span><span class="brand-name">Interseptor</span></a>
     </div>
@@ -45,4 +45,4 @@
 {{define "release-chip"}}<a class="chip chip-yellow release-chip" href="{{.Site.Repo}}/releases/tag/v{{.Site.Release.Version}}" aria-label="v{{.Site.Release.Version}} release notes" title="Released {{.Site.Release.Date}}">v{{.Site.Release.Version}}</a>{{end}}
 
 {{- /* Kept for other layouts: a chip that leads back to the main site. */}}
-{{define "back-link"}}<a class="chip back-link" href="{{.Site.Parent}}">{{icon "arrow-left"}}<span>Back to veyal.land</span></a>{{end}}
+{{define "back-link"}}<a class="chip back-link" href="{{.Site.Parent}}">{{icon "arrow-left"}}<span>Back to veyal</span></a>{{end}}

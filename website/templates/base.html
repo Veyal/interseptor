@@ -8,7 +8,6 @@
   - <body data-page-kind="docs|landing|page|notfound" id="top">; "#top" is the
     back-to-top target and "#main" the skip-link target (each layout's <main>).
   - The header, drawer and footer render on every page, the landing page included.
-  - The doodles layer sits behind everything at z-index -1.
 */ -}}
 {{define "base" -}}
 <!doctype html>
@@ -19,7 +18,6 @@
 </head>
 <body id="top" data-page-kind="{{.Page.Kind}}" data-baseurl="{{.Site.Base}}/"{{if eq .Page.Kind "landing"}} class="landing-page"{{end}}>
 <a class="skip-link" href="#main">Skip to content</a>
-<div class="doodles" aria-hidden="true"><span class="doodle doodle-1">✦</span><span class="doodle doodle-2">★</span><span class="doodle doodle-3">♥</span><span class="doodle doodle-4">✦</span><span class="doodle doodle-5">✧</span></div>
 {{template "header" .}}
 {{template "drawer" .}}
 {{block "main" .}}{{end}}

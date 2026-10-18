@@ -17,7 +17,7 @@
 
   /* ---------- Theme ---------- */
   const THEME_KEY = 'interseptor-docs-theme';
-  const THEME_COLORS = { light: '#fff8eb', dark: '#1a1722' };
+  const THEME_COLORS = { light: '#fff8fb', dark: '#221a3a' };
   const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
   function storedTheme() {
     try {

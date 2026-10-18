@@ -2,11 +2,12 @@
      `sections: [{title, id}]` (the landing page) also gets a "This page" column. */ -}}
 {{define "footer" -}}
 <footer class="site-footer">
-  <div class="wrap-wide">
+  <div class="stars stars-twinkle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="wrap-wide" style="position:relative">
     <div class="footer-grid{{if .Page.Params.sections}} footer-grid-page{{end}}">
       <div class="footer-brand">
         <a class="brand footer-brand-link" href="{{url "/"}}"><span class="brand-mark" aria-hidden="true">{{template "brand-mark"}}</span><span class="brand-name">Interseptor</span></a>
-        <p>An intercepting proxy and pentest workspace in one Go binary, built as the boss stage of veyal.land.</p>
+        <p>An intercepting proxy and pentest workspace in one Go binary, built to prove what it finds.</p>
       </div>
       {{- with .Page.Params.sections}}
       <nav class="footer-col" aria-labelledby="footer-page">
@@ -40,16 +41,16 @@
         </ul>
       </nav>
       <nav class="footer-col" aria-labelledby="footer-veyal">
-        <p class="footer-heading" id="footer-veyal">veyal.land</p>
+        <p class="footer-heading" id="footer-veyal">veyal</p>
         <ul>
-          <li><a href="{{.Site.Parent}}">Back to veyal.land</a></li>
-          <li><a href="{{.Site.Parent}}#tools">Playground tools</a></li>
+          <li><a href="{{.Site.Parent}}"><img src="{{asset "img/kirby/kirby-warpstar.webp"}}" alt="" width="20" height="19" loading="lazy" decoding="async">Back to veyal</a></li>
+          <li><a href="{{.Site.Parent}}#tools">Tools</a></li>
         </ul>
       </nav>
     </div>
     <div class="footer-bottom">
       <p class="footer-notice">{{icon "shield"}}<span>Interseptor is for testing systems you are authorised to test.</span></p>
-      <p class="footer-copy">© {{.Site.Year}} Veyal · MIT licence · made with <span aria-hidden="true">♥</span><span class="sr-only">love</span> and too many snacks</p>
+      <p class="footer-copy">© {{.Site.Year}} Veyal · MIT licence</p>
       {{template "release-chip" .}}
     </div>
   </div>

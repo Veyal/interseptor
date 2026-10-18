@@ -9,7 +9,7 @@
   const config = document.currentScript?.dataset || {};
   const base = new URL(document.body.dataset.baseurl || '/', location.href);
   const indexURL = new URL(config.searchIndex || 'website/data/search.json', base);
-  const mascotURL = config.searchMascot || '';
+  const artURL = config.searchArt || '';
   const groupColors = new Map((config.searchGroups || '').split('|').filter(Boolean).map(pair => pair.split('=')));
   const SUGGESTIONS = ['Install', 'CA certificate', 'Intercept', 'Findings', 'MCP', 'Collections'];
   const MAX_RESULTS = 30;
@@ -286,11 +286,11 @@
   }
 
   /* ---------- States ---------- */
-  function message({ title, text, mascot = false, actions = [] }) {
+  function message({ title, text, art = false, actions = [] }) {
     const box = el('div', 'search-message');
-    if (mascot && mascotURL) {
-      const img = el('img', 'search-mascot');
-      img.src = mascotURL;
+    if (art && artURL) {
+      const img = el('img', 'search-art');
+      img.src = artURL;
       img.alt = '';
       img.width = 112;
       img.height = 112;
@@ -352,7 +352,7 @@
       const browse = el('a', 'chip');
       browse.href = new URL('features/', base).href;
       browse.innerHTML = `${ICONS.grid}<span>Browse all features</span>`;
-      bodyEl.append(message({ title: `No results for “${query}”`, text: 'Try a shorter word, or a feature name such as Intruder, Scope or Findings.', mascot: true, actions: [browse] }));
+      bodyEl.append(message({ title: `No results for “${query}”`, text: 'Try a shorter word, or a feature name such as Intruder, Scope or Findings.', art: true, actions: [browse] }));
       announce(`No results for ${query}.`);
       return;
     }

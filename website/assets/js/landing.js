@@ -41,9 +41,9 @@
 
   /* ------------------------------------------------------------------------
      The hold tray. Phases:
-       idle    intercept off; a short burst of shop traffic passes the frog
-       armed   intercept on; the next request is on its way to the frog
-       held    the frog holds GET /api/v1/orders/1042; the id is editable
+       idle    intercept off; a short burst of shop traffic passes Kirby
+       armed   intercept on; the next request is on its way to Kirby
+       held    Kirby holds GET /api/v1/orders/1042; the id is editable
        busy    a forwarded request and its response are on the wire
        result  own order, another customer's order (a finding), 404, or dropped
      The switch only decides what happens to the next request, as in the real
@@ -57,9 +57,9 @@
       switchState: pick('[data-tray-switch-state]'),
       wire: pick('[data-tray-wire]'),
       track: pick('[data-tray-track]'),
-      frogBox: pick('[data-tray-frogbox]'),
-      frog: pick('[data-tray-frog]'),
-      tongue: pick('[data-tray-tongue]'),
+      kirbyBox: pick('[data-tray-kirbybox]'),
+      kirby: pick('[data-tray-kirby]'),
+      suck: pick('[data-tray-suck]'),
       msg: pick('[data-tray-msg]'),
       request: pick('[data-tray-request]'),
       id: pick('[data-tray-id]'),
@@ -109,7 +109,7 @@
         el.getAnimations().forEach((animation) => animation.cancel());
         el.remove();
       });
-      ui.tongue.classList.remove('is-out');
+      ui.suck.classList.remove('is-out');
     }
 
     // Screen readers hear the sentence; everyone sees the status line.
@@ -158,26 +158,24 @@
       ui.id.tabIndex = held ? 0 : -1;
     }
 
-    // Frog poses swap in place; the box is square, so final art drops in as is.
+    // Kirby poses swap in place: idle, inhale (pulling a request in), full (holding it), spit (forwarding it).
     const poses = {};
-    ['search', 'catch', 'drop'].forEach((name) => {
-      const key = `pose${name[0].toUpperCase()}${name.slice(1)}`;
-      const [small, large] = (ui.frog.dataset[key] || '').split('|');
-      if (small && large) poses[name] = { src: small, srcset: `${small} 512w, ${large} 1024w` };
+    ['idle', 'inhale', 'full', 'spit'].forEach((name) => {
+      const src = ui.kirby.dataset[`pose${name[0].toUpperCase()}${name.slice(1)}`];
+      if (src) poses[name] = src;
     });
-    let pose = 'search';
+    let pose = 'idle';
     function setPose(name, pop) {
       const next = poses[name];
       if (!next) return;
       if (name !== pose) {
         pose = name;
-        ui.frog.srcset = next.srcset;
-        ui.frog.src = next.src;
+        ui.kirby.src = next;
       }
-      if (pop && !reducedMotion()) replay(ui.frogBox, 'is-popping');
+      if (pop && !reducedMotion()) replay(ui.kirbyBox, 'is-popping');
     }
     window.setTimeout(() => {
-      Object.values(poses).forEach((p) => { const img = new Image(); img.src = p.src; });
+      Object.values(poses).forEach((src) => { const img = new Image(); img.src = src; });
     }, 1200);
 
     function chip(label, tone) {
@@ -215,7 +213,7 @@
       return animation;
     }
 
-    // A request leaves the browser, passes the frog's mouth and drifts to the servers.
+    // A request leaves the browser, passes Kirby's mouth and drifts to the servers.
     function outbound(el) {
       ui.track.append(el);
       const travel = ui.track.clientWidth;
@@ -253,44 +251,41 @@
       say(`Held: ${TARGET} on api.example.com. The order id in the path is editable. Try 1043, then choose Forward or Drop.`);
     }
 
-    // Mouth of the search pose (the pose on screen when the tongue fires), as a
-    // fraction of the square frog box, measured on the art.
-    const MOUTH = { x: 0.45, y: 0.445 };
+    // Mouth of the inhale pose, as a fraction of Kirby's box, measured on the art.
+    const MOUTH = { x: 0.66, y: 0.54 };
 
-    // The tongue snaps from the mouth to the request's leading edge; at contact the
-    // catch art (which draws its own tongue and envelope) takes over in one frame.
+    // Kirby inhales: suction lines draw at the mouth and the request shrinks into it; at
+    // contact the cheeks-full pose takes over and the request is held.
     function snap(el, flight) {
       const mine = epoch;
       flight.pause();
+      setPose('inhale', false);
       const wire = ui.wire.getBoundingClientRect();
-      const frog = ui.frogBox.getBoundingClientRect();
+      const kirby = ui.kirbyBox.getBoundingClientRect();
       const box = el.getBoundingClientRect();
-      const x0 = frog.left - wire.left + frog.width * MOUTH.x;
-      const y0 = frog.top - wire.top + frog.height * MOUTH.y;
-      const x1 = box.left - wire.left;
-      const y1 = box.top - wire.top + box.height / 2;
-      const length = Math.max(12, Math.hypot(x1 - x0, y1 - y0));
-      const angle = Math.atan2(y1 - y0, x1 - x0);
-      const inner = ui.tongue.firstElementChild;
-      ui.tongue.style.width = `${length}px`;
-      ui.tongue.style.transform = `translate(${x0}px, ${y0 - 5}px) rotate(${angle}rad)`;
-      ui.tongue.classList.add('is-out');
-      inner.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 120, easing: EASE_OUT, fill: 'forwards' })
-        .onfinish = () => {
-          if (mine !== epoch) {
-            // Intercept went off mid-snap: the request was never held, so it flies on.
-            ui.tongue.classList.remove('is-out');
-            if (el.isConnected) flight.play();
-            return;
-          }
-          // One frame: the drawn tongue and envelope replace the live tongue and chip,
-          // so two tongues never show at once.
-          setPose('catch', true);
-          ui.tongue.classList.remove('is-out');
-          flight.cancel();
-          el.remove();
-          later(220, hold);
-        };
+      const mx = kirby.left + kirby.width * MOUTH.x;
+      const my = kirby.top + kirby.height * MOUTH.y;
+      ui.suck.style.transform = `translate(${mx - wire.left + 2}px, ${my - wire.top - 15}px)`;
+      ui.suck.classList.add('is-out');
+      const current = new DOMMatrix(getComputedStyle(el).transform).m41;
+      const dx = mx - (box.left + box.width / 2);
+      const dy = my - (box.top + box.height / 2);
+      el.animate(
+        [{ transform: `translateX(${current}px) scale(1)`, opacity: 1 }, { transform: `translate(${current + dx}px, ${dy}px) scale(0.12)`, opacity: 0.2 }],
+        { duration: 300, easing: 'cubic-bezier(0.5, 0, 0.9, 0.6)', fill: 'forwards' },
+      ).onfinish = () => {
+        ui.suck.classList.remove('is-out');
+        if (mine !== epoch) {
+          // Intercept went off mid-inhale: the request was never held, so it flies on.
+          setPose('idle', false);
+          if (el.isConnected) flight.play();
+          return;
+        }
+        setPose('full', true);
+        flight.cancel();
+        el.remove();
+        later(220, hold);
+      };
     }
 
     function launch() {
@@ -307,11 +302,11 @@
       show('Intercept is on. Holding the next request…');
       say('Intercept on. The next request will be held.');
       if (reducedMotion()) {
-        setPose('catch', false);
+        setPose('full', false);
         hold();
         return;
       }
-      // Let the last passing request clear the frog's mouth, then the shop sends the next one.
+      // Let the last passing request clear Kirby's mouth, then the shop sends the next one.
       const clear = ((widthOf(TARGET) + GAP) / SPEED) * 1000 - (performance.now() - lastSpawn.at);
       later(Math.max(200, clear), launch);
     }
@@ -389,7 +384,7 @@
         ? '{"error":"order not found"}'
         : `{"id":${order},"customerId":"${outcome.customer}"}`;
       ui.res.replaceChildren(line(`HTTP/1.1 ${outcome.code}`, outcome.kind === 'missing' ? 'tok-keyword' : 'tok-string'), line(body));
-      setPose('search', false);
+      setPose('idle', false);
       if (outcome.kind === 'own') {
         show('your own order, nothing to report. Reset to try another id.', '200 OK', 'ok');
         say('Forwarded. 200 OK: your own order, nothing to report. Reset to try another id.');
@@ -425,7 +420,10 @@
         return;
       }
       const travel = ui.track.clientWidth;
-      fly(chip(`GET /api/v1/orders/${digits}`, 'target'), 0, travel, LEG, () => {
+      setPose('spit', true);
+      const star = chip(`GET /api/v1/orders/${digits}`, 'target');
+      star.classList.add('is-star');
+      fly(star, 0, travel, LEG, () => {
         const reply = chip(outcome.code, outcome.tone);
         ui.track.append(reply);
         fly(reply, travel, -reply.offsetWidth, LEG, () => finish(order, outcome));
@@ -440,7 +438,7 @@
       ui.code.className = 'tray-code tray-tag tray-tag-drop';
       ui.res.replaceChildren(line('No response. The request never left the proxy.'), line(' '));
       ui.request.classList.add('is-dropped');
-      setPose('drop', true);
+      setPose('idle', true); // Kirby swallows it
       if (!reducedMotion()) replay(ui.request, 'is-dropping');
       render();
       show('The app never saw it. Reset to play again.', 'Dropped', 'drop');
@@ -460,7 +458,7 @@
       ui.code.className = 'tray-code';
       ui.request.classList.remove('is-dropped', 'is-dropping');
       ui.finding.classList.remove('is-popping');
-      setPose('search', false);
+      setPose('idle', false);
       render();
       show(IDLE);
       say(`Reset. ${IDLE}`);

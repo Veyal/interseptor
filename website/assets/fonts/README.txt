@@ -1,12 +1,11 @@
-Self-hosted fonts for the documentation site.
+Self-hosted fonts for the documentation site, both SIL OFL 1.1 (licence text and copyright lines in OFL.txt).
 
-- Baloo 2 (EkType / Baloo 2 Project Authors), variable wght 400-800, SIL OFL 1.1
-- Nunito (Nunito Project Authors), variable wght 200-1000, SIL OFL 1.1
-- Geist Mono (The Geist Project Authors), variable wght 100-900, SIL OFL 1.1
+- Fredoka (The Fredoka Project Authors), display. Variable wght 300-700, latin subset with the
+  wdth axis pinned to 100.
+- Recursive (The Recursive Project Authors), body and code. Variable wght 300-900 and MONO 0-1,
+  latin subset. The CASL, CRSV and slnt axes are pinned to 0, 0.5 and 0. Code uses
+  font-variation-settings: 'MONO' 1.
 
-Files are the unmodified latin and latin-ext woff2 subsets served by Google Fonts
-(Baloo 2 v23, Nunito v32). Both licences are in OFL.txt. The Reserved Font Names
-are not modified. Latin is preloaded; latin-ext only downloads when a page needs it.
-
-geist-mono-latin.woff2 is a latin subset (pyftsubset, all layout features kept) of the
-Geist Mono variable font used by veyal.github.io, so code matches the main site's terminal.
+Both start from the latin woff2 files Google Fonts serves (Fredoka v17, Recursive v44) and were
+reduced with fontTools' instancer (axis pinning only, no glyph or name changes). The Reserved
+Font Names are not modified. Latin is preloaded; other scripts fall back to the system stack.

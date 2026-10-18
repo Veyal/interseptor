@@ -8,7 +8,12 @@
   {{template "sidebar" .}}
   <main id="main" class="docs-main" tabindex="-1"{{with .Page.Classification}} data-classification="{{.}}"{{end}}>
     <article class="doc-sheet"{{with .Page.Group}} data-color="{{.Color}}"{{end}}>
-      <header class="doc-header">
+      <header class="doc-header{{if or (eq .Page.Path "/getting-started/") (eq .Page.Path "/ai-agents/")}} has-art{{end}}">
+        {{- if eq .Page.Path "/getting-started/"}}
+        <img class="doc-art" src="{{asset "img/kirby/kirby-book.webp"}}" width="640" height="574" alt="" decoding="async">
+        {{- else if eq .Page.Path "/ai-agents/"}}
+        <img class="doc-art" src="{{asset "img/kirby/kirby-laptop.webp"}}" width="640" height="575" alt="" decoding="async">
+        {{- end}}
         {{template "breadcrumb" .}}
         <h1{{with .Page.HeadingID}} id="{{.}}"{{end}}>{{.Page.Heading}}</h1>
         {{- with .Page.Description}}

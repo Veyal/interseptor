@@ -2,7 +2,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Page.Title}}{{if ne .Page.Kind "landing"}} · Interseptor docs{{end}}</title>
   <meta name="description" content="{{.Page.Description}}">
-  <meta name="theme-color" content="#fff8eb">
+  <meta name="theme-color" content="#fff8fb">
   {{- if .Page.NoIndex}}
   <meta name="robots" content="noindex, follow">
   {{- end}}
@@ -23,10 +23,10 @@
   <meta name="twitter:image:alt" content="{{.Page.ImageAlt}}">
   {{- /* Before first paint: mark that scripts run, and apply the stored theme or the system one, so
        nothing flashes. site.js keeps data-theme in sync afterwards. */}}
-  <script>(function(){var d=document.documentElement,t=null;d.classList.add('js');try{t=localStorage.getItem('interseptor-docs-theme')}catch(_){}if(t!=='dark'&&t!=='light')t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='dark'?'#1a1722':'#fff8eb'})()</script>
+  <script>(function(){var d=document.documentElement,t=null;d.classList.add('js');try{t=localStorage.getItem('interseptor-docs-theme')}catch(_){}if(t!=='dark'&&t!=='light')t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='dark'?'#221a3a':'#fff8fb'})()</script>
   {{- /* Fonts keep their plain URL: site.css loads them without a hash, and a preload must match it. */}}
-  <link rel="preload" href="{{url "/website/assets/fonts/nunito-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="{{url "/website/assets/fonts/baloo-2-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{url "/website/assets/fonts/recursive-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{url "/website/assets/fonts/fredoka-latin.woff2"}}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{asset "site.css"}}">
   <link rel="stylesheet" href="{{asset "css/chrome.css"}}">
   {{- if ne .Page.Kind "landing"}}

@@ -2,7 +2,7 @@
 layout: page
 title: Interseptor compared with Burp, ZAP, Caido and mitmproxy
 description: What Interseptor does not do, a 16-row capability matrix against Burp Suite, ZAP, Caido and mitmproxy, and when you should use something else.
-eyebrow: Boss stats
+eyebrow: Comparison
 permalink: /compare/
 css: [css/pages.css]
 js: [js/pages.js]

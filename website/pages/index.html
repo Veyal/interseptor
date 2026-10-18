@@ -22,10 +22,12 @@ sections:
     id: questions
 ---
 <section class="lp-hero" id="hero" aria-labelledby="hero-title">
+  <div class="lp-scenery" aria-hidden="true"><i class="cloud c1"></i><i class="cloud c2"></i><i class="hill h1"></i><i class="hill h2"></i></div>
+  <div class="stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <div class="wrap lp-hero-grid">
     <div class="lp-hero-copy">
       <p class="mono-label">One static binary · v{{.Site.Release.Version}} · MIT</p>
-      <h1 class="lp-hero-title" id="hero-title">Finding the bug is the <span class="squiggle">easy half<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="M3 9C40 3 80 3 197 8"/></svg></span>.</h1>
+      <h1 class="lp-hero-title" id="hero-title">Finding the bug is the easy half.</h1>
       <p class="lede lp-hero-lede">Interseptor intercepts, replays and fuzzes the way you would expect. Then it refuses to call a report final until the evidence is attached. One Go binary, no JVM, no licence tier.</p>
       <div class="lp-actions">
         <a class="btn-primary btn-lg" href="{{url "/getting-started/"}}">Get started</a>
@@ -61,15 +63,15 @@ sections:
 
             <div class="tray-wire" aria-hidden="true" data-tray-wire>
               <span class="tray-end tray-end-client">{{icon "app-window"}}<span class="tray-end-text">browser</span></span>
-              <span class="tray-frog" data-tray-frogbox>
-                <img class="tray-frog-img tray-frog-live" data-tray-frog src="{{asset "img/mascot/frog-search-512.webp"}}" srcset="{{asset "img/mascot/frog-search-512.webp"}} 512w, {{asset "img/mascot/frog-search-1024.webp"}} 1024w" sizes="(min-width: 640px) 76px, 60px" width="512" height="512" alt="" decoding="async" data-pose-search="{{asset "img/mascot/frog-search-512.webp"}}|{{asset "img/mascot/frog-search-1024.webp"}}" data-pose-catch="{{asset "img/mascot/frog-catch-512.webp"}}|{{asset "img/mascot/frog-catch-1024.webp"}}" data-pose-drop="{{asset "img/mascot/frog-drop-512.webp"}}|{{asset "img/mascot/frog-drop-1024.webp"}}">
-                <img class="tray-frog-img tray-frog-nojs" src="{{asset "img/mascot/frog-catch-512.webp"}}" srcset="{{asset "img/mascot/frog-catch-512.webp"}} 512w, {{asset "img/mascot/frog-catch-1024.webp"}} 1024w" sizes="(min-width: 640px) 76px, 60px" width="512" height="512" alt="" loading="lazy" decoding="async">
+              <span class="tray-kirby" data-tray-kirbybox>
+                <img class="tray-kirby-img tray-kirby-live" data-tray-kirby src="{{asset "img/kirby/kirby-idle.webp"}}" width="640" height="572" alt="" decoding="async" data-pose-idle="{{asset "img/kirby/kirby-idle.webp"}}" data-pose-inhale="{{asset "img/kirby/kirby-inhale.webp"}}" data-pose-full="{{asset "img/kirby/kirby-full.webp"}}" data-pose-spit="{{asset "img/kirby/kirby-spit.webp"}}">
+                <img class="tray-kirby-img tray-kirby-nojs" src="{{asset "img/kirby/kirby-full.webp"}}" width="640" height="618" alt="" loading="lazy" decoding="async">
               </span>
-              <span class="tray-track" data-tray-track>
+                            <span class="tray-track" data-tray-track>
                 <span class="tray-chip tray-chip-static"><b>GET</b> /api/v1/products</span>
               </span>
               <span class="tray-end tray-end-server">{{icon "server"}}<span class="tray-end-text">*.example.com</span></span>
-              <span class="tray-tongue" data-tray-tongue><span class="tray-tongue-inner"></span></span>
+              <span class="tray-suck" data-tray-suck><i></i><i></i><i></i></span>
             </div>
 
             <div class="tray-hold" data-tray-hold>
@@ -126,7 +128,8 @@ sections:
   </div>
 </section>
 
-<section class="lp-section lp-demo" id="demo" aria-labelledby="demo-title">
+<section class="lp-section lp-demo lp-night on-night" id="demo" aria-labelledby="demo-title">
+  <div class="stars stars-twinkle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <div class="wrap">
     <div class="lp-head">
       <h2 id="demo-title">Now the real thing.</h2>
@@ -346,7 +349,7 @@ sections:
       </div>
     </div>
     <div class="lp-agents-side">
-      <img class="lp-agents-frog" src="{{asset "img/mascot/frog-agent-512.webp"}}" srcset="{{asset "img/mascot/frog-agent-512.webp"}} 512w, {{asset "img/mascot/frog-agent-1024.webp"}} 1024w" sizes="(min-width: 960px) 240px, 168px" width="512" height="512" alt="" loading="lazy" decoding="async">
+      <img class="lp-agents-art" src="{{asset "img/kirby/kirby-laptop.webp"}}" width="640" height="575" alt="" loading="lazy" decoding="async">
       <div class="lp-belt card-surface">
         <h3 class="lp-belt-title">On its tool belt</h3>
         <p class="lp-belt-note">16 of the 133 MCP tools, by their real names, in the order an engagement uses them.</p>
@@ -380,17 +383,17 @@ sections:
       <p class="lede">Worth knowing before you download it rather than after.</p>
     </div>
     <div class="lp-honest">
-      <div class="lp-boss card-surface">
-        <div class="lp-boss-id">
-          <img class="lp-boss-avatar" src="{{asset "img/mascot/frog-boss-512.webp"}}" srcset="{{asset "img/mascot/frog-boss-512.webp"}} 512w, {{asset "img/mascot/frog-boss-1024.webp"}} 1024w" sizes="80px" width="512" height="512" alt="" loading="lazy" decoding="async">
+      <div class="lp-product card-surface">
+        <div class="lp-product-id">
+          <img class="lp-product-avatar" src="{{asset "img/kirby/kirby-idle.webp"}}" width="640" height="572" alt="" loading="lazy" decoding="async">
           <div>
-            <p class="lp-boss-name">Interseptor</p>
-            <p class="lp-boss-handle">v{{.Site.Release.Version}}, MIT</p>
-            <p class="lp-boss-tag">the boss of veyal.land</p>
+            <p class="lp-product-name">Interseptor</p>
+            <p class="lp-product-handle">v{{.Site.Release.Version}}, MIT</p>
+            <p class="lp-product-tag">an intercepting proxy</p>
           </div>
         </div>
         <div class="lp-stats">
-          <h3 class="lp-stats-title">{{icon "star"}}Boss stats</h3>
+          <h3 class="lp-stats-title">{{icon "star"}}Scorecard</h3>
           <ul class="lp-stat-rows">
             <li class="lp-stat"><span class="lp-stat-name">Intercept and replay<small>requests and responses, no throttle</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Evidence discipline<small>final export returns 409 until it is proven</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
@@ -452,8 +455,8 @@ sections:
 
 <section class="lp-section lp-install-section" id="install" aria-labelledby="install-title">
   <div class="wrap">
-    <div class="lp-install card-surface">
-      <span class="ribbon">Press start</span>
+    <div class="lp-install">
+      <img class="lp-install-art" src="{{asset "img/kirby/kirby-warpstar.webp"}}" width="640" height="597" alt="" loading="lazy" decoding="async">
       <h2 id="install-title">Install it and point a browser at it.</h2>
       <p class="lede">Two commands and a certificate. If it is not useful inside ten minutes, nothing was lost but a download.</p>
       <div class="lp-install-steps">
