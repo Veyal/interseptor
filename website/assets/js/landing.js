@@ -158,9 +158,10 @@
       ui.id.tabIndex = held ? 0 : -1;
     }
 
-    // Kirby poses swap in place: idle, inhale (pulling a request in), full (holding it), spit (forwarding it).
+    // Kirby poses swap in place: idle, inhale (pulling a request in), full (holding it), spit (forwarding it),
+    // and ninja: the copy ability he gains when the forwarded request proves the IDOR.
     const poses = {};
-    ['idle', 'inhale', 'full', 'spit'].forEach((name) => {
+    ['idle', 'inhale', 'full', 'spit', 'ninja'].forEach((name) => {
       const src = ui.kirby.dataset[`pose${name[0].toUpperCase()}${name.slice(1)}`];
       if (src) poses[name] = src;
     });
@@ -390,8 +391,11 @@
         say('Forwarded. 200 OK: your own order, nothing to report. Reset to try another id.');
       } else if (outcome.kind === 'other') {
         state.finding = true;
-        show(`customer ${outcome.customer}, not you.`, '200 OK', 'ok');
-        say(`Forwarded. 200 OK: order ${order} belongs to customer ${outcome.customer}, not you. Finding filed: Orders API answers any customer (IDOR). Evidence: this flow, attached. The report can go final.`);
+        // Kirby becomes what he eats: sneaking into someone else's order earns him Ninja.
+        setPose('ninja', false);
+        if (!reducedMotion()) replay(ui.kirbyBox, 'is-copying');
+        show(`customer ${outcome.customer}, not you. Kirby copied Ninja.`, '200 OK', 'ok');
+        say(`Forwarded. 200 OK: order ${order} belongs to customer ${outcome.customer}, not you. Kirby copied Ninja. Finding filed: Orders API answers any customer (IDOR). Evidence: this flow, attached. The report can go final.`);
         if (!reducedMotion()) replay(ui.finding, 'is-popping');
       } else {
         show(`there is no order ${order}. Reset, then try 1043.`, '404 Not Found', 'miss');

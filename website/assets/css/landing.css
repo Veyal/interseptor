@@ -187,6 +187,14 @@
 @media (min-width: 640px) { .tray-kirby { --k-w: 120px; } }
 .tray-kirby-img { display: block; width: 100%; height: auto; transform-origin: 50% 100%; }
 .tray-kirby.is-popping .tray-kirby-img { animation: squish 360ms var(--ease) both; }
+/* Copy ability: Kirby spins, shrinks and pops back as Ninja Kirby. */
+.tray-kirby.is-copying .tray-kirby-img { animation: copy-spin 720ms var(--ease) both; }
+@keyframes copy-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  45% { transform: rotate(180deg) scale(0.7); }
+  80% { transform: rotate(360deg) scale(1.12); }
+  100% { transform: rotate(360deg) scale(1); }
+}
 .js .tray-kirby-nojs, html:not(.js) .tray-kirby-live { display: none; }
 .tray-track { grid-area: track; position: relative; align-self: stretch; min-height: 52px; overflow: hidden; margin-left: -26px; }
 .tray-track::before {
