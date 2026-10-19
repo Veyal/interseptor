@@ -299,6 +299,7 @@ func llmsText() string {
 	b.WriteString("# Interseptor\n\n")
 	b.WriteString("> Interseptor is a single-binary HTTP/HTTPS intercepting proxy and security-testing toolkit. AI agents drive the same engine as the web UI through an MCP server (stdio and Streamable HTTP) and a REST/SSE API. These pages explain how to install it, connect, follow the rules, and file findings in one consistent format.\n\n")
 	b.WriteString("Fetch [llms-full.txt](" + version.LLMSFullURL + ") first: it is a single file containing the agent guide, the finding-writing contract, and the API and MCP references. Authorized testing only; read the hard rules before sending any request.\n\n")
+	b.WriteString(projectNotesGuidance)
 	listed := map[string]bool{}
 	line := func(slug string) {
 		meta := byslug[slug]
@@ -404,3 +405,12 @@ func validateBuiltLLMS(site, root string) error {
 	}
 	return nil
 }
+
+// projectNotesGuidance tells agents what the project notebook (Report → Notes,
+// get_notes/set_notes/append_notes) is for, so it stays a reference sheet the
+// operator can look things up in rather than a log of testing.
+const projectNotesGuidance = `## Project notes
+
+The project notebook (Report → Notes; ` + "`get_notes`, `set_notes`, `append_notes`" + `) is the engagement's reference sheet, not a testing log. Record facts someone will need to look up later: credentials and test accounts with the role each one has, so anyone can log in; data created or changed on the target (accounts, records, uploads, with their IDs), so it can be found and wiped when the engagement ends; the user access matrix of which role can reach which menu, feature or endpoint; and the application's menu and feature list, environment URLs and similar reference facts. Do not write request-by-request narration, payload attempts, tool output or findings there. Findings go in Findings, and agent actions are already recorded in Activity.
+
+`

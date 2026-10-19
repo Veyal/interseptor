@@ -1381,7 +1381,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("get_notes",
-		"Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings and to-dos. Read it before editing with set_notes.",
+		"Read the project's shared markdown notebook: the engagement's reference sheet of credentials and test accounts, data created on the target (for cleanup), the user access matrix, and menu/feature lists. It is not a testing log. Read it before editing with set_notes.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			raw, err := s.apiGet("/api/notes")
@@ -1399,7 +1399,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("set_notes",
-		"Replace the project's shared markdown notebook. Call get_notes first and edit the returned text so existing content isn't clobbered; use append_notes to only add.",
+		"Replace the project's shared markdown notebook (credentials and test accounts, data created on the target, the access matrix, menu/feature lists; not a testing log). Call get_notes first and edit the returned text so existing content isn't clobbered; use append_notes to only add.",
 		obj(map[string]any{"notes": pt("string")}, "notes"),
 		func(a map[string]any) (string, error) {
 			if _, err := s.api(http.MethodPut, "/api/notes", map[string]any{"notes": argStr(a, "notes")}); err != nil {
@@ -1409,7 +1409,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("append_notes",
-		"Append a markdown block to the project notebook (e.g. a new finding) without rewriting the rest. Atomic server-side — safe to call concurrently (e.g. from multiple AI agents, or alongside a human editing in the UI) without losing either side's text.",
+		"Append a markdown block to the project notebook (e.g. a new test account and its credentials, or a record you created that must be wiped later) without rewriting the rest. The notebook holds reference facts, not a testing log: findings go in Findings. Atomic server-side — safe to call concurrently (e.g. from multiple AI agents, or alongside a human editing in the UI) without losing either side's text.",
 		obj(map[string]any{"text": pt("string")}, "text"),
 		func(a map[string]any) (string, error) {
 			text, err := reqStr(a, "text")

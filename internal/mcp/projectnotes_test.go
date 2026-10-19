@@ -69,3 +69,20 @@ func TestProjectNotesTools(t *testing.T) {
 		t.Fatalf("get_notes output missing content: %s", out)
 	}
 }
+
+// The notebook tool descriptions are what an agent sees before writing, so they
+// must state the notebook's purpose and keep testing logs and findings out of it.
+func TestProjectNotesToolDescriptionsStatePurpose(t *testing.T) {
+	s := New("http://127.0.0.1:1")
+	for _, name := range []string{"get_notes", "set_notes", "append_notes"} {
+		d := s.tools[name].description
+		for _, want := range []string{"credentials", "not a testing log"} {
+			if !strings.Contains(d, want) {
+				t.Errorf("%s description lacks %q: %s", name, want, d)
+			}
+		}
+		if strings.Contains(d, "a new finding") || strings.Contains(d, "findings and to-dos") {
+			t.Errorf("%s description still invites findings or logs: %s", name, d)
+		}
+	}
+}

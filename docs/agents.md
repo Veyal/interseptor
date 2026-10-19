@@ -109,6 +109,8 @@ curl -s http://127.0.0.1:9966/api/version    # {"version":"...","project":"...",
 Notes for agents:
 
 - `interseptor stop` stops **all** running instances on the machine. Do not use it on a shared host.
+  It leaves `interseptor mcp` bridges running; `interseptor stop --all` also stops those, which
+  disconnects every agent session using the Interseptor MCP.
 - For HTTPS interception the client must trust the Interseptor CA: `GET /api/ca.crt`, or the `ca_info`
   tool for platform instructions. Without it HTTPS flows show TLS failures.
 - Project data lives under `~/.interseptor/` unless `--data-dir` or `INTERSEPTOR_DATA_DIR` is set.
@@ -788,6 +790,22 @@ requests, `list_ws_frames`, `decode`, and the mobile tools (`android_setup`, `io
 (feroxbuster, gobuster, ffuf) pointed **through** the proxy so hits land in History; there is no built-in
 forced browser.
 
+### Project notes
+
+The project notebook (`get_notes`, `set_notes`, `append_notes`; **Report → Notes** in the UI) is the
+engagement's reference sheet, not a testing log. Write down facts the operator or another agent will
+need to look up later:
+
+- Credentials and test accounts, with the role each one has, so anyone can log in.
+- Data you created or changed on the target (accounts, records, uploads, with their IDs and where
+  they live), so it can be wiped when the engagement ends.
+- The user access matrix: which role can reach which menu, feature or endpoint.
+- The application's menu and feature list, environment URLs, and similar reference facts.
+
+Do not write request-by-request narration, payload attempts or tool output there, and do not record
+findings in it: findings go through `create_finding`, and your actions are already recorded in
+Activity. Use `append_notes` to add an entry; read with `get_notes` before any `set_notes`.
+
 ## Output conventions
 
 All agents report in the same shape. Use the human's language for prose; keep tool names, field names,
@@ -909,7 +927,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `get_human_response` | `id` | Retrieve the human's answer to an earlier request_human_input (poll this until they've answered). |
 | `get_intercept` | none | Intercept state + current hold queue. |
 | `get_interception_setup` | none | Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass... |
-| `get_notes` | none | Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings... |
+| `get_notes` | none | Read the project's shared markdown notebook: the engagement's reference sheet of credentials and test... |
 | `get_settings` | none | Proxy/intercept settings (bind address, intercept on/off). |
 | `host_stats` | none | Show a table of captured hosts sorted by byte volume (flows + bytes per host, plus totals). |
 | `import_full_project` | `path`, `name` | Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project... |
@@ -969,7 +987,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `set_login_macro` | `enabled`, `target`, `request` | Configure the login macro directly (raw HTTP request + target URL). |
 | `set_login_macro_from_flow` | `flowId` | Capture a flow's request as the login macro for refreshing CSRF/session state before authenticated testing. |
 | `set_note` | `id`, `note` | Annotate a flow with a note (record a finding for the operator; "" clears it). |
-| `set_notes` | `notes` | Replace the project's shared markdown notebook. |
+| `set_notes` | `notes` | Replace the project's shared markdown notebook (credentials and test accounts, data created on the target... |
 | `set_response_intercept` | `enabled` | Enable/disable response interception (hold responses to edit/drop). |
 | `set_session` | `enabled` | Auth headers auto-applied to every Repeater/Intruder send (e.g. |
 | `set_variable` | `ownerUid`, `key`, `value` | Set one local current variable value (never the shareable initial value). |

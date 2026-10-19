@@ -15,7 +15,7 @@ the active workspace; check it before changing stored data.
 | Recon | Scanner | Passive observations that need review before becoming findings. |
 | Recon | Map | Hosts, paths, and relationships derived from captured traffic. |
 | Report | Findings | Evidence records, review state, revisions, and report export. |
-| Report | Notes | The project's Markdown notebook. |
+| Report | Notes | The project's reference notebook: credentials, created data, access matrix. |
 | Report | Activity | Recorded agent actions and their results. |
 | Configure | Settings | Connections, scope, integrations, session settings, and project data. |
 
@@ -105,6 +105,18 @@ See the [Findings guide](findings-and-reporting.md#read-and-edit-a-finding).
 
 Open **Report → Notes** for the project notebook. **Edit** accepts Markdown and pasted images;
 **Preview** shows the formatted document. Watch the save status before leaving the project.
+
+The notebook is the engagement's reference sheet, not a testing log. Keep the facts you or a
+teammate will need to look up later:
+
+- Credentials and test accounts, with the role each one has, so anyone can log in.
+- Data created or changed on the target (accounts, records, uploads, with their IDs), so it can
+  be wiped when the engagement ends.
+- The user access matrix: which role can reach which menu, feature or endpoint.
+- The application's menu and feature list, environment URLs, and similar reference facts.
+
+Request-by-request narration, payload attempts and tool output do not belong here. Record issues
+in Findings; agent actions are already listed in Activity.
 
 If autosave fails, the draft stays available with **Retry save**. Switching projects is blocked
 while unresolved notes or other guarded drafts remain. Notes support investigation context;

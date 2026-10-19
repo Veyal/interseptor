@@ -330,3 +330,14 @@ func TestGeneratedReferenceRendersNoPlaceholderTags(t *testing.T) {
 		}
 	}
 }
+
+// Agents read llms.txt before touching the project notebook, so it must say what
+// the notebook is for: reference facts, never a testing log.
+func TestLLMSTextExplainsProjectNotesPurpose(t *testing.T) {
+	text := llmsText()
+	for _, want := range []string{"## Project notes", "credentials", "wipe", "access matrix", "menu", "not a testing log", "Findings", "Activity"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("llms.txt project notes guidance lacks %q", want)
+		}
+	}
+}
