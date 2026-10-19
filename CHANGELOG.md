@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.1` release.
+
 ## [2.17.1] - 2026-10-19
 
 > Patch release: bottom-docked & popup flow inspector, finding triage & review workflow
