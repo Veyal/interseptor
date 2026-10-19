@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"context"
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -714,4 +715,94 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// A guarded send through an upstream proxy vets the destination before handing it
+// to the proxy. That check must honour the request's DNS override the same way the
+// direct-dial path does: a host only the upstream can resolve is otherwise refused
+// with a bare "no such host" and the operator has no way to proceed.
+func TestGuardedUpstreamSendHonoursDNSOverride(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "through upstream")
+	}))
+	defer upstream.Close()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	if err := snd.SetUpstreamProxy(upstream.URL); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	const target = "http://target.invalid/api"
+	guard := func() *IPGuard { return &IPGuard{OwnPorts: []int{9}, OwnIPs: []net.IP{net.ParseIP("127.0.0.1")}} }
+
+	f, err := snd.Send(Request{URL: target, Options: &SendOptions{Guard: guard(), DNSOverride: map[string]string{"target.invalid": "203.0.113.10"}}})
+	if err != nil || f.Status != http.StatusOK {
+		t.Fatalf("override must let the guarded upstream send through: err=%v status=%d error=%q", err, f.Status, f.Error)
+	}
+
+	f, _ = snd.Send(Request{URL: "http://target.invalid:9/", Options: &SendOptions{Guard: guard(), DNSOverride: map[string]string{"target.invalid": "127.0.0.1"}}})
+	if f.Status == http.StatusOK || !strings.Contains(f.Error, "own listener") {
+		t.Fatalf("an override pointing at our own listener must still be refused: %+v", f)
+	}
+
+	// Guarding only our own listeners: a name the local resolver cannot resolve
+	// cannot point at them, so the upstream is left to resolve it.
+	f, _ = snd.Send(Request{URL: target, Options: &SendOptions{Guard: guard()}})
+	if f.Status != http.StatusOK {
+		t.Fatalf("an own-listener guard must not refuse a host only the upstream resolves: %q", f.Error)
+	}
+
+	// Blocking private destinations still fails closed, and says why.
+	blocking := guard()
+	blocking.BlockPrivate = true
+	f, _ = snd.Send(Request{URL: target, Options: &SendOptions{Guard: blocking}})
+	if f.Status == http.StatusOK || !strings.Contains(f.Error, "upstream proxy") || !strings.Contains(f.Error, "private") {
+		t.Fatalf("a private-blocking guard must refuse an unverifiable host with an explanation, got %q", f.Error)
+	}
+}
+
+// The SOCKS sibling of the upstream DNS case: a guarded dial resolves locally to pin
+// the vetted address, but a name only the socks5h proxy can resolve must still reach
+// the proxy by name when the guard only refuses our own listeners.
+func TestGuardedSOCKSSendPassesUnresolvableHostToProxy(t *testing.T) {
+	socksAddr, destinations := newSenderSOCKS5Relay(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	if err := snd.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	guard := &IPGuard{OwnPorts: []int{9}, OwnIPs: []net.IP{net.ParseIP("127.0.0.1")}}
+	_, _ = snd.Send(Request{URL: "http://target.invalid/api", Options: &SendOptions{Guard: guard}})
+	select {
+	case got := <-destinations:
+		if got != "target.invalid:80" {
+			t.Fatalf("SOCKS5H destination=%q, want the unresolved name", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("guarded send never reached the SOCKS proxy: the local lookup failure stopped it")
+	}
+
+	blocking := &IPGuard{BlockPrivate: true}
+	f, _ := snd.Send(Request{URL: "http://target.invalid/api", Options: &SendOptions{Guard: blocking}})
+	if f.Status == http.StatusOK || !strings.Contains(f.Error, "private") {
+		t.Fatalf("a private-blocking guard must refuse an unverifiable host, got %q", f.Error)
+	}
+}
+
+// Review regression: through an HTTP proxy the proxy connects to the real name, so
+// a DNS override alone cannot vouch for the destination; the real resolution is
+// checked as well.
+func TestGuardedUpstreamChecksRealResolutionDespiteOverride(t *testing.T) {
+	g := &IPGuard{BlockPrivate: true}
+	err := checkProxiedHost(context.Background(), g, map[string]string{"localhost": "203.0.113.10"}, "localhost", 80)
+	if err == nil || !errors.Is(err, ErrGuardBlocked) {
+		t.Fatalf("a public override must not mask a private real address, got %v", err)
+	}
 }

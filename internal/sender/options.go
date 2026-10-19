@@ -286,7 +286,7 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 		if up != nil && !senderSOCKSUpstream(up) && addr == senderUpstreamAddress(up) {
 			return senderNetDialer().DialContext(ctx, network, addr) // proxy hop, vetted in Proxy()
 		}
-		return guardedDial(ctx, o.Guard, o.DNSOverride, network, addr, func(ctx context.Context, n, a string) (net.Conn, error) {
+		return guardedDialVia(ctx, o.Guard, o.DNSOverride, resolvesRemotely(up), network, addr, func(ctx context.Context, n, a string) (net.Conn, error) {
 			return s.dialVia(up, ctx, n, a)
 		})
 	}
@@ -301,7 +301,7 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 				if port == 0 {
 					port = defaultPort(req.URL.Scheme)
 				}
-				if err := o.Guard.CheckHost(req.Context(), req.URL.Hostname(), port); err != nil {
+				if err := checkProxiedHost(req.Context(), o.Guard, o.DNSOverride, req.URL.Hostname(), port); err != nil {
 					return nil, err
 				}
 			}
@@ -366,7 +366,7 @@ func (s *Sender) rawRoundTrip(req *http.Request, body []byte, o *SendOptions) (*
 		port = strconv.Itoa(defaultPort(u.Scheme))
 	}
 	addr := net.JoinHostPort(u.Hostname(), port)
-	conn, err := guardedDial(ctx, o.Guard, o.DNSOverride, "tcp", addr, func(ctx context.Context, n, a string) (net.Conn, error) {
+	conn, err := guardedDialVia(ctx, o.Guard, o.DNSOverride, resolvesRemotely(up), "tcp", addr, func(ctx context.Context, n, a string) (net.Conn, error) {
 		return s.dialVia(up, ctx, n, a)
 	})
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -136,6 +137,15 @@ func (g *IPGuard) fingerprint() string {
 // one. dial performs the actual connection (it may tunnel through SOCKS).
 func guardedDial(ctx context.Context, g *IPGuard, dns map[string]string, network, addr string,
 	dial func(ctx context.Context, network, addr string) (net.Conn, error)) (net.Conn, error) {
+	return guardedDialVia(ctx, g, dns, false, network, addr, dial)
+}
+
+// guardedDialVia is guardedDial for a dial whose proxy may resolve names itself
+// (remote: a socks5h upstream, see resolvesRemotely). There, a name the local resolver cannot find is
+// handed to the proxy by name, under the same rule as checkProxiedHost. A direct
+// dial never does this: a second lookup could be rebound past the checks.
+func guardedDialVia(ctx context.Context, g *IPGuard, dns map[string]string, remote bool, network, addr string,
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)) (net.Conn, error) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -156,7 +166,13 @@ func guardedDial(ctx context.Context, g *IPGuard, dns map[string]string, network
 	} else {
 		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil {
-			return nil, err
+			if !remote || !hostNotFound(err) {
+				return nil, err
+			}
+			if err := unverifiableHost(g, host, port); err != nil {
+				return nil, err
+			}
+			return dial(ctx, network, addr)
 		}
 		for _, a := range addrs {
 			ips = append(ips, a.IP)
@@ -180,4 +196,61 @@ func guardedDial(ctx context.Context, g *IPGuard, dns map[string]string, network
 		lastErr = err
 	}
 	return nil, lastErr
+}
+
+// checkProxiedHost vets a destination that is reached through the upstream proxy,
+// where the dial itself cannot be checked. A DNS override is checked, but the
+// proxy still connects to the real name, so the real resolution is checked too.
+// When the local resolver cannot find the host, unverifiableHost decides.
+func checkProxiedHost(ctx context.Context, g *IPGuard, dns map[string]string, host string, port int) error {
+	if g == nil {
+		return nil
+	}
+	if o, ok := dns[strings.ToLower(host)]; ok {
+		ip := net.ParseIP(o)
+		if ip == nil {
+			return fmt.Errorf("dns override for %s is not an IP: %q", host, o)
+		}
+		if err := g.Check(host, ip, port); err != nil {
+			return err
+		}
+	}
+	err := g.CheckHost(ctx, host, port)
+	if err == nil || !hostNotFound(err) {
+		return err
+	}
+	return unverifiableHost(g, host, port)
+}
+
+// hostNotFound reports a lookup that found no such host, as opposed to a
+// resolver failure that should surface unchanged.
+func hostNotFound(err error) bool {
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr) && dnsErr.IsNotFound
+}
+
+// unverifiableHost decides a destination the local resolver cannot find but an
+// upstream proxy will resolve. It is refused on one of our own ports, because
+// another resolver may map such a name (127.1, foo.localhost) to loopback, and
+// under a guard that blocks private destinations, since the upstream might
+// resolve it to one. Otherwise the upstream is left to resolve it.
+func unverifiableHost(g *IPGuard, host string, port int) error {
+	if g == nil {
+		return nil
+	}
+	for _, p := range g.OwnPorts {
+		if p == port {
+			return fmt.Errorf("%w: %s cannot be resolved here to rule out the tool's own listener on port %d", ErrGuardBlocked, host, port)
+		}
+	}
+	if !g.BlockPrivate || g.allowed(host) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s cannot be resolved here to confirm it is not a private address before sending it through the upstream proxy", ErrGuardBlocked, host)
+}
+
+// resolvesRemotely reports an upstream that resolves names itself. Only socks5h
+// does: plain socks5 resolves locally again before connecting.
+func resolvesRemotely(up *url.URL) bool {
+	return up != nil && strings.EqualFold(up.Scheme, "socks5h")
 }

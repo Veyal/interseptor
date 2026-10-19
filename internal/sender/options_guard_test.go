@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +60,38 @@ func TestGuardedDialPinsAndBlocksRebind(t *testing.T) {
 	_, _ = guardedDial(context.Background(), g, map[string]string{"evil.example.com": "127.0.0.1"}, "tcp", "evil.example.com:8081", dial)
 	if got != "127.0.0.1:8081" {
 		t.Fatalf("dial addr = %q; want pinned IP", got)
+	}
+}
+
+// Review regression: names the local resolver cannot find but another resolver
+// maps to loopback (127.1, 2130706433, foo.localhost) must never reach one of our
+// own ports through a proxy, whatever the private-address policy says.
+func TestUnverifiableHostRefusesOwnPorts(t *testing.T) {
+	g := &IPGuard{OwnPorts: []int{9966}}
+	if err := unverifiableHost(g, "127.1", 9966); err == nil || !strings.Contains(err.Error(), "own listener") {
+		t.Fatalf("an unresolvable name on an own port must be refused, got %v", err)
+	}
+	if err := unverifiableHost(g, "target.invalid", 443); err != nil {
+		t.Fatalf("an unresolvable name on another port is left to the upstream: %v", err)
+	}
+	if err := unverifiableHost(&IPGuard{BlockPrivate: true}, "target.invalid", 443); err == nil {
+		t.Fatal("a private-blocking guard must refuse an unverifiable host")
+	}
+	if err := unverifiableHost(nil, "x.invalid", 9966); err != nil {
+		t.Fatalf("no guard, no refusal: %v", err)
+	}
+}
+
+// Only socks5h resolves names at the proxy; plain socks5 resolves locally again,
+// so it must not receive an unverified name.
+func TestRemoteResolveOnlyForSOCKS5H(t *testing.T) {
+	for raw, want := range map[string]bool{"socks5h://127.0.0.1:1080": true, "socks5://127.0.0.1:1080": false, "http://127.0.0.1:8080": false} {
+		u, _ := url.Parse(raw)
+		if got := resolvesRemotely(u); got != want {
+			t.Errorf("resolvesRemotely(%s) = %v, want %v", raw, got, want)
+		}
+	}
+	if resolvesRemotely(nil) {
+		t.Error("no upstream never resolves remotely")
 	}
 }
