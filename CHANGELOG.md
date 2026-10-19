@@ -9,7 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.17.1] - 2026-10-19
+
+> Patch release: bottom-docked & popup flow inspector, finding triage & review workflow
+> for AI agents, drop-pending undo engine that guarantees drops are never forwarded, client-abort
+> context cancellation over HTTPS CONNECT, unapproved script warnings in Collections identity matrix,
+> and comprehensive UX and layout fixes across web and desktop apps.
+
 ### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.0` release.
 
 - **Finding review & triage workflow with dedicated `ignored` status and reasons.** AI agent-authored findings now automatically default to `needs_verification` so operators can confirm validity before acceptance. Findings can now be triaged as `verified`, `false_positive`, or `ignored` (for valid but low-impact findings clients won't care about, accepted risk, out of scope, etc.) with structured `proofReview.ignoreReason` tracking. The finding header features quick one-click triage buttons (`Confirm Valid`, `False Positive`, `Ignore…`), an ignored banner displays in the document view, and the status filter and export preflight include `ignored`. (`internal/store/findings.go`, `internal/store/finding_assessment.go`, `internal/control/findings.go`, `internal/mcp/mcp.go`, `internal/report/report.go`, `internal/control/ui/js/findings.js`, `internal/control/ui/findings.css`.)
 - **Flow inspector opens on the bottom by default and supports popup modal toggle.** Clicking an attached flow (from Findings, Activity, Map, Notes, Scanner, or Cmd+K) now docks at the bottom of the workspace with resizable height instead of squeezing Findings and documents into a narrow side drawer. Double-clicking the inspector header or clicking the expand icon in the header toggles between bottom-docked panel and centered popup modal dialog. An appearance setting in Settings allows choosing the preferred default layout (Bottom panel, Popup dialog, Side drawer) across both web and desktop apps. (`internal/control/ui/js/flowdrawer.js`, `internal/control/ui/js/flowbody.js`, `internal/control/ui/js/settings-appearance.js`, `internal/control/ui/flow.css`, `internal/control/ui/css/desktop/shell.css`, `internal/control/ui/index.html`.)
