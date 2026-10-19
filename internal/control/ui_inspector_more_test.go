@@ -39,7 +39,9 @@ func TestUIInspectorMoreButtonSurvivesClickToClose(t *testing.T) {
 
 	// The listener this guards against must still be the reason the guard exists;
 	// if it is ever removed, this test should be revisited rather than silently pass.
-	closer := regexp.MustCompile(`document\.addEventListener\('click',\s*e=>\{if\(!ctxMenuContains\(e\.target\)\)hideCtx`)
+	// It now also spares the menu's own trigger (dismissOnDocumentClick), which is
+	// what keeps Copy as and Send to open; the More guard stays as defence in depth.
+	closer := regexp.MustCompile(`document\.addEventListener\('click',\s*e=>\{if\(dismissOnDocumentClick\(e\.target,ctxMenuContains,ctxMenuTrigger\(\)\)\)hideCtx`)
 	if !closer.MatchString(js) {
 		t.Error("the app-wide click-to-close listener changed shape; re-verify the More button guard")
 	}

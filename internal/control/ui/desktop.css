@@ -1,0 +1,30 @@
+/* desktop.css — app feel inside a desktop shell (the native macOS app or a
+   Chrome/Edge --app window). js/desktop.js adds html.desktop-app only there, so
+   every rule is scoped under it and a browser tab is unchanged. Chrome (rail,
+   Flight Bar, toolbars, list headers, controls) behaves like native chrome;
+   request/response bodies, editors, findings text, inputs and copyable values
+   stay selectable. Focus needs no rule: no stylesheet draws a :focus ring, only
+   :focus-visible, so a mouse click already shows none and keyboard focus does.
+   The browser context menu is already replaced app-wide by core.js. */
+
+/* No rubber-band overscroll or scroll chaining anywhere; no tap flash. */
+html.desktop-app,html.desktop-app *{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+
+/* Arrow cursor on controls. !important because the component layer sets
+   pointer per component; busy and pending controls keep their progress cursor,
+   and real hyperlinks (a[href] that is not a .btn) keep the pointer. */
+html.desktop-app :is(button,summary,label,select,a.btn,[role="button"],[role="tab"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"],[role="row"],[role="treeitem"],input[type="checkbox"],input[type="radio"],input[type="range"],input[type="button"],input[type="submit"],input[type="reset"],input[type="file"],input[type="color"],.trow,.thead>div,.intr-head>div,.map-tbl th,.map-tbl tr[data-flow],.map-ep[data-flow],.g-node.g-click,.uisw,.chk-row,.icpt-item,.held,.flowtag,.tagchip,.chip .x,.act-row.act-jump,.authz-row[data-flow],.scan-item,.find-row,.intr-row,.coll-row,.pm-row,.cmdk-row,.ctx-item,.u-cursor):not([aria-busy="true"]):not(.is-pending):not(#tabs[aria-busy="true"] .tab){cursor:default!important}
+/* Chrome surfaces read as chrome: arrow over their text, not an I-beam. */
+html.desktop-app :is(#bar,#tabs,.nav-rail-foot,.toolbar,.mobile-tool-nav,.dock,.thead,.nav-rail-group-label){cursor:default}
+/* Text entry keeps the I-beam even inside a chrome toolbar. */
+html.desktop-app :is(input:not([type="checkbox"],[type="radio"],[type="range"],[type="button"],[type="submit"],[type="reset"],[type="file"],[type="color"]),textarea,[contenteditable="true"],[contenteditable=""]):not(:disabled){cursor:text}
+
+/* Chrome text is not selectable; values a tester copies are. */
+html.desktop-app :is(#bar,#tabs,.nav-rail-foot,.toolbar,.mobile-tool-nav,.dock,.thead,.nav-rail-group-label,button,[role="tab"],[role="menuitem"],label,summary,.badge){-webkit-user-select:none;user-select:none}
+html.desktop-app :is(input,textarea,[contenteditable="true"],[contenteditable=""],.conn-val,code,pre,kbd,samp){-webkit-user-select:text;user-select:text}
+
+/* No drag ghosts for chrome icons and links. */
+html.desktop-app :is(#bar,#tabs,.nav-rail-foot,.toolbar,.dock) :is(img,svg,a),html.desktop-app svg.icon{-webkit-user-drag:none}
+
+/* No web-style hover underline on links that sit in chrome. */
+html.desktop-app :is(#bar,#tabs,.nav-rail-foot,.toolbar) a:hover{text-decoration:none}

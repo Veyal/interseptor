@@ -225,3 +225,14 @@ export function shortLabel(s, max = 40) {
   const v = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   return v.length > max ? v.slice(0, max) + '…' : v;
 }
+
+// dismissOnDocumentClick decides whether a document-level click closes the open
+// menu. Clicks inside the menu never do, and neither does the click on the button
+// that opened it: that click reaches the document after the button's handler has
+// already opened the menu, so treating it as "outside" would close it at once.
+export function dismissOnDocumentClick(target, menuContains, trigger) {
+  if (!target) return true;
+  if (menuContains(target)) return false;
+  if (trigger && (trigger === target || (typeof trigger.contains === 'function' && trigger.contains(target)))) return false;
+  return true;
+}

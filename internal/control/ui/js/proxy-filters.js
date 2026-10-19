@@ -1,8 +1,6 @@
 // proxy-filters.js: pure view-model helpers for the Proxy panel (filter counts,
-// empty states, bulk verbs, inspector docking). No imports and no DOM access so
+// empty states, bulk verbs). No imports and no DOM access so
 // every function runs under `node --test`.
-
-export const DRAWER_MIN_WIDTH = 1100;
 
 // activeFilterCount mirrors the legacy anyFilter(): each simple filter counts
 // once and every exclusion counts individually. Hiding TLS failures is the
@@ -109,29 +107,6 @@ export function bulkVerbs(n) {
     { id: 'render', label: 'Render image', enabled: any, reason: 'Select at least one flow' },
     { id: 'delete', label: 'Delete', enabled: any, reason: 'Select at least one flow' },
   ];
-}
-
-// The saved value is the placement itself: 'drawer' = side drawer (right of the
-// history list), anything else (missing, legacy, corrupt) = bottom inspector.
-export function parseDockPref(raw) { return raw === 'drawer' ? 'drawer' : 'bottom'; }
-
-// DOCK_OPTIONS is the single mapping from a placement to its control: label,
-// sprite icon and tooltip. The control is a two-option segmented group, so each
-// button always names the placement it selects (never the current one).
-export const DOCK_OPTIONS = [
-  { value: 'drawer', label: 'Side drawer', icon: 'panel-right', title: 'Show the selected flow in the side drawer, beside the history list' },
-  { value: 'bottom', label: 'Bottom inspector', icon: 'panel-bottom', title: 'Show the selected flow in the inspector below the history list' },
-];
-
-// dockOptionStates marks exactly the active placement as pressed.
-export function dockOptionStates(placement) {
-  return DOCK_OPTIONS.map((o) => ({ ...o, pressed: o.value === placement }));
-}
-
-// resolveDock returns where the inspector lives: the side drawer needs room, so
-// narrow viewports always use the bottom inspector.
-export function resolveDock(pref, width) {
-  return pref === 'drawer' && width >= DRAWER_MIN_WIDTH ? 'drawer' : 'bottom';
 }
 
 // middleEllipsis shortens a long path to `max` characters by eliding the middle,

@@ -98,3 +98,12 @@ export function activityAppendix(items, { max = 300 } = {}) {
   const rows = shown.map((it) => '| ' + [stamp(it.ts || 0), 'AI', cell(it.tool), it.ok ? 'Success' : 'Error', cell(it.summary), cell(it.intent)].join(' | ') + ' |');
   return head + '| Time (UTC) | Actor | Tool | Outcome | Summary | Intent |\n| --- | --- | --- | --- | --- | --- |\n' + rows.join('\n') + '\n';
 }
+
+// visibleCategories lists the category chips the desktop skin shows: a chip with
+// no events is noise, so only categories that have some (or that are currently
+// switched on, so the filter can always be turned off) appear. counts is the
+// categoryCounts() result; active is a Set or array of category ids.
+export function visibleCategories(counts, active) {
+  const on = active instanceof Set ? active : new Set(active || []);
+  return ACTIVITY_CATEGORIES.filter((c) => (counts && counts[c.id] > 0) || on.has(c.id));
+}

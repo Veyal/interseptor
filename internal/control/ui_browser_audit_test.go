@@ -16,7 +16,7 @@ import (
 
 func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	repoRoot := filepath.Clean("../..")
-	manifestDir := filepath.Join(repoRoot, "docs/ui-audit/post-release-v2.1.0")
+	manifestDir := filepath.Join(repoRoot, "docs/ui-audit/release-v2.17.0-desktop")
 	reportBytes, err := os.ReadFile(filepath.Join(manifestDir, "manifest.json"))
 	if err != nil {
 		t.Fatalf("read retained visual audit manifest: %v", err)
@@ -507,7 +507,7 @@ func TestUIBrowserAuditPerformanceRetriesOnlyVisibleFlowPopup(t *testing.T) {
 	journey := text[start : start+end]
 	for _, want := range []string{
 		`page.locator('.tab[data-tab="proxy"]').click(timeout=2_000)`,
-		`if not page.locator("#flowModal").is_visible():`,
+		`if not page.locator("#flowDrawer").is_visible():`,
 		`page.locator('.tab[data-tab="proxy"]').click(force=True)`,
 		`invalidate_and_close_flow_popup(page)`,
 	} {

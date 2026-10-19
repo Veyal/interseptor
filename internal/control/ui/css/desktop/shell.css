@@ -1,0 +1,100 @@
+/* desktop/shell.css — the desktop window chrome (docs/desktop-design.md, Shell):
+   a 38px title toolbar, the 184px rail and the 24px status bar. Navigation is
+   unchanged: same rail items, order and groups. js/desktop-shell.js builds the
+   status bar and the intercept pill and moves the project switcher into the bar;
+   the controls that leave the bar (scope chip, split/close, Live chip, theme)
+   are hidden here and stay reachable from the status bar, the palette and the
+   native View menu. Scoped under html.desktop-app; a browser tab is unchanged.
+   Controls sit on a 4px grid: 28px toolbar controls, 20px status bar items. */
+
+/* ---- title toolbar ----
+   Three columns: the two side zones share the free space equally, so the
+   command field is centred on the window. In the native macOS app the title
+   bar is unified with this toolbar: the traffic lights sit over the start
+   zone, which reserves --titlebar-inset-left for them (set by the shell; 0 in
+   full screen and in a Chrome --app window, which keeps its own title bar). */
+html.desktop-app #bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,360px) minmax(0,1fr);align-items:center;gap:8px;padding:0 12px;background:var(--surface-0);border-bottom:1px solid var(--border-subtle);font-size:var(--text-ui)}
+html.desktop-app .fb-start{padding-left:var(--titlebar-inset-left,0px)}
+html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptStat,#icptCompact,#offlineBanner,.nav-rail-foot){display:none!important}
+html.desktop-app .fb-zone{gap:8px;min-width:0}
+/* The project switcher (the bar's existing project chip, moved to the left). */
+html.desktop-app #bar #mobileProjectChip{display:inline-flex;align-items:center;max-width:22ch;min-height:var(--control-h);height:var(--control-h);padding:0 8px;gap:6px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-primary);font:500 var(--text-ui)/1 var(--ui)}
+html.desktop-app #bar #mobileProjectChip:hover{background:var(--surface-hover)}
+html.desktop-app #bar #mobileProjectChip .icon{width:15px;height:15px;color:var(--text-muted)}
+html.desktop-app #bar #mobileProjectChip::after{content:"";width:5px;height:5px;margin:0 2px 3px 2px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:rotate(45deg)}
+/* The centred command field: 360px, inset. */
+html.desktop-app #cmdkBtn{width:100%;min-width:0;max-width:none;min-height:var(--control-h);height:var(--control-h);padding:0 8px 0 12px;gap:8px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);color:var(--text-muted);font-size:var(--text-ui);font-weight:400}
+html.desktop-app #cmdkBtn:hover{background:var(--surface-inset);border-color:var(--border-strong)}
+html.desktop-app #cmdkBtn .cmdk-label{color:var(--text-muted);gap:6px}
+html.desktop-app #cmdkBtn .cmdk-label .icon{width:14px;height:14px}
+/* The chord reads as one hint, "⌘K": the second key cancels the button's gap. */
+html.desktop-app #cmdkBtn kbd{margin-left:auto;min-width:0;padding:0;border:0;background:transparent;box-shadow:none;color:var(--text-muted);font:400 var(--text-ui)/20px var(--ui)}
+html.desktop-app #cmdkBtn kbd+kbd{margin-left:-7px}
+/* The intercept pill: the one intercept control in the chrome. */
+html.desktop-app .dsk-icpt-pill{display:inline-flex;align-items:center;gap:8px;flex:none;height:var(--control-h);padding:0 12px;border:1px solid var(--border-subtle);border-radius:999px;background:transparent;color:var(--text-secondary);font:500 var(--text-ui)/1 var(--ui);white-space:nowrap}
+html.desktop-app .dsk-icpt-pill:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .dsk-icpt-pill .icon{width:14px;height:14px}
+html.desktop-app .dsk-icpt-pill[aria-pressed="true"]{border-color:var(--warning-border);background:var(--warning-subtle);color:var(--warning)}
+html.desktop-app .dsk-icpt-pill[aria-pressed="true"]:hover{background:color-mix(in srgb,var(--warning) 18%,transparent)}
+html.desktop-app .dsk-icpt-pill[hidden]{display:none}
+/* The readiness ring: an icon button. */
+html.desktop-app .ctx-ring{justify-content:center;min-width:var(--control-h);min-height:var(--control-h);height:var(--control-h);padding:0 4px;border:0;border-radius:var(--radius-sm);background:transparent;font:500 var(--text-caption)/1 var(--ui)}
+html.desktop-app .ctx-ring:hover{background:var(--surface-hover)}
+html.desktop-app .ctx-ring-svg{width:18px;height:18px}
+html.desktop-app .ctx-ring-badge{background:var(--danger-subtle);color:var(--danger);font:600 var(--text-caption)/16px var(--ui)}
+html.desktop-app .ctx-identity .ui-select-trigger{min-height:var(--control-h-sm);height:var(--control-h-sm)}
+html.desktop-app .ctx-pop{top:calc(var(--titlebar-h) + 4px)}
+
+/* ---- rail ---- */
+html.desktop-app #tabs{width:var(--rail-w);gap:1px;padding:6px 8px 8px;background:var(--surface-0)}
+html.desktop-app .nav-rail-group{gap:1px}
+html.desktop-app .nav-rail-group+.nav-rail-group{margin-top:0}
+html.desktop-app .nav-rail-group-label{padding:12px 10px 4px;color:var(--text-muted);font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500}
+html.desktop-app .nav-rail-group:first-child .nav-rail-group-label{padding-top:6px}
+html.desktop-app .tab{min-height:30px;padding:0 8px 0 10px;gap:8px;border-radius:var(--radius-sm);color:var(--text-secondary);font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;letter-spacing:normal}
+html.desktop-app .tab .nav-icon{width:18px;height:18px;color:var(--text-muted)}
+html.desktop-app .tab:hover{color:var(--text-primary)}
+html.desktop-app .tab.active,html.desktop-app .tab.active .nav-icon{color:var(--text-primary)}
+html.desktop-app .tab .nav-dot{width:6px;height:6px}
+/* The rail keeps its width, labels and groups down to the 900px minimum window
+   (the web collapses it to icons at 721-900px): icons stay in one left-aligned
+   column, badges and dots at the row's end. */
+@media (min-width:721px) and (max-width:900px){
+  html.desktop-app .nav-rail-group-label{display:block}
+  html.desktop-app .tab{justify-content:flex-start}
+  html.desktop-app .tab .badge{position:static;margin-left:auto;font-size:var(--text-caption)}
+  html.desktop-app .tab .nav-dot{position:static;margin-left:auto}
+}
+/* Count badges only on Intercept (held) and Findings; Activity's unseen count
+   becomes the rail's dot. */
+html.desktop-app #actBadge:not(.u-hidden){width:6px;min-width:0;height:6px;padding:0;overflow:hidden;color:transparent;background:var(--accent)}
+
+/* ---- workspace: flush against the rail ---- */
+html.desktop-app #main{margin:0;border:0;border-left:1px solid var(--border-subtle);border-radius:0}
+html.desktop-app .panel{background:var(--surface-1)}
+html.desktop-app #canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}
+html.desktop-app .canvas-sash{flex-basis:1px;background:var(--border-subtle)}
+
+/* ---- status bar ---- */
+html.desktop-app #dskStatus{flex:none;display:flex;align-items:center;gap:0;height:calc(var(--statusbar-h) + env(safe-area-inset-bottom,0px));padding:0 4px env(safe-area-inset-bottom,0px);background:var(--surface-0);border-top:1px solid var(--border-subtle);color:var(--text-secondary);font:400 var(--text-caption)/var(--lh-caption) var(--ui);white-space:nowrap;overflow:hidden;-webkit-user-select:none;user-select:none;cursor:default}
+html.desktop-app .dsk-sb-spacer{flex:1 1 auto;min-width:8px}
+html.desktop-app .dsk-sb-item{display:inline-flex;align-items:center;gap:4px;flex:none;height:20px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:default}
+html.desktop-app .dsk-sb-item:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .dsk-sb-item[hidden]{display:none}
+html.desktop-app .dsk-sb-item .icon{width:12px;height:12px}
+html.desktop-app .dsk-sb-mono{font-family:var(--mono);font-size:var(--text-caption)}
+html.desktop-app .dsk-sb-dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);flex:none}
+html.desktop-app .dsk-sb-dot[data-state="ok"]{background:var(--success)}
+html.desktop-app .dsk-sb-dot[data-state="warn"]{background:var(--warning)}
+html.desktop-app .dsk-sb-dot[data-state="bad"]{background:var(--danger)}
+html.desktop-app .dsk-sb-item[data-tone="warn"]{color:var(--warning)}
+html.desktop-app .dsk-sb-item[data-tone="bad"]{color:var(--danger)}
+html.desktop-app .dsk-sb-sep{width:1px;height:12px;margin:0 4px;background:var(--border-subtle);flex:none}
+/* Popovers that hang from the status bar. */
+html.desktop-app .conn-pop{top:auto;bottom:calc(var(--statusbar-h) + 6px);right:8px}
+html.desktop-app .dsk-pop{position:fixed;bottom:calc(var(--statusbar-h) + 6px);z-index:var(--z-popover);display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 16px));padding:10px 12px;color:var(--text-primary);font-size:var(--text-ui);line-height:var(--lh-ui);white-space:normal}
+html.desktop-app .dsk-pop[hidden]{display:none}
+html.desktop-app .dsk-pop-title{font-size:var(--text-ui);font-weight:600}
+html.desktop-app .dsk-pop-row{display:flex;align-items:flex-start;gap:8px;color:var(--text-secondary)}
+html.desktop-app .dsk-pop-row .icon{flex:none;width:15px;height:15px;margin-top:2px;color:var(--warning)}
+html.desktop-app .dsk-pop-actions{display:flex;justify-content:flex-end;gap:6px}

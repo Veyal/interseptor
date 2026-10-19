@@ -1,0 +1,161 @@
+/* desktop/panel-proxy.css — History on the desktop skin (docs/desktop-design.md,
+   Panels). One 40px toolbar, one header row per inspector side, a compact note
+   field. Loaded after shell.css; every rule is scoped under html.desktop-app and
+   colours come only from desktop/tokens.css. The layout is built by
+   js/desktop-panel-proxy.js, which moves the web controls without changing them. */
+
+/* A neutral chip tint that reads on both themes (surface-2 is white in light). */
+html.desktop-app #panel-proxy{--chip-bg:color-mix(in srgb,var(--text-primary) 9%,transparent)}
+
+/* ---- toolbar: one row, no wrapping ---- */
+html.desktop-app #panel-proxy .proxy-toolbar{flex-wrap:nowrap;align-items:center;gap:6px;height:var(--toolbar-h);min-height:var(--toolbar-h);padding:0 var(--gutter);overflow:visible}
+html.desktop-app #panel-proxy .proxy-toolbar>*{flex:none}
+html.desktop-app #panel-proxy .proxy-toolbar>.spacer{flex:1 1 0;min-width:0}
+html.desktop-app #panel-proxy .proxy-toolbar>.search{flex:1 1 520px;min-width:240px;max-width:720px}
+/* The toolbar degrades with the panel's width, never by clipping (900 to 1920px
+   windows): first the filter tokens collapse to one count chip and Filters drops
+   its word, then the pills drop their chevrons. The search text keeps 120px. */
+html.desktop-app #panel-proxy .proxy-toolbar{container:dsk-proxy-tb/inline-size}
+html.desktop-app #panel-proxy .search .dsk-chip-count{flex:none;align-self:center;height:20px;margin:0 0 0 6px;padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--accent-subtle);color:var(--text-primary);font-size:12px;font-weight:500;line-height:20px;white-space:nowrap;display:none}
+html.desktop-app #panel-proxy .search .dsk-chip-count:hover{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+@container dsk-proxy-tb (max-width:880px){
+  html.desktop-app #panel-proxy .search #chips{display:none}
+  html.desktop-app #panel-proxy .search .dsk-chip-count:not([hidden]){display:inline-flex;align-items:center}
+  html.desktop-app #panel-proxy .search #fSearch{min-width:120px}
+  html.desktop-app #panel-proxy #filtersBtn{gap:0;width:auto;min-width:var(--control-h);padding:0 6px;font-size:0}
+  html.desktop-app #panel-proxy #filtersBtn .icon{width:15px;height:15px}
+  html.desktop-app #panel-proxy #filtersBtn .filters-count{margin-left:4px;font-size:var(--text-caption)}
+}
+@container dsk-proxy-tb (max-width:760px){
+  html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger{padding:0 8px}
+  html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger>.icon,
+  html.desktop-app #panel-proxy .dsk-pill .ui-select-caret{display:none}
+  html.desktop-app #panel-proxy .search .ui-select-search .ui-select-trigger{padding:0 4px 0 8px}
+}
+/* The one-time scope tip sits in the Filters popover's scope group. */
+html.desktop-app #panel-proxy #scopeCoach{flex:0 0 100%;color:var(--text-secondary);font-size:var(--text-ui)}
+
+/* ---- search field: scope prefix, filter tokens, text ---- */
+html.desktop-app #panel-proxy .proxy-toolbar .search{align-items:stretch;overflow:hidden}
+html.desktop-app #panel-proxy .search .ui-select-search .ui-select-trigger{gap:4px;padding:0 6px 0 10px;min-width:0;color:var(--text-secondary);font-weight:500}
+html.desktop-app #panel-proxy .search .ui-select-search .ui-select-value{font-weight:500}
+html.desktop-app #panel-proxy .search #fSearch{flex:1 1 90px;min-width:90px;height:100%}
+html.desktop-app #panel-proxy .search #chips{flex:0 1 auto;min-width:0;max-width:62%;flex-wrap:nowrap;align-items:center;gap:4px;padding:0 0 0 6px;overflow-x:auto;scrollbar-width:none}
+html.desktop-app #panel-proxy .search #chips::-webkit-scrollbar{display:none}
+html.desktop-app #panel-proxy .search #chips .chip{flex:none;gap:2px;height:20px;padding:0 2px 0 6px;border:0;border-radius:var(--radius-xs);background:var(--chip-bg);color:var(--text-secondary);font-size:12px;line-height:20px;white-space:nowrap}
+html.desktop-app #panel-proxy .search #chips .chip b{color:var(--text-primary);font-weight:500}
+html.desktop-app #panel-proxy .search #chips .chip.not b{color:var(--danger)}
+html.desktop-app #panel-proxy .search #chips .chip .x{width:16px;height:16px;background:transparent;color:var(--text-muted);border-radius:var(--radius-xs)}
+html.desktop-app #panel-proxy .search #chips .chip .x:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-proxy .search #chips .chip .x .icon{width:11px;height:11px}
+/* Method, status and the search text already show in their own controls. */
+html.desktop-app #panel-proxy .search #chips .chip:has([data-clear="search"]),
+html.desktop-app #panel-proxy .search #chips .chip:has([data-clear="method"]),
+html.desktop-app #panel-proxy .search #chips .chip:has([data-clear="status"]){display:none}
+html.desktop-app #panel-proxy .search #chips .chip-clear{flex:none;height:20px;padding:0 6px;border:0;border-radius:var(--radius-xs);background:transparent;color:var(--text-muted);font-size:12px;font-weight:500;white-space:nowrap}
+html.desktop-app #panel-proxy .search #chips .chip-clear:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-proxy .search #chips .chip-clear .icon{display:none}
+html.desktop-app #panel-proxy #activeFilterBar{display:none!important}
+
+/* ---- Method and Status pills ---- */
+html.desktop-app #panel-proxy .proxy-toolbar .dsk-pill{align-self:center}
+html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger{height:var(--control-h);min-height:var(--control-h);gap:4px;padding:0 6px 0 10px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);font-weight:500}
+html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger:hover:not(:disabled){background:var(--surface-hover);border-color:var(--border-subtle);color:var(--text-primary)}
+html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger[aria-expanded=true]{background:var(--surface-hover);border-color:var(--border-strong)}
+html.desktop-app #panel-proxy .dsk-pill:not(.is-set) .ui-select-value{font-size:0}
+html.desktop-app #panel-proxy .dsk-pill:not(.is-set) .ui-select-value::before{content:attr(data-pill);font-size:var(--text-ui)}
+html.desktop-app #panel-proxy .dsk-pill.is-set .ui-select-trigger{background:var(--accent-subtle);border-color:color-mix(in srgb,var(--accent) 35%,transparent);color:var(--text-primary)}
+
+/* ---- Filters button, Pause, Views, more ---- */
+html.desktop-app #panel-proxy #filtersBtn{border:1px solid var(--border-subtle);color:var(--text-secondary)}
+html.desktop-app #panel-proxy #filtersBtn:hover{border-color:var(--border-subtle)}
+html.desktop-app #panel-proxy #filtersBtn[aria-expanded="true"]{background:var(--surface-hover);border-color:var(--border-strong);color:var(--text-primary)}
+html.desktop-app #panel-proxy #freezeBtn,html.desktop-app #panel-proxy #viewsBtn{color:var(--text-secondary)}
+html.desktop-app #panel-proxy #freezeBtn[aria-pressed="true"]{background:var(--warning-subtle);color:var(--warning)}
+/* Source buttons whose own menus anchor to more: kept in the DOM, invisible, and
+   not clickable, stacked exactly where more is. */
+html.desktop-app #panel-proxy .dsk-anchor,
+html.desktop-app #panel-proxy .dsk-anchor-stack{position:absolute;left:0;top:0;width:var(--control-h);height:var(--control-h);margin:0;padding:0;opacity:0;pointer-events:none;overflow:visible}
+html.desktop-app #panel-proxy .dsk-anchor-stack>*{position:absolute;left:0;top:0;width:var(--control-h);height:var(--control-h);margin:0;padding:0;min-width:0}
+html.desktop-app #panel-proxy .dsk-anchor-stack button{width:var(--control-h);height:var(--control-h);min-width:0;padding:0}
+
+/* ---- Filters popover: opens under its button ---- */
+html.desktop-app #panel-proxy #proxyFilters{position:absolute;z-index:var(--z-popover);gap:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-popover);max-height:calc(100% - 64px);overflow:auto}
+html.desktop-app #panel-proxy #proxyFilters[hidden]{display:none}
+html.desktop-app #panel-proxy #proxyFilters .proxy-filters-row{gap:6px}
+html.desktop-app #panel-proxy #proxyFilters .proxy-filters-row::before{flex:0 0 100%;color:var(--text-muted);font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500}
+html.desktop-app #panel-proxy #proxyFilters .dsk-filters-scope::before{content:"Scope"}
+html.desktop-app #panel-proxy #proxyFilters .dsk-filters-show::before{content:"Show and hide"}
+html.desktop-app #panel-proxy #proxyFilters .uisw{background:var(--surface-inset)}
+html.desktop-app #panel-proxy #proxyFilters :is(.uisw.on,.uisw[aria-pressed="true"]){background:var(--surface-selected)}
+html.desktop-app #panel-proxy #proxyFilters #scopeEdit{background:transparent;border-color:transparent;color:var(--accent)}
+html.desktop-app #panel-proxy #proxyFilters #scopeEdit:hover{background:var(--surface-hover)}
+html.desktop-app #panel-proxy #proxyFilters .tagbar{gap:6px}
+html.desktop-app #panel-proxy #proxyFilters .flow-search-disc summary{color:var(--text-secondary);font-size:var(--text-ui)}
+html.desktop-app #panel-proxy #proxyFilters textarea{background:var(--surface-inset)}
+
+/* ---- TLS diagnosis: the spec's inline callout (components.css): tinted, a 1px
+   tinted border, one line, ghost actions ---- */
+html.desktop-app #panel-proxy #tlsDiagBanner:not(.u-hidden){flex:none;display:block;min-height:0;padding:3px 4px 3px 10px}
+html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-head{flex-wrap:nowrap;gap:6px;width:100%;min-height:24px}
+html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-head>:first-child{flex:none;color:var(--text-primary);font-weight:500}
+html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-head>:first-child[style]{color:var(--text-primary)!important}
+html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-detail{flex:1 1 0;min-width:0;color:var(--text-secondary);font-size:var(--text-ui)}
+html.desktop-app #panel-proxy #tlsDiagBanner .icon{color:var(--warning)}
+html.desktop-app #panel-proxy #tlsDiagBanner .btn{flex:none;height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0 8px;border:0;background:transparent;color:var(--text-secondary);font-size:var(--text-ui);font-weight:500}
+html.desktop-app #panel-proxy #tlsDiagBanner .btn:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-proxy #tlsDiagBanner .btn.btn-compact{width:var(--control-h-sm);padding:0;justify-content:center;color:var(--text-muted)}
+html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-more{padding:6px 0 4px;color:var(--text-secondary);font-size:var(--text-ui)}
+
+/* ---- table ---- */
+html.desktop-app #panel-proxy .thead{height:var(--row-h)}
+/* Tags share one chip: user tags, the collection marker and the agent marker. */
+html.desktop-app #panel-proxy .tr-path :is(.coll-tag,.ai-tag,.flowtag){display:inline-block;height:18px;margin-left:6px;padding:0 6px;line-height:18px;vertical-align:middle;background:var(--chip-bg);color:var(--text-secondary);font-size:var(--text-caption);font-weight:500}
+html.desktop-app #panel-proxy .tr-path .coll-tag{text-transform:lowercase}
+/* Held by intercept is the amber state: a tint and an amber flag, no edge bar. */
+html.desktop-app #panel-proxy .trow.pending{border-left-color:transparent;background:var(--warning-subtle)}
+html.desktop-app #panel-proxy .trow.pending:hover{background:color-mix(in srgb,var(--warning-subtle),var(--text-primary) 4%)}
+html.desktop-app #panel-proxy .tr-held .icon{color:var(--warning)}
+
+/* ---- inspector: one header row per side ---- */
+html.desktop-app #panel-proxy #inspect .pane-head{flex-wrap:nowrap;height:var(--pane-header-h);min-height:var(--pane-header-h);padding:0 8px 0 12px;gap:8px;overflow:visible}
+html.desktop-app #panel-proxy #inspect .pane-head>*{flex:none}
+html.desktop-app #panel-proxy #inspect .pane-head>.spacer{flex:1 1 0;min-width:0}
+html.desktop-app #panel-proxy #inspect .pane-head .lbl{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:600;color:var(--text-primary);letter-spacing:normal}
+html.desktop-app #panel-proxy #inspect .pane-head #resStatus{font-size:var(--text-ui);font-weight:500}
+html.desktop-app #panel-proxy #inspect .pane-head .btn{min-height:var(--control-h-sm);height:var(--control-h-sm);padding:0 8px;color:var(--text-secondary)}
+html.desktop-app #panel-proxy #inspect .pane-head .btn:hover{color:var(--text-primary)}
+html.desktop-app #panel-proxy #inspect .pane-head .btn.dsk-more{width:var(--control-h-sm);min-width:var(--control-h-sm);height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0}
+html.desktop-app #panel-proxy #inspect .dsk-more-wrap{width:var(--control-h-sm);height:var(--control-h-sm)}
+html.desktop-app #panel-proxy #inspect .dsk-anchor-stack,
+html.desktop-app #panel-proxy #inspect .dsk-anchor-stack>*{width:var(--control-h-sm);height:var(--control-h-sm)}
+html.desktop-app #panel-proxy #inspect .pane-head :is(#inspectSendRepeater,#inspectSendIntruder) .icon{display:none}
+html.desktop-app #panel-proxy #inspect .pane-head #resStatus{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A narrow inspector side (a 900px window) keeps every control on its one row:
+   Repeater and Intruder drop to icons, the views tighten, the status truncates. */
+html.desktop-app #panel-proxy #inspect .pane{container:dsk-insp/inline-size}
+@container dsk-insp (max-width:500px){
+  html.desktop-app #panel-proxy #inspect .pane-head{gap:4px;padding:0 6px 0 10px}
+  html.desktop-app #panel-proxy #inspect .pane-head :is(#inspectSendRepeater,#inspectSendIntruder){width:var(--control-h-sm);min-width:var(--control-h-sm);padding:0;justify-content:center;font-size:0}
+  html.desktop-app #panel-proxy #inspect .pane-head :is(#inspectSendRepeater,#inspectSendIntruder) .icon{display:inline-block;width:15px;height:15px}
+  html.desktop-app #inspect .seg>button{padding-left:7px;padding-right:7px}
+  html.desktop-app #inspect .seg .dsk-seg-more:not(.on) .dsk-seg-more-label{display:none}
+}
+/* Views: Pretty, Raw, Hex, then the More menu. */
+html.desktop-app #inspect .seg button.dsk-folded{display:none}
+html.desktop-app #inspect .seg .dsk-seg-more{display:inline-flex;align-items:center;gap:2px}
+html.desktop-app #inspect .seg .dsk-seg-more[hidden]{display:none}
+html.desktop-app #inspect .seg .dsk-seg-more .icon{width:12px;height:12px;color:var(--text-muted)}
+html.desktop-app #inspect .seg{display:inline-flex}
+html.desktop-app #inspect .seg>button{white-space:nowrap}
+
+/* ---- note: compact until used ---- */
+html.desktop-app #panel-proxy #noteBar{flex-wrap:nowrap;gap:6px;min-height:32px;padding:3px var(--gutter);border-top:1px solid var(--border-subtle);background:var(--surface-1)}
+html.desktop-app #panel-proxy #noteBar .lbl{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:var(--text-ui);font-weight:500;cursor:default}
+html.desktop-app #panel-proxy #noteBar .lbl .icon{width:15px;height:15px}
+html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within){gap:0}
+html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) .lbl{display:none}
+html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) #noteInput{flex:0 0 auto;width:112px;height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0 8px;background:transparent;border-color:transparent;color:var(--text-muted);cursor:pointer;font-size:var(--text-ui)}
+html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) #noteInput:hover{background:var(--surface-hover)}
+html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) #noteInput::placeholder{color:var(--text-secondary)}
+html.desktop-app #panel-proxy #noteBar #noteSaved{font-size:var(--text-caption)}

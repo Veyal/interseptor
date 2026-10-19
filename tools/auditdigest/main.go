@@ -1,5 +1,5 @@
 // Command auditdigest recomputes the runtime identity recorded in
-// docs/ui-audit/post-release-v2.1.0/manifest.json so a release never needs a
+// docs/ui-audit/release-v2.17.0-desktop/manifest.json so a release never needs a
 // hand-copied hash. The algorithm mirrors
 // TestUIVisualAuditEvidenceMatchesCurrentRuntime in internal/control.
 //
@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	manifestRel = "docs/ui-audit/post-release-v2.1.0/manifest.json"
+	manifestRel = "docs/ui-audit/release-v2.17.0-desktop/manifest.json"
 	harnessRel  = "scripts/ui_browser_audit.py"
 )
 

@@ -1,13 +1,14 @@
 // cmdk-actions.js — palette entries added on top of app.js's base command list:
 // prefix-mode starters, the reversible actions of the command model (scope,
 // readiness, export, blockers, single-key switch), legacy-dialog reachability
-// and the `>` selection verbs. Everything here either navigates, opens a dialog
-// or performs a toggle that can be reversed from the same place; nothing sends,
-// deletes or scans.
+// the panel actions (PANEL_ACTIONS) and the `>` selection verbs. Everything here
+// either navigates, opens a dialog or performs a toggle that can be reversed from
+// the same place; nothing sends, deletes or scans: a panel action that would
+// (Run scan, Clear results) only takes you to its button and focuses it.
 import { $, state, toast, openModal, openFlow } from './core.js';
 import { getShellApi } from './shell-hooks.js';
 import { COPY_AS_KINDS, copyAs } from './copyas.js';
-import { LEGACY_MODALS } from './cmdk-logic.js';
+import { LEGACY_MODALS, PANEL_ACTIONS, legacyModalSub } from './cmdk-logic.js';
 import { setSingleKeyShortcuts, singleKeyShortcutsOn } from './keyboard.js';
 
 const NEED_FLOW = 'select a flow in History first';
@@ -65,9 +66,28 @@ export function legacyModalCommands() {
     const how = m.how || {};
     if (how.cmd || how.transient) continue;
     const run = how.click ? () => clickLater(how.click, how.tab) : () => legacyOpen(how.open);
-    out.push({ t: m.title, kw: m.kw || '', group: 'Dialogs', sub: m.id, run });
+    out.push({ t: m.title, kw: m.kw || '', group: 'Dialogs', sub: legacyModalSub(m), run });
   }
   return out;
+}
+
+// panelActionCommands: open the panel, then press, focus or expand its own
+// control once the palette has closed and handed focus back.
+export function panelActionCommands() {
+  return PANEL_ACTIONS.map((a) => ({
+    t: a.t, kw: a.kw, group: 'Actions', sub: a.tab.charAt(0).toUpperCase() + a.tab.slice(1),
+    run: () => {
+      goTab(a.tab);
+      setTimeout(() => {
+        const el = document.querySelector(a.sel);
+        if (!el) { toast('Open the relevant view first'); return; }
+        if (a.how === 'open') { el.open = true; el.querySelector('summary')?.focus(); el.scrollIntoView?.({ block: 'nearest' }); return; }
+        if (a.how === 'focus') { el.scrollIntoView?.({ block: 'nearest' }); el.focus(); return; }
+        if (el.disabled) { toast('Not available right now'); return; }
+        el.click();
+      }, 60);
+    },
+  }));
 }
 
 export function builtinActions() {
@@ -86,6 +106,7 @@ export function builtinActions() {
       kw: 'keyboard hotkeys wcag letters shortcuts switch', group: 'Actions',
       run: () => { const on = setSingleKeyShortcuts(!singleKeyShortcutsOn()); toast('Single-key shortcuts ' + (on ? 'on' : 'off')); },
     },
+    ...panelActionCommands(),
     ...legacyModalCommands(),
   ];
 }

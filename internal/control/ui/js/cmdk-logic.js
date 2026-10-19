@@ -274,3 +274,30 @@ export const LEGACY_MODALS = [
   { id: 'setupModal', title: 'Run setup wizard', kw: 'setup wizard onboarding', how: { cmd: 'Run setup wizard' } },
   { id: 'imgLightbox', how: { transient: 'image zoom opened from an evidence thumbnail' } },
 ];
+
+// legacyModalSub is the right-hand label of a dialog row: the panel the dialog
+// belongs to ("Findings") or "Dialog", never the internal element id.
+export function legacyModalSub(m) {
+  const tab = m && m.how && m.how.tab;
+  return tab ? tab.charAt(0).toUpperCase() + tab.slice(1) : 'Dialog';
+}
+
+// PANEL_ACTIONS: panel controls the palette reaches directly. Each entry opens
+// its panel, then presses (`click`), focuses (`focus`) or expands (`open`) the
+// panel's own control, so the panel's own confirmations and state apply. An
+// action that changes or deletes data (run a scan, clear results) is `focus`:
+// the palette takes you to the button and Enter there does it.
+export const PANEL_ACTIONS = [
+  { t: 'Proxy: Filters', kw: 'history filters source notes tags saved searches popover', tab: 'proxy', sel: '#filtersBtn', how: 'click' },
+  { t: 'Proxy: Hide TLS failures (on or off)', kw: 'history tls failed handshake hide show filter', tab: 'proxy', sel: '#hideTlsFilter', how: 'click' },
+  { t: 'Proxy: Pause or resume live history', kw: 'history freeze pause resume live updates stop scrolling', tab: 'proxy', sel: '#freezeBtn', how: 'click' },
+  { t: 'Proxy: Add a note to the selected flow', kw: 'history flow note comment annotate', tab: 'proxy', sel: '#noteInput', how: 'focus' },
+  { t: 'Intercept: Match & Replace rules', kw: 'intercept match replace rewrite rules automatic', tab: 'intercept', sel: 'details.icpt-mr', how: 'open' },
+  { t: 'Repeater: Import Postman collection', kw: 'repeater postman import collection environment json', tab: 'repeater', sel: '#repPostmanImport', how: 'click' },
+  { t: 'Collections: New environment', kw: 'collections environment create variables', tab: 'collections', sel: '#collEnvNew', how: 'click' },
+  { t: 'Collections: Console (show or hide)', kw: 'collections console log scripts output', tab: 'collections', sel: '#collConsoleBtn', how: 'click' },
+  { t: 'Scanner: Run scan', kw: 'scanner passive scan run check issues', tab: 'scanner', sel: '#scanRun', how: 'focus' },
+  { t: 'Scanner: Clear results', kw: 'scanner clear delete results issues reset', tab: 'scanner', sel: '#scanClear', how: 'focus' },
+  { t: 'Map: Expand or collapse all', kw: 'map tree expand collapse all endpoints', tab: 'map', sel: '#mapExpand', how: 'click' },
+  { t: 'Map: Rebuild from history', kw: 'map rebuild refresh endpoints history', tab: 'map', sel: '#mapRefresh', how: 'click' },
+];

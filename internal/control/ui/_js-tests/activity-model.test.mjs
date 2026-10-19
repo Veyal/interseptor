@@ -113,3 +113,14 @@ test('the text filter matches tool, summary and intent', () => {
   assert.deepEqual(filterActivity(items, { intent: 'example.com' }).map((i) => i.id), [1]);
   assert.deepEqual(filterActivity(items, { intent: 'record' }).map((i) => i.id), [2]);
 });
+
+import { visibleCategories } from '../js/activity-model.js';
+
+test('visibleCategories hides empty categories unless they are switched on', () => {
+  const counts = { proxy: 4, agent: 0, findings: 1, scope: 0, settings: 0 };
+  assert.deepEqual(visibleCategories(counts, new Set()).map((c) => c.id), ['proxy', 'findings']);
+  assert.deepEqual(visibleCategories(counts, new Set(['scope'])).map((c) => c.id), ['proxy', 'findings', 'scope']);
+  assert.deepEqual(visibleCategories(counts, ['agent']).map((c) => c.id), ['proxy', 'agent', 'findings']);
+  assert.deepEqual(visibleCategories({ proxy: 0, agent: 0, findings: 0, scope: 0, settings: 0 }, new Set()), []);
+  assert.deepEqual(visibleCategories(null, null), []);
+});

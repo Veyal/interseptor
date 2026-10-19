@@ -19,7 +19,7 @@ var foundationStylesheets = []string{
 	"app.css", "surfaces.css", "findings.css",
 	"workbench.css", "primitives.css", "shell.css", "flow.css",
 	"panel-proxy.css", "panel-tools.css", "panel-scan.css", "panel-misc.css",
-	"settings.css", "report.css", "canvas.css", "mobile.css",
+	"settings.css", "report.css", "canvas.css", "desktop.css", "mobile.css",
 }
 
 // newFoundationStylesheets are the scaffolded files that later packages fill.
@@ -36,7 +36,7 @@ var foundationRegions = []string{
 // rest are reserved for the shared components that adopt them.
 var foundationIcons = []string{
 	"scope", "identity", "evidence", "attach", "status-done", "status-todo", "alert",
-	"link", "diff", "copy", "columns", "chevron", "panel-right",
+	"link", "diff", "copy", "columns", "chevron",
 	"close", "plus", "finding", "target",
 }
 

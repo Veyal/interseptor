@@ -337,3 +337,39 @@ func TestUICmdkStylesCoverNewClassesAndPhoneSheet(t *testing.T) {
 		}
 	}
 }
+
+// Every palette panel action points at a control that exists, in the panel it names.
+func TestUICmdkPanelActionsTargetRealControls(t *testing.T) {
+	logic := readUIAsset(t, "js/cmdk-logic.js")
+	index := readUIAsset(t, "index.html")
+	re := regexp.MustCompile(`\{ t: '([^']+)', kw: '[^']+', tab: '([a-z]+)', sel: '([^']+)', how: '([a-z]+)' \}`)
+	rows := re.FindAllStringSubmatch(logic, -1)
+	if len(rows) < 12 {
+		t.Fatalf("parsed %d panel actions, want at least 12", len(rows))
+	}
+	for _, r := range rows {
+		panel := strings.Index(index, `id="panel-`+r[2]+`"`)
+		if panel < 0 {
+			t.Errorf("%s: no panel %s", r[1], r[2])
+			continue
+		}
+		next := strings.Index(index[panel+1:], `class="panel"`)
+		body := index[panel:]
+		if next > 0 {
+			body = index[panel : panel+1+next]
+		}
+		sel := r[3]
+		want := `id="` + strings.TrimPrefix(sel, "#") + `"`
+		if strings.HasPrefix(sel, "details.") {
+			want = `<details class="` + strings.TrimPrefix(sel, "details.")
+		}
+		if !strings.Contains(body, want) {
+			t.Errorf("%s: %s is not in the %s panel", r[1], sel, r[2])
+		}
+	}
+	actions := executableJS(readUIAsset(t, "js/cmdk-actions.js"))
+	requireUIContains(t, actions, "...panelActionCommands()", "sub: legacyModalSub(m)")
+	if strings.Contains(actions, "sub: m.id") {
+		t.Error("a dialog row must not show its internal element id")
+	}
+}

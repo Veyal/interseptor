@@ -1,0 +1,60 @@
+/* desktop/panel-activity.css — the Activity panel on desktop (docs/desktop-design.md,
+   Panels). One toolbar row (filter, a segmented category filter that lists only
+   categories with events, count, actions); a calm timeline (type icon, tool,
+   summary, muted tabular time); a centred empty state. Every rule is scoped under
+   html.desktop-app; colours come from desktop/tokens.css. js/desktop-panel-activity.js
+   moves the category group into the toolbar (desktop hosts only). */
+
+/* ---- toolbar ---- */
+html.desktop-app #panel-activity>.toolbar{gap:8px}
+html.desktop-app .act-filter{flex:0 1 240px;width:auto;min-width:120px;margin-left:0}
+html.desktop-app #actCount{flex:none;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+html.desktop-app #actCount:empty{display:none}
+html.desktop-app .act-clear{margin-left:0}
+/* Category filter: the segmented control (inset track, raised thumb). */
+html.desktop-app .act-chips{display:inline-flex;flex:none;flex-wrap:nowrap;gap:0;min-height:var(--control-h-sm);padding:2px;border:0;border-radius:var(--radius-sm);background:var(--surface-inset);box-shadow:inset 0 0 0 1px var(--border-subtle)}
+html.desktop-app .act-chips[hidden]{display:none}
+html.desktop-app .act-chip{min-height:20px;gap:6px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--text-secondary);font-size:var(--text-ui);font-weight:500;line-height:20px}
+html.desktop-app .act-chip:hover{background:transparent;color:var(--text-primary)}
+html.desktop-app .act-chip.on{border:0;background:var(--surface-2);color:var(--text-primary);box-shadow:var(--hairline-shadow)}
+html.desktop-app[data-theme="light"] .act-chip.on{background:var(--surface-1)}
+html.desktop-app .act-chip-n{font-family:var(--ui);font-size:var(--text-caption);font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app .act-attention{margin:8px var(--gutter);padding:6px 10px;gap:8px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);font-size:var(--text-ui)}
+html.desktop-app .act-attention strong{color:var(--warning);font-weight:600}
+html.desktop-app .act-attention[hidden]{display:none}
+html.desktop-app .act-new-pill{margin:8px 0;min-height:var(--control-h-sm);border-radius:999px;background:var(--accent-subtle);border-color:transparent;color:var(--accent);font-weight:500}
+
+/* ---- empty state: centred in the pane ---- */
+html.desktop-app #actFeed{display:flex;flex-direction:column}
+html.desktop-app #actFeed>.state-empty{flex:1;align-self:stretch;justify-content:center;align-items:center;text-align:center}
+html.desktop-app #actFeed>.state-empty-hint{max-width:46ch}
+
+/* ---- timeline: a grid, so every row lines up ---- */
+html.desktop-app .act-day-h{padding:6px 16px;border-bottom:1px solid var(--border-subtle);background:var(--surface-1);font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500;letter-spacing:normal;text-transform:none;color:var(--text-muted)}
+html.desktop-app .act-day-n{margin-left:6px;font-family:var(--ui);color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app .act-row{display:grid;grid-template-columns:16px 24px 168px minmax(0,1.5fr) minmax(0,1fr) 104px 44px 112px;align-items:center;column-gap:10px;row-gap:0;min-height:32px;padding:4px 16px;border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent);font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app .act-row.act-grp{border-top:0;margin-top:6px}
+html.desktop-app .act-row.act-expandable:hover,html.desktop-app .act-row.act-jump:hover{background:var(--surface-hover)}
+html.desktop-app .act-row.act-expandable.expanded{background:var(--surface-hover)}
+/* Success is the quiet default; only a failure is marked (the red word, below). */
+html.desktop-app .act-row .ok{display:none}
+html.desktop-app .act-type{grid-column:1;display:inline-flex;width:16px;color:var(--text-muted)}
+html.desktop-app .act-type .icon{width:16px;height:16px}
+html.desktop-app .act-actor{grid-column:2;gap:0;padding:0;border:0;border-radius:0;font-size:var(--text-caption);font-weight:400;color:var(--text-muted)}
+html.desktop-app .act-actor .icon{display:none}
+html.desktop-app .act-tool{grid-column:3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--ui);font-size:var(--text-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .act-caret{width:12px;height:12px;margin-left:4px;color:var(--text-muted)}
+html.desktop-app .act-cat{display:none}
+html.desktop-app .act-sum{grid-column:4;min-width:0;max-width:none;font-family:var(--ui);font-size:var(--text-ui);color:var(--text-primary)}
+html.desktop-app .act-res{grid-column:5;min-width:0;font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app .act-target{grid-column:6;gap:4px;font-size:var(--text-ui);color:var(--text-secondary);text-decoration:none;white-space:nowrap}
+html.desktop-app .act-row:hover .act-target{color:var(--text-primary);text-decoration:underline}
+html.desktop-app .act-outcome{grid-column:7;font-size:var(--text-ui);font-weight:500}
+html.desktop-app .act-outcome.is-ok{display:none}
+html.desktop-app .act-outcome.is-fail{color:var(--danger)}
+html.desktop-app .act-meta{grid-column:8;min-width:0;text-align:right;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+html.desktop-app .act-intent{grid-column:3 / -1;grid-row:2;margin:0;font-style:normal;font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app .act-intent .icon{display:none}
+html.desktop-app .act-day>.act-detail{margin:0 16px 8px 66px}
+html.desktop-app .act-detail{padding:8px 10px;border-color:var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);font-size:var(--text-ui)}
+html.desktop-app .act-detail b{font-size:var(--text-caption);font-weight:500;letter-spacing:normal;text-transform:none;color:var(--text-muted)}

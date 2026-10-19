@@ -9,7 +9,10 @@ test('five destinations map to the rail groups and cover every panel once', () =
   assert.deepEqual(DOCK_DESTINATIONS.map((d) => d.id), ['capture', 'test', 'recon', 'report', 'more']);
   const panels = DOCK_DESTINATIONS.flatMap((d) => d.panels);
   assert.equal(new Set(panels).size, panels.length);
-  assert.deepEqual([...panels].sort(), ['activity', 'findings', 'intercept', 'intruder', 'map', 'notes', 'proxy', 'repeater', 'scanner', 'settings']);
+  // Every rail panel has a dock destination; Collections sits with Repeater and
+  // Intruder in Test, as on the rail (it used to be reachable only by the palette).
+  assert.deepEqual([...panels].sort(), ['activity', 'collections', 'findings', 'intercept', 'intruder', 'map', 'notes', 'proxy', 'repeater', 'scanner', 'settings']);
+  assert.equal(destinationForPanel('collections'), 'test');
 });
 
 test('destinationForPanel resolves panels and rejects unknown names', () => {

@@ -154,6 +154,7 @@
 .find-xch{border:1px solid var(--line2);border-radius:var(--r-md);background:var(--bg1);overflow:hidden;min-width:0}
 .find-xchhd{display:flex;align-items:center;gap:8px;padding:6px 9px;font:var(--fs-xs) var(--mono);color:var(--fg2);background:var(--bg2);list-style:none;cursor:pointer;min-width:0}
 .find-xchhd::-webkit-details-marker{display:none}
+.find-xchhd::before{display:none}
 .find-xchhd:hover{background:var(--bg3)}
 .find-xch-caret{width:11px;height:11px;flex:none;color:var(--fg3)}
 .find-xch[open] .find-xch-caret{transform:rotate(180deg)}
@@ -179,7 +180,10 @@
 .find-workspace .find-shot .find-doc-img{display:block;width:100%;aspect-ratio:16/10;max-height:none;object-fit:cover;object-position:top left}
 .find-shot figcaption{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font:var(--fs-xs) var(--mono);color:var(--fg3)}
 .find-shot-cap{color:var(--fg2);overflow-wrap:anywhere}
-.find-rail{grid-column:2;grid-row:1;min-width:0;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.find-rail{grid-column:2;grid-row:1;min-width:0;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md);overflow:clip}
+/* clip, not hidden: a scroll container's automatic minimum height is 0, which let
+   the narrow-layout grid row collapse to 2px and the opened rail paint over the
+   document. */
 .find-rail-toggle{display:none;width:100%;justify-content:flex-start;gap:8px;border:0;border-radius:0;background:none}
 .find-rail-caret{width:11px;height:11px;flex:none}
 .find-rail.is-open .find-rail-caret{transform:rotate(180deg)}
@@ -199,6 +203,7 @@
 .find-prep{border-top:1px solid var(--line)}
 .find-prep-sum{display:flex;align-items:center;gap:8px;padding:9px 12px;font:var(--fs-xs) var(--mono);color:var(--fg2);cursor:pointer;list-style:none}
 .find-prep-sum::-webkit-details-marker{display:none}
+.find-prep-sum::before{display:none}
 .find-prep-sum:hover{background:var(--bg2)}
 .find-prep-caret{width:11px;height:11px;flex:none;color:var(--fg3)}
 .find-prep[open] .find-prep-caret{transform:rotate(180deg)}

@@ -1,0 +1,138 @@
+/* desktop/panel-collections.css — the Collections panel on desktop
+   (docs/desktop-design.md, Panels). The toolbar keeps the collection picker, the
+   environment picker and Run; Import, Export, Variables, New environment,
+   Environments and Console live in one "More" menu (js/desktop-panel-collections.js
+   re-parents the real buttons). The tree uses the navigation selected state (a
+   rounded left marker plus a tint) in sans type with neutral methods; the open
+   request is a document tab over the editor; a blocking error shows once, inline
+   in the response pane. Shared bar and editor rules are in panel-tools.css.
+   Scoped under html.desktop-app; tokens only. */
+
+html.desktop-app #panel-collections{background:var(--surface-1)}
+
+/* ---- toolbar: picker, +, collection actions · env, Run, More ---- */
+html.desktop-app #panel-collections .coll-bar{flex-wrap:nowrap;gap:6px;overflow:hidden}
+html.desktop-app #panel-collections .coll-field{flex:0 1 220px;min-width:140px}
+html.desktop-app #panel-collections .coll-field .ui-select{max-width:none;width:100%}
+html.desktop-app #panel-collections .coll-env{flex:0 1 auto;min-width:0;gap:6px}
+html.desktop-app #panel-collections .coll-env .ui-select{max-width:200px}
+html.desktop-app #panel-collections #collNew .lbl-long{display:none}
+html.desktop-app #panel-collections #collNew,
+html.desktop-app #panel-collections #collMore{min-width:var(--control-h);padding:0 6px;justify-content:center}
+html.desktop-app #panel-collections #collRun{flex:none;background:var(--surface-2);border:1px solid var(--border-subtle);color:var(--text-primary)}
+html.desktop-app #panel-collections #collRun:hover{background:color-mix(in srgb,var(--surface-2),var(--text-primary) 6%);border-color:var(--border-strong)}
+html.desktop-app #panel-collections #collRun .lbl-long{display:inline!important}
+html.desktop-app #panel-collections .coll-dot{width:8px;height:8px;border:0;border-radius:50%;background:var(--text-muted);transform:none}
+html.desktop-app #panel-collections .coll-dot[data-state="ok"]{background:var(--success)}
+html.desktop-app #panel-collections .coll-dot[data-state="warn"]{background:var(--warning)}
+html.desktop-app #panel-collections .coll-dot[data-state="danger"]{background:var(--danger)}
+html.desktop-app #panel-collections .coll-chip{flex:none;color:var(--text-secondary);border-color:var(--border-subtle)}
+
+/* One status line, inline, never a full-width bar. */
+html.desktop-app #panel-collections .coll-status{margin:8px var(--gutter) 0;padding:6px 10px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-secondary);font-size:var(--text-ui)}
+html.desktop-app #panel-collections .coll-status[data-kind="warn"]{border-color:var(--warning-border);background:var(--warning-subtle);color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-status[data-kind="error"]{border-color:var(--danger-border);background:var(--danger-subtle);color:var(--text-primary)}
+/* A blocked or failed send is explained once, in the response pane. */
+html.desktop-app #panel-collections:has(.coll-response .coll-blocked) .coll-status:is([data-kind="warn"],[data-kind="error"]){display:none}
+
+/* ---- tree: the navigation list ---- */
+html.desktop-app #panel-collections .coll-tree-col{background:var(--surface-0);border-right:1px solid var(--border-subtle)}
+html.desktop-app #panel-collections .coll-tree-head{gap:4px;padding:8px;border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-collections .coll-tree-head .btn:not(.btn-field){flex:none;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-collections .coll-tree-head .btn:not(.btn-field):hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-tree{padding:6px 8px}
+html.desktop-app #panel-collections .coll-row{min-height:var(--row-h);margin:0;padding:0 8px 0 calc(8px + var(--depth,0) * 14px);gap:6px;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app #panel-collections .coll-row:hover{color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-row[aria-selected="true"]{color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-row .coll-name{color:var(--text-primary);font-weight:500}
+html.desktop-app #panel-collections .coll-row:not(.coll-req) .coll-name{font-weight:500}
+html.desktop-app #panel-collections .coll-row .coll-count{color:var(--text-muted);font-size:var(--text-caption);font-variant-numeric:tabular-nums}
+/* A request is one 28px row (the spec's list row): method, name, then the muted
+   path, which truncates first. */
+html.desktop-app #panel-collections .coll-row.coll-req{min-height:var(--row-h);padding-top:0;padding-bottom:0}
+html.desktop-app #panel-collections .coll-req .coll-name{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:var(--lh-ui)}
+html.desktop-app #panel-collections .coll-req .coll-method{flex:none;min-width:40px;align-self:center;margin-top:0;color:var(--text-muted)!important;font-family:var(--mono);font-size:var(--text-caption);font-weight:500;letter-spacing:normal}
+html.desktop-app #panel-collections .coll-req .coll-body{flex-direction:row;align-items:center;gap:8px;overflow:hidden}
+html.desktop-app #panel-collections .coll-req .coll-top{flex:0 1 auto;min-width:0}
+html.desktop-app #panel-collections .coll-req .coll-path{flex:1 1 0;min-width:0;min-height:0;line-height:var(--lh-ui)}
+html.desktop-app #panel-collections .coll-path{font-family:var(--mono);font-size:var(--text-code);color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-row[data-unresolved]{border-left-style:solid}
+html.desktop-app #panel-collections .coll-unset{border-color:var(--danger-border);color:var(--danger)}
+
+/* ---- editor: document tab, send bar, content tabs ---- */
+html.desktop-app #panel-collections .coll-editor{background:var(--surface-1);border-right:1px solid var(--border-subtle)}
+html.desktop-app #panel-collections .coll-title{flex:none;align-items:stretch;gap:0;min-height:var(--tabstrip-h);padding:0;background:var(--surface-0);border-bottom:1px solid var(--border-subtle);font-size:var(--text-ui)}
+html.desktop-app #panel-collections .coll-title :is(.coll-crumb,strong){display:inline-flex;align-items:center;margin-bottom:-1px;background:var(--surface-1);font-size:var(--text-ui);font-weight:500}
+html.desktop-app #panel-collections .coll-title .coll-crumb{padding:0 4px 0 12px;color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-title strong{padding:0 14px 0 0;border-right:1px solid var(--border-subtle);color:var(--text-primary)}
+/* A request outside a folder has no crumb: its tab still keeps its own padding. */
+html.desktop-app #panel-collections .coll-title strong:first-child{padding-left:14px}
+html.desktop-app #panel-collections .coll-urlbar{align-items:center;min-height:var(--toolbar-h)}
+html.desktop-app #panel-collections .coll-resolved{padding:6px var(--gutter);border-bottom:1px solid var(--border-subtle);font-size:var(--text-code);color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-tabs{gap:0;padding:0 6px;border-bottom:1px solid var(--border-subtle);scrollbar-width:none}
+html.desktop-app #panel-collections .coll-tabs::-webkit-scrollbar{display:none}
+html.desktop-app #panel-collections .coll-tab{padding:0 7px;white-space:nowrap}
+/* The editor's seven sections fit its width (a 1280px window gives it ~410px). */
+html.desktop-app #panel-collections .coll-editor{container:dsk-coll-ed/inline-size}
+@container dsk-coll-ed (max-width:460px){
+  html.desktop-app #panel-collections .coll-tabs{padding:0 4px}
+  html.desktop-app #panel-collections .coll-tab{padding:0 5px}
+}
+html.desktop-app #panel-collections .coll-tab .coll-n{min-width:16px;padding:0 5px;border-radius:999px;background:var(--accent-subtle);color:var(--accent);font-size:var(--text-caption);font-weight:600;line-height:16px;text-align:center}
+html.desktop-app #panel-collections .coll-pane{padding:var(--gutter)}
+html.desktop-app #panel-collections .coll-note{font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-kv th{font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-kv input[type="text"]{min-height:var(--control-h-sm);font-size:var(--text-code)}
+html.desktop-app #panel-collections .coll-body-raw{background:var(--surface-inset);border-color:var(--border-subtle);border-radius:var(--radius-sm);font-size:var(--text-code);line-height:var(--lh-code)}
+
+/* Footer: Save, then hand-offs. The resting "matches" line is for screen readers. */
+html.desktop-app #panel-collections .coll-actions{flex-wrap:nowrap;gap:4px;min-height:40px;padding:6px var(--gutter);border-top:1px solid var(--border-subtle);overflow:hidden}
+html.desktop-app #panel-collections .coll-actions .btn{flex:none;white-space:nowrap}
+/* One footer row at any width: in a narrow pane the hand-offs keep their icon
+   (and their name, as text and tooltip) and drop the visible word; the first
+   action keeps its label. */
+html.desktop-app #panel-collections .coll-response{container:dsk-coll-res/inline-size}
+@container dsk-coll-res (max-width:600px){
+  html.desktop-app #panel-collections .coll-response .coll-actions .btn:not(:first-child){gap:0;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;font-size:0}
+  html.desktop-app #panel-collections .coll-response .coll-actions .btn .icon{width:15px;height:15px}
+}
+@container dsk-coll-ed (max-width:400px){
+  html.desktop-app #panel-collections .coll-editor .coll-actions .btn:not(#collSave){gap:0;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;font-size:0}
+  html.desktop-app #panel-collections .coll-editor .coll-actions .btn .icon{width:15px;height:15px}
+}
+html.desktop-app #panel-collections .coll-actions .btn:not(#collSave){background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-collections .coll-actions .btn:not(#collSave):hover:not(:disabled){background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-dirty{order:1;margin-left:auto;font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-dirty:not([data-clean="true"]){color:var(--warning)}
+html.desktop-app #panel-collections .coll-dirty[data-clean="true"]{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* "Sent with edits…": the spec's inline callout (tinted, a 1px tinted border,
+   ghost actions), like every other notice. */
+html.desktop-app #panel-collections .coll-sentover{flex:none;margin:8px var(--gutter);padding:6px 8px 6px 10px;gap:4px 8px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);color:var(--text-primary);font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app #panel-collections .coll-sentover .btn{min-height:var(--control-h-sm);height:var(--control-h-sm);padding:0 8px;border:0;background:transparent;color:var(--text-secondary);font-weight:500}
+html.desktop-app #panel-collections .coll-sentover .btn:hover{background:var(--surface-hover);color:var(--text-primary)}
+
+/* ---- no request open: one empty state for the whole panel ---- */
+html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty){grid-template-columns:minmax(0,1fr)}
+html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty) .coll-response{display:none}
+html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty) .coll-editor{border-right:0;justify-content:center}
+html.desktop-app #panel-collections:has(.coll-editor .state-empty) .coll-state{display:none}
+
+/* ---- response ---- */
+html.desktop-app #panel-collections .coll-response{background:var(--surface-1)}
+html.desktop-app #panel-collections .coll-resbar{gap:4px 12px;min-height:var(--tabstrip-h);padding:0 var(--gutter);background:var(--surface-0);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-collections .coll-code{font-family:var(--ui);font-size:var(--text-ui);font-weight:600}
+html.desktop-app #panel-collections .coll-code[data-c="2"]{color:var(--text-secondary)}
+html.desktop-app #panel-collections .coll-code[data-c="3"]{color:var(--info)}
+html.desktop-app #panel-collections .coll-code[data-c="4"]{color:var(--warning)}
+html.desktop-app #panel-collections .coll-code[data-c="5"],
+html.desktop-app #panel-collections .coll-code[data-c="0"]{color:var(--danger)}
+html.desktop-app #panel-collections .coll-meta{font-size:var(--text-ui);color:var(--text-muted)}
+/* Nothing sent yet: the empty state, centred in the response pane. */
+html.desktop-app #panel-collections .coll-resbar.dsk-res-empty{flex:1 1 auto;flex-direction:column;justify-content:center;gap:8px;min-height:0;background:transparent;border:0;text-align:center}
+html.desktop-app #panel-collections .coll-resbar.dsk-res-empty .dsk-empty-icon{width:20px;height:20px;color:var(--text-muted)}
+html.desktop-app #panel-collections .coll-blocked{gap:6px;padding:8px 10px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);color:var(--text-secondary);font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app #panel-collections .coll-blocked[data-k="error"]{border-color:var(--danger-border);background:var(--danger-subtle)}
+html.desktop-app #panel-collections .coll-blocked strong{font-weight:500;color:var(--text-primary)}
+html.desktop-app #panel-collections .coll-hdrs,
+html.desktop-app #panel-collections .coll-body{font-size:var(--text-code)}
+html.desktop-app #panel-collections .coll-console{background:var(--surface-inset);border-top:1px solid var(--border-subtle);font-size:var(--text-code)}

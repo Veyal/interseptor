@@ -1,4 +1,5 @@
-import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
+import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 import { on as busOn, EVENTS } from './bus.js';
 import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL } from './inspector-structure.js';
@@ -18,7 +19,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, dockOptionStates, middleEllipsis } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
@@ -889,7 +890,6 @@ export function closeInspector(){
   state.selId=null;state.detail=null;
   setInspectorActionState(true);
   onAuthzSelectionChanged();
-  if($('#panel-proxy')?.classList.contains('dock-drawer'))getHook('closeFlow')?.();
   renderRows();
   return true;
 }
@@ -1528,7 +1528,6 @@ export async function selectFlow(id){
   if(switching)onAuthzSelectionChanged();
   if(!syncSelectedRow(prevSelId))renderRows();
   else syncInspectorVisibility();
-  openDockedDrawer(id);
   if(needsLoadingState)showInspectorLoading(id);
   try{
     const pendingNoteSave=noteSaveTails.get(id);
@@ -1918,7 +1917,7 @@ export function openInspectFind(side='res'){const f=inspectFinders[side]||inspec
 loadFlowCols();
 loadFlowColW();
 renderFlowHead();
-if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{refreshRowHeight();renderFlowHead();renderRows();syncDock();});
+if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{refreshRowHeight();renderFlowHead();renderRows();});
 {const b=$('#colPickerBtn');if(b)b.onclick=e=>{e.stopPropagation();toggleColPicker();};}
 {const m=$('#colPicker');if(m)m.onclick=e=>e.stopPropagation();}
 document.addEventListener('click',()=>closeColPicker());
@@ -2028,7 +2027,7 @@ function syncScopeToggle(on){
 // place, so a first-run user is not told that something "moved".
 {
   const KEY='interseptor.coach.scopeSwitch';
-  let seen=true;try{seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'proxy.dock','inspect.height'].some(k=>localStorage.getItem(k)!==null);}catch(e){}
+  let seen=true;try{seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'inspect.height'].some(k=>localStorage.getItem(k)!==null);}catch(e){}
   const anchor=$('#scopeEdit');
   if(!seen&&anchor&&anchor.parentNode){
     const tip=document.createElement('span');
@@ -2674,7 +2673,7 @@ if(inspectMoreActions)inspectMoreActions.onclick=e=>{
 };
 // A cascading flyout lives outside #ctxmenu, so outside-click dismissal has to
 // ask the engine which panels are open rather than test #ctxmenu alone.
-document.addEventListener('click',e=>{if(!ctxMenuContains(e.target))hideCtx({restoreFocus:false});});
+document.addEventListener('click',e=>{if(dismissOnDocumentClick(e.target,ctxMenuContains,ctxMenuTrigger()))hideCtx({restoreFocus:false});});
 document.addEventListener('interceptor:session-open-flow',e=>{
   const id=Number(e.detail);
   if(Number.isSafeInteger(id)&&id>0)selectFlow(id);
@@ -3027,54 +3026,11 @@ function setFiltersOpen(open,{restoreFocus=false}={}){
   syncFiltersButton();
 }
 
-// Inspector dock: the bottom inspector is the default. An explicit "drawer"
-// preference opens the side drawer at >=1100px. Double-click a history row
-// for the large centered inspector. The preference persists in localStorage.
-const DOCK_KEY='proxy.dock';
-let dockPref=(()=>{try{return parseDockPref(localStorage.getItem(DOCK_KEY));}catch(e){return 'bottom';}})();
-function syncDock(){
-  const panel=$('#panel-proxy'),group=$('#inspectDock');
-  const wide=resolveDock(dockPref,window.innerWidth)==='drawer';
-  const drawer=wide&&!!getHook('openFlow');
-  if(panel)panel.classList.toggle('dock-drawer',drawer);
-  if(group){
-    group.hidden=resolveDock('drawer',window.innerWidth)!=='drawer'||!getHook('openFlow');
-    for(const o of dockOptionStates(drawer?'drawer':'bottom')){
-      const b=group.querySelector(`button[data-dock="${o.value}"]`);
-      if(b)b.setAttribute('aria-pressed',o.pressed?'true':'false');
-    }
-  }
-  return drawer;
-}
-function openDockedDrawer(id){
-  if(!syncDock())return;
-  const current=getHook('flowDrawerCurrent');
-  if(current&&current()===id)return;
-  const opened=openFlowDrawer(id,{source:'proxy',focusTitle:false,siblings:state.flows.map(f=>f.id)});
-  if(!opened)$('#panel-proxy')?.classList.remove('dock-drawer');
-}
-{
-  const group=$('#inspectDock');
-  if(group)group.addEventListener('click',e=>{
-    const b=e.target.closest&&e.target.closest('button[data-dock]');
-    if(!b)return;
-    const next=parseDockPref(b.dataset.dock);
-    if(next===dockPref)return;
-    dockPref=next;
-    try{localStorage.setItem(DOCK_KEY,dockPref);}catch(err){}
-    const drawer=syncDock();
-    if(drawer&&state.selId!=null)openDockedDrawer(state.selId);
-    else if(!drawer){getHook('closeFlow')?.();syncInspectorVisibility();}
-  });
-  window.addEventListener('resize',()=>{const was=$('#panel-proxy')?.classList.contains('dock-drawer');if(!syncDock()&&was)getHook('closeFlow')?.();});
-  syncDock();
-}
 // The shared row-height token changes with density; re-measure the virtual list.
 window.addEventListener('densitychange',refreshRowHeight);
 // Evidence markers come from the loaded findings, so repaint rows when the panel
 // becomes visible again instead of keeping stale paperclips.
-// The Flow Drawer module loads after this one, so the dock state is re-synced here too.
-document.addEventListener('interseptor:tabchange',e=>{if(e&&e.detail&&e.detail.tab==='proxy'){syncDock();refreshVisibleRows();}});
+document.addEventListener('interseptor:tabchange',e=>{if(e&&e.detail&&e.detail.tab==='proxy'){refreshVisibleRows();}});
 
 // attachFlows routes "attach as evidence" through the shared attachEvidence
 // popover (one entry point for button, key, long press), falling back to the

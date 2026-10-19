@@ -1,0 +1,47 @@
+/* desktop/panel-repeater.css — the Repeater panel on desktop (docs/desktop-design.md,
+   Panels). One send bar (method, URL, History, Send ⌘↩, overflow), a request pane and a
+   response pane with one header row each, and one action row under the response
+   header: Attach as evidence, Save as proof and Diff stay; the rest is in the overflow menu
+   (js/desktop-panel-repeater.js re-parents the real buttons). Shared rules are in
+   panel-tools.css. Scoped under html.desktop-app; tokens only. */
+
+html.desktop-app #panel-repeater{background:var(--surface-1)}
+html.desktop-app #panel-repeater .rep-work{background:var(--surface-1)}
+html.desktop-app #panel-repeater .pane{background:var(--surface-1);box-shadow:none;border-right:1px solid var(--border-subtle)}
+html.desktop-app #panel-repeater .rep-res{border-right:0}
+html.desktop-app #panel-repeater .rep-hist{flex:none}
+
+/* Headers get what they need, the body gets the rest. */
+html.desktop-app #panel-repeater .rep-req .rep-field-headers{flex:none;height:clamp(104px,30%,240px)}
+
+/* Evidence stays one click away but never competes with Send: ghost, not filled. */
+html.desktop-app #panel-repeater #repAttach.btn-primary{background:transparent;border-color:transparent;color:var(--text-primary)}
+html.desktop-app #panel-repeater #repAttach.btn-primary:hover:not(:disabled){background:var(--surface-hover);border-color:transparent;color:var(--text-primary)}
+html.desktop-app #panel-repeater .rep-actions .btn{min-height:var(--control-h);padding:0 8px;background:transparent;border-color:transparent;color:var(--text-secondary);font-weight:500}
+html.desktop-app #panel-repeater .rep-actions .btn:hover:not(:disabled){background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-repeater .rep-actions #repAttach{color:var(--text-primary)}
+html.desktop-app #panel-repeater .rep-attached{height:var(--control-h-sm);padding:0 8px;border:0;background:transparent;color:var(--success);font-size:var(--text-ui);font-weight:500}
+/* The action row leads with the status line ("200 OK · 12 ms · 403 B"), then the
+   actions. An unsent tab has nothing to say or act on, so the row is not drawn;
+   while sending, or after a failure, it shows the status alone. */
+html.desktop-app #panel-repeater .rep-res:has(#repAttach:disabled):has(#repStatus:empty) .dsk-actionrow{display:none}
+html.desktop-app #panel-repeater .rep-res:has(#repAttach:disabled) .dsk-actionrow :is(.rep-actions,.dsk-more){display:none}
+html.desktop-app #panel-repeater .dsk-actionrow #repStatus{flex:0 1 auto;min-width:0;margin-right:auto;padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-ui);font-weight:500}
+html.desktop-app #panel-repeater .dsk-actionrow>.rep-actions{flex:0 0 auto;justify-content:flex-end}
+/* A narrow response pane (a 900px window) keeps every action: the labels give way
+   to icons (each keeps its name and tooltip), never overlapping the menu. */
+html.desktop-app #panel-repeater .rep-res{container:dsk-rep-res/inline-size}
+@container dsk-rep-res (max-width:600px){
+  html.desktop-app #panel-repeater .rep-actions .btn{gap:0;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;font-size:0}
+  html.desktop-app #panel-repeater .rep-actions .btn .icon{width:15px;height:15px}
+  html.desktop-app #panel-repeater .rep-attached{font-size:var(--text-caption)}
+}
+
+/* The response is code, not chrome. */
+html.desktop-app #panel-repeater .rep-res #repResView{flex:1;min-height:0}
+html.desktop-app #panel-repeater #repResSeg{margin-left:auto}
+html.desktop-app #panel-repeater .rep-req-seg{margin-left:auto}
+html.desktop-app #panel-repeater #repCodecBadge{margin-left:0}
+html.desktop-app #panel-repeater .rep-diff{background:var(--surface-1)}
+html.desktop-app #panel-repeater .rep-diff-head{padding:6px var(--gutter);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-repeater .rep-diff-head strong{font-size:var(--text-title);font-weight:600}

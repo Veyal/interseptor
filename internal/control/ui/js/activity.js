@@ -1,6 +1,7 @@
 import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError, uiConfirm, openFlow, copyText } from './core.js';
 import { selectFlow } from './proxy.js';
-import { ACTIVITY_CATEGORIES, activityCategory, filterActivity, categoryCounts, groupByDay, dayLabel, shouldDeferRender, pillLabel, activityAppendix, activityTargetOf } from './activity-model.js';
+import { ACTIVITY_CATEGORIES, activityCategory, filterActivity, categoryCounts, groupByDay, dayLabel, shouldDeferRender, pillLabel, activityAppendix, activityTargetOf, visibleCategories } from './activity-model.js';
+import { isDesktopSkin, initActivityDesktop, actTypeIconHTML } from './desktop-panel-activity.js';
 
 /* ---- AI activity feed (glass box: watch what the AI is doing, live) ---- */
 export const ACT_MAX=300;
@@ -49,7 +50,10 @@ function passesFilter(it){
 function renderActivityChips(all){
   const host=$('#actChips');if(!host)return;
   const counts=categoryCounts(all);
-  host.innerHTML=ACTIVITY_CATEGORIES.map(c=>{
+  // Desktop skin: only categories with events (or switched on) get a chip; with none, the group is hidden.
+  const shown=isDesktopSkin()?visibleCategories(counts,actFilter.cats):ACTIVITY_CATEGORIES;
+  if(isDesktopSkin())host.hidden=!shown.length;
+  host.innerHTML=shown.map(c=>{
     const on=actFilter.cats.has(c.id);
     return `<button type="button" class="act-chip${on?' on':''}" data-cat="${c.id}" aria-pressed="${on}">${esc(c.label)} <span class="act-chip-n">${counts[c.id]}</span></button>`;
   }).join('');
@@ -93,6 +97,7 @@ function renderAttention(){
 const attentionBar=document.getElementById('humanInputBar');
 if(attentionBar&&typeof MutationObserver==='function')new MutationObserver(renderAttention).observe(attentionBar,{childList:true,subtree:true});
 export function renderActivity(){
+  initActivityDesktop();
   const box=$('#actFeed');if(!box)return;
   if(activityLoadError)return;
   setActivityPill(0);
@@ -132,6 +137,7 @@ export function renderActivity(){
     const detail=expandable?`<div class="act-detail" id="actDetail-${i}"${expanded?'':' hidden'}><div><b>Summary</b><span>${esc(it.summary||'—')}</span></div><div><b>Result</b><span>${esc(it.result||'—')}</span></div>${it.intent?`<div><b>Intent</b><span>${esc(it.intent)}</span></div>`:''}</div>`:'';
     return `<div class="act-row${fid?' act-jump':''}${expandable?' act-expandable':''}${expanded?' expanded':''}${grp}" tabindex="0" role="button"${expandable?` aria-expanded="${expanded}" aria-controls="actDetail-${i}"`:''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}"${fid?' title="Open flow #'+fid+'"':''}>
     <span class="ok ${it.ok?'is-ok':'is-fail'}" aria-hidden="true" title="${status}"></span>
+    ${isDesktopSkin()?actTypeIconHTML(it.tool):''}
     <span class="act-actor" title="Recorded from an AI assistant (MCP)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-agent"/></svg>AI</span>
     <span class="act-tool">${esc(it.tool)}${expandable?' <svg class="icon act-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg>':''}</span>
     <span class="act-cat">${esc(cat?cat.label:'Agent/MCP')}</span>
@@ -244,3 +250,5 @@ $('#actAppendix')&&($('#actAppendix').onclick=()=>{
   if(!rows.length){toast('no activity to copy');return;}
   copyText(activityAppendix(rows),'activity appendix copied');
 });
+// Desktop skin: arrange the toolbar once the host class is set (app.js adds it after the imports run).
+setTimeout(initActivityDesktop,0);

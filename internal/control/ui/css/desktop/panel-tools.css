@@ -1,0 +1,114 @@
+/* desktop/panel-tools.css — what Repeater, Intruder and Collections share on
+   desktop (docs/desktop-design.md, Components and Panels): one document-tab
+   strip, one send bar (method, URL, a single primary Send), one request/response
+   editor look (a 32px header row per pane, sentence-case labels, --surface-inset
+   code areas), one overflow menu and one inline callout. Per-panel rules
+   live in panel-repeater.css, panel-intruder.css and panel-collections.css and
+   use #panel ids, so they outrank these class selectors whatever the load order.
+   Scoped under html.desktop-app; colours come only from desktop/tokens.css; only
+   transform and opacity animate. */
+
+/* ---- document tabs (Zed): the strip is --surface-0, the active tab joins the
+   content below, close shows on hover. components.css owns the tab itself; this
+   keeps long titles tidy and the strip quiet. ---- */
+html.desktop-app .rep-tabs{scrollbar-width:none}
+html.desktop-app .rep-tabs::-webkit-scrollbar{display:none}
+html.desktop-app .rep-tab{max-width:240px}
+html.desktop-app .rep-tab .rt-label{font-size:var(--text-ui);max-width:200px}
+html.desktop-app .rep-tab:not(.on) .rt-label{color:var(--text-secondary)}
+/* Tab titles are neutral: app code paints the method colour inline. */
+html.desktop-app .rep-tab .rt-label[style]{color:inherit!important}
+
+/* ---- send bar: [method] [URL] [secondary actions] [Send ⌘↩] ---- */
+html.desktop-app :is(.rep-line,.intr-bar,.coll-urlbar){flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:6px;min-height:var(--toolbar-h);padding:6px var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app :is(.repurl,.coll-url){flex:1 1 auto;min-width:0;height:var(--control-h);min-height:var(--control-h);padding:0 10px;background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-primary);font-family:var(--mono);font-size:var(--text-code)}
+html.desktop-app :is(.repurl,.coll-url):hover{border-color:var(--border-strong)}
+html.desktop-app .coll-urlwrap{align-items:center}
+/* The method is neutral: a select, not a coloured label. */
+html.desktop-app :is(.rep-line,.coll-urlbar) .ui-select-trigger{height:var(--control-h);min-height:var(--control-h);width:auto;flex:none;padding:0 8px 0 10px;background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-family:var(--mono);font-size:var(--text-code);font-weight:600}
+html.desktop-app :is(.rep-line,.coll-urlbar) .ui-select-trigger:hover:not(:disabled){border-color:var(--border-strong);background:var(--surface-inset)}
+html.desktop-app :is(.rep-line,.coll-urlbar) .ui-select-value[style]{color:var(--text-primary)!important}
+/* One primary per bar: Send (Repeater, Collections) or Start (Intruder). */
+html.desktop-app :is(#repSend,#collSend,#intrStart){flex:none;min-height:var(--control-h);padding:0 12px;gap:8px;font-size:var(--text-ui);font-weight:600;white-space:nowrap}
+html.desktop-app :is(#repSend,#collSend) .icon{display:none}
+html.desktop-app :is(#repSend .kbd,#collSend .dsk-send-hint){display:inline-flex;align-items:center;height:18px;padding:0 5px;border:0;border-radius:var(--radius-xs);background:color-mix(in srgb,var(--text-on-accent) 16%,transparent);color:var(--text-on-accent);font:500 var(--text-caption)/18px var(--ui);letter-spacing:normal;opacity:.85}
+/* Everything else on a bar is ghost. */
+html.desktop-app :is(.rep-line,.intr-bar,.coll-bar) .btn:not(.btn-primary):not(.accent):not(.btn-danger):not(.danger):not(.btn-field){background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app :is(.rep-line,.intr-bar,.coll-bar) .btn:not(.btn-primary):not(.accent):not(.btn-danger):not(.danger):not(.btn-field):hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app :is(.rep-line,.intr-bar,.coll-bar) .btn[aria-expanded="true"]:not(.btn-primary){background:var(--surface-hover);color:var(--text-primary)}
+
+/* ---- pane header: one 32px row, a sentence-case title, ghost actions ---- */
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head{flex:none;flex-wrap:nowrap;height:var(--pane-header-h);min-height:var(--pane-header-h);padding:0 var(--gutter);gap:8px;overflow:visible;background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .lbl{flex:none;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .hint b{font-weight:500;color:var(--text-secondary)}
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .btn:not(.btn-primary):not(.accent){background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .btn:not(.btn-primary):not(.accent):hover:not(:disabled){background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app :is(.rep-res,.intr-results) .statusline{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-ui);font-weight:500}
+html.desktop-app :is(.rep-res,.intr-results) .statusline[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app :is(.rep-res,.intr-results) .statusline[style*="--fg3"]{color:var(--text-muted)!important}
+/* Section captions inside a pane (Headers, Body). */
+html.desktop-app .rep-sub{flex:none;display:flex;align-items:center;gap:8px;min-height:28px;padding:0 var(--gutter);border-top:1px solid var(--border-subtle);font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-secondary)}
+html.desktop-app .rep-sub.row{min-height:32px}
+html.desktop-app .rep-sub .hint{font-size:var(--text-ui);color:var(--text-muted)}
+
+/* ---- editors: --surface-inset, the same type and padding in the colour overlay
+   and the textarea so the caret lines up ---- */
+html.desktop-app .rep-field{background:var(--surface-inset)}
+html.desktop-app .rep-field>:is(pre.rep-hl,textarea.rep-edit){padding:10px 14px;font-size:var(--text-code);line-height:var(--lh-code);background:transparent}
+html.desktop-app .rep-field>textarea.rep-edit{caret-color:var(--text-primary)}
+html.desktop-app :is(.intr-config>textarea.rep-edit,.intr-pl textarea.rep-edit){padding:10px 14px;border-top:0;background:var(--surface-inset);color:var(--text-primary);font-size:var(--text-code);line-height:var(--lh-code)}
+html.desktop-app #repResView{background:var(--surface-inset);padding:10px 14px}
+
+/* ---- action row: only when it has actions ---- */
+html.desktop-app .dsk-actionrow{flex:none;display:flex;align-items:center;gap:4px;min-height:36px;padding:0 var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .dsk-actionrow>.rep-actions{flex:1 1 auto;min-width:0;display:flex;flex-wrap:nowrap;align-items:center;gap:2px}
+
+/* ---- overflow button and its menu (js/desktop-panel-kit.js createOverflow): one
+   trigger look everywhere, an icon-only ellipsis ghost button named "More actions" ---- */
+html.desktop-app .btn.dsk-more{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:var(--control-h);width:var(--control-h);height:var(--control-h);min-height:var(--control-h);padding:0;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app .btn.dsk-more:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .btn.dsk-more[aria-expanded="true"]{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .btn.dsk-more .icon{width:16px;height:16px}
+html.desktop-app .dsk-more-wrap{position:relative;flex:none;display:inline-flex;align-items:center}
+html.desktop-app .dsk-menu{position:fixed;left:0;top:0;z-index:var(--z-popover);display:flex;flex-direction:column;gap:1px;min-width:208px;max-width:min(340px,calc(100vw - 16px));padding:4px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-popover)}
+html.desktop-app .dsk-menu[hidden]{display:none}
+/* Closed is transparent, not removed or hidden: a control that anchors a popover to
+   itself keeps its rectangle, and focus the app returns to a moved control is
+   accepted (the kit hands it to the trigger). Items are out of the Tab order. */
+html.desktop-app .dsk-menu[data-open="false"]{opacity:0;pointer-events:none}
+html.desktop-app .dsk-menu .btn{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:var(--row-h);height:auto;padding:0 8px;border:0;border-radius:5px;background:transparent;color:var(--text-primary);font-size:var(--text-ui);font-weight:400;text-align:left;white-space:nowrap}
+html.desktop-app .dsk-menu .btn[hidden]{display:none}
+html.desktop-app .dsk-menu .btn:hover:not(:disabled){background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .dsk-menu .btn .icon{flex:none;width:15px;height:15px;color:var(--text-muted)}
+html.desktop-app .dsk-menu .dsk-menu-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A shortcut hint sits on the right of its item, on the same line. */
+html.desktop-app .dsk-menu .dsk-menu-hint{flex:none;margin-left:auto;padding:0;border:0;background:transparent;box-shadow:none;color:var(--text-muted);font:400 var(--text-caption)/1 var(--ui)}
+html.desktop-app .dsk-menu .lbl-long{display:inline!important}
+html.desktop-app .dsk-menu .btn:is([aria-pressed="true"],[aria-checked="true"])::after{content:"";flex:none;width:5px;height:9px;margin:0 4px 2px auto;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);transform:rotate(45deg)}
+html.desktop-app .dsk-menu :is(.rep-copy-png,.evr-split){display:flex;width:100%}
+/* A split control (Preview image, Copy as PNG) reads as one menu item whose
+   caret opens a submenu: a right-pointing chevron, not a select. */
+html.desktop-app .dsk-menu .evr-split{position:relative;align-items:stretch;gap:0;border-radius:5px}
+html.desktop-app .dsk-menu .evr-split .evr-main{flex:1 1 auto;min-width:0;border-radius:5px 0 0 5px}
+html.desktop-app .dsk-menu .evr-split .evr-caret{width:28px;flex:none;justify-content:center;padding:0;margin:0;border-radius:0 5px 5px 0}
+html.desktop-app .dsk-menu .evr-split .evr-caret .icon{width:12px;height:12px;transform:rotate(-90deg)}
+html.desktop-app .dsk-menu .evr-split .evr-menu{left:auto;right:0;top:100%;z-index:1}
+html.desktop-app .dsk-menu-sep{height:1px;margin:4px 6px;background:var(--border-subtle)}
+html.desktop-app .dsk-menu-sep[hidden]{display:none}
+
+/* ---- (i): a quiet info button whose tooltip carries the sentence ---- */
+html.desktop-app .btn.dsk-info{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:var(--control-h-sm);width:var(--control-h-sm);height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0;background:transparent;border-color:transparent;color:var(--text-muted)}
+html.desktop-app .btn.dsk-info:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .btn.dsk-info .icon{width:15px;height:15px}
+
+/* ---- history drawer (Repeater, Intruder): a plain list ---- */
+html.desktop-app .rep-hist{width:220px;background:var(--surface-1);border-right:1px solid var(--border-subtle)}
+html.desktop-app .rep-hist .h{padding:6px 12px;gap:2px;font-size:var(--text-ui);border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent);font-family:var(--ui)}
+html.desktop-app .rep-hist .h .u{font-family:var(--mono);font-size:var(--text-code);color:var(--text-muted)}
+html.desktop-app .rep-hist .h.sel>div:first-child{color:var(--text-primary)}
+html.desktop-app .rep-hist-more{background:transparent;color:var(--accent);font-size:var(--text-ui)}
+
+/* ---- inline callout (one line, tinted) ---- */
+html.desktop-app .intr-confirm{margin:8px var(--gutter);padding:6px 10px;gap:8px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);color:var(--text-primary);font-size:var(--text-ui)}
+html.desktop-app .intr-confirm .btn.btn-primary{background:var(--surface-2);border:1px solid var(--border-subtle);color:var(--text-primary)}

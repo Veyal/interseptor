@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, DOCK_OPTIONS, dockOptionStates, DRAWER_MIN_WIDTH, middleEllipsis,
+  activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis,
 } from '../js/proxy-filters.js';
 
 const base = () => ({
@@ -62,17 +62,6 @@ test('bulkVerbs enables verbs by selection size', () => {
   assert.ok(bulkVerbs(2).every((v) => typeof v.reason === 'string'));
 });
 
-test('dock preference defaults to the bottom inspector', () => {
-  assert.equal(DRAWER_MIN_WIDTH, 1100);
-  assert.equal(parseDockPref('bottom'), 'bottom');
-  assert.equal(parseDockPref('drawer'), 'drawer');
-  assert.equal(parseDockPref('garbage'), 'bottom');
-  assert.equal(parseDockPref(null), 'bottom');
-  assert.equal(resolveDock('drawer', 1400), 'drawer');
-  assert.equal(resolveDock('drawer', 1099), 'bottom');
-  assert.equal(resolveDock('bottom', 1600), 'bottom');
-});
-
 test('middleEllipsis keeps both ends of a long path and leaves short ones alone', () => {
   assert.equal(middleEllipsis('/api/v1/users', 44), '/api/v1/users');
   const long = '/api/v1/organizations/1234567890/projects/abcdefghij/resources/export.json';
@@ -95,21 +84,3 @@ test('hiding collection flows counts as an active filter and a popover filter', 
   assert.equal(activeFilterCount(s), 0);
 });
 
-test('dock control maps each placement to its own label, icon and pressed state', () => {
-  assert.deepEqual(DOCK_OPTIONS.map((o) => [o.value, o.label, o.icon]), [
-    ['drawer', 'Side drawer', 'panel-right'],
-    ['bottom', 'Bottom inspector', 'panel-bottom'],
-  ]);
-  for (const o of DOCK_OPTIONS) assert.match(o.title, o.value === 'drawer' ? /side drawer/i : /below the history list/i);
-  assert.deepEqual(dockOptionStates('drawer').map((o) => [o.value, o.pressed]), [['drawer', true], ['bottom', false]]);
-  assert.deepEqual(dockOptionStates('bottom').map((o) => [o.value, o.pressed]), [['drawer', false], ['bottom', true]]);
-});
-
-test('persisted dock preference round-trips and legacy values fall back to bottom', () => {
-  for (const placement of ['drawer', 'bottom']) assert.equal(parseDockPref(placement), placement);
-  for (const legacy of [undefined, '', 'side', 'right', 'dock', 'true', 'Drawer']) assert.equal(parseDockPref(legacy), 'bottom');
-  // The placement a user picked is the placement they get back, at any wide width.
-  assert.equal(resolveDock(parseDockPref('drawer'), DRAWER_MIN_WIDTH), 'drawer');
-  assert.equal(resolveDock(parseDockPref('bottom'), 2000), 'bottom');
-  assert.equal(resolveDock(parseDockPref('drawer'), DRAWER_MIN_WIDTH - 1), 'bottom');
-});

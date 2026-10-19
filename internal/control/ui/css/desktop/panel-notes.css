@@ -1,0 +1,53 @@
+/* desktop/panel-notes.css — the Notes panel in the desktop skin. Notes is a clean
+   document: body text is --text-body (14/21) in the UI font, the writing column
+   stays near 72ch, and the toolbar is quiet. On wide windows (the side-by-side
+   layout) and below it, the panel has the standard pane header: the title, the
+   save status, then its actions.
+   Every selector is scoped under html.desktop-app. */
+
+/* ---- the editor ---- */
+html.desktop-app .notes-edit{padding:24px max(24px,calc(50% - 38ch));background:var(--surface-1);color:var(--text-primary);font-family:var(--ui);font-size:var(--text-body);line-height:var(--lh-body);tab-size:2}
+html.desktop-app .notes-edit::placeholder{color:var(--text-muted)}
+html.desktop-app #notesPreview{padding:24px max(24px,calc(50% - 38ch));background:var(--surface-1)}
+
+/* ---- the pane header: one 40px row in both layouts, like every panel: the
+   title "Notes" and the save status on the left; Edit/Preview (single-column
+   layout only: the wide layout shows both) and Promote to finding on the right. ---- */
+html.desktop-app #panel-notes>.toolbar{flex-wrap:nowrap;gap:8px;height:var(--toolbar-h);min-height:var(--toolbar-h);padding:0 var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-notes>.toolbar::before{content:"Notes";order:-2;flex:none;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app #panel-notes>.toolbar>.notes-status{order:-1}
+html.desktop-app #panel-notes>.toolbar>.spacer{order:0;flex:1 1 0;min-width:0}
+html.desktop-app #panel-notes>.toolbar>:is(#notesSeg,#notesSaveRetry,#notesPromote){order:1;flex:none}
+html.desktop-app #panel-notes>.toolbar .btn:not(.btn-primary){background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-notes>.toolbar .btn:not(.btn-primary):hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-notes .notes-status{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:400;color:var(--text-muted)}
+html.desktop-app #panel-notes .notes-status[data-state="error"]{color:var(--danger)}
+html.desktop-app #panel-notes.notes-wide.active{grid-template-rows:auto auto minmax(0,1fr)}
+html.desktop-app #panel-notes.notes-wide>.toolbar{grid-row:1}
+html.desktop-app #panel-notes.notes-wide #notesLoadState{grid-row:2;grid-column:1/-1}
+html.desktop-app #panel-notes.notes-wide #notesEdit{grid-row:3;border-right:1px solid var(--border-subtle)}
+html.desktop-app #panel-notes.notes-wide #notesPreview,html.desktop-app #panel-notes.notes-wide #notesPreview.u-hidden{grid-row:3}
+
+/* ---- the rendered note: document rhythm, 14/21 ---- */
+html.desktop-app #notesPreview.md{font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-primary)}
+html.desktop-app #notesPreview h1{margin:0;padding:0;border:0;font-size:var(--text-heading);line-height:var(--lh-heading);font-weight:600;letter-spacing:normal}
+html.desktop-app #notesPreview h2{margin:0;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app #notesPreview :is(h3,h4,h5,h6){margin:0;font-size:var(--text-body);line-height:var(--lh-body);font-weight:600;color:var(--text-primary)}
+html.desktop-app #notesPreview details.acc{margin:0}
+html.desktop-app #notesPreview details.acc>summary.acc-h{gap:6px;padding:0;min-height:28px;border-radius:var(--radius-xs)}
+html.desktop-app #notesPreview details.acc>summary.acc-h>*{margin:0}
+html.desktop-app #notesPreview details.acc>summary.acc-h:hover{background:var(--surface-hover)}
+html.desktop-app #notesPreview details.acc:has(>summary>h1)>summary{min-height:36px}
+html.desktop-app #notesPreview details.acc:has(>summary>h2){margin-top:16px}
+html.desktop-app #notesPreview details.acc:first-child{margin-top:0}
+html.desktop-app #notesPreview .acc-body{padding:2px 0 0 20px}
+/* renderMD pads blocks with <br>; the desktop rhythm comes from margins instead. */
+html.desktop-app #notesPreview .acc-body>br{display:none}
+html.desktop-app #notesPreview :is(p,ul,ol){margin:6px 0}
+html.desktop-app #notesPreview li{margin:2px 0}
+html.desktop-app #notesPreview ul.md-tasks{padding-left:0}
+html.desktop-app #notesPreview li.md-task.done{color:var(--text-muted)}
+html.desktop-app #notesPreview code{padding:0 5px;border:0;border-radius:var(--radius-xs);background:var(--surface-2);color:var(--text-primary);font-size:var(--text-code)}
+html.desktop-app #notesPreview pre.md-code{border-color:var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-inset);font-size:var(--text-code);line-height:var(--lh-code)}
+html.desktop-app #notesPreview .md-quote{border-left-width:2px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--surface-0);font-family:var(--ui);font-size:var(--text-body)}
+html.desktop-app .note-chip{border-color:var(--border-subtle);background:var(--surface-2);font:500 var(--text-ui)/var(--lh-ui) var(--ui)}

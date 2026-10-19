@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Interseptor</title>
+<meta name="theme-color" content="#171a20">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M6%200h12l6%206v12l-6%206H6l-6-6V6z'%20fill='%2300e08a'/%3E%3Cpath%20d='M5%208.5h12.5l-3-3M19%2015.5H6.5l3%203M12%2012h.01'%20fill='none'%20stroke='%2306130d'%20stroke-width='2.2'%20stroke-linecap='square'%20stroke-linejoin='miter'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/surfaces.css">
@@ -22,7 +24,27 @@
 <link rel="stylesheet" href="/css/collections-matrix.css">
 <link rel="stylesheet" href="/css/projects.css">
 <link rel="stylesheet" href="/canvas.css">
+<link rel="stylesheet" href="/desktop.css">
 <link rel="stylesheet" href="/mobile.css">
+<!-- Desktop skin (docs/desktop-design.md): every rule is scoped under
+     html.desktop-app, which js/desktop.js sets only in a desktop host. -->
+<link rel="stylesheet" href="/css/desktop/tokens.css">
+<link rel="stylesheet" href="/css/desktop/type.css">
+<link rel="stylesheet" href="/css/desktop/states.css">
+<link rel="stylesheet" href="/css/desktop/components.css">
+<link rel="stylesheet" href="/css/desktop/shell.css">
+<link rel="stylesheet" href="/css/desktop/panel-activity.css">
+<link rel="stylesheet" href="/css/desktop/panel-findings.css">
+<link rel="stylesheet" href="/css/desktop/panel-intercept.css">
+<link rel="stylesheet" href="/css/desktop/panel-map.css">
+<link rel="stylesheet" href="/css/desktop/panel-notes.css">
+<link rel="stylesheet" href="/css/desktop/panel-proxy.css">
+<link rel="stylesheet" href="/css/desktop/panel-scanner.css">
+<link rel="stylesheet" href="/css/desktop/panel-settings.css">
+<link rel="stylesheet" href="/css/desktop/panel-collections.css">
+<link rel="stylesheet" href="/css/desktop/panel-intruder.css">
+<link rel="stylesheet" href="/css/desktop/panel-repeater.css">
+<link rel="stylesheet" href="/css/desktop/panel-tools.css">
 <!-- Modulepreload hints flatten the HTTP/1.1 import waterfall: the root modules
      every boot path needs (core, the event bus, and the first-wave panels app.js
      imports synchronously) are fetched/parsed in parallel instead of being
@@ -120,7 +142,6 @@
 <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12l9-9h9v9l-9 9z"/><path d="M16 8h.01"/></symbol>
 <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 5l2-2h10l2 2v9l-6 6H7l-2-2z"/><path d="M13 20v-4l2-2h4M9 8h6"/></symbol>
 <symbol id="i-columns" viewBox="0 0 24 24"><path d="M5 4h14l2 2v12l-2 2h-14l-2-2v-12z"/><path d="M9 4v16M15 4v16"/></symbol>
-<symbol id="i-panel-right" viewBox="0 0 24 24"><path d="M5 4h14l2 2v12l-2 2h-14l-2-2v-12z"/><path d="M15 4v16"/></symbol>
 <symbol id="i-panel-bottom" viewBox="0 0 24 24"><path d="M5 4h14l2 2v12l-2 2h-14l-2-2v-12z"/><path d="M3 14h18"/></symbol>
 <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="i-more" viewBox="0 0 24 24"><path d="M4 11h2v2h-2z"/><path d="M11 11h2v2h-2z"/><path d="M18 11h2v2h-2z"/></symbol>
@@ -269,10 +290,6 @@
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <button type="button" class="btn" id="freezeBtn" aria-pressed="false" title="Pause live history updates (Ctrl+Alt+P or Space) — capture to disk continues" aria-label="Pause live history updates; capture continues">Pause<span id="freezeCount" class="filters-count" hidden></span></button>
       <div class="spacer"></div>
-      <div class="seg" id="inspectDock" role="group" aria-label="Flow inspector placement">
-        <button type="button" data-dock="drawer" aria-pressed="false" title="Show the selected flow in the side drawer, beside the history list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-right"/></svg> Side drawer</button>
-        <button type="button" data-dock="bottom" aria-pressed="true" title="Show the selected flow in the inspector below the history list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-bottom"/></svg> Bottom inspector</button>
-      </div>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Cols</button>
     </div>
     <!-- The Filters popover holds the secondary filter state (source pills, notes,
@@ -2058,8 +2075,11 @@ Content-Type: application/json
 (function(){document.querySelectorAll('[data-init-hidden]').forEach(function(el){el.style.display='none';});})();
 </script>
 <script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/desktop-panel-tools.js"></script>
 <script type="module" src="/js/collections.js"></script>
 <script type="module" src="/js/runner.js"></script>
 <script type="module" src="/js/collections-matrix.js"></script>
+<script type="module" src="/js/desktop-panel-intercept.js"></script>
+<script type="module" src="/js/desktop-panel-proxy.js"></script>
 </body>
 </html>

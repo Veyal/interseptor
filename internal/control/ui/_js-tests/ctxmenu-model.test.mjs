@@ -4,7 +4,7 @@ import {
   SUBMENU_HOVER_MS, ROOT_ITEM_TARGET, ROOT_ITEM_MAX, PAYLOAD_MARKER, CODEC_OPS, INSERT_SNIPPETS,
   normalizeItems, normalizeSections, hasChildren, childSections, menuRows, rootItemCount,
   exceedsRootLimit, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel,
-  selectionMenuModel, shortLabel,
+  selectionMenuModel, shortLabel, dismissOnDocumentClick,
 } from '../js/ctxmenu-model.js';
 
 const VP = { width: 1000, height: 700, left: 0, top: 0 };
@@ -166,4 +166,30 @@ test('shortLabel collapses whitespace and ellipsises', () => {
   assert.equal(shortLabel('  a\n b '), 'a b');
   assert.equal(shortLabel('x'.repeat(50), 10), 'xxxxxxxxxx…');
   assert.equal(shortLabel(null), '');
+});
+
+// Regression: the click that opens a menu from a button (Copy as, Send to) bubbles
+// to the document-level outside-click listener after the button's handler ran.
+// Treating that click as "outside" closed the menu before it painted.
+test('dismissOnDocumentClick keeps the menu open for clicks on its own trigger', () => {
+  const trigger = { contains: (n) => n === trigger || n === icon };
+  const icon = {};
+  const elsewhere = {};
+  const inMenu = () => false;
+  assert.equal(dismissOnDocumentClick(trigger, inMenu, trigger), false);
+  assert.equal(dismissOnDocumentClick(icon, inMenu, trigger), false, 'a click on an icon inside the trigger is still the trigger');
+  assert.equal(dismissOnDocumentClick(elsewhere, inMenu, trigger), true);
+  assert.equal(dismissOnDocumentClick(elsewhere, () => true, trigger), false, 'clicks inside the menu never dismiss');
+  assert.equal(dismissOnDocumentClick(elsewhere, inMenu, null), true, 'a pointer-opened menu has no trigger');
+  assert.equal(dismissOnDocumentClick(null, inMenu, trigger), true);
+});
+
+// Review regression: a right-click menu uses its row as the trigger. A later left
+// click on that row is a new click and must close the menu; only the click that
+// opened the menu (openingTrigger set for that dispatch) is spared.
+test('dismissOnDocumentClick closes on a later click on a row trigger', () => {
+  const row = { contains: (n) => n === row };
+  const inMenu = () => false;
+  assert.equal(dismissOnDocumentClick(row, inMenu, null), true, 'no opening trigger once the opening click is over');
+  assert.equal(dismissOnDocumentClick(row, inMenu, row), false, 'the opening click itself is spared');
 });

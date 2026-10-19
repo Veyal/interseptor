@@ -5,6 +5,7 @@ import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
 import { stepIndex, revealScrollTop } from './list-rows-model.js';
+import { initMapDesktop, isDesktopSkin } from './desktop-panel-map.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
 // tabindex + Enter/Space) so endpoints/rows/sorts are reachable without a mouse.
@@ -287,6 +288,7 @@ export function fillMapTags(){
   if(mapState.tag && !tags.some(t => t.tag === mapState.tag)) mapState.tag = '';
   sel.innerHTML = '<option value="">all tags</option>'
     + tags.map(t => `<option value="${escAttr(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
+  if(isDesktopSkin()) sel.options[0].textContent = 'All tags';
   sel.value = mapState.tag;
 }
 
@@ -301,6 +303,7 @@ export function fillMapMethods(){
   const cur = sel.value;
   sel.innerHTML = '<option value="">method</option>' + methods.map(m => `<option value="${escAttr(m)}">${esc(m)}</option>`).join('');
   if(methods.includes(cur)) sel.value = cur;
+  if(isDesktopSkin()) sel.options[0].textContent = 'All methods'; // desktop: one case for the Filters popover
 }
 
 export function epMatchesSearch(e, q){
@@ -729,6 +732,7 @@ function mapPerfNote(eps){
 }
 
 export function renderMap(){
+  initMapDesktop();
   // A skeleton or error panel from the loading phase must not leave busy state behind.
   ['#mapTree', '#mapTable', '#mapParams'].forEach(sel => { const h = $(sel); if(h){ h.removeAttribute('aria-busy'); delete h.dataset.state; } });
   if(mapState.view === 'params') return;
@@ -1565,3 +1569,5 @@ setMapView(mapState.view);
   const body=det.querySelector(':scope > .map-body[data-lazy-key]');
   if(body)hydrateMapTreeNode(body);
 },true);}
+// Desktop skin: rebuild the toolbar once the host class is set (app.js adds it after the imports run).
+setTimeout(initMapDesktop,0);

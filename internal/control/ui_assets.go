@@ -50,7 +50,7 @@ func loadUIAsset(name string) (*uiAsset, bool) {
 }
 
 func uiCompressible(name string) bool {
-	for _, ext := range []string{".html", ".js", ".css", ".svg", ".json", ".txt", ".md"} {
+	for _, ext := range []string{".html", ".js", ".css", ".svg", ".json", ".webmanifest", ".txt", ".md"} {
 		if strings.HasSuffix(name, ext) {
 			return true
 		}

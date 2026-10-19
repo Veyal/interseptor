@@ -40,5 +40,5 @@ func TestUIHistorySearchChipNamesTheScope(t *testing.T) {
 // The "scope switch moved" tip is for viewers who knew the old layout.
 func TestUIHistoryScopeCoachTipOnlyForReturningViewers(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
-	requireUIContains(t, proxy, "seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'proxy.dock','inspect.height'].some(k=>localStorage.getItem(k)!==null);")
+	requireUIContains(t, proxy, "seen=localStorage.getItem(KEY)==='1'||![FLOW_COLS_KEY,FLOW_COLW_KEY,HIDE_TLS_KEY,'inspect.height'].some(k=>localStorage.getItem(k)!==null);")
 }

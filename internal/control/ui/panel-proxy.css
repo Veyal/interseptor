@@ -1,5 +1,5 @@
 /* panel-proxy.css: Proxy panel workbench (UI overhaul WP6).
-   Breakpoints follow workbench.css: 1100 (side drawer), 720 (phone cards and the
+   Breakpoints follow workbench.css: 720 (phone cards and the
    Filters sheet), pointer:coarse (44px targets). Nothing here animates anything
    except transform and opacity, and no min-width exceeds 375px. */
 
@@ -45,11 +45,6 @@
 #tlsDiagBanner .tls-diag-head{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #tlsDiagBanner .tls-diag-detail{flex:1 1 12rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
 #tlsDiagBanner .tls-diag-more{padding-top:var(--sp-1)}
-
-/* ---- inspector docking: the side drawer replaces the bottom inspector ---- */
-#panel-proxy.dock-drawer #inspect,
-#panel-proxy.dock-drawer #inspectSplitter{display:none!important}
-#panel-proxy.dock-drawer #rows{flex:1 1 auto}
 
 /* ---- pointer:coarse: 44px targets ---- */
 @media (pointer:coarse){

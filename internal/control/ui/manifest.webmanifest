@@ -1,0 +1,13 @@
+{
+  "name": "Interseptor",
+  "short_name": "Interseptor",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111318",
+  "theme_color": "#171a20",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

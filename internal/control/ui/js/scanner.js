@@ -5,6 +5,7 @@ import { createSplitPane } from './split.js';
 import { renderState } from './statepanel.js';
 import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
+import { isDesktopSkin, initScannerDesktop, scanTargetRowDesktop, scanDetailDesktopHTML } from './desktop-panel-scanner.js';
 import { stepIndex } from './list-rows-model.js';
 import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, hostCounts, issuesForHost, groupHostLabel, coverageNote } from './scanner-model.js';
 
@@ -760,6 +761,7 @@ function renderScanContext(){
 }
 function resetScanRun(delay,epoch){setTimeout(()=>{if(epoch===scanRunEpoch)setScanRunState('idle','Run scan ▸');},delay);}
 export async function loadIssues(){
+  initScannerDesktop();
   if(scanRunPending||scanClearPending){scanResultsRefreshPending=true;return;}
   const resultsEpoch=++scanResultsEpoch;
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Loading scanner results…';
@@ -1000,6 +1002,7 @@ export function renderScan(opts){
   }
 }
 function scanTargetRow(i,n,shared){
+  if(isDesktopSkin())return scanTargetRowDesktop(i,n,scanDetailGroup&&scanDetailGroup.items[0]?scanDetailGroup.items[0].detail:'');
   const actions=i.flowId?`<div class="scan-tgt-actions" role="group" aria-label="Actions for ${escAttr(i.target||'this target')}">
       <button type="button" class="btn xs" data-act="open" data-n="${n}">${icon('link')} Open flow #${i.flowId}</button>
       <button type="button" class="btn xs" data-act="verify" data-n="${n}">${icon('repeater')} Verify in Repeater</button>
@@ -1029,6 +1032,13 @@ export function renderScanDetail(){
   if(scanTargetsTitle!==g.title){scanTargetsTitle=g.title;scanTargetsShown=SCAN_TARGET_PAGE;}
   scanDetailGroup=g;scanDetailShared=shared;
   const shown=Math.min(g.items.length,scanTargetsShown);
+  if(isDesktopSkin()){
+    // Desktop skin: the issue is described once, its targets are compact rows (desktop-panel-scanner.js).
+    setScanDetailHTML(scanDetailDesktopHTML({g,first,sev:sevChip(g.severity),meta:groupHostLabel(g),
+      rows:g.items.slice(0,shown).map((i,n)=>scanTargetRow(i,n,shared)).join(''),more:scanTargetsMoreHTML(g.items.length,shown)}));
+    const dpm=$('#scanPromote'); if(dpm){dpm.onclick=()=>promoteFinding(g);if(promoteFindingPending)setPromoteFindingState(dpm,'pending');}
+    return;
+  }
   setScanDetailHTML(`<div class="scan-wrap">
     ${sevChip(g.severity)}
     <div class="scan-head">
@@ -1224,3 +1234,5 @@ import('./project-state.js').then(m=>{
   const apply=s=>{scanUI.scope=s&&s.scope;renderScanContext();};
   m.projectState.subscribe(apply);apply(m.projectState.get());
 }).catch(()=>renderScanContext());
+// Desktop skin: arrange the toolbar once the host class is set (app.js adds it after the imports run).
+setTimeout(initScannerDesktop,0);

@@ -585,9 +585,10 @@ function removeHeldRow(side,id){
   setListboxSelection($$('#heldList .icpt-item'),heldSelectionPredicate);
   syncInterceptBanner();
 }
-$('#respInterceptToggle').onclick=async()=>{
+export async function toggleResponseIntercept(){
   try{await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}
-};
+}
+$('#respInterceptToggle').onclick=toggleResponseIntercept;
 export async function toggleIntercept(){
   try{await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
 }

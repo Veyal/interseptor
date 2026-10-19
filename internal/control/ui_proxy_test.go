@@ -118,33 +118,32 @@ func TestUIProxyBulkBarCarriesTheSpecVerbs(t *testing.T) {
 	requireUIContains(t, src, "if(btn.disabled)return;", "btn.setAttribute('aria-busy','true')", "Deleting…", "toastError('Delete failed',e)")
 }
 
-func TestUIProxyInspectorActionsAndDock(t *testing.T) {
+func TestUIProxyInspectorActionsAndBottomInspectorOnly(t *testing.T) {
 	region := proxyRegion(t)
-	requireUIContains(t, region, `id="inspectCopyAs"`, `id="inspectDock"`, "Attach as evidence")
-	// The placement control is a two-option group: each button names the placement it
-	// selects (and keeps that label), and only the active one is pressed. The side
-	// drawer option carries the right-panel icon, the bottom option the bottom-panel icon.
-	if !regexp.MustCompile(`(?s)id="inspectDock"[^>]*role="group".*?<button[^>]*data-dock="drawer"[^>]*aria-pressed="false"[^>]*>.*?#i-panel-right.*?Side drawer</button>\s*<button[^>]*data-dock="bottom"[^>]*aria-pressed="true"[^>]*>.*?#i-panel-bottom.*?Bottom inspector</button>`).MatchString(region) {
-		t.Error("the dock control must be a group of a Side drawer button (panel-right icon) and a Bottom inspector button (panel-bottom icon), with only the bottom one pressed by default")
-	}
-	if regexp.MustCompile(`<button[^>]*id="inspectDock"`).MatchString(region) {
-		t.Error("the dock control must not be a single state-labelled toggle button")
+	requireUIContains(t, region, `id="inspectCopyAs"`, `id="inspect"`, `id="inspectSplitter"`, "Attach as evidence")
+	// History always uses the bottom inspector: the placement switch and the
+	// side-drawer docking mode are gone.
+	for _, gone := range []string{`id="inspectDock"`, `data-dock="drawer"`, "Side drawer", "Bottom inspector"} {
+		if strings.Contains(region, gone) {
+			t.Errorf("the proxy panel must not contain the removed inspector placement control (%s)", gone)
+		}
 	}
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
-	requireUIContains(t, src, "parseDockPref(", "resolveDock(", "proxy.dock", "openFlowDrawer(", "dock-drawer", "getHook('attachEvidence')")
+	requireUIContains(t, src, "openFlowDrawer(", "getHook('attachEvidence')")
+	for _, gone := range []string{"proxy.dock", "dock-drawer", "parseDockPref", "resolveDock", "dockOptionStates", "syncDock", "openDockedDrawer", "inspectDock"} {
+		if strings.Contains(src, gone) {
+			t.Errorf("proxy.js must not reference the removed dock mode (%s)", gone)
+		}
+	}
 	selectStart := strings.Index(src, "export async function selectFlow(")
 	selectEnd := strings.Index(src[selectStart:], "\nexport async function ")
 	if selectStart < 0 || selectEnd < 0 || !strings.Contains(src[selectStart:selectStart+selectEnd], "syncInspectorVisibility(") {
 		t.Error("selecting a history row must reveal the bottom inspector even when the row highlight is patched in place")
 	}
-	for _, bad := range []string{"btn.innerHTML=icon(drawer?", "dockPref==='drawer'?'bottom':'drawer'"} {
-		if strings.Contains(src, bad) {
-			t.Errorf("proxy.js must not relabel or blindly flip the dock control (%s)", bad)
-		}
-	}
-	requireUIContains(t, src, "button[data-dock]", "dockOptionStates(")
 	css := readUIAsset(t, "panel-proxy.css")
-	requireUIContains(t, css, ".dock-drawer", "#inspectSplitter")
+	if strings.Contains(css, "dock-drawer") {
+		t.Error("panel-proxy.css must not keep the dock-drawer rules")
+	}
 }
 
 func TestUIProxySelectionIsIDKeyedAndFilteredAware(t *testing.T) {

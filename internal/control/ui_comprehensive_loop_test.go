@@ -114,7 +114,7 @@ func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
 	// A cascading flyout is a sibling panel, not a child of #ctxmenu, so the
 	// outside-click test has to ask the engine which panels are open.
 	requireUIContracts(t, "js/proxy.js",
-		"if(!ctxMenuContains(e.target))hideCtx({restoreFocus:false})",
+		"if(dismissOnDocumentClick(e.target,ctxMenuContains,ctxMenuTrigger()))hideCtx({restoreFocus:false})",
 		"if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}",
 	)
 	requireUIContracts(t, "js/core.js",

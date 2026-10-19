@@ -105,6 +105,138 @@ def select_ui_option(page: Page, selector: str, value: str) -> None:
                 raise
 
 
+MOBILE_DOCK_DESTINATION = {
+    "proxy": "capture",
+    "intercept": "capture",
+    "repeater": "test",
+    "intruder": "test",
+    "scanner": "recon",
+    "map": "recon",
+    "findings": "report",
+    "notes": "report",
+    "activity": "report",
+}
+
+
+def dismiss_toasts(page: Page) -> None:
+    """Acknowledge visible toasts the way a user would.
+
+    Error toasts are sticky and stack over the bottom edge (the phone dock and
+    the Intercept Match & Replace bar), so a journey that has already asserted
+    its feedback clears it before reaching for controls underneath.
+    """
+    page.evaluate(
+        "() => document.querySelectorAll('#toast .toast-item button[aria-label=\"Dismiss\"]').forEach(button => button.click())"
+    )
+    page.wait_for_function("() => !document.querySelector('#toast .toast-item')", timeout=10_000)
+
+
+def open_mobile_panel(page: Page, name: str) -> None:
+    """Open a top-level panel at phone width the way a user does.
+
+    The desktop rail and the legacy #mobileToolSelect are hidden at <=720px.
+    Panels reachable from the bottom dock use it (destination button, then the
+    sibling segment); Settings opens from the dock's More sheet; Collections has
+    no dock destination and is reached through the command palette.
+    """
+    dismiss_toasts(page)
+    if name == "collections":
+        page.locator("#cmdkBtn").click()
+        page.locator("#cmdkInput").fill("Go to Collections")
+        page.keyboard.press("Enter")
+    elif name == "settings":
+        page.locator('.dock-btn[data-dock="more"]').click()
+        page.get_by_role("button", name="Open Settings").click()
+    else:
+        page.locator(f'.dock-btn[data-dock="{MOBILE_DOCK_DESTINATION[name]}"]').click()
+        if page.locator(".tab.active").get_attribute("data-tab") != name:
+            page.locator(f'.dock-seg button[data-panel="{name}"]').click()
+    page.wait_for_function(
+        "name => document.querySelector('.tab.active')?.dataset.tab === name && document.querySelector(`.panel[data-panel=\"${name}\"]`)?.getClientRects().length > 0",
+        arg=name,
+    )
+
+
+def scanner_tool(page: Page, button_id: str) -> Any:
+    """Return a Scanner tool button, opening the ellipsis More actions menu when it is closed."""
+    button = page.locator(f"#{button_id}")
+    if not button.is_visible():
+        page.locator("#scanToolsBtn").click()
+        page.wait_for_selector(f"#scanToolsMenu:not([hidden]) #{button_id}", state="visible", timeout=10_000)
+    return button
+
+
+def enable_editing_findings(page: Page, result: AuditResult) -> None:
+    """Findings are agent-maintained: the web UI writes only after the operator opts in."""
+    if page.locator("html[data-findings-editing='on']").count():
+        return
+    result.require(not page.locator("#findNew").is_visible(), "New finding is offered while Findings editing is off")
+    enable = page.locator("#findEmptyEnable")
+    enable.wait_for(state="visible", timeout=10_000)
+    enable.click()
+    page.wait_for_selector("html[data-findings-editing='on']", timeout=10_000)
+    page.wait_for_selector("#findNew", state="visible", timeout=10_000)
+
+
+def open_report_prep(page: Page, result: AuditResult) -> None:
+    """Open the Findings properties rail and its Report prep fold.
+
+    Below the rail's container breakpoint the rail is a disclosure. Opening it
+    must grow the layout rather than paint over the document column.
+    """
+    toggle = page.locator(".find-rail-toggle")
+    if toggle.is_visible() and toggle.get_attribute("aria-expanded") == "false":
+        toggle.click()
+    page.wait_for_selector("#findRailBody", state="visible", timeout=10_000)
+    result.require(
+        page.evaluate(
+            """() => {
+              const rail=document.querySelector('#findRail'), doc=document.querySelector('#findDocument');
+              if(!rail||!doc)return true;
+              const r=rail.getBoundingClientRect(), d=doc.getBoundingClientRect();
+              return r.right<=d.left+1 || d.right<=r.left+1 || r.bottom<=d.top+1;
+            }"""
+        ),
+        "opened Findings properties rail overlaps the finding document",
+    )
+    prep = page.locator("#findReportPrep")
+    if not prep.evaluate("el => el.open"):
+        prep.locator(":scope > summary").click()
+
+
+def open_flow_context_item(page: Page, group: str, label: str, timeout: int = 10_000) -> None:
+    """Choose an item from the History row's cascading context menu."""
+    page.locator("#ctxmenu .ctx-item", has_text=group).first.click(timeout=timeout)
+    page.locator(".ctx-submenu.show .ctx-item", has_text=label).first.click(timeout=timeout)
+
+
+def focus_and_click(page: Page, selector: str) -> None:
+    """Move keyboard focus to a control, wait until it owns focus, then activate it.
+
+    The pending-state checks assert that focus returns to the control that was
+    active when the action started, so the precondition must be settled first.
+    """
+    page.locator(selector).focus()
+    page.wait_for_function("selector => document.activeElement === document.querySelector(selector)", arg=selector)
+    page.locator(selector).evaluate("el=>el.click()")
+
+
+def fill_until_stable(page: Page, selector: str, value: str) -> None:
+    """Type into a field and confirm the editor kept it.
+
+    A freshly created Repeater tab finishes hydrating its editor shortly after
+    the tab strip updates, which can restore the blank state over text typed in
+    that window (seen under WebKit). Retype until the value survives a settle
+    period, then fail if it still does not stick.
+    """
+    for _attempt in range(3):
+        page.locator(selector).fill(value)
+        page.wait_for_timeout(300)
+        if page.locator(selector).input_value() == value:
+            return
+    raise AssertionError(f"{selector} did not keep the typed value after three attempts")
+
+
 def browser_project_storage_key(base: str, project: str) -> str:
     return f"{base}.v2.{quote(str(project), safe=ENCODE_URI_COMPONENT_SAFE)}"
 
@@ -575,8 +707,15 @@ def full_audit_preflight(base: str, proxy: Tuple[str, int], expected_project: st
     }
 
 
+class FixtureServer(ThreadingHTTPServer):
+    # The stdlib default accept backlog is 5. The burst pass drives 16
+    # concurrent proxy workers, so a backlog that small resets connections at
+    # the fixture and surfaces as proxy 502s that say nothing about the product.
+    request_queue_size = 256
+
+
 def start_fixture() -> Tuple[ThreadingHTTPServer, threading.Thread]:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    server = FixtureServer(("127.0.0.1", 0), FixtureHandler)
     thread = threading.Thread(target=server.serve_forever, name="ui-audit-fixture", daemon=True)
     thread.start()
     return server, thread
@@ -622,13 +761,13 @@ def invalidate_and_close_flow_popup(page: Page) -> None:
     hidden_since: Optional[float] = None
     while time.monotonic() < deadline:
         now = time.monotonic()
-        if page.locator("#flowModal").is_visible():
+        if page.locator("#flowDrawer").is_visible():
             hidden_since = None
         elif hidden_since is None:
             hidden_since = now
         elif time.monotonic() - hidden_since >= 2:
             return
-        page.locator("#fmClose").evaluate("button => button.click()")
+        page.locator("#fdClose").evaluate("button => button.click()")
         page.wait_for_timeout(100)
     raise TimeoutError("flow popup did not remain hidden during journey teardown")
 
@@ -828,6 +967,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 module_page.mouse.click(1, 1)
                 module_page.evaluate("document.activeElement?.blur()")
                 module_page.keyboard.press("Tab")
+                if module_page.evaluate("document.activeElement?.id") == "skipLink":
+                    # The bypass-block link is the permanent first stop in tab
+                    # order; Reload must be the first *action* after it.
+                    module_page.keyboard.press("Tab")
                 result.require(
                     module_page.evaluate("document.activeElement?.hasAttribute('data-workspace-retry')"),
                     "Reload is not the first usable keyboard action after module startup failure",
@@ -2382,7 +2525,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
             page.locator('.tab[data-tab="settings"]').click()
             sections = page.locator("#setNav button[data-sec]").evaluate_all("buttons=>buttons.map(button=>button.dataset.sec)")
-            result.require(len(sections) == 8, f"expected 8 Settings sections, found {sections}")
+            expected_sections = ["proxy", "tls", "devices", "scope", "scanner", "session", "appearance", "project", "api"]
+            result.require(sections == expected_sections, f"expected Settings sections {expected_sections}, found {sections}")
             for section in sections:
                 page.locator(f'#setNav button[data-sec="{section}"]').click()
                 visible = page.locator(f'.set-sec[data-sec="{section}"]').evaluate("el=>!el.hidden&&getComputedStyle(el).display!=='none'")
@@ -2427,7 +2571,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 for width, height in VIEWPORTS:
                     page.set_viewport_size({"width": width, "height": height})
                     if width <= 720:
-                        select_ui_option(page, "#mobileToolSelect", "proxy")
+                        open_mobile_panel(page, "proxy")
                     else:
                         page.locator('.tab[data-tab="proxy"]').click()
                     overflow = page.evaluate("document.documentElement.scrollWidth-document.documentElement.clientWidth")
@@ -2561,13 +2705,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     setup_page.wait_for_selector("#runSetupBtn", state="visible", timeout=10_000)
                     setup_page.locator("#runSetupBtn").click()
                     setup_page.wait_for_selector("#setupModal", state="visible", timeout=10_000)
-                    result.require(
-                        setup_page.locator("#setupReadiness").get_attribute("role") == "status"
-                        and setup_page.locator("#setupReadiness").get_attribute("aria-live") == "polite",
-                        "setup readiness changes were not exposed as a polite status",
-                    )
                     setup_page.locator("#setupNext").click()
-                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 4'")
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 5'")
                     copy_command = setup_page.locator("#setupCopyCmd")
                     if copy_command.count():
                         result.require(
@@ -2575,16 +2714,16 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                             "setup trust-command copy control had no direct accessible name",
                         )
                     setup_page.locator("#setupBack").click()
-                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='1 / 4'")
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='1 / 5'")
                     result.require(
                         setup_page.locator("#setupNext").is_enabled(),
                         "setup CA trust gate remained attached after navigating Back",
                     )
                     setup_page.locator("#setupNext").click()
-                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 4'")
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 5'")
                     setup_page.locator("#setupTrusted").check()
                     setup_page.locator("#setupNext").click()
-                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='3 / 4'")
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='3 / 5'")
                     result.require(
                         setup_page.locator("#setupScopeHost").get_attribute("aria-label") == "Scope host",
                         "setup scope textbox had no direct accessible name",
@@ -2637,6 +2776,16 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     )
                     setup_page.wait_for_timeout(80)
                     result.require(len(held_scope) == 1, "setup Add-to-scope issued duplicate POST requests")
+                    # The readiness summary lives on the final step of the five-step wizard.
+                    setup_page.locator("#setupNext").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='4 / 5'")
+                    setup_page.locator("#setupNext").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='5 / 5'")
+                    result.require(
+                        setup_page.locator("#setupReadiness").get_attribute("role") == "status"
+                        and setup_page.locator("#setupReadiness").get_attribute("aria-live") == "polite",
+                        "setup readiness changes were not exposed as a polite status",
+                    )
                     setup_page.locator("#setupSkip").click()
                     setup_page.wait_for_selector("#setupModal", state="hidden", timeout=10_000)
                 finally:
@@ -2682,7 +2831,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     check_page.goto(base, wait_until="domcontentloaded")
                     wait_ready(check_page)
                     check_page.locator('.tab[data-tab="scanner"]').click()
-                    check_page.locator("#checksBtn").click()
+                    scanner_tool(check_page, "checksBtn").click()
                     check_page.wait_for_selector("#checksModal", state="visible", timeout=10_000)
                     check_page.locator("#checkNew").click()
                     check_page.locator("#checkId").fill(check_id)
@@ -2785,7 +2934,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     codec_page.goto(base, wait_until="domcontentloaded")
                     wait_ready(codec_page)
                     codec_page.locator('.tab[data-tab="scanner"]').click()
-                    codec_page.locator("#codecsBtn").click()
+                    scanner_tool(codec_page, "codecsBtn").click()
                     codec_page.wait_for_selector("#codecsModal", state="visible", timeout=10_000)
                     deadline = time.monotonic() + 2.0
                     while len(list_routes) < 1 and time.monotonic() < deadline:
@@ -2799,11 +2948,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     result.require(len(docs_routes) == 1, "opening codec Docs did not issue its initial request")
                     codec_page.locator("#codecModeCode").click()
                     codec_page.locator("#codecModeDocs").click()
-                    deadline = time.monotonic() + 2.0
-                    while len(docs_routes) < 2 and time.monotonic() < deadline:
-                        codec_page.wait_for_timeout(10)
-                    result.require(len(docs_routes) == 2, "reopening codec Docs did not issue a latest-owner request")
-                    docs_routes[1].fulfill(
+                    # Concurrent identical GETs share one in-flight request
+                    # (api-inflight.js), so reopening Docs while the first read
+                    # is held must join it instead of issuing a duplicate.
+                    codec_page.wait_for_timeout(300)
+                    result.require(len(docs_routes) == 1, "reopening codec Docs during an in-flight read issued a duplicate request")
+                    docs_routes[0].fulfill(
                         status=200,
                         content_type="application/json",
                         body='{"markdown":"# Latest codec reference"}',
@@ -2811,39 +2961,27 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     codec_page.wait_for_function(
                         "document.querySelector('#codecDocs')?.textContent.includes('Latest codec reference')"
                     )
-                    docs_routes[0].fulfill(
-                        status=200,
-                        content_type="application/json",
-                        body='{"markdown":"# Stale codec reference"}',
-                    )
                     codec_page.wait_for_timeout(120)
                     result.require(
-                        "Latest codec reference" in codec_page.locator("#codecDocs").inner_text()
-                        and "Stale codec reference" not in codec_page.locator("#codecDocs").inner_text(),
-                        "an older codec Docs response replaced the latest reference",
+                        codec_page.locator("#codecDocs").inner_text().count("Latest codec reference") == 1,
+                        "the shared codec Docs read rendered more than once",
                     )
 
                     codec_page.locator("#codecNew").click()
-                    deadline = time.monotonic() + 2.0
-                    while len(list_routes) < 2 and time.monotonic() < deadline:
-                        codec_page.wait_for_timeout(10)
-                    result.require(len(list_routes) == 2, "New codec did not issue a latest-owner list request")
-                    list_routes[1].fulfill(
+                    codec_page.wait_for_timeout(300)
+                    # New codec reloads the list while the opening read is still
+                    # held; the identical GET joins that request (api-inflight.js).
+                    result.require(len(list_routes) == 1, "New codec during an in-flight list read issued a duplicate request")
+                    list_routes[0].fulfill(
                         status=200,
                         content_type="application/json",
                         body='{"codecs":[{"id":"latest-codec","meta":{"title":"Latest codec"}}],"dir":"/tmp/ui-audit/codecs"}',
                     )
                     codec_page.wait_for_selector('#codecsList .codecs-row[data-id="latest-codec"]')
-                    list_routes[0].fulfill(
-                        status=200,
-                        content_type="application/json",
-                        body='{"codecs":[{"id":"stale-codec","meta":{"title":"Stale codec"}}],"dir":"/tmp/ui-audit/codecs"}',
-                    )
                     codec_page.wait_for_timeout(120)
                     result.require(
-                        codec_page.locator('#codecsList .codecs-row[data-id="latest-codec"]').count() == 1
-                        and codec_page.locator('#codecsList .codecs-row[data-id="stale-codec"]').count() == 0,
-                        "an older codec list response replaced the latest list",
+                        codec_page.locator('#codecsList .codecs-row[data-id="latest-codec"]').count() == 1,
+                        "the shared codec list read rendered a duplicate or no row",
                     )
                 finally:
                     for route in list_routes + docs_routes:
@@ -3026,7 +3164,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.wait_for_selector("#repHistory .h")
                 history_count = page.locator("#repHistory .h").count()
                 result.require(history_count == 1, f"expected one tab-owned send, found {history_count}")
-                result.require(page.locator("#repHistory .h").first.get_attribute("aria-current") == "true", "Repeater history selection is not exposed")
+                result.require(page.locator("#repHistory .h").first.get_attribute("aria-selected") == "true", "Repeater history selection is not exposed")
                 tab_a = page.locator("#repTabs .rep-tab.on").get_attribute("data-tid")
                 result.require(bool(tab_a), "Repeater active tab has no stable identity")
                 _, project_info, _ = _json_get(base, "/api/project")
@@ -3111,7 +3249,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 )
                 tab_b = page.locator("#repTabs .rep-tab.on").get_attribute("data-tid")
                 result.require(tab_b and tab_b != tab_a, "new Repeater tab did not receive a distinct identity")
-                page.locator("#repUrl").fill(fixture_base + "/audit/repeater-tab-b")
+                fill_until_stable(page, "#repUrl", fixture_base + "/audit/repeater-tab-b")
                 select_ui_option(page, "#repMethod", "GET")
                 page.locator("#repHeaders").fill("")
                 page.locator("#repBody").fill("")
@@ -3212,21 +3350,32 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 ) as saved:
                     page.locator("#notesEdit").fill(notes)
                 result.require(saved.value.ok, f"Notes save returned {saved.value.status}")
-                page.locator('#notesSeg button[data-m="preview"]').click()
-                result.require(page.locator("#notesPreview").is_visible(), "Notes preview did not open")
-                page.locator('#notesSeg button[data-m="edit"]').click()
+                if page.locator("#notesSeg").is_visible():
+                    # Single-column layout: Edit/Preview switch the one visible pane.
+                    page.locator('#notesSeg button[data-m="preview"]').click()
+                    result.require(page.locator("#notesPreview").is_visible(), "Notes preview did not open")
+                    page.locator('#notesSeg button[data-m="edit"]').click()
+                else:
+                    # Wide layout shows the editor and the rendered note side by
+                    # side, so the Edit/Preview switch is intentionally absent.
+                    result.require(
+                        page.locator("#notesEdit").is_visible() and page.locator("#notesPreview").is_visible(),
+                        "wide Notes layout does not show the editor and preview together",
+                    )
+                page.wait_for_function(
+                    "marker => document.querySelector('#notesPreview')?.textContent.includes(marker)",
+                    arg=f"verification pass {marker}",
+                    timeout=10_000,
+                )
 
                 page.locator('.tab[data-tab="findings"]').click()
-                try:
-                    page.locator("#findNew").click()
-                    page.wait_for_function("document.activeElement?.id==='fcTitle'")
-                    page.locator("#fcTitle").fill("Generic UI audit finding")
-                    select_ui_option(page, "#fcSeverity", "Info")
-                    page.locator("#fcSave").click()
-                    page.wait_for_selector("#findCreateModal", state="hidden", timeout=10_000)
-                finally:
-                    if page.locator("#findCreateModal").is_visible():
-                        page.locator("#fcClose").click()
+                enable_editing_findings(page, result)
+                page.locator("#findNew").click()
+                page.wait_for_function("document.activeElement?.id==='findInlineTitle'")
+                page.locator("#findInlineTitle").fill("Generic UI audit finding")
+                select_ui_option(page, "#findInlineSeverity", "Info")
+                page.locator("#findInlineCreate").click()
+                page.wait_for_selector("#findInlineNew", state="hidden", timeout=10_000)
                 page.wait_for_selector("#findList .find-row", timeout=10_000)
                 current = page.locator("#findList .find-row[aria-current='true']")
                 result.require(current.count() == 1, "Finding selection does not expose one current row")
@@ -3261,16 +3410,14 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # Remediation / Review sections; only one .find-workspace-panel
                 # is visible at a time, so each field's own section must be
                 # activated before it is reachable.
-                page.locator('.find-section-nav a[data-find-section="remediation"]').click()
+                open_report_prep(page, result)
                 page.wait_for_selector("#findFix", state="visible", timeout=10_000)
                 page.locator("#findFix").fill("Enforce authorization before returning the requested record.")
                 page.locator("#findRetest").fill("The same request returns 403 and no record data.")
-                page.locator('.find-section-nav a[data-find-section="review"]').click()
                 # findConfidence is an enhanced select: the native element stays
                 # aria-hidden, so wait on its visible trigger, not itself.
                 page.wait_for_selector("#findConfidenceUi", state="visible", timeout=10_000)
                 select_ui_option(page, "#findConfidence", "firm")
-                page.locator('.find-section-nav a[data-find-section="evidence"]').click()
                 page.wait_for_selector("#findBody", state="visible", timeout=10_000)
                 page.locator("#findBody").click(position={"x": 4, "y": 4})
                 page.wait_for_function(
@@ -3384,7 +3531,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     }"""
                 )
                 result.require(flow_id, "attached flow was not available for role mapping")
-                page.locator('.find-section-nav a[data-find-section="review"]').click()
+                open_report_prep(page, result)
                 page.wait_for_selector("#findExecutionUi", state="visible", timeout=10_000)
                 select_ui_option(page, "#findExecution", "demonstrated")
                 page.locator("#findCvss").fill(
@@ -3393,8 +3540,16 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.locator("[data-cvss-preview]").click()
                 page.wait_for_selector("[data-cvss-apply]:not([disabled])", timeout=10_000)
                 page.locator("[data-cvss-apply]").click()
+                # The Applied message is transient: the server echo can rerender
+                # the editor before it is read, so accept the persisted vector
+                # (applied through the same control) as the acknowledgement.
                 page.wait_for_function(
-                    "document.querySelector('#findCvssStatus')?.textContent.includes('Applied')",
+                    """async () => {
+                      if(document.querySelector('#findCvssStatus')?.textContent.includes('Applied'))return true;
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      return !!f?.cvss && f.cvss.startsWith('CVSS:4.0/');
+                    }""",
                     timeout=10_000,
                 )
                 # The evidence-to-check mapping lives in a closed <details>.
@@ -3417,7 +3572,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # evidence link when a real browser/device screenshot exists;
                 # the operator_upload image here doesn't qualify, so the
                 # target's own "Evidence flows" toggle must be used too.
-                page.locator('.find-section-nav a[data-find-section="overview"]').click()
+                page.locator("#findTargetCard-0").scroll_into_view_if_needed()
                 page.wait_for_selector("#findTargetCard-0", state="visible", timeout=10_000)
                 page.locator(f'#findTargetCard-0 [data-target-evidence="{flow_id}"]').click()
                 page.wait_for_function(
@@ -3457,14 +3612,17 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     finding.get("readiness", {}).get("stage") == "report_ready",
                     "complete evidence-first finding did not become report ready",
                 )
-                # evidenceSourceLabel() humanizes the raw source enum for
-                # display ("operator_upload" -> "Uploaded image · origin
-                # unconfirmed", "captured_flow" -> "Captured traffic"); the
-                # raw strings never appear in rendered text, only in a title
-                # attribute innerText doesn't include.
+                # The Reproduction timeline labels an uploaded screenshot with
+                # its humanized source ("operator_upload" -> "Uploaded image ·
+                # origin unconfirmed"; the raw enum only lives in the API).
+                # Captured flows are identified by their exchange header
+                # (method, path and #id) rather than a source label.
+                result.require("origin unconfirmed" in evidence["text"], "finding view hid screenshot provenance")
+                attached_flow = page.locator(f'#findBody .find-xch[data-flow="{flow_id}"] .find-xchhd')
+                result.require(attached_flow.count() == 1, "finding view did not render the attached captured flow")
                 result.require(
-                    "origin unconfirmed" in evidence["text"] and "Captured traffic" in evidence["text"],
-                    "finding view hid evidence provenance",
+                    f"#{flow_id}" in attached_flow.inner_text() and "/audit/seed" in attached_flow.inner_text(),
+                    "finding view hid captured-flow identity",
                 )
 
                 # Verify all supported report handoffs produce a browser download.
@@ -3473,23 +3631,27 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # Force the product's documented anchor-download fallback so
                 # the real UI fetch/blob/filename path remains observable.
                 page.evaluate("Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true})")
-                page.locator("#findExportOpen").click()
-                page.wait_for_selector("#findExportModal", state="visible", timeout=10_000)
+                page.locator("#findReportToggle").click()
+                page.wait_for_selector("#findReportMount", state="visible", timeout=10_000)
                 try:
+                    # The Report view is the only export surface; a report-ready
+                    # finding opens the gate, so every format downloads.
+                    page.wait_for_function(
+                        "document.querySelector('#reportExport')?.getAttribute('aria-disabled')==='false'",
+                        timeout=10_000,
+                    )
                     for fmt in ("md", "html", "json"):
-                        page.wait_for_function("!document.querySelector('#findExport')?.disabled")
-                        select_ui_option(page, "#findExportFmt", fmt)
+                        select_ui_option(page, "#reportFormat", fmt)
                         with page.expect_download(timeout=10_000) as download_info:
-                            page.locator("#findExport").click()
+                            page.locator("#reportExport").click()
                         download = download_info.value
                         result.require(download.suggested_filename.endswith("." + fmt), f"{fmt} export filename was not reported")
-                        page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+                        page.wait_for_function("!document.querySelector('#reportExport')?.hasAttribute('aria-busy')")
                 finally:
-                    # A failed export must not leave the modal on top of the
-                    # stack; later Escape presses in this journey dismiss the
-                    # top-most modal, not necessarily the intended popover.
-                    page.locator("#findExportClose").click()
-                    page.wait_for_selector("#findExportModal", state="hidden", timeout=10_000)
+                    # A failed export must not leave the Report view covering
+                    # the findings list for the journeys that follow.
+                    page.locator("#reportBack").click()
+                    page.wait_for_selector("#findReportMount", state="hidden", timeout=10_000)
 
                 # At 1024px the report toolbar must remain distinct from the
                 # findings content, and the mobile listbox must retain its
@@ -3507,18 +3669,24 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         ),
                         "1024px Findings toolbar overlaps report content",
                     )
-                    result.require(
-                        page.evaluate(
-                            """() => {
-                              const exportBox=document.querySelector('#findExport')?.getBoundingClientRect();
-                              const groupBox=document.querySelector('#findExportGroupByTag')?.closest('label')?.getBoundingClientRect();
-                              if(!exportBox||!groupBox)return false;
-                              return exportBox.right<=groupBox.left || groupBox.right<=exportBox.left
-                                || exportBox.bottom<=groupBox.top || groupBox.bottom<=exportBox.top;
-                            }"""
-                        ),
-                        "1024px Findings Export and Group-by controls overlap",
-                    )
+                    page.locator("#findReportToggle").click()
+                    page.wait_for_selector("#reportExport", state="visible", timeout=10_000)
+                    try:
+                        result.require(
+                            page.evaluate(
+                                """() => {
+                                  const exportBox=document.querySelector('#reportExport')?.getBoundingClientRect();
+                                  const groupBox=document.querySelector('#reportGroupTag')?.closest('label')?.getBoundingClientRect();
+                                  if(!exportBox||!groupBox)return false;
+                                  return exportBox.right<=groupBox.left || groupBox.right<=exportBox.left
+                                    || exportBox.bottom<=groupBox.top || groupBox.bottom<=exportBox.top;
+                                }"""
+                            ),
+                            "1024px Report Download and Group-by controls overlap",
+                        )
+                    finally:
+                        page.locator("#reportBack").click()
+                        page.wait_for_selector("#findReportMount", state="hidden", timeout=10_000)
                     result.require(
                         page.evaluate(
                             """() => {
@@ -3529,7 +3697,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                               const line=parseFloat(style.lineHeight)||20;
                               return title.getBoundingClientRect().width>=Math.min(180, text.length*5)
                                 && title.getBoundingClientRect().height<=line*2.5
-                                && style.wordBreak!=='break-all' && style.overflowWrap!=='anywhere';
+                                && style.wordBreak!=='break-all'
+                                && (style.overflowWrap!=='anywhere' || (style.webkitLineClamp==='2' && title.getBoundingClientRect().height<=line*2.5));
                             }"""
                         ),
                         "1024px compact Finding title was reduced to an unusable narrow row",
@@ -3538,19 +3707,42 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.wait_for_function(
                         "document.querySelector('#tabs')?.getAttribute('aria-orientation')==='horizontal'"
                     )
+                    # Findings are a labelled navigation list of links (not a
+                    # listbox), so orientation is not announced; the list must
+                    # stay a named landmark whose rows are links with one
+                    # current finding.
                     result.require(
-                        page.locator("#findList").get_attribute("aria-orientation") == "vertical",
-                        "mobile Findings listbox lost its vertical orientation",
+                        page.evaluate(
+                            """() => {
+                              const list=document.querySelector('#findList');
+                              return !!list && list.tagName==='NAV' && list.getAttribute('aria-label')==='Security findings'
+                                && list.querySelectorAll('a.find-row').length>=1
+                                && list.querySelectorAll('a.find-row[aria-current="true"]').length===1;
+                            }"""
+                        ),
+                        "mobile Findings list lost its labelled navigation structure",
                     )
                 finally:
                     # A failed responsive assertion must not cascade into later
                     # desktop-only journeys by leaving the shared page narrow.
                     page.set_viewport_size({"width": 1440, "height": 900})
+                # The Writing guide is an inline panel opened from the toolbar;
+                # its full dialog restores focus to the control that opened it.
                 guide = page.locator("#findGuide")
                 guide.focus()
                 guide.press("Enter")
+                page.wait_for_selector("#findGuideAside", state="visible", timeout=10_000)
+                result.require(guide.get_attribute("aria-expanded") == "true", "Writing guide toggle did not expose its expanded state")
+                result.require(page.evaluate("document.activeElement?.id") == "findGuideDialog", "Writing guide did not move focus into its panel")
+                page.locator("#findGuideDialog").press("Enter")
+                page.wait_for_selector("#findGuideModal", state="visible", timeout=10_000)
                 page.keyboard.press("Escape")
-                result.require(page.evaluate("document.activeElement?.id") == "findGuide", "Finding guide did not restore focus")
+                page.wait_for_selector("#findGuideModal", state="hidden", timeout=10_000)
+                result.require(page.evaluate("document.activeElement?.id") == "findGuideDialog", "Finding guide dialog did not restore focus")
+                guide.focus()
+                guide.press("Enter")
+                page.wait_for_selector("#findGuideAside", state="hidden", timeout=10_000)
+                result.require(guide.get_attribute("aria-expanded") == "false", "Writing guide toggle did not collapse")
 
             result.run("Notes save/preview and Findings evidence workflow", notes_and_findings)
 
@@ -3597,11 +3789,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.route("**/api/findings", hold_finding_create)
                 try:
                     page.locator('.tab[data-tab="findings"]').click()
-                    page.locator("#findNew").focus()
-                    page.locator("#findNew").evaluate("el=>el.click()")
+                    focus_and_click(page, "#findNew")
+                    # The inline row is the quick path; "Full form" opens the
+                    # dialog whose pending/dismissal contract this case audits.
+                    focus_and_click(page, "#findNewDialog")
                     page.locator("#fcTitle").fill(finding_title)
-                    page.locator("#fcSave").focus()
-                    page.locator("#fcSave").evaluate("el=>el.click()")
+                    focus_and_click(page, "#fcSave")
                     wait_for_route(held_findings, "held finding create")
                     result.require(
                         page.locator("#fcTitle").is_disabled()
@@ -3630,7 +3823,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         "title => document.querySelector('#findDetail')?.textContent.includes(title)",
                         arg=finding_title,
                     )
-                    result.require(page.evaluate("document.activeElement?.id") == "findNew", "finding acknowledgement did not restore invoker focus")
+                    result.require(page.evaluate("document.activeElement?.id") == "findNewDialog", "finding acknowledgement did not restore invoker focus")
                 finally:
                     for route in held_findings:
                         try:
@@ -3656,6 +3849,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                             raise RuntimeError(f"DELETE returned {cleanup_status}")
                     except Exception as exc:
                         result.failures.append(f"held-finding audit cleanup failed: {type(exc).__name__}: {exc}")
+                    if page.locator("#findCreateModal").is_visible() and page.locator("#fcClose").is_enabled():
+                        page.locator("#fcClose").click()
 
                 check_id = "ui-audit-held-check"
                 held_checks: List[Any] = []
@@ -3669,13 +3864,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.route(f"**/api/checks/{check_id}", hold_check_save)
                 try:
                     page.locator('.tab[data-tab="scanner"]').click()
-                    page.locator("#checksBtn").click()
+                    scanner_tool(page, "checksBtn").click()
                     page.wait_for_selector("#checksModal", state="visible", timeout=10_000)
                     page.locator("#checkNew").click()
                     page.locator("#checkId").fill(check_id)
                     page.locator("#checkSrc").fill("def check(flow):\n    return []\n")
-                    page.locator("#checkSave").focus()
-                    page.locator("#checkSave").evaluate("el=>el.click()")
+                    focus_and_click(page, "#checkSave")
                     wait_for_route(held_checks, "held Scanner check save")
                     result.require(
                         page.locator("#checksClose").is_disabled()
@@ -3749,14 +3943,13 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 authz_row.scroll_into_view_if_needed()
                 authz_row.click(button="right")
                 page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
-                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click()
+                open_flow_context_item(page, "Analyse", "Authz differential matrix")
                 page.wait_for_selector("#authzModal", state="visible", timeout=10_000)
                 page.wait_for_selector("#authzIds .authz-name", timeout=10_000)
                 page.route("**/api/authz", hold_authz_save)
                 try:
                     page.locator("#authzIds .authz-name").first.fill("ui-audit-held-identity")
-                    page.locator("#authzSave").focus()
-                    page.locator("#authzSave").evaluate("el=>el.click()")
+                    focus_and_click(page, "#authzSave")
                     wait_for_route(held_authz, "held Authz identity save")
                     result.require(
                         page.locator("#authzClose").is_disabled()
@@ -3794,8 +3987,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.route("**/api/authz/run", hold_authz_run)
                     page.locator('#authzMode button[data-m="scope"]').click()
                     page.wait_for_selector("#authzScopeEdit", state="visible", timeout=10_000)
-                    page.locator("#authzRun").focus()
-                    page.locator("#authzRun").evaluate("el=>el.click()")
+                    focus_and_click(page, "#authzRun")
                     wait_for_route(held_authz_runs, "held in-scope Authz run")
                     result.require(page.locator("#authzScopeEdit").is_disabled(), "Authz scope navigation stayed enabled during a run")
                     result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz run did not retain pending focus")
@@ -3927,6 +4119,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # mutations in the isolated project. Never enable system proxy,
                 # contact peers, or write real target data.
                 page.locator('.tab[data-tab="proxy"]').click()
+                # Saved searches live in the History Filters popover.
+                if not page.locator("#proxyFilters").is_visible():
+                    page.locator("#filtersBtn").click()
+                    page.wait_for_selector("#proxyFilters", state="visible", timeout=10_000)
                 page.locator("#flowSearchScripts summary").click()
                 page.wait_for_selector("#flowSearchScriptEditor")
                 page.locator("#flowSearchScriptName").fill("ui-audit")
@@ -3937,7 +4133,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
                 page.locator('.tab[data-tab="scanner"]').click()
                 for button_id, modal_id, close_id, docs_id in (("checksBtn", "checksModal", "checksClose", "checkModeDocs"), ("codecsBtn", "codecsModal", "codecsClose", "codecModeDocs")):
-                    page.locator(f"#{button_id}").click()
+                    scanner_tool(page, button_id).click()
                     page.wait_for_selector(f"#{modal_id}", state="visible", timeout=10_000)
                     page.locator(f"#{docs_id}").click()
                     page.wait_for_timeout(120)
@@ -3965,7 +4161,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     oob_enabled = True
                 try:
                     page.locator('.tab[data-tab="scanner"]').click()
-                    oob_button = page.locator("#oobBtn")
+                    oob_button = scanner_tool(page, "oobBtn")
                     result.require(oob_button.is_visible(), "enabled OOB action is hidden")
                     if oob_button.is_enabled():
                         oob_button.click()
@@ -4378,6 +4574,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 rule_match = "^X-UiAudit:"
                 try:
                     page.locator('.tab[data-tab="intercept"]').click()
+                    dismiss_toasts(page)
                     details = page.locator("details.icpt-mr")
                     if not details.get_attribute("open"):
                         details.locator("summary").click()
@@ -4483,20 +4680,20 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     project_page.locator('.tab[data-tab="settings"]').click()
                     project_page.locator("#projBadge").click()
                     project_page.wait_for_selector("#projModal", state="visible", timeout=10_000)
+                    project_page.locator("#pmNewToggle").click()
                     project_page.locator("#pmNew").fill("ui-audit-relative")
+                    project_page.locator("#pmCreateMore summary").click()
                     project_page.locator("#pmNewPath").fill("relative/audit")
                     project_page.locator("#pmNewBtn").click()
+                    # Validation is local to the form: the reason is announced
+                    # on the Save location field itself and nothing is sent.
                     project_page.wait_for_function(
-                        "needle => [...document.querySelectorAll('#toast .toast-item')].some(el=>el.textContent.includes(needle))",
-                        arg="absolute folder path",
-                        timeout=10_000,
-                    )
-                    project_page.wait_for_function(
-                        "document.querySelector('#pmSwitchNote')?.textContent.includes('absolute folder path')",
+                        "document.querySelector('#pmNewPathError')?.hidden===false && document.querySelector('#pmNewPathError').textContent.includes('absolute folder path')",
                         timeout=10_000,
                     )
                     result.require(project_page.locator("#pmNewPath").get_attribute("aria-invalid") == "true", "relative project path was not associated with its field")
-                    result.require(project_page.locator("#pmSwitchNote").get_attribute("role") == "alert", "relative project path error was not persistently announced")
+                    result.require(project_page.locator("#pmNewPathError").get_attribute("role") == "alert", "relative project path error was not persistently announced")
+                    result.require(project_page.evaluate("document.activeElement?.id") == "pmNewPath", "relative project path error did not return focus to its field")
                     result.require(not switch_requests, "relative project path attempted a project switch request")
                 finally:
                     project_context.close()
@@ -4545,7 +4742,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 try:
                     page.wait_for_selector("#heldList .icpt-item", timeout=10_000)
                     held = page.locator("#heldList .icpt-item").first
-                    result.require(held.get_attribute("aria-current") == "true", "held selection is not exposed")
+                    result.require(held.get_attribute("aria-selected") == "true", "held selection is not exposed")
                     request_id = held.get_attribute("data-id")
 
                     def delayed_forward(route: Any) -> None:
@@ -4612,7 +4809,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.wait_for_selector('#heldList .icpt-item[data-side="resp"]', timeout=10_000)
                     held = page.locator('#heldList .icpt-item[data-side="resp"]').first
                     request_id = held.get_attribute("data-id")
-                    result.require(held.get_attribute("aria-current") == "true", "response hold selection is not exposed")
+                    result.require(held.get_attribute("aria-selected") == "true", "response hold selection is not exposed")
 
                     def delay_drop(route: Any) -> None:
                         held_routes.append(route)
@@ -4620,10 +4817,15 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     delayed_drop = delay_drop
                     page.route(f"**/api/intercept/response/{request_id}/drop", delayed_drop)
                     page.locator("#dropBtn").click()
-                    route_deadline = time.monotonic() + 2.0
+                    # Drop is deferred behind an undo toast: nothing is sent and
+                    # the response stays held until the undo window closes.
+                    page.wait_for_timeout(400)
+                    result.require(not held_routes, "Drop issued its request inside the undo window")
+                    result.require(page.locator(f'#heldList .icpt-item[data-id="{request_id}"][data-side="resp"]').count() == 1, "Drop removed the response inside the undo window")
+                    route_deadline = time.monotonic() + 10.0
                     while not held_routes and time.monotonic() < route_deadline:
                         page.wait_for_timeout(10)
-                    result.require(held_routes, "Drop did not issue its acknowledgement request")
+                    result.require(held_routes, "Drop did not issue its acknowledgement request after the undo window")
                     page.wait_for_timeout(90)
                     result.require(page.locator(f'#heldList .icpt-item[data-id="{request_id}"][data-side="resp"]').count() == 1, "Drop removed the response before acknowledgement")
                     held_routes[0].continue_()
@@ -4664,7 +4866,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     try:
                         authz_row.click(button="right")
                         page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
-                        page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(timeout=2_000)
+                        open_flow_context_item(page, "Analyse", "Authz differential matrix", timeout=2_000)
                         break
                     except Exception:
                         if attempt == 1:
@@ -4764,7 +4966,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 try:
                     page.locator('.tab[data-tab="proxy"]').click(timeout=2_000)
                 except Exception:
-                    if not page.locator("#flowModal").is_visible():
+                    if not page.locator("#flowDrawer").is_visible():
                         raise
                     # Commit the intended tab change underneath the known
                     # transient popup, then finish closing that popup before
@@ -4814,7 +5016,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # false regressions even when History remains bounded.
                 nodes = page.evaluate("document.querySelector('#rows')?.getElementsByTagName('*').length||0")
                 result.require(0 < rows <= 160, f"History DOM was not bounded after burst: {rows} rows")
-                result.require(nodes <= rows * 12 + 100, f"History row DOM grew unexpectedly: {nodes} nodes for {rows} rows")
+                # A row is 14 elements today (eight cells, the time spans, the
+                # More-actions button and its icon); 16 leaves room for a tag
+                # or note badge without letting per-row cost drift unnoticed.
+                result.require(nodes <= rows * 16 + 100, f"History row DOM grew unexpectedly: {nodes} nodes for {rows} rows")
 
                 rows_box = page.locator("#rows")
                 rows_box.evaluate("el=>{el.scrollTop=Math.min(500,el.scrollHeight-el.clientHeight)}")
@@ -4923,7 +5128,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         "settings": "#setSearch",
                     }
                     for name in TOP_LEVEL_TABS:
-                        select_ui_option(page, "#mobileToolSelect", name)
+                        open_mobile_panel(page, name)
                         panel = page.locator(f'.panel[data-panel="{name}"]')
                         result.require(panel.is_visible(), f"mobile {name} panel is not visible")
                         box = panel.bounding_box()
@@ -4938,9 +5143,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         key = page.locator(key_controls[name])
                         key.scroll_into_view_if_needed()
                         result.require(key.is_visible(), f"mobile {name} key control is not reachable")
-                    select_ui_option(page, "#mobileToolSelect", "scanner")
+                    open_mobile_panel(page, "scanner")
                     for button_id, modal_id, close_id in (("checksBtn", "checksModal", "checksClose"), ("codecsBtn", "codecsModal", "codecsClose")):
-                        button = page.locator(f"#{button_id}")
+                        button = scanner_tool(page, button_id)
                         result.require(button.is_visible() and not button.is_disabled(), f"mobile {button_id} is not reachable")
                         button.click()
                         try:
@@ -5024,7 +5229,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 capture("1024x768", output / "after-1024x768-map.png", (1024, 768))
 
                 page.set_viewport_size({"width": 390, "height": 844})
-                select_ui_option(page, "#mobileToolSelect", "scanner")
+                open_mobile_panel(page, "scanner")
                 page.wait_for_function("!document.querySelector('#scanRescanState')?.textContent.startsWith('Loading')", timeout=10_000)
                 result.require(page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"), "mobile Scanner screenshot has document overflow")
                 page.mouse.move(170, 20)

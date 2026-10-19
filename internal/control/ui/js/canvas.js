@@ -53,12 +53,36 @@ function restore() {
 }
 
 // ---- DOM layout ----
+// Moving a panel into the hidden pool and back resets the offset of every
+// scroller inside it, so History, Map or Findings would jump to the top after a
+// visit to another tool. Non-zero offsets are remembered on the way out.
+const savedScroll = new WeakMap();
+function rememberScroll(el) {
+  const kept = [];
+  for (const n of [el, ...el.querySelectorAll('*')]) {
+    if (n.scrollTop || n.scrollLeft) kept.push([n, n.scrollTop, n.scrollLeft]);
+  }
+  savedScroll.set(el, kept);
+}
+function restoreScroll(el) {
+  const kept = savedScroll.get(el);
+  if (!kept) return;
+  savedScroll.delete(el);
+  for (const [n, top, left] of kept) {
+    if (!el.contains(n)) continue;
+    n.scrollTop = top;
+    n.scrollLeft = left;
+  }
+}
 function placeInPane(pane, panel) {
   const el = panelEl(panel);
   if (!el) return;
-  if (el.parentElement !== pane) pane.appendChild(el);
+  const moved = el.parentElement !== pane;
+  if (moved) pane.appendChild(el);
   el.classList.add('active');
   el.removeAttribute('inert');
+  // Restore once the panel is displayed: a display:none scroller ignores writes.
+  if (moved) restoreScroll(el);
 }
 function mountPanels() {
   const vis = visibleEff();
@@ -68,7 +92,13 @@ function mountPanels() {
   for (const panel of allPanels()) {
     if (vis.includes(panel)) continue;
     const el = panelEl(panel);
-    if (el) { el.classList.remove('active', 'is-focused'); if (el.parentElement !== els.pool) els.pool.appendChild(el); }
+    if (el) {
+      // Read offsets while the panel is still laid out: once 'active' goes, it is
+      // display:none and every scroller reports 0.
+      if (el.parentElement !== els.pool) rememberScroll(el);
+      el.classList.remove('active', 'is-focused');
+      if (el.parentElement !== els.pool) els.pool.appendChild(el);
+    }
   }
   els.sash.hidden = !effSplit();
   els.sash.setAttribute('aria-orientation', effLayout() === 'split-tb' ? 'horizontal' : 'vertical');

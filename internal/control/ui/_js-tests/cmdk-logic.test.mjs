@@ -4,6 +4,7 @@ import {
   parseQuery, groupOfCommand, scoreCommand, rankCommands, dedupeCommands, rankFlows, rankFindings, rankIdentities,
   flattenCheatsheet, rankShortcuts, pushRecent, loadRecents, saveRecents, RECENTS_MAX, RECENTS_KEY, MAX_ROWS,
   buildResults, flattenResults, resultCountText, emptyText, findingSub, LEGACY_MODALS,
+  PANEL_ACTIONS, legacyModalSub,
 } from '../js/cmdk-logic.js';
 
 const cmds = [
@@ -213,4 +214,36 @@ test('LEGACY_MODALS: unique ids and every dialog has a way in or a stated reason
     assert.ok(how.cmd || how.click || how.open || how.transient, `${m.id} has no route`);
     if (!how.transient) assert.ok(m.title, `${m.id} needs a palette title`);
   }
+});
+
+test('legacyModalSub: a dialog row names its panel or "Dialog", never an internal id', () => {
+  for (const m of LEGACY_MODALS) {
+    if (!m.title) continue;
+    const sub = legacyModalSub(m);
+    assert.doesNotMatch(sub, /Modal$|^[a-z]+[A-Z]/, m.id + ' shows an internal id');
+    assert.ok(sub.length > 0);
+  }
+  assert.equal(legacyModalSub({ id: 'findCreateModal', how: { click: '#findNewDialog', tab: 'findings' } }), 'Findings');
+  assert.equal(legacyModalSub({ id: 'flowModal', how: { open: 'selected-flow' } }), 'Dialog');
+});
+
+test('PANEL_ACTIONS: the panel actions QA looked for are in the palette, each tied to its panel and control', () => {
+  const titles = PANEL_ACTIONS.map((a) => a.t);
+  for (const want of [
+    /^Proxy: Filters/, /^Proxy: Hide TLS failures/, /^Proxy: Pause or resume live history/, /^Proxy: Add a note/,
+    /^Intercept: Match & Replace rules/, /^Scanner: Run scan/, /^Scanner: Clear results/,
+    /^Map: Expand or collapse all/, /^Map: Rebuild from history/, /^Collections: New environment/,
+    /^Collections: Console/, /^Repeater: Import Postman/,
+  ]) assert.ok(titles.some((t) => want.test(t)), 'missing ' + want);
+  const panels = ['proxy', 'intercept', 'repeater', 'intruder', 'collections', 'scanner', 'map', 'findings', 'notes', 'activity', 'settings'];
+  for (const a of PANEL_ACTIONS) {
+    assert.ok(panels.includes(a.tab), a.t + ': unknown panel ' + a.tab);
+    assert.match(a.sel, /^#[A-Za-z]+$|^details\.[a-z-]+$/, a.t + ': selector');
+    assert.ok(['click', 'focus', 'open'].includes(a.how), a.t + ': how');
+    assert.ok(a.kw && a.kw.length > 3, a.t + ': search words');
+    assert.equal(new Set(titles).size, titles.length, 'titles are unique');
+  }
+  // Actions that change or delete data are never fired from a mis-typed Enter:
+  // the palette takes you to the control and focuses it.
+  for (const t of [/^Scanner: Run scan/, /^Scanner: Clear results/]) assert.equal(PANEL_ACTIONS.find((a) => t.test(a.t)).how, 'focus');
 });

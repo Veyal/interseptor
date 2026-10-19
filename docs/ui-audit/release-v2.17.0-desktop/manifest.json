@@ -1,0 +1,168 @@
+{
+  "accepted_runs": {
+    "visual": {
+      "cases_per_engine": {
+        "chromium": 44,
+        "firefox": 44,
+        "webkit": 44
+      },
+      "engines": [
+        "chromium",
+        "firefox",
+        "webkit"
+      ],
+      "motion": "default, with the reduced-motion context verified inside the run",
+      "report": "visual/report.json"
+    }
+  },
+  "audit_run": {
+    "command": "CFFIXED_USER_HOME=<fresh empty temp dir> python3 scripts/ui_browser_audit.py --full --managed --output-dir <scratch>/run2",
+    "finished_utc": "2026-10-18T08:24:13Z",
+    "started_utc": "2026-10-18T08:16:23Z",
+    "tools": "Python 3.9.6, Playwright 1.60.0 (chromium-1223, firefox-1522 Firefox 150.0.2, webkit-2287), macOS 27.0.1 arm64, go1.26.5"
+  },
+  "binary": {
+    "note": "Reference build of the audited source (CGO_ENABLED=0 go build -trimpath ./cmd/interseptor). The harness builds and deletes its own disposable binary inside each engine run and does not record that binary's hash; runtime.runtime_sha256 is the binding identity of what was exercised.",
+    "sha256": "09255857f95d15cde237576ac32c07d3e33516e2403bc8b13a1221d9c5168df0",
+    "version": "interseptor v2.16.0"
+  },
+  "evidence": [
+    {
+      "file": "probes/assemble-manifest.py",
+      "kind": "probe",
+      "sha256": "d0f7b990a582077c80f27a7b9ab128a101b1811add410527e1081eb197b5d124"
+    },
+    {
+      "file": "probes/ui_browser_audit.py",
+      "kind": "dependency",
+      "sha256": "50ad7ce2e3db2790955b93b534f8763020b6ccb76e8fabef658c7f8ac0bfb071"
+    },
+    {
+      "file": "visual/firefox.json",
+      "kind": "report",
+      "sha256": "771472b0691e533f3d109cae48700f306627aa7e5602ea9a839accd9b089364f"
+    },
+    {
+      "file": "visual/report.json",
+      "kind": "report",
+      "sha256": "ff888c1df42bff1675b9174b57582683b7fc109a2508d23cc148b06d79ac2e99"
+    },
+    {
+      "file": "visual/screenshots/chromium-after-1024x768-map.png",
+      "kind": "screenshot",
+      "sha256": "2c1da692eec5786ad0461dd92280141c2c31598897d1adeeccd32e73bf4159fe"
+    },
+    {
+      "file": "visual/screenshots/chromium-after-1440x900-proxy.png",
+      "kind": "screenshot",
+      "sha256": "d25cc05145303c8efb98e98ebbd93c05dc166f95dbe65e2d77cdc20784a99c3c"
+    },
+    {
+      "file": "visual/screenshots/chromium-after-390x844-scanner.png",
+      "kind": "screenshot",
+      "sha256": "645191a63520e7668c9e15c6687e0b2dc2241c2333e1b36007fadd8b75cf3930"
+    },
+    {
+      "file": "visual/screenshots/chromium-findings-after-1024x768.png",
+      "kind": "screenshot",
+      "sha256": "51b07466dde06e4a59f6b1761bb0e073bfaded148d15e68fea8206e1cd614b46"
+    },
+    {
+      "file": "visual/screenshots/chromium-findings-after-1440x900.png",
+      "kind": "screenshot",
+      "sha256": "acf52302df07941fffcf4731c8803cf91404a9c5a7b13a1231a0b939ff0a0079"
+    },
+    {
+      "file": "visual/screenshots/chromium-findings-after-390x844.png",
+      "kind": "screenshot",
+      "sha256": "ea18b6f28031bf124013758b0c84152bfd44dce9a767a064dda9d87faa8fbf1f"
+    },
+    {
+      "file": "visual/screenshots/firefox-after-1024x768-map.png",
+      "kind": "screenshot",
+      "sha256": "86ee31df4e6f528049636087eee2b2d737e9b63f6044dcdc24aadae77151b1a9"
+    },
+    {
+      "file": "visual/screenshots/firefox-after-1440x900-proxy.png",
+      "kind": "screenshot",
+      "sha256": "c26c2e5c3eacee2afc41b2f69dd8deff458429c0a6e4b62c5b99eec43326c61d"
+    },
+    {
+      "file": "visual/screenshots/firefox-after-390x844-scanner.png",
+      "kind": "screenshot",
+      "sha256": "70f3927eabe48f6bd864cc9520a7fe44ed7e8c3a24e3f619734d93c644a06654"
+    },
+    {
+      "file": "visual/screenshots/firefox-findings-after-1024x768.png",
+      "kind": "screenshot",
+      "sha256": "784f6b20c48a3b3413fe54a52614a140c9bc7562c8f9aa848a968aaf2b6066b0"
+    },
+    {
+      "file": "visual/screenshots/firefox-findings-after-1440x900.png",
+      "kind": "screenshot",
+      "sha256": "9e2f5daecf2bd62ee97e5f5f72351563618060f71c77011fde3504bca909bdc3"
+    },
+    {
+      "file": "visual/screenshots/firefox-findings-after-390x844.png",
+      "kind": "screenshot",
+      "sha256": "0ad9298cf59dd22dde0fffe82f58f017c55c24390df17880869da6509af8a68b"
+    },
+    {
+      "file": "visual/screenshots/webkit-after-1024x768-map.png",
+      "kind": "screenshot",
+      "sha256": "b068be2ecbb240d51843f1fd1e7a22af7ce436ba61cd0769646e32a47e6c0d68"
+    },
+    {
+      "file": "visual/screenshots/webkit-after-1440x900-proxy.png",
+      "kind": "screenshot",
+      "sha256": "acc206b80c04318d01ceceddec72d67360bfec9b9132aa3df96f8ded6e19d083"
+    },
+    {
+      "file": "visual/screenshots/webkit-after-390x844-scanner.png",
+      "kind": "screenshot",
+      "sha256": "a1fb033f47cf31a59fa41c772d72a578e3aa98d95efe67168d3924ce32e730aa"
+    },
+    {
+      "file": "visual/screenshots/webkit-findings-after-1024x768.png",
+      "kind": "screenshot",
+      "sha256": "11279a022eb88a18215164077b1980c7994d329288a22cb19420d7209e520cd0"
+    },
+    {
+      "file": "visual/screenshots/webkit-findings-after-1440x900.png",
+      "kind": "screenshot",
+      "sha256": "b9c9171d6a76253d2f56441b1a223df0b2f73e470c969de61a94b6af0f10178e"
+    },
+    {
+      "file": "visual/screenshots/webkit-findings-after-390x844.png",
+      "kind": "screenshot",
+      "sha256": "a000d7320936cbefb8019f9a33fcc4c930c0b438ea3f0bad87c8afa84dd81451"
+    },
+    {
+      "file": "visual/webkit.json",
+      "kind": "report",
+      "sha256": "08b3d619e93e3c3c837928972e2f89d7f4cd0fc0cb79ce6a62befa8dfd21b462"
+    }
+  ],
+  "publication_reports": [
+    {
+      "file": "visual/report.json",
+      "original_sha256": "b85e248291a55e35e72ae434bf5dc4d24eeb75da15711ab4ba6b0056b2eba0b6",
+      "transformation": "Only local run-directory and screenshot paths are made relative to this checkpoint. All other values are unchanged."
+    },
+    {
+      "file": "visual/firefox.json",
+      "original_sha256": "c1a930d27445ae5a56532d11b1a9493ec852cd3eb303b3a84ff4a68ccdc19363",
+      "transformation": "Only local run-directory and screenshot paths are made relative to this checkpoint. All other values are unchanged."
+    },
+    {
+      "file": "visual/webkit.json",
+      "original_sha256": "3f40f92387269fbb39cea5b86ced10a9514259f8cfa8f9521f6a7f380848e5fe",
+      "transformation": "Only local run-directory and screenshot paths are made relative to this checkpoint. All other values are unchanged."
+    }
+  ],
+  "runtime": {
+    "audit_harness_sha256": "50ad7ce2e3db2790955b93b534f8763020b6ccb76e8fabef658c7f8ac0bfb071",
+    "runtime_files": 773,
+    "runtime_sha256": "648638510564eeba47b20a56aad74a46f5439f37fe4c6bd93aa76257aad46ece"
+  }
+}

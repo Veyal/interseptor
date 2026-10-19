@@ -1,0 +1,125 @@
+/* desktop/tokens.css — the desktop skin's tokens (docs/desktop-design.md, Tokens).
+   Loaded only through index.html after every web stylesheet, and every rule is
+   scoped under html.desktop-app, which js/desktop.js sets in the macOS shell and
+   in Chrome/Edge --app windows. A browser tab never matches, so its look is
+   unchanged. The blocks remap the existing names (--bg*, --fg*, --line*,
+   --accent*, --fs-*, radii, density sizes) so every panel moves at once, then
+   add the spec's new names for the desktop component layer.
+
+   Specificity: the web theme blocks are :root[data-theme="light"] (0,2,0) and the
+   density blocks :root[data-density=…] (0,2,0). The dark block below (0,1,1) is
+   therefore overridden by the web light block, which the desktop light block
+   (0,2,1) overrides in turn. High contrast (data-theme="hc", 0,2,0) keeps its own
+   colours. Every colour the dark block sets is set again in the light block.
+
+   Deviations from the spec table, for WCAG AA on 13px text: --text-muted/--fg3
+   are lifted (dark #8b8c94, light #6b6c74; the spec values are 3.5:1), and the
+   light accent, warning and success text tokens are one step darker. */
+
+html.desktop-app{
+  /* new names */
+  --surface-0:#16171a; --surface-1:#1c1d21; --surface-2:#25262b; --surface-inset:#141518; --surface-tag:#2b2c32;
+  --surface-hover:rgba(255,255,255,.045); --surface-selected:rgba(62,201,142,.13);
+  --border-subtle:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.13);
+  --text-primary:#ececee; --text-secondary:#a4a5ac; --text-muted:#8b8c94; --text-on-accent:#06140e;
+  --accent-subtle:rgba(62,201,142,.14);
+  --success:#3fb97a; --warning:#e2a336; --danger:#ef6262; --info:#5aa2f0; --sev-high-c:#f08a3e;
+  --warning-subtle:rgba(226,163,54,.12); --warning-border:rgba(226,163,54,.32);
+  --danger-subtle:rgba(239,98,98,.12); --danger-border:rgba(239,98,98,.32);
+  --info-subtle:rgba(90,162,240,.12); --info-border:rgba(90,162,240,.3);
+  --press:rgba(0,0,0,.18); --thumb:rgba(255,255,255,.16); --thumb-hover:rgba(255,255,255,.28);
+  --hairline-shadow:0 0 0 .5px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.35);
+  --shadow-popover:0 0 0 .5px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.45);
+  --shadow-dialog:0 0 0 .5px rgba(0,0,0,.6),0 24px 64px rgba(0,0,0,.55);
+  --shadow-drag:0 6px 16px rgba(0,0,0,.4);
+
+  /* the existing names, remapped */
+  --bg:var(--surface-1); --bg1:var(--surface-1); --bg2:var(--surface-2); --bg3:#2b2c32;
+  --line:var(--border-subtle); --line2:var(--border-strong); --surface-frame:var(--border-subtle); --signal-grid:transparent;
+  --fg:var(--text-primary); --fg2:var(--text-secondary); --fg3:var(--text-muted);
+  --accent:#3ec98e; --accentSolid:#3ec98e; --onAccent:var(--text-on-accent);
+  --sel:var(--surface-selected); --accentDim:var(--accent-subtle);
+  --blue:var(--info); --amber:var(--warning); --orange:var(--sev-high-c); --red:var(--danger);
+  --redSolid:#c43c3c; --onDanger:#ffffff; --redDim:var(--danger-subtle); --noteDim:var(--warning-subtle);
+  --warnLine:var(--warning-border); --warnFg:var(--warning); --dangerLine:var(--danger-border); --dangerFg:var(--danger);
+  --focus-ring:color-mix(in srgb,var(--accent) 60%,transparent);
+  --focus-outline:2px solid var(--focus-ring);
+  --scroll:var(--thumb); --shadow:rgba(0,0,0,.45); --overlay:rgba(0,0,0,.5); --scrim:rgba(0,0,0,.45);
+  --kbd-bg:var(--surface-2); --kbd-border:var(--border-strong); --kbd-fg:var(--text-secondary);
+  --grad-bg:linear-gradient(var(--surface-0),var(--surface-0));
+  --elev-1:var(--hairline-shadow); --elev-2:var(--shadow-popover); --elev-3:var(--shadow-dialog);
+  --rd-pass:var(--success); --rd-gap:var(--warning); --rd-block:var(--danger); --rd-na:var(--text-muted);
+  --rd-pass-dim:var(--accent-subtle); --rd-gap-dim:var(--warning-subtle); --rd-block-dim:var(--danger-subtle);
+  --sev-critical:var(--danger); --sev-high:var(--sev-high-c); --sev-medium:var(--warning); --sev-low:var(--info); --sev-info:var(--text-muted);
+
+  /* type: system UI (SF Pro on macOS) and ui-monospace (SF Mono) */
+  --ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+  --text-caption:11px; --text-ui:13px; --text-body:14px; --text-title:15px; --text-heading:20px; --text-code:12.5px;
+  --lh-caption:16px; --lh-ui:18px; --lh-body:21px; --lh-title:20px; --lh-heading:28px; --lh-code:19px;
+  /* The web scale's workhorse was --fs-xs (11px); on desktop it is UI text. */
+  --fs-xs:13px; --fs-sm:13px; --fs-md:13px; --fs-lg:14px; --fs-xl:15px; --fs-2xl:20px; --fs-3xl:20px;
+
+  /* size and shape */
+  --control-h-sm:24px; --control-h:28px; --control-h-lg:32px;
+  --pane-header-h:32px; --tabstrip-h:34px; --titlebar-h:38px; --statusbar-h:24px; --gutter:12px;
+  --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px;
+  --r-sm:var(--radius-xs); --r-md:var(--radius-sm); --r-lg:var(--radius-md); --r-xl:var(--radius-lg);
+  --rail-w:184px; --nav-rail-w:var(--rail-w); --topbar-h:var(--titlebar-h);
+}
+/* Density: the web blocks are (0,2,0); these are (0,2,1). Default is the spec. */
+html.desktop-app[data-density]{--row-h:28px;--toolbar-h:40px;--hit-min:28px;--cell-pad-x:6px;--topbar-h:var(--titlebar-h)}
+html.desktop-app[data-density="compact"]{--row-h:24px;--toolbar-h:36px;--hit-min:24px;--cell-pad-x:4px}
+html.desktop-app[data-density="comfortable"]{--row-h:32px;--toolbar-h:44px;--hit-min:32px;--cell-pad-x:8px}
+
+html.desktop-app[data-theme="light"]{
+  --surface-0:#f2f2f4; --surface-1:#ffffff; --surface-2:#ffffff; --surface-inset:#f7f7f9; --surface-tag:#ebebef;
+  --surface-hover:rgba(0,0,0,.04); --surface-selected:rgba(26,154,99,.11);
+  --border-subtle:rgba(0,0,0,.08); --border-strong:rgba(0,0,0,.15);
+  --text-primary:#1d1d20; --text-secondary:#5c5d65; --text-muted:#6b6c74; --text-on-accent:#ffffff;
+  --accent-subtle:rgba(26,154,99,.12);
+  --success:#1a7d4c; --warning:#94590a; --danger:#c93434; --info:#1f6fc8; --sev-high-c:#a84e17;
+  --warning-subtle:rgba(168,101,10,.09); --warning-border:rgba(168,101,10,.3);
+  --danger-subtle:rgba(201,52,52,.08); --danger-border:rgba(201,52,52,.28);
+  --info-subtle:rgba(31,111,200,.08); --info-border:rgba(31,111,200,.26);
+  --press:rgba(0,0,0,.06); --thumb:rgba(0,0,0,.18); --thumb-hover:rgba(0,0,0,.32);
+  --hairline-shadow:0 0 0 .5px rgba(0,0,0,.14),0 1px 2px rgba(0,0,0,.08);
+  --shadow-popover:0 0 0 .5px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.14);
+  --shadow-dialog:0 0 0 .5px rgba(0,0,0,.12),0 24px 64px rgba(0,0,0,.22);
+  --shadow-drag:0 6px 16px rgba(0,0,0,.16);
+  --bg:var(--surface-1); --bg1:var(--surface-1); --bg2:var(--surface-2); --bg3:#ececef;
+  --line:var(--border-subtle); --line2:var(--border-strong); --surface-frame:var(--border-subtle); --signal-grid:transparent;
+  --fg:var(--text-primary); --fg2:var(--text-secondary); --fg3:var(--text-muted);
+  --accent:#13784d; --accentSolid:#15835a; --onAccent:var(--text-on-accent);
+  --sel:var(--surface-selected); --accentDim:var(--accent-subtle);
+  --blue:var(--info); --amber:var(--warning); --orange:var(--sev-high-c); --red:var(--danger);
+  --redSolid:#c93434; --onDanger:#ffffff; --redDim:var(--danger-subtle); --noteDim:var(--warning-subtle);
+  --warnLine:var(--warning-border); --warnFg:var(--warning); --dangerLine:var(--danger-border); --dangerFg:var(--danger);
+  --focus-ring:color-mix(in srgb,var(--accent) 60%,transparent);
+  --scroll:var(--thumb); --shadow:rgba(0,0,0,.12); --overlay:rgba(0,0,0,.28); --scrim:rgba(0,0,0,.28);
+  --kbd-bg:var(--surface-inset); --kbd-border:var(--border-strong); --kbd-fg:var(--text-secondary);
+  --grad-bg:linear-gradient(var(--surface-0),var(--surface-0));
+  --rd-pass:var(--success); --rd-gap:var(--warning); --rd-block:var(--danger); --rd-na:var(--text-muted);
+  --rd-pass-dim:var(--accent-subtle); --rd-gap-dim:var(--warning-subtle); --rd-block-dim:var(--danger-subtle);
+}
+
+/* High contrast keeps its own palette: the web hc block (0,2,0) wins over the
+   dark block for the existing names; the new names follow it here. */
+html.desktop-app[data-theme="hc"]{
+  --surface-0:#000000; --surface-1:#000000; --surface-2:#0a0a0a; --surface-inset:#000000; --surface-tag:#1f1f1f;
+  --surface-hover:#1a1a1a; --surface-selected:rgba(255,225,77,.2);
+  --border-subtle:#ffffff; --border-strong:#ffffff;
+  --text-primary:#ffffff; --text-secondary:#ffffff; --text-muted:#e5e5e5; --text-on-accent:#000000;
+  --accent-subtle:rgba(138,245,214,.2);
+  --success:#6ee7a8; --warning:#ffd166; --danger:#ff9e9e; --info:#a8cfff; --sev-high-c:#ffb86b;
+  --warning-subtle:rgba(255,209,102,.16); --warning-border:#ffd166;
+  --danger-subtle:rgba(255,158,158,.16); --danger-border:#ff9e9e;
+  --info-subtle:rgba(168,207,255,.16); --info-border:#a8cfff;
+  --thumb:rgba(255,255,255,.5); --thumb-hover:#ffffff;
+}
+
+/* Body type: 13px UI on the system face, tabular figures for data. */
+html.desktop-app body{font-size:var(--text-ui);line-height:var(--lh-ui);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+/* Weights 400/500/600 only: the browser's bold elements read 600. :where keeps
+   this below every author rule; css/desktop/type.css maps the web rules. */
+:where(html.desktop-app) :where(b,strong,th,h1,h2,h3,h4,h5,h6,dt,optgroup){font-weight:600}

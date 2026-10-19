@@ -115,3 +115,14 @@ test('unreviewed count', () => {
   assert.equal(unreviewedCount(g, new Set(['Missing HSTS'])), 2);
   assert.equal(unreviewedCount(g, null), 3);
 });
+
+import { splitScanTarget } from '../js/scanner-model.js';
+
+test('splitScanTarget separates method, host and path', () => {
+  assert.deepEqual(splitScanTarget('GET api.example.com/boom'), { method: 'GET', host: 'api.example.com', path: '/boom' });
+  assert.deepEqual(splitScanTarget('POST shop.example.com/search?q=1'), { method: 'POST', host: 'shop.example.com', path: '/search?q=1' });
+  assert.deepEqual(splitScanTarget('https://example.com/a/b'), { method: '', host: 'example.com', path: '/a/b' });
+  assert.deepEqual(splitScanTarget('GET example.com'), { method: 'GET', host: 'example.com', path: '' });
+  assert.deepEqual(splitScanTarget(''), { method: '', host: '', path: '' });
+  assert.deepEqual(splitScanTarget(null), { method: '', host: '', path: '' });
+});

@@ -1,0 +1,130 @@
+/* desktop/panel-intruder.css — the Intruder panel on desktop (docs/desktop-design.md,
+   Panels). The attack setup is one column that reads top to bottom: Target (with
+   the mode and the one Start/Stop), Positions, Payloads, Options. Results sit
+   beside it with one header row, one run line and a table whose flags never
+   truncate the payload. js/desktop-panel-intruder.js moves the real controls
+   (threads, delay, repeat, barrier into Options; Preview image, Attach, Diff vs
+   baseline and History into the overflow menu). Below 900px the web stepper layout applies.
+   Scoped under html.desktop-app; tokens only. */
+
+html.desktop-app #panel-intruder{background:var(--surface-1)}
+
+/* ---- setup column + results, one grid (the web stepper keeps < 900px) ---- */
+@media (min-width:900px){
+  html.desktop-app #panel-intruder #intrTabPanel{display:grid;grid-template-columns:auto minmax(340px,5fr) minmax(0,6fr);grid-template-rows:auto auto minmax(96px,1fr) minmax(136px,1fr) auto;min-height:0;overflow:hidden}
+  html.desktop-app #panel-intruder .intr-work{display:contents}
+  html.desktop-app #panel-intruder .intr-bar{grid-column:2;grid-row:1;border-right:1px solid var(--border-subtle)}
+  html.desktop-app #panel-intruder #intrConfirmRow{grid-column:2;grid-row:2;margin:0;border-radius:0;border-width:0 1px 1px 0;border-style:solid;border-color:var(--warning-border)}
+  html.desktop-app #panel-intruder #intrConfirmRow[hidden]{display:none}
+  html.desktop-app #panel-intruder .intr-config{grid-column:2;grid-row:3;min-height:0}
+  html.desktop-app #panel-intruder .intr-payload-pane{grid-column:2;grid-row:4;min-height:0}
+  html.desktop-app #panel-intruder .intr-opts-disc{grid-column:2;grid-row:5;border-right:1px solid var(--border-subtle)}
+  html.desktop-app #panel-intruder .intr-results{grid-column:3;grid-row:1 / -1;min-width:0;min-height:0;border-right:0}
+  html.desktop-app #panel-intruder #intrHistory{grid-column:1;grid-row:1 / -1;min-height:0}
+}
+
+/* ---- target bar ---- */
+html.desktop-app #panel-intruder .intr-sep,
+html.desktop-app #panel-intruder .intr-bar .spacer,
+html.desktop-app #panel-intruder .intr-explain{display:none}
+/* Two lines: the target and Start, then the mode, its hint and the request count. */
+html.desktop-app #panel-intruder .intr-bar{flex-wrap:wrap;row-gap:6px;padding:8px var(--gutter)}
+html.desktop-app #panel-intruder #intrTarget{order:1;flex:1 1 calc(100% - 84px);min-width:140px}
+html.desktop-app #panel-intruder :is(#intrStart,#intrStop){order:2}
+html.desktop-app #panel-intruder #intrType{order:3;flex:none}
+html.desktop-app #panel-intruder .intr-bar .ui-select-btn{order:4}
+html.desktop-app #panel-intruder #intrInfo{order:5}
+html.desktop-app #panel-intruder #intrCount{order:6;flex:none;margin-left:auto;color:var(--text-muted);font-size:var(--text-ui);white-space:nowrap}
+html.desktop-app #panel-intruder #intrType button{white-space:nowrap}
+html.desktop-app #panel-intruder #intrType .icon{width:11px;height:11px;margin-left:2px}
+html.desktop-app #panel-intruder .intr-bar .ui-select-btn .ui-select-trigger{min-height:var(--control-h);font-size:var(--text-ui)}
+/* One Start/Stop: while the attack runs, Stop takes Start's place. */
+html.desktop-app #panel-intruder #intrStart[data-state="pending"]{display:none}
+html.desktop-app #panel-intruder #intrStop:not(.u-hidden){flex:none;min-height:var(--control-h);padding:0 12px;background:transparent;border:1px solid var(--danger-border);color:var(--danger);font-weight:600}
+html.desktop-app #panel-intruder #intrStop:not(.u-hidden):hover{background:var(--redSolid);border-color:transparent;color:var(--onDanger)}
+
+/* ---- positions: the request template editor ---- */
+html.desktop-app #panel-intruder .intr-config{background:var(--surface-1);box-shadow:none;border-right:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-config>textarea.rep-edit{flex:1;min-height:0;resize:none}
+html.desktop-app #panel-intruder .intr-config .pane-head .btn .icon{width:15px;height:15px}
+
+/* ---- payloads ---- */
+html.desktop-app #panel-intruder .intr-payload-pane{background:var(--surface-1);box-shadow:none;border-right:1px solid var(--border-subtle);border-top:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-payload-pane .intr-payloads{flex:1;height:auto;min-height:0}
+html.desktop-app #panel-intruder .intr-pl{min-width:150px;border-left:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-pl-h{flex-wrap:nowrap;gap:4px 6px;min-height:32px;padding:2px 10px;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);font-size:var(--text-ui);font-weight:500;color:var(--text-secondary);overflow:visible;white-space:normal}
+html.desktop-app #panel-intruder .intr-pl-h .sw{width:8px;height:8px;border-radius:50%}
+html.desktop-app #panel-intruder .intr-pl-h>*{flex:none}
+html.desktop-app #panel-intruder .intr-pl-h>.spacer{flex:1 1 0;min-width:0}
+html.desktop-app #panel-intruder .intr-pl-h .dsk-pl-name{flex:0 1 auto;min-width:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.desktop-app #panel-intruder .intr-pl-h .btn{min-height:var(--control-h-sm);padding:0 6px}
+html.desktop-app #panel-intruder .intr-pl-h .intr-file-load{width:var(--control-h-sm);padding:0;justify-content:center;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-intruder .intr-pl-h .intr-file-load:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-intruder .intr-pl-h .ui-select-trigger{min-height:var(--control-h-sm);height:var(--control-h-sm);padding:0 6px 0 8px;font-size:var(--text-ui)}
+@media (max-width:1279px){html.desktop-app #panel-intruder .intr-pl-h .sw{display:none}}
+html.desktop-app #panel-intruder .intr-src-seg{margin-left:0}
+html.desktop-app #panel-intruder .intr-src-seg .btn{min-height:20px;padding:0 7px;border:0}
+html.desktop-app #panel-intruder .intr-pl-note:not(:empty){padding:4px var(--gutter);color:var(--text-muted)}
+html.desktop-app #panel-intruder .intr-nums{padding:8px var(--gutter);font-size:var(--text-ui)}
+html.desktop-app #panel-intruder .intr-nums input[type="number"],
+html.desktop-app #panel-intruder .intr-nums select{min-height:var(--control-h-sm);background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-xs);font-size:var(--text-ui)}
+html.desktop-app #panel-intruder .intr-payloads .hint{padding:10px var(--gutter);font-size:var(--text-ui);color:var(--text-muted)}
+
+/* ---- options: threads, delay, race settings, flag/extract/process, presets ---- */
+html.desktop-app #panel-intruder .intr-opts-disc{flex:none;background:var(--surface-1);border-top:1px solid var(--border-subtle);border-bottom:0}
+html.desktop-app #panel-intruder .intr-opts-disc>summary{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 var(--gutter);font-size:var(--text-title);font-weight:600;color:var(--text-primary);letter-spacing:normal;cursor:default}
+html.desktop-app #panel-intruder .intr-opts-disc>summary::before{content:"";width:5px;height:5px;margin:0 3px 2px 1px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:rotate(-45deg)}
+html.desktop-app #panel-intruder .intr-opts-disc[open]>summary::before{transform:rotate(45deg)}
+html.desktop-app #panel-intruder .intr-opts-disc>summary .dsk-opts-sum{margin-left:auto;font-size:var(--text-ui);font-weight:400;color:var(--text-muted)}
+html.desktop-app #panel-intruder .intr-opts-disc[open]>summary .dsk-opts-sum{display:none}
+html.desktop-app #panel-intruder .intr-opts-disc>.intr-opts-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:2px var(--gutter) 8px}
+html.desktop-app #panel-intruder .intr-opts-disc>.intr-opts-row:not(.dsk-opts-runtime){display:grid;grid-template-columns:64px minmax(0,1fr);gap:6px 8px;padding-bottom:12px}
+html.desktop-app #panel-intruder .intr-opts-row .hint{font-size:var(--text-ui);font-weight:500;letter-spacing:normal;color:var(--text-secondary)}
+html.desktop-app #panel-intruder .intr-opts-row .btn-field{width:100%;min-width:0}
+html.desktop-app #panel-intruder .intr-opts-row .intr-sep{display:none}
+html.desktop-app #panel-intruder .dsk-opts-runtime .ui-select-btn{margin-left:auto}
+html.desktop-app #panel-intruder .dsk-opts-runtime .ui-select-btn .ui-select-trigger{min-height:var(--control-h);max-width:104px}
+/* Save is an icon: its name and tooltip stay. */
+html.desktop-app #panel-intruder #intrPresetSave{flex:none;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;gap:0;font-size:0;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-intruder #intrPresetSave:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-intruder #intrPresetSave .icon{width:16px;height:16px}
+html.desktop-app #panel-intruder .intr-num{gap:6px;padding:0;border:0;background:transparent;font-size:var(--text-ui);font-weight:400;color:var(--text-secondary)}
+html.desktop-app #panel-intruder .intr-num span{display:inline-flex;align-items:center;color:var(--text-muted)}
+html.desktop-app #panel-intruder .intr-num .icon{width:14px;height:14px}
+html.desktop-app #panel-intruder .intr-num input[type="number"]{width:52px;height:var(--control-h);padding:0 8px;background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-primary);font-family:var(--ui);font-size:var(--text-ui);text-align:right;font-variant-numeric:tabular-nums}
+html.desktop-app #panel-intruder .intr-num input[type="number"]:hover{border-color:var(--border-strong)}
+html.desktop-app #panel-intruder .dsk-opts-runtime .intr-num[style*="none"]{display:none}
+
+/* ---- results ---- */
+html.desktop-app #panel-intruder .intr-results{background:var(--surface-1);box-shadow:none}
+html.desktop-app #panel-intruder .intr-results>.pane-head :is(#intrProgress,#intrStats){display:none}
+html.desktop-app #panel-intruder .intr-results>.pane-head #intrPollStatus:empty{display:none}
+html.desktop-app #panel-intruder .intr-res-filter{margin-left:auto}
+html.desktop-app #panel-intruder .intr-summary{gap:10px;min-height:28px;padding:0 var(--gutter);border-bottom:1px solid var(--border-subtle);background:var(--surface-1)}
+html.desktop-app #panel-intruder .intr-progress{width:96px;height:4px;flex:none;appearance:none;-webkit-appearance:none;border:0;border-radius:2px;background:var(--surface-inset);accent-color:var(--accent)}
+html.desktop-app #panel-intruder .intr-progress::-webkit-progress-bar{background:var(--surface-inset);border-radius:2px}
+html.desktop-app #panel-intruder .intr-progress::-webkit-progress-value{background:var(--accent);border-radius:2px}
+html.desktop-app #panel-intruder .intr-summary-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+html.desktop-app #panel-intruder .dsk-runline{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-ui);color:var(--text-secondary);font-variant-numeric:tabular-nums}
+html.desktop-app #panel-intruder .intr-head,
+html.desktop-app #panel-intruder .intr-row{grid-template-columns:44px minmax(0,1fr) 48px 64px 56px;padding:0 var(--gutter)}
+html.desktop-app #panel-intruder .intr-head{height:28px;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);color:var(--text-muted);font-size:var(--text-caption);font-weight:500;letter-spacing:normal}
+html.desktop-app #panel-intruder .intr-head>div.sorted{color:var(--text-primary)}
+html.desktop-app #panel-intruder .intr-row{height:var(--row-h);border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent);font-variant-numeric:tabular-nums}
+html.desktop-app #panel-intruder .intr-row>div{padding:0 4px}
+html.desktop-app #panel-intruder .intr-row .intr-id{color:var(--text-muted)}
+html.desktop-app #panel-intruder .intr-row.flag,
+html.desktop-app #panel-intruder .intr-row.match{background:transparent}
+html.desktop-app #panel-intruder .intr-row:hover{background:var(--surface-hover)}
+html.desktop-app #panel-intruder .intr-row .pl{gap:6px;color:var(--text-primary)}
+html.desktop-app #panel-intruder .intr-row .pl-text{flex:1 1 auto;font-family:var(--mono);font-size:var(--text-code)}
+html.desktop-app #panel-intruder .intr-row.flag .pl{color:var(--text-primary);font-weight:500}
+html.desktop-app #panel-intruder .intr-row .ext{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)}
+html.desktop-app #panel-intruder .intr-st{font-weight:500!important}
+html.desktop-app #panel-intruder .intr-st[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app #panel-intruder .intr-ms{color:var(--text-muted)!important}
+/* Flags are icons at the end of the payload cell, so a payload is never cut by a badge. */
+html.desktop-app #panel-intruder .intr-chip{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;gap:0;border:0;border-radius:50%;background:transparent;font-size:0;line-height:0}
+html.desktop-app #panel-intruder .intr-chip .icon{width:14px;height:14px}
+html.desktop-app #panel-intruder .intr-anomaly{font-weight:600}
+html.desktop-app #panel-intruder #intrResults .state-error{padding:24px}

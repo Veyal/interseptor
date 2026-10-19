@@ -1631,6 +1631,11 @@ export function ctxMenuContains(node){
   return ctxPanels.some(p=>p.el===node||p.el.contains(node));
 }
 export function ctxMenuOpen(){return ctxPanels.length>0;}
+// ctxMenuTrigger is the element that opened the current menu, but only while
+// the click that opened it is still being dispatched: a later click on the same
+// element (a row that was right-clicked, a button pressed again) is a new click.
+let ctxOpening=false;
+export function ctxMenuTrigger(){return ctxOpening&&ctxPanels.length?ctxReturnTrigger:null;}
 
 function ctxClearHoverTimer(){if(ctxHoverTimer){clearTimeout(ctxHoverTimer);ctxHoverTimer=null;}}
 
@@ -1835,6 +1840,7 @@ export function openCtxMenu(x,y,sections,trigger=null){
   if(!secs.length)return;
   ctxReturnFocus=trigger||document.activeElement;
   ctxReturnTrigger=trigger||null;
+  ctxOpening=true;setTimeout(()=>{ctxOpening=false;},0);
   if(trigger){trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','true');}
   ctx.setAttribute('role','menu');
   const rows=ctxPaintPanel(ctx,secs);

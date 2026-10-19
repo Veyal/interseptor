@@ -1,0 +1,114 @@
+/* desktop/panel-settings.css — Settings in the desktop skin, modelled on macOS
+   System Settings and Xcode preferences: a section list on the left (the rail's
+   current-item style from states.css), grouped cards on the right with one row per
+   setting (label left, control right, helper text muted below), 20/28 section
+   headings and one shared control width. Only the main action of a section is
+   primary; every other save or apply button is secondary. Toggles read as small
+   switches. No setting, id or behaviour changes: this is CSS only.
+   Every selector is scoped under html.desktop-app. */
+
+/* ---- the section list ---- */
+html.desktop-app .settings-nav{width:auto;padding:12px 8px;gap:2px;background:var(--surface-0);border-right:1px solid var(--border-subtle)}
+html.desktop-app .settings-search{height:var(--control-h);min-height:var(--control-h);margin:0 4px 8px;width:calc(100% - 8px);padding:0 10px;background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-size:var(--text-ui)}
+html.desktop-app .settings-nav-group{gap:1px}
+html.desktop-app .settings-nav-group+.settings-nav-group{margin-top:12px}
+html.desktop-app .settings-nav-group-label{padding:4px 10px 2px;font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500;letter-spacing:normal;color:var(--text-muted)}
+html.desktop-app .settings-nav button{min-height:30px;padding:0 10px;border-radius:var(--radius-sm);font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-secondary)}
+html.desktop-app .settings-nav button:hover{color:var(--text-primary)}
+html.desktop-app .settings-nav button.on{color:var(--text-primary)}
+html.desktop-app .settings-nav-empty{padding:8px 10px;font-size:var(--text-ui);color:var(--text-muted)}
+
+/* ---- the pane ---- */
+html.desktop-app .settings-body{padding:24px 40px 48px;background:var(--surface-1)}
+html.desktop-app .settings-section-heading{gap:10px;padding:0 0 16px;max-width:720px;border-bottom:0}
+html.desktop-app .settings-section-heading .icon{width:20px;height:20px;color:var(--text-muted)}
+html.desktop-app .settings-section-heading h2{font-size:var(--text-heading);line-height:var(--lh-heading);font-weight:600;letter-spacing:normal;color:var(--text-primary)}
+html.desktop-app .settings-health{padding:0 8px;border:0;border-radius:var(--radius-xs);background:color-mix(in srgb,var(--text-primary) 8%,transparent);font-size:var(--text-caption);line-height:22px;font-weight:500;color:var(--text-secondary)}
+html.desktop-app .settings-health[data-state="ok"]{background:var(--accent-subtle);color:var(--accent)}
+html.desktop-app .settings-health[data-state="warn"]{background:var(--warning-subtle);color:var(--warning)}
+html.desktop-app .settings-health[data-state="unknown"]{background:color-mix(in srgb,var(--text-primary) 8%,transparent);color:var(--text-muted)}
+
+/* Each section block is one grouped card. */
+html.desktop-app .settings-body .section{padding:16px 20px 18px;margin:0 0 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1)}
+html.desktop-app .settings-body .set-sec:not([hidden])>.section{max-width:720px}
+html.desktop-app .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details)){grid-template-columns:minmax(0,720px);gap:0}
+html.desktop-app .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details))>.section{margin:0 0 16px}
+html.desktop-app .settings-body .section:last-child{margin-bottom:0}
+html.desktop-app .settings-body .section h3{margin:0 0 4px;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app .settings-body .section h3.micro-label{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:600;letter-spacing:normal;text-transform:none;color:var(--text-primary)}
+html.desktop-app .settings-body .section.danger-zone{padding:16px 20px;border-color:var(--danger-border);background:var(--danger-subtle);border-radius:var(--radius-md)}
+html.desktop-app .settings-body .section.danger-zone h3{color:var(--danger)}
+/* Helper text: muted, 13px, directly under what it explains. */
+html.desktop-app .settings-body .hint{font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-muted)}
+html.desktop-app .settings-body .section>.hint:first-of-type{margin-bottom:12px}
+html.desktop-app .settings-body .hint b{color:var(--text-secondary);font-weight:500}
+html.desktop-app .settings-lead,html.desktop-app .settings-help p{line-height:var(--lh-ui)}
+html.desktop-app .set-disc>summary{font-size:var(--text-ui);font-weight:500;letter-spacing:normal;color:var(--text-secondary)}
+html.desktop-app .set-disc[open]>summary{color:var(--text-primary)}
+html.desktop-app .settings-info-callout{padding:8px 12px;border-color:var(--info-border);border-radius:var(--radius-sm);background:var(--info-subtle);font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-secondary)}
+html.desktop-app .settings-error-help{border-color:var(--warning-border);background:var(--warning-subtle)}
+
+/* ---- rows: label left, control right ---- */
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field){display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr);align-items:center;column-gap:16px;row-gap:4px;max-width:none;margin:0;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--border-subtle) 60%,transparent)}
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field):first-child{border-top:0}
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field)>label{grid-column:1;font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field)>:not(label){grid-column:2;min-width:0}
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field)>.hint{font-size:var(--text-caption);line-height:var(--lh-caption)}
+/* Unlabelled fields and text areas use the whole row: wide editors read better under their label. */
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field):is(:not(:has(>label)),:has(>textarea)){grid-template-columns:minmax(0,1fr)}
+html.desktop-app .settings-body .field:not(.field-inline):not(.row>.field):not(.settings-quick-add>.field):not(.android-toolbar>.field):is(:not(:has(>label)),:has(>textarea))>*{grid-column:1}
+html.desktop-app .settings-form-grid{grid-template-columns:minmax(0,1fr);gap:0}
+html.desktop-app .settings-form-grid .field{padding:8px 0}
+html.desktop-app .settings-form-grid-host{grid-template-columns:minmax(0,1fr)}
+/* One control width: inputs, selects and the custom select share 320px; wide editors fill the column. */
+html.desktop-app .settings-body :is(.field>input:not([type="checkbox"],[type="radio"],[type="hidden"]),.field>select,.field>.ui-select,.field>.ui-select-field){width:100%;max-width:320px}
+html.desktop-app .settings-body .field>.ui-select .ui-select-trigger{width:100%}
+html.desktop-app .settings-body :is(.field>textarea,.field>.ui-select-field){max-width:none}
+html.desktop-app .settings-body .field input,html.desktop-app .settings-body .field select,html.desktop-app .settings-body .field textarea{min-height:var(--control-h);font-size:var(--text-ui);padding:0 10px}
+html.desktop-app .settings-body .field textarea{padding:6px 10px;min-height:72px}
+html.desktop-app .settings-body .field-inline{margin:0}
+html.desktop-app .settings-body .field-inline>label{margin-bottom:4px;font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app .settings-body .row{min-height:var(--control-h)}
+html.desktop-app .settings-body .row.u-mt-2{margin-top:12px}
+html.desktop-app .settings-quick-add{gap:6px}
+html.desktop-app .settings-quick-add .btn{min-height:var(--control-h)}
+html.desktop-app .proxy-listener-row{gap:8px}
+
+/* ---- buttons: one primary per section; everything else secondary ---- */
+html.desktop-app .settings-body :is(.btn.btn-primary,.btn.accent){background:var(--surface-2);border-color:var(--border-subtle);color:var(--text-primary)}
+html.desktop-app .settings-body :is(.btn.btn-primary,.btn.accent):hover{background:color-mix(in srgb,var(--surface-2),var(--text-primary) 6%);border-color:var(--border-strong);color:var(--text-primary)}
+html.desktop-app .settings-body :is(.btn.btn-primary,.btn.accent):active{background-image:linear-gradient(var(--press),var(--press))}
+/* The main action of each section: the listener, the CA download, device setup, add scope,
+   create API key, save session, export project. */
+html.desktop-app .settings-body :is(#saveAddrBtn,#dlCaBtn,#androidSetupAllBtn,#addScopeBtn,#keyCreate,#saveSessionBtn,#exportProject){background:var(--accentSolid);border-color:transparent;color:var(--onAccent)}
+html.desktop-app .settings-body :is(#saveAddrBtn,#dlCaBtn,#androidSetupAllBtn,#addScopeBtn,#keyCreate,#saveSessionBtn,#exportProject):hover{background:color-mix(in srgb,var(--accentSolid),var(--text-primary) 10%);border-color:transparent;color:var(--onAccent)}
+html.desktop-app .settings-body .btn:disabled{opacity:.45}
+/* Removing a row is a quiet icon action, not a red tile. */
+html.desktop-app .proxy-listener-row .proxy-listener-del{min-width:var(--control-h);padding:0!important;background:transparent;border-color:transparent;color:var(--text-muted)!important;font-size:16px}
+html.desktop-app .proxy-listener-row .proxy-listener-del:hover{background:var(--danger-subtle);color:var(--danger)!important}
+
+/* ---- toggles read as switches ---- */
+html.desktop-app .settings-body .uisw{min-height:var(--control-h);padding:0;gap:10px;border:0;background:transparent;color:var(--text-primary);font-size:var(--text-ui);font-weight:400}
+html.desktop-app .settings-body .uisw:hover{background:transparent;color:var(--text-primary)}
+html.desktop-app .settings-body :is(.uisw.on,.uisw[aria-pressed="true"]){background:transparent;border:0;color:var(--text-primary)}
+html.desktop-app .settings-body .uisw::before{content:"";flex:none;width:28px;height:16px;border-radius:999px;background:radial-gradient(circle at 8px 50%,var(--text-muted) 5.5px,transparent 6px),var(--surface-inset);box-shadow:inset 0 0 0 1px var(--border-strong)}
+html.desktop-app .settings-body :is(.uisw.on,.uisw[aria-pressed="true"])::before{background:radial-gradient(circle at 20px 50%,var(--text-on-accent) 5.5px,transparent 6px),var(--accent);box-shadow:none}
+html.desktop-app .settings-body .uisw .uisw-led{display:none}
+html.desktop-app .settings-appearance .uisw.on{border:0}
+
+/* ---- tables inside sections keep a calm look ---- */
+html.desktop-app .settings-body table{font-size:var(--text-ui)}
+html.desktop-app .settings-body th{font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
+
+/* ---- Host and Port share one baseline: every control in a settings row is
+   28px, and the listener row's labels read like the Control UI ones (a block
+   caption, 11/16, 4px above the control). ---- */
+html.desktop-app .settings-body .ui-select-field .ui-select-trigger,
+html.desktop-app .settings-body .proxy-listener-row .ui-select-trigger{height:var(--control-h);min-height:var(--control-h)}
+html.desktop-app .settings-body .proxy-listener-row label.hint{display:block;margin:0 0 4px;font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app .settings-body .proxy-listener-row .field{margin-bottom:0;gap:0}
+
+/* ---- a settings choice (Theme, Density) is a full-size segmented control:
+   28px track, 24px segments with room around the words ---- */
+html.desktop-app .settings-body .seg{min-height:var(--control-h);padding:2px}
+html.desktop-app .settings-body .seg button{min-height:24px;padding:0 12px}

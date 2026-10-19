@@ -1,0 +1,293 @@
+/* desktop/panel-findings.css — the Findings panel in the desktop skin (docs/desktop-design.md,
+   Panels). Findings is the document-like screen: a quiet list on the left, a reading
+   surface on the right. Severity is a dot plus the word, status is a quiet tag, the
+   list has no row bars, evidence (flows, images) sits in calm --radius-md cards and
+   the readiness meter and CVSS bar are muted. Reading text is --text-body (14/21),
+   section titles --text-title (15/20), the finding title --text-heading (20/28).
+   Every selector is scoped under html.desktop-app; a browser tab keeps the web look.
+   Colours come from desktop/tokens.css only. */
+
+/* ---- toolbar: one 40px row; ghost actions, one primary ---- */
+html.desktop-app{--dsk-tag:var(--surface-tag)}
+html.desktop-app .findings-toolbar{min-height:var(--toolbar-h);padding:0 var(--gutter);gap:8px;flex-wrap:nowrap;align-items:center}
+html.desktop-app .findings-toolbar-title{gap:8px;align-items:center}
+html.desktop-app .findings-toolbar-title strong{font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app .findings-toolbar-title .count{font-size:var(--text-caption);color:var(--text-muted);font-weight:500}
+html.desktop-app .findings-toolbar-actions{flex:none;order:0;width:auto;margin-left:auto;gap:4px;flex-wrap:nowrap}
+html.desktop-app .findings-toolbar .toolbar-divider{display:none}
+/* One primary per view: the list's "+" and the toolbar's New finding never compete
+   with the inline form's Create or the report's Download. */
+html.desktop-app #findListNew{background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #findListNew:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-findings:has(#findInlineNew:not([hidden])) #findNew,
+html.desktop-app #panel-findings:has(#findReportMount:not([hidden])) #findNew{background:transparent;border-color:transparent;color:var(--text-primary)}
+html.desktop-app #panel-findings:has(#findInlineNew:not([hidden])) #findNew:hover,
+html.desktop-app #panel-findings:has(#findReportMount:not([hidden])) #findNew:hover{background:var(--surface-hover)}
+html.desktop-app #findGuide .icon{width:15px;height:15px}
+
+/* ---- writing guide: an inline callout, not a panel ---- */
+html.desktop-app .find-guide-aside{margin:8px var(--gutter);padding:10px 14px;border:1px solid var(--info-border);border-radius:var(--radius-sm);background:var(--info-subtle);font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-secondary)}
+html.desktop-app .find-guide-list{margin:0 0 8px;padding-left:18px;gap:2px;color:var(--text-secondary)}
+html.desktop-app .find-guide-list strong{color:var(--text-primary);font-weight:600}
+html.desktop-app .find-guide-aside .btn{margin-bottom:0;background:transparent;border-color:transparent;color:var(--accent)}
+html.desktop-app .find-guide-aside .btn:hover{background:var(--surface-hover)}
+
+/* ---- the list: nav-list style, no row bars, severity as a dot ---- */
+html.desktop-app .find-browser{background:var(--surface-1);border-right:1px solid var(--border-subtle)}
+html.desktop-app .find-browser-tools{padding:8px var(--gutter);gap:6px;border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .find-toolbar-row{gap:4px}
+html.desktop-app .find-toolbar-row input{min-height:var(--control-h);padding:0 10px;background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-size:var(--text-ui)}
+html.desktop-app :is(.find-filter-btn,.find-list-new){min-height:var(--control-h);min-width:var(--control-h);padding:0 6px;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app :is(.find-filter-btn,.find-list-new):hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .find-filter-btn[aria-expanded="true"]{background:var(--surface-selected);color:var(--text-primary)}
+html.desktop-app .find-filter-btn .filters-count{margin-left:2px}
+html.desktop-app .find-browser .find-row{--sv:var(--text-muted);min-height:50px;padding:6px var(--gutter) 6px 16px;gap:0 8px;border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent)}
+/* The web's 3px severity bar is gone; the selected row alone carries the 2px accent marker (states.css). */
+html.desktop-app .find-browser .find-row:not(.sel)::before{content:none}
+html.desktop-app .find-browser .find-row .find-title{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .find-browser .find-row .find-meta{gap:4px;font-family:var(--ui);font-size:var(--text-caption);line-height:var(--lh-caption);color:var(--text-muted)}
+html.desktop-app .find-browser .find-row .find-meta .find-meta-host{font-family:var(--mono);font-size:var(--text-caption)}
+html.desktop-app .find-browser .find-row .find-meta .sep{opacity:.5}
+/* Status in the list is quiet text: the word carries it, no icon and no colour. */
+html.desktop-app .find-browser .find-row .find-st{color:var(--text-muted)}
+html.desktop-app .find-browser .find-row .find-st .icon{display:none}
+html.desktop-app .find-browser .find-row .find-st-needs_verification{color:var(--warning)}
+html.desktop-app .find-browser .find-row .find-ev{font-family:var(--ui);font-size:var(--text-caption);font-weight:500;color:var(--text-secondary)}
+html.desktop-app .find-browser .find-row .find-ev .icon{width:13px;height:13px}
+html.desktop-app .find-browser .find-row .find-ev.is-none{opacity:1;color:var(--text-muted)}
+html.desktop-app .find-browser .find-row .find-ev.is-none .icon{opacity:.6}
+/* Group headers: a dot and the word, not a coloured dash in mono capitals. */
+html.desktop-app .find-group{gap:8px;padding:0 var(--gutter) 0 16px;min-height:28px;background:var(--surface-1);border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent);font-family:var(--ui);font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:600;color:var(--text-secondary);text-transform:none;letter-spacing:normal}
+html.desktop-app .find-group .bar{width:8px;height:8px;border-radius:50%;background:var(--sv)}
+html.desktop-app .find-group .n{font-weight:500;color:var(--text-muted)}
+html.desktop-app .find-group{text-transform:capitalize}
+html.desktop-app #findList{--find-row-h:50px}
+html.desktop-app #findList.vlist .find-group{height:var(--find-row-h)}
+html.desktop-app .find-outside-filter{padding:8px var(--gutter);font-size:var(--text-ui);color:var(--text-secondary);border-bottom-color:var(--border-subtle)}
+
+/* ---- filters popover and active filter tokens ---- */
+html.desktop-app .find-filters{padding:12px;gap:10px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-popover)}
+html.desktop-app .find-filter-field{gap:4px;font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app .find-filters .ui-select-trigger{min-height:var(--control-h);font-size:var(--text-ui)}
+html.desktop-app .find-chip{min-height:22px;padding:0 2px 0 8px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);color:var(--text-secondary);font-size:var(--text-caption);font-weight:500}
+html.desktop-app .find-chip button{width:18px;height:18px;opacity:.7}
+html.desktop-app .find-chip button:hover{opacity:1;background:var(--surface-hover)}
+html.desktop-app .find-chip-clear{font-size:var(--text-caption);color:var(--text-muted);text-decoration:none}
+html.desktop-app .find-chip-clear:hover{color:var(--text-primary)}
+
+/* ---- inline "new finding": a calm card, Create is the primary ---- */
+html.desktop-app .find-inline-new{margin:8px var(--gutter);padding:12px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-0)}
+html.desktop-app .find-inline-label{font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app .find-inline-foot .statusline{font-size:var(--text-caption);color:var(--text-muted)}
+/* "Full form" is not an orphan row: it sits on the title label's line, as the
+   form's quiet secondary action; the status line shows only when it has text. */
+html.desktop-app .find-inline-new:not([hidden]){grid-template-columns:minmax(0,1fr) auto;align-items:center}
+html.desktop-app .find-inline-new>:is(input,.find-inline-row){grid-column:1/-1}
+html.desktop-app .find-inline-foot{display:contents}
+html.desktop-app .find-inline-foot #findNewDialog{grid-column:2;grid-row:1;height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0 6px;border:0;background:transparent;color:var(--accent);font-size:var(--text-caption);font-weight:500}
+html.desktop-app .find-inline-foot #findNewDialog:hover{background:var(--surface-hover)}
+html.desktop-app .find-inline-foot .statusline{grid-column:1/-1}
+html.desktop-app .find-inline-foot .statusline:empty{display:none}
+
+/* ---- the reading surface ---- */
+html.desktop-app .find-detail,
+html.desktop-app .find-workspace.find-article,
+html.desktop-app .find-workspace .find-header{background:var(--surface-1)}
+html.desktop-app .find-workspace .find-header{padding:10px 24px 12px;gap:8px;border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .find-workspace .find-header-top{gap:8px}
+html.desktop-app .find-workspace .find-id-badge{font:500 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* Severity = dot + word; the score is muted. */
+html.desktop-app .find-workspace .find-sev-chip{gap:6px;align-items:center;padding:0;border:0;background:none;font-family:var(--ui);font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text-primary)}
+html.desktop-app .find-workspace .find-sev-chip::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--text-muted)}
+html.desktop-app .find-workspace .find-sev-chip.sev-critical::before{background:var(--sev-critical)}
+html.desktop-app .find-workspace .find-sev-chip.sev-high::before{background:var(--sev-high)}
+html.desktop-app .find-workspace .find-sev-chip.sev-medium::before{background:var(--sev-medium)}
+html.desktop-app .find-workspace .find-sev-chip.sev-low::before{background:var(--sev-low)}
+html.desktop-app .find-workspace .find-sev-chip.sev-info::before{background:var(--sev-info)}
+html.desktop-app .find-workspace .find-sev-chip :is(.find-sev-score){font-weight:400;font-variant-numeric:tabular-nums;color:var(--text-muted);opacity:1}
+/* The chip's colour class paints text on the web; on desktop only the dot is coloured. */
+html.desktop-app .find-workspace .find-header .sev{color:var(--text-primary)}
+/* Status = a quiet tag. */
+html.desktop-app .find-workspace .find-status-badge{padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);font-family:var(--ui);font-size:var(--text-caption);line-height:20px;font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-header .find-status-badge.find-st-needs_verification{color:var(--warning)}
+html.desktop-app .find-workspace .find-header .find-status-badge:is(.find-st-verified,.find-st-fixed){color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-header-top .find-mode-chip{min-height:var(--control-h-sm);padding:0 6px;border-color:transparent;background:transparent;color:var(--text-muted);font-size:var(--text-caption);font-weight:500}
+html.desktop-app .find-workspace .find-header-top .find-mode-chip:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .find-workspace .find-more-btn{min-width:var(--control-h);padding:0;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-more-btn:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .find-workspace .find-title-text{font-size:var(--text-heading);line-height:var(--lh-heading);letter-spacing:normal;font-weight:600;color:var(--text-primary)}
+html.desktop-app .find-workspace .find-context-line{gap:2px 12px;font:400 var(--text-caption)/var(--lh-caption) var(--mono);color:var(--text-muted)}
+html.desktop-app .find-context-line .find-target{color:var(--text-secondary)}
+html.desktop-app .find-context-line .find-ctx-method{color:var(--text-primary);font-weight:500}
+html.desktop-app .find-save-recovery{margin-top:4px;padding:6px 10px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);font-size:var(--text-ui);color:var(--text-primary)}
+
+/* Body: one comfortable column (~72ch), clear section rhythm. */
+html.desktop-app .find-workspace-content{padding:24px 32px 64px;column-gap:32px}
+html.desktop-app .find-doc-in{gap:32px;max-width:76ch}
+html.desktop-app .find-workspace .find-sec{margin:0}
+html.desktop-app .find-claim,html.desktop-app .find-impact-block{max-width:none}
+html.desktop-app .find-claim-lead{font-size:var(--text-title);line-height:23px;font-weight:400;letter-spacing:normal;color:var(--text-primary)}
+/* Impact and Root cause: two labelled rows in one calm group. */
+html.desktop-app .find-impact-block{gap:0;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1);overflow:hidden}
+html.desktop-app .find-impact,html.desktop-app .find-why{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;padding:10px 14px;border:0;font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-primary)}
+html.desktop-app .find-impact-block>.find-why{border-top:1px solid var(--border-subtle)}
+html.desktop-app .find-impact:only-child{border-radius:inherit}
+html.desktop-app .find-tag{font:500 var(--text-ui)/var(--lh-body) var(--ui);letter-spacing:normal;text-transform:lowercase;color:var(--text-muted);padding:0}
+html.desktop-app .find-tag::first-letter{text-transform:uppercase}
+html.desktop-app .find-impact-tag,html.desktop-app .find-why .find-tag{padding-top:0;color:var(--text-muted)}
+html.desktop-app .find-why .md,html.desktop-app .find-impact .md{font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-primary)}
+/* Section titles: 15/20, sentence case, no underline rule. */
+html.desktop-app .find-sec-hd{gap:8px;padding-bottom:0;margin-bottom:12px;border-bottom:0}
+html.desktop-app .find-workspace .find-sec-hd h3,html.desktop-app .find-workspace .find-sec h3{font:600 var(--text-title)/var(--lh-title) var(--ui);letter-spacing:normal;text-transform:none;color:var(--text-primary);margin:0}
+html.desktop-app .find-count{font:500 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted)}
+html.desktop-app .find-field-label{font:500 var(--text-caption)/var(--lh-caption) var(--ui);letter-spacing:normal;text-transform:none;color:var(--text-muted)}
+html.desktop-app .find-stub{max-width:none;padding:12px 14px;border-color:var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1)}
+html.desktop-app .find-stub p{font-size:var(--text-body);line-height:var(--lh-body)}
+
+/* Reproduction steps: a quiet timeline. */
+html.desktop-app .find-step{grid-template-columns:22px minmax(0,1fr);column-gap:12px;padding-bottom:16px}
+html.desktop-app .find-step::before{left:10px;top:24px;background:var(--border-subtle)}
+html.desktop-app .find-node{width:22px;height:22px;margin-top:0;border:0;border-radius:50%;background:var(--dsk-tag);font:500 var(--text-caption)/1 var(--ui);color:var(--text-secondary)}
+html.desktop-app .find-step.is-key .find-node{border:0;background:var(--surface-selected);color:var(--text-primary);font-weight:600}
+html.desktop-app .find-sbody{gap:8px}
+html.desktop-app .find-sline{gap:4px 10px;align-items:baseline}
+html.desktop-app .find-role{padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);font:500 var(--text-caption)/20px var(--ui);letter-spacing:normal;text-transform:lowercase;color:var(--text-secondary)}
+html.desktop-app .find-role::first-letter{text-transform:uppercase}
+html.desktop-app :is(.find-role-action,.find-role-result){border:0;color:var(--text-secondary)}
+html.desktop-app .find-stext{flex:1 1 15rem;max-width:72ch;font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-primary)}
+html.desktop-app .find-ev-proof,html.desktop-app :is(.find-ev-missing,.find-xch-err){font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-muted)}
+html.desktop-app .find-need,html.desktop-app .find-target-gap{font:400 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--warning)}
+
+/* Evidence blocks: flows and images as calm cards. */
+html.desktop-app .find-xch{border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1)}
+html.desktop-app .find-xchhd{min-height:34px;padding:0 12px;gap:8px;background:transparent;font:400 var(--text-code)/var(--lh-code) var(--mono);color:var(--text-secondary)}
+html.desktop-app .find-xchhd:hover{background:var(--surface-hover)}
+html.desktop-app .find-xch-m{color:var(--text-primary);font-weight:500}
+html.desktop-app .find-xch-p{color:var(--text-primary)}
+html.desktop-app .find-xch-code{font-weight:500}
+html.desktop-app .find-xch-code.s2{color:var(--text-secondary)}
+html.desktop-app .find-xch-code.s3{color:var(--info)}
+html.desktop-app .find-xch-code.s4{color:var(--warning)}
+html.desktop-app .find-xch-code.s5{color:var(--danger)}
+html.desktop-app .find-xch-id{color:var(--text-muted)}
+html.desktop-app .find-xchbd{gap:0;background:transparent;border-top:1px solid var(--border-subtle)}
+html.desktop-app .find-xchbd>.find-pane+.find-pane{border-left:1px solid var(--border-subtle)}
+html.desktop-app .find-xchbd>.find-xch-err,html.desktop-app .find-xchbd>.find-flow-shot,html.desktop-app .find-xchbd>.find-preview-note,html.desktop-app .find-xchbd>.find-evidence-actions{background:transparent;padding:8px 12px}
+html.desktop-app .find-pane{background:var(--surface-inset)}
+html.desktop-app .find-panehd{padding:4px 12px;font:500 var(--text-caption)/var(--lh-caption) var(--ui);letter-spacing:normal;text-transform:none;color:var(--text-muted);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .find-cp{width:24px;height:24px;border-radius:var(--radius-xs);color:var(--text-muted)}
+html.desktop-app .find-cp:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .find-wire{padding:10px 12px;font:400 var(--text-code)/var(--lh-code) var(--mono);color:var(--text-primary)}
+html.desktop-app .find-xch-foot{padding:6px 12px;border-top:1px solid var(--border-subtle);font:400 var(--text-caption)/var(--lh-caption) var(--ui)}
+html.desktop-app .find-xch-open{color:var(--accent)}
+html.desktop-app .find-workspace .find-shot{max-width:480px;gap:0;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1);overflow:hidden}
+html.desktop-app .find-workspace .find-shot .find-doc-img{aspect-ratio:auto;max-height:320px;object-fit:contain;object-position:center;border:0;border-radius:0;background:var(--surface-inset)}
+html.desktop-app .find-shot figcaption{padding:8px 12px;gap:2px 8px;font:400 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted);border-top:1px solid var(--border-subtle)}
+html.desktop-app .find-shot-cap{font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-primary)}
+html.desktop-app .find-workspace .find-doc-img{border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-inset)}
+html.desktop-app .find-workspace .find-evidence-actions .btn,html.desktop-app .find-shot .btn{min-height:var(--control-h-sm);background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-evidence-actions .btn:hover,html.desktop-app .find-shot .btn:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .find-workspace .find-report-flow{padding:12px;border-color:var(--border-subtle);border-radius:var(--radius-md)}
+html.desktop-app :is(.find-story-card,.find-target-proof,.find-target-card,.find-complete){border-color:var(--border-subtle);border-radius:var(--radius-md)}
+html.desktop-app .find-workspace .find-complete{padding:12px 14px}
+html.desktop-app .find-flow-shot img,html.desktop-app .find-auto-preview img{border-color:var(--border-subtle);border-radius:var(--radius-sm)}
+html.desktop-app .find-flow-shot span{font-family:var(--ui);font-size:var(--text-ui)}
+html.desktop-app .find-target-proof>h4,html.desktop-app .find-story-card h4{font-size:var(--text-ui);font-weight:600}
+html.desktop-app .find-story-hint,html.desktop-app .find-story-empty,html.desktop-app .find-preview-note{font-size:var(--text-ui);line-height:var(--lh-ui)}
+
+/* Affected targets. */
+html.desktop-app .find-aff{border-color:var(--border-subtle);background:var(--border-subtle);border-radius:var(--radius-md)}
+html.desktop-app .find-aff-row{padding:8px 12px;background:var(--surface-1);font:400 var(--text-code)/var(--lh-ui) var(--mono)}
+html.desktop-app .find-aff-m{color:var(--text-primary);font-weight:500}
+html.desktop-app .find-evref{border-color:var(--border-subtle);border-radius:var(--radius-xs);font:400 var(--text-caption)/18px var(--mono)}
+
+/* ---- properties rail and the folded "Properties" row ---- */
+html.desktop-app .find-rail{overflow:clip;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:var(--radius-md)}
+/* Folded (a narrow reading column): the rail is a quiet disclosure row, not a card. */
+@container findws (max-width:1000px){
+  html.desktop-app .find-rail:not(.is-open){background:none;border-color:transparent;border-bottom-color:var(--border-subtle);border-radius:0}
+  html.desktop-app .find-rail:not(.is-open) .find-rail-toggle{padding-left:0;padding-right:0}
+  html.desktop-app .find-workspace-content{row-gap:20px}
+}
+html.desktop-app .find-rail-toggle{min-height:var(--control-h);border:0;background:transparent;font-size:var(--text-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .find-rail-sum{font:400 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted)}
+html.desktop-app .find-railsec{padding:12px 14px}
+html.desktop-app .find-props{gap:2px}
+html.desktop-app .find-prop{grid-template-columns:84px minmax(0,1fr);min-height:26px}
+html.desktop-app .find-prop dt{font-size:var(--text-ui);color:var(--text-muted)}
+html.desktop-app .find-pval{font:400 var(--text-ui)/var(--lh-ui) var(--ui);color:var(--text-primary)}
+html.desktop-app .find-dot{width:8px;height:8px;margin-right:6px;border-radius:50%}
+html.desktop-app .find-vector{font:400 var(--text-caption)/var(--lh-caption) var(--mono);color:var(--text-muted)}
+html.desktop-app .find-cvssbar{grid-template-columns:repeat(8,12px);gap:2px}
+html.desktop-app .find-cvssbar b{height:4px;border-radius:2px;background:var(--dsk-tag)}
+html.desktop-app .find-cvssbar b.on{background:var(--sv);opacity:.75}
+html.desktop-app .find-prep{border-top:1px solid var(--border-subtle)}
+html.desktop-app .find-prep-sum{padding:8px 14px;font:500 var(--text-ui)/var(--lh-ui) var(--ui);color:var(--text-primary)}
+html.desktop-app .find-prep-sum:hover{background:var(--surface-hover)}
+html.desktop-app .find-prep-badge{font:500 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted)}
+html.desktop-app .find-prep-badge.is-warn{color:var(--warning)}
+html.desktop-app .find-prep-body{padding:4px 14px 14px;gap:16px}
+html.desktop-app .find-prep-h{font:600 var(--text-ui)/var(--lh-ui) var(--ui);letter-spacing:normal;text-transform:none;color:var(--text-primary)}
+html.desktop-app .find-workspace .find-review-gaps a,html.desktop-app .find-review-gaps a{font-size:var(--text-ui);border-bottom-color:var(--border-subtle)}
+html.desktop-app .find-gap-link small{font-size:var(--text-caption)}
+html.desktop-app .find-workspace .find-complete .find-draft{font-weight:500;color:var(--text-secondary)}
+html.desktop-app .find-cap{font-size:var(--text-caption)}
+html.desktop-app .find-cap-miss{color:var(--text-muted)}
+html.desktop-app .find-cap-ok{color:var(--text-secondary)}
+html.desktop-app .find-properties>label{font-size:var(--text-ui);color:var(--text-secondary)}
+html.desktop-app .find-properties{gap:12px 16px}
+html.desktop-app .cvss-metric{font-size:var(--text-caption);color:var(--text-muted)}
+
+/* Readiness meter: quiet segments (an icon, a word, no outline). */
+html.desktop-app .rm-seg{min-height:22px;padding:0 8px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);color:var(--text-muted);font-size:var(--text-caption);font-weight:500}
+html.desktop-app .rm-seg.is-pass{background:var(--accent-subtle);color:var(--accent)}
+html.desktop-app .rm-seg.is-todo{background:transparent;box-shadow:inset 0 0 0 1px var(--border-subtle);color:var(--text-muted)}
+html.desktop-app .rm-compact .rm-seg{padding:0 4px}
+
+/* Evidence tray and editing controls keep the shared look. */
+html.desktop-app .et{border-color:var(--border-strong);border-radius:var(--radius-md);background:var(--surface-1)}
+html.desktop-app .et-tile{border-color:var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-2)}
+html.desktop-app .et-title{font-size:var(--text-ui);font-weight:500}
+html.desktop-app .et-meta{font-size:var(--text-caption)}
+html.desktop-app .find-workspace .find-field-text{font-size:var(--text-body);line-height:var(--lh-body);background:var(--surface-inset)}
+html.desktop-app .find-workspace .find-block{border-color:var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1)}
+html.desktop-app .find-workspace .find-doc-actions{border-top-color:var(--border-subtle)}
+
+/* ---- report preflight (the Report sub-view) ---- */
+html.desktop-app .rp{gap:16px;padding:16px 24px 32px}
+html.desktop-app .rp-head{gap:8px}
+html.desktop-app .rp-head h2{font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app .rp-sum{font-size:var(--text-ui);font-weight:400;color:var(--text-secondary)}
+html.desktop-app .rp h3{margin:0 0 8px;font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:600;color:var(--text-primary)}
+html.desktop-app .rp-body{gap:32px}
+html.desktop-app .rp-groups{gap:12px}
+html.desktop-app .rp-group{border-color:var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1);overflow:hidden}
+html.desktop-app .rp-group-h{padding:8px 12px;gap:8px;border-bottom:1px solid var(--border-subtle);background:var(--surface-0);font-size:var(--text-ui)}
+html.desktop-app .rp-id{font:400 var(--text-caption)/var(--lh-caption) var(--ui);color:var(--text-muted)}
+html.desktop-app .rp-title{font-weight:500;color:var(--text-primary)}
+html.desktop-app .rp-sev,html.desktop-app .rp-state{padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);font-size:var(--text-caption);line-height:20px;font-weight:500;color:var(--text-secondary)}
+html.desktop-app .rp-issue{min-height:var(--row-h);padding:6px 12px;border-top:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent)}
+html.desktop-app .rp-issue .icon{width:14px;height:14px;color:var(--text-muted)}
+html.desktop-app .rp-issue-text{font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app .rp-issue-text strong{font-weight:500;color:var(--text-primary)}
+html.desktop-app .rp-issue-text small{font-size:var(--text-caption);line-height:var(--lh-caption);color:var(--text-muted)}
+html.desktop-app .rp-issue .btn{min-height:var(--control-h-sm);padding:0 8px;background:transparent;border-color:transparent;color:var(--accent);text-decoration:none}
+html.desktop-app .rp-issue .btn:hover{background:var(--surface-hover)}
+html.desktop-app .rp-fields{gap:6px}
+html.desktop-app .rp-fields label{font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
+html.desktop-app .rp-check{min-height:var(--control-h);font-size:var(--text-ui)}
+html.desktop-app .rp-hidden{border-color:var(--warning-border);background:var(--warning-subtle);border-radius:var(--radius-sm);font-size:var(--text-ui)}
+html.desktop-app .rp-hidden .icon,html.desktop-app .rp-reason .icon{color:var(--warning)}
+html.desktop-app .rp-reason{font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-secondary)}
+html.desktop-app .rp-confirm{border-color:var(--warning-border);border-radius:var(--radius-md);background:var(--surface-0)}
+html.desktop-app .rp-prow{min-height:var(--row-h);border-color:var(--border-subtle);border-radius:var(--radius-sm);font-size:var(--text-ui)}
+html.desktop-app .rp-prow .icon{width:14px;height:14px}
+html.desktop-app .rp-prow.is-blocked .icon{color:var(--text-muted)}
+html.desktop-app .rp-page{border-color:var(--border-strong);border-radius:var(--radius-md)}
+html.desktop-app .rp-head #reportBack{background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app .rp-head #reportBack:hover{background:var(--surface-hover);color:var(--text-primary)}
+
+/* One primary per view: New finding in the list view, Create in the inline form, Download in the
+   report. Edit and Screenshot are secondary. */
+html.desktop-app :is(#findToggleEdit,#findAddImage){background:var(--surface-2);border-color:var(--border-subtle);color:var(--text-primary)}
+html.desktop-app :is(#findToggleEdit,#findAddImage):hover{background:color-mix(in srgb,var(--surface-2),var(--text-primary) 6%);border-color:var(--border-strong);color:var(--text-primary)}

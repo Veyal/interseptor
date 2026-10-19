@@ -1,0 +1,118 @@
+/* desktop/panel-scanner.css — the Scanner panel on desktop (docs/desktop-design.md,
+   Panels). One toolbar row; the issue list is a nav list; an issue is described
+   once and its affected targets are 28px rows. Severity is a dot plus the word.
+   Every rule is scoped under html.desktop-app; colours come from desktop/tokens.css.
+   The markup is rearranged by js/desktop-panel-scanner.js (desktop hosts only). */
+
+/* ---- toolbar: one row ---- */
+html.desktop-app #panel-scanner>.toolbar{overflow:visible;padding-block:0}
+html.desktop-app #scanPassiveBar{flex:1;flex-wrap:nowrap;gap:6px;min-width:0}
+html.desktop-app #scanPassiveBar .ui-select{flex:0 1 190px;min-width:110px;max-width:190px}
+html.desktop-app #scanPassiveBar .ui-select .ui-select-trigger{width:100%}
+html.desktop-app #scanTarget{min-width:110px}
+html.desktop-app #scanFilter{flex:0 1 150px;min-width:80px;width:auto}
+html.desktop-app #scanPassiveBar .spacer{flex:1 1 0}
+html.desktop-app #scanRescanState{flex:0 1 auto;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-caption);color:var(--text-muted)}
+html.desktop-app #scanRescanState:empty{display:none}
+html.desktop-app #scanCount{flex:none;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+html.desktop-app #scanCount:empty{display:none}
+/* Run is the one primary button; while a scan runs Stop and the progress take its place. */
+html.desktop-app #scanPassiveBar:has(.scan-progress:not([hidden])) #scanRun{display:none}
+html.desktop-app .scan-progress{position:relative;flex:0 1 320px;min-width:0;gap:8px;padding:0;background:none;border:0}
+html.desktop-app .scan-progress[hidden]{display:none}
+html.desktop-app .scan-progress progress{flex:1 1 120px;min-width:100px;height:4px;appearance:none;-webkit-appearance:none;border:0;border-radius:2px;background:var(--surface-inset);overflow:hidden}
+html.desktop-app .scan-progress progress::-webkit-progress-bar{background:var(--surface-inset);border-radius:2px}
+html.desktop-app .scan-progress progress::-webkit-progress-value{background:var(--accent);border-radius:2px}
+/* The status sentence stays for assistive tech; the bar and the count are the visible progress. */
+html.desktop-app #scanProgressText{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+html.desktop-app #scanProgressCount{flex:none;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app #scanStop{flex:none;min-height:var(--control-h);padding:0 10px}
+/* Tools menu: the shared popover. */
+html.desktop-app .scan-tools-menu{min-width:200px;padding:4px;gap:0;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-popover)}
+html.desktop-app .scan-tools-menu .btn{min-height:var(--row-h);width:100%;justify-content:flex-start;padding:4px 8px;border:0;border-radius:5px;background:transparent;font-weight:400}
+html.desktop-app .scan-tools-menu .btn:hover{background:var(--surface-hover)}
+/* The scope sentence is global state (status bar); only a blocked-run reason stays in the pane. */
+html.desktop-app #scanContext{padding:0;border:0}
+html.desktop-app #scanContext .scan-scope-line{display:none}
+html.desktop-app #scanContext:not(:has(.scan-run-reason:not([hidden]))){display:none}
+html.desktop-app .scan-run-reason{margin:8px var(--gutter);padding:6px 10px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);color:var(--text-primary);font-size:var(--text-ui);font-weight:400}
+html.desktop-app .scan-run-reason[hidden]{display:none}
+
+/* ---- list column: filter bar and the issue nav list ---- */
+html.desktop-app .scan-list-col{background:var(--surface-1)}
+html.desktop-app .scan-filterbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px var(--gutter);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .scan-filterbar .scan-host-filter,html.desktop-app .scan-filterbar .scan-sev-chips{display:contents}
+html.desktop-app .scan-filterbar .scan-host-filter[hidden],html.desktop-app .scan-filterbar .scan-sev-chips[hidden]{display:none}
+html.desktop-app .scan-host-filter label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* The host filter is a pill. */
+html.desktop-app .scan-host-filter .ui-select{flex:0 1 auto;min-width:0}
+html.desktop-app .scan-host-filter .ui-select-trigger,html.desktop-app .scan-host-filter select{min-height:var(--control-h-sm);padding:0 8px 0 10px;border-radius:999px;background:var(--surface-2);border-color:var(--border-subtle);font-size:var(--text-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .scan-sev-chips{position:static;padding:0;border:0;background:none}
+/* Severity filters: a dot, the word, a muted count. Selected = the selected tint, no bold border. */
+html.desktop-app .scan-sev-chip{min-height:var(--control-h-sm);padding:0 9px;gap:6px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-secondary);font-size:var(--text-ui);font-weight:500}
+html.desktop-app .scan-sev-chip:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .scan-sev-chip[aria-pressed="true"]{background:var(--surface-selected);border-color:transparent;box-shadow:none;color:var(--text-primary);font-weight:500}
+html.desktop-app .scan-sev-chip b{font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app .scan-sev-chip .icon{display:none}
+html.desktop-app .scan-sev-chip::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;background:var(--sev-info)}
+html.desktop-app .scan-sev-chip[data-sev="Critical"]::before{background:var(--sev-critical)}
+html.desktop-app .scan-sev-chip[data-sev="High"]::before{background:var(--sev-high)}
+html.desktop-app .scan-sev-chip[data-sev="Medium"]::before{background:var(--sev-medium)}
+html.desktop-app .scan-sev-chip[data-sev="Low"]::before{background:var(--sev-low)}
+
+/* ---- severity: a dot and the word, everywhere ---- */
+html.desktop-app .scan-item .sev,html.desktop-app .scan-wrap .sev{display:inline-flex;align-items:center;gap:6px;padding:0;border:0;border-radius:0;background:none;color:var(--text-secondary);font-size:var(--text-ui);font-weight:500;letter-spacing:normal;text-transform:none}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev .icon{display:none}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;background:var(--sev-info)}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev.Critical::before{background:var(--sev-critical)}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev.High::before{background:var(--sev-high)}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev.Medium::before{background:var(--sev-medium)}
+html.desktop-app :is(.scan-item,.scan-wrap) .sev.Low::before{background:var(--sev-low)}
+
+/* ---- issue list rows: title, then severity and counts ---- */
+html.desktop-app .scan-item{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"t t" "sev tg";align-content:center;column-gap:8px;row-gap:2px;padding:8px var(--gutter);border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent);border-left:0}
+html.desktop-app .scan-item .t{grid-area:t;margin:0;font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-primary)}
+html.desktop-app .scan-item .sev{grid-area:sev;font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500}
+html.desktop-app .scan-item .tg{grid-area:tg;margin:0;font-size:var(--text-caption);line-height:var(--lh-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* Selected: the nav-list marker, as in the rail and Findings. */
+html.desktop-app #scanList .scan-item.sel{box-shadow:none;background:var(--surface-selected)}
+html.desktop-app #scanList .scan-item.sel::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:2px;background:var(--accent);pointer-events:none}
+
+/* ---- issue detail: header, description, remediation, targets ---- */
+html.desktop-app .scan-detail-pane{background:var(--surface-1)}
+html.desktop-app .scan-wrap{max-width:960px;padding:16px 20px 28px}
+html.desktop-app .scan-head{margin:0 0 4px;gap:12px;flex-wrap:nowrap;align-items:flex-start}
+html.desktop-app .scan-title{font-size:var(--text-heading);line-height:var(--lh-heading);font-weight:600;color:var(--text-primary)}
+html.desktop-app .scan-head .btn{flex:none}
+html.desktop-app .scan-meta{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+html.desktop-app .scan-meta-n{font-size:var(--text-ui);color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app .scan-meta-n::before{content:"·";margin-right:8px}
+html.desktop-app .scan-detail-text{margin:0 0 4px;max-width:70ch;font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-secondary)}
+html.desktop-app .scan-sec{display:flex;align-items:baseline;gap:8px;margin:20px 0 8px;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
+html.desktop-app .scan-sec-n{font-size:var(--text-ui);font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app .scan-wrap .fixbox{max-width:70ch;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-inset);font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-secondary)}
+
+/* ---- affected targets: one 28px row each ---- */
+html.desktop-app .scan-tgt{margin:0;padding:0;border:0;border-radius:0;border-bottom:1px solid color-mix(in srgb,var(--border-subtle) 50%,transparent)}
+html.desktop-app .scan-tgt:hover,html.desktop-app .scan-tgt:focus-within{background:var(--surface-hover)}
+html.desktop-app .scan-tgt-row{display:flex;align-items:center;gap:8px;min-height:var(--row-h);padding:0 4px}
+html.desktop-app .scan-tgt-toggle,html.desktop-app .scan-tgt-toggle-gap{flex:none;width:20px;height:20px}
+html.desktop-app .scan-tgt-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-muted)}
+html.desktop-app .scan-tgt-toggle:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app .scan-tgt-toggle .icon{width:14px;height:14px;transform:rotate(-90deg);transition:transform var(--motion-fast) var(--motion-standard)}
+html.desktop-app .scan-tgt-toggle[aria-expanded="true"] .icon{transform:none}
+html.desktop-app .scan-tgt-m{flex:none;width:44px;font-family:var(--mono);font-size:var(--text-code);font-weight:500;color:var(--text-primary)}
+html.desktop-app .scan-tgt-url{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:var(--text-code);color:var(--text-primary)}
+html.desktop-app .scan-tgt-path{color:var(--text-secondary)}
+html.desktop-app .scan-tgt-flow{flex:none;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* Per-row actions: icon buttons that appear on hover or keyboard focus. */
+html.desktop-app .scan-tgt-actions{display:flex;flex:none;gap:2px;margin:0 0 0 auto;opacity:0}
+html.desktop-app :is(.scan-tgt:hover,.scan-tgt:focus-within) .scan-tgt-actions{opacity:1}
+html.desktop-app .scan-tgt-actions .btn{min-width:var(--control-h-sm);min-height:var(--control-h-sm);padding:0;border-color:transparent;background:transparent;color:var(--text-secondary)}
+html.desktop-app .scan-tgt-actions .btn:hover{background:var(--surface-2);color:var(--text-primary)}
+html.desktop-app .scan-tgt-body{margin:0 0 8px 32px;padding-right:8px}
+html.desktop-app .scan-tgt-body[hidden]{display:none}
+html.desktop-app .scan-tgt-detail{margin:2px 0 6px;max-width:70ch;font-size:var(--text-ui);line-height:var(--lh-ui);color:var(--text-secondary)}
+html.desktop-app .scan-tgt-evidence{margin:4px 0 0;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);font-size:var(--text-code);line-height:var(--lh-code);color:var(--text-secondary)}
+html.desktop-app .scan-tgt-more{margin:12px 0 0}
+html.desktop-app .scan-tgt-more .hint{color:var(--text-muted)}

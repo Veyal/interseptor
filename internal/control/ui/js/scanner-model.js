@@ -160,3 +160,17 @@ export function unreviewedCount(groups, seen) {
   const s = seen instanceof Set ? seen : new Set(seen || []);
   return (Array.isArray(groups) ? groups : []).filter((g) => !s.has(g.title)).length;
 }
+
+// splitScanTarget breaks an affected target ("GET api.example.com/boom?x=1")
+// into its method, host and path so the desktop skin can lay them out as
+// columns. A target without a leading method keeps method ''.
+export function splitScanTarget(target) {
+  const raw = String(target == null ? '' : target).trim();
+  const m = /^([A-Z]{3,8})\s+(\S.*)$/.exec(raw);
+  const method = m ? m[1] : '';
+  let rest = (m ? m[2] : raw).replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const cut = rest.search(/[/?#]/);
+  const host = cut < 0 ? rest : rest.slice(0, cut);
+  const path = cut < 0 ? '' : rest.slice(cut);
+  return { method, host, path };
+}

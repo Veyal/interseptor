@@ -5,7 +5,7 @@
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook, clearSharedReads } from './core.js';
 import { selectFlow, revealFlowRow, focusInFlowList, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
-import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
+import { renderIntercept, toggleIntercept, toggleResponseIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
@@ -25,7 +25,7 @@ import { initUiHints } from './hints.js';
 import { openFlowDiff } from './flow-diff.js';
 import { projectState } from './project-state.js';
 import { initCtxbar, renderCtxbar } from './ctxbar.js';
-import { initConnection, setConnectionStatus } from './connection.js';
+import { initConnection, setConnectionStatus, openConnectionPopover, closeConnectionPopover } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
@@ -34,6 +34,9 @@ import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
 import { liveEventStalesReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
+import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp } from './desktop.js';
+import { initDesktopShell } from './desktop-shell.js';
+import { isMac } from './desktop-panel-kit.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -85,7 +88,7 @@ function syncDocumentTitle(){
   const t=titlePanel&&document.querySelector('.tab[data-tab="'+titlePanel+'"]');
   document.title=documentTitle(t?panelLabelOf(t):'',titleProject);
 }
-function setTitleProject(name){titleProject=String(name||'');syncDocumentTitle();}
+function setTitleProject(name){titleProject=String(name||'');syncDocumentTitle();noteDesktopStatus();}
 function ensurePanelHeadings(){
   $$('.panel[data-panel]').forEach(panel=>{
     if(panel.querySelector(':scope > .panel-heading'))return;
@@ -269,6 +272,7 @@ function renderIcptStat(){
   if(held) parts.push(held+' held');
   if(parts.length){ el.style.display='inline'; el.textContent='· '+parts.join(' · '); }
   else el.style.display='none';
+  noteDesktopStatus();
 }
 // Cheap status ticker: skip work entirely while the tab is hidden.
 setInterval(()=>{ if(!document.hidden) renderCapStat(); },1000);
@@ -508,8 +512,12 @@ function scheduleSseReconnect(immediate){
 
 // The Connection chip (connection.js) owns the status markup; this keeps the
 // original entry point so the SSE chain below is unchanged.
+// sseStatusNow mirrors it for the desktop bridge's status message.
+let sseStatusNow='reconnecting';
 function setSseStatus(s){
+  sseStatusNow=s;
   setConnectionStatus(s);
+  noteDesktopStatus();
 }
 {const retry=$('#sseRetry');if(retry)retry.onclick=()=>scheduleSseReconnect(true);}
 
@@ -829,6 +837,7 @@ async function bootFirstRunUI(){
     restoreTab();
     handleAppHash();
     releaseWorkstationReady();
+    desktopReady();
     loadOptionalModules(path=>import(path));
     await loadFlows();
     // The wizard prints the proxy and control addresses from settings; wait for
@@ -849,6 +858,7 @@ async function bootFirstRunUI(){
       const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
     }
     toast('Could not initialize project-scoped UI: '+e.message,'error');
+    desktopReady();
   }
 }
 /* ---- Flight Bar engagement state, connection chip and project state ---- */
@@ -867,6 +877,78 @@ function activateTabByName(name){
 function refreshProjectState(reason){if(projectScopedUIReady)projectState.refresh({reason});}
 setShellApi({activateTab:activateTabByName,openSettings:goSettingsSection,openProject:()=>{if(projectScopedUIReady)openProjectModal();}});
 initConnection({copyText,hasOpenModal});
+// Desktop shells (native macOS app, Chrome --app window): a no-op beyond the
+// theme-color meta in a browser tab. Every action reuses the shell's own path.
+initDesktop({
+  readStatus:()=>({project:titleProject,live:sseStatusNow,intercept:state.intercept}),
+  activePanel,
+  actions:{
+    // A menu-driven panel switch closes the palette first, so it never stays
+    // open over the panel it just left.
+    panel:name=>{const tab=document.querySelector('.tab[data-tab="'+name+'"]');if(!projectScopedUIReady||!tab||tab.disabled)return false;if(isCommandPaletteOpen())cmdkClose();activateTab(tab);return true;},
+    toggleRequestIntercept:()=>{const b=$('#interceptToggle');if(!b||b.disabled)return false;toggleIntercept();return true;},
+    toggleResponseIntercept:()=>{const b=$('#respInterceptToggle');if(!b||b.disabled)return false;toggleResponseIntercept();return true;},
+    openPalette:()=>{cmdkOpen();return isCommandPaletteOpen();},
+    openProject:()=>{if(!projectScopedUIReady)return false;openProjectModal();return true;},
+    toggleTheme:()=>{toggleTheme();return true;},
+  },
+});
+// The desktop skin's chrome (status bar, intercept pill, palette entries for the
+// controls that leave the title toolbar). Built only inside a desktop host.
+if(isDesktopApp()){
+  const clickIf=sel=>()=>{const b=$(sel);if(b&&!b.hidden&&!b.disabled)b.click();};
+  const desktopWarnings=()=>{
+    const b=$('#tlsDiagBanner');if(!b||b.classList.contains('u-hidden')||!b.textContent.trim())return [];
+    const head=b.querySelector('.tls-diag-head > span');
+    return [{title:(head?head.textContent:b.textContent).trim().slice(0,160),detail:(b.querySelector('.tls-diag-detail')?.textContent||'').trim().slice(0,400)}];
+  };
+  initDesktopShell({
+    mac:isMac(),
+    read:()=>{
+      const ps=projectState.get(),ic=state.intercept||{};
+      const addr=($('#proxyAddr')?.textContent||'').trim();
+      return {
+        proxyAddr:addr==='…'?'':addr,
+        intercept:{enabled:!!ic.enabled,responseEnabled:!!ic.responseEnabled,held:(ic.queue||[]).length+(ic.responseQueue||[]).length},
+        scope:{loaded:!!ps.loaded,inCount:ps.scope?.inCount,outCount:ps.scope?.outCount},
+        flows:ps.evidence?.flows||(state.flows||[]).length,
+        live:sseStatusNow,project:titleProject,
+        version:($('#verBadge')?.textContent||'').trim(),
+        warnings:desktopWarnings(),
+      };
+    },
+    actions:{
+      openPanel:activateTabByName,
+      // The TLS diagnosis lives in Proxy with its own actions; the status bar
+      // warning opens it there with the details expanded and focused.
+      showWarnings:()=>{
+        activateTabByName('proxy');
+        const t=$('#tlsDiagBanner [data-tls-action="details"]');
+        if(!t)return;
+        if(t.getAttribute('aria-expanded')!=='true')t.click();
+        t.focus({preventScroll:false});
+      },
+      openSettings:goSettingsSection,
+      openConnection:()=>setTimeout(openConnectionPopover,0),
+      closeConnection:()=>closeConnectionPopover(),
+      connectionOpen:()=>!!$('#connPop')&&!$('#connPop').hidden,
+      openProject:()=>{if(projectScopedUIReady)openProjectModal();},
+      // The version item opens the releases page (what's new). #verBadge sits in
+      // the hidden rail foot on desktop, so its link is opened directly; a failed
+      // version read retries instead, as the badge itself does.
+      openReleases:()=>{const b=$('#verBadge');if(b&&b.dataset.failed==='true'){loadVersion(false);return;}window.open((b&&b.href)||'https://github.com/Veyal/interseptor/releases','_blank','noopener');},
+      toggleIntercept:()=>{const b=$('#interceptToggle');if(b&&!b.disabled)toggleIntercept();},
+    },
+    registerCommand,
+    commands:[
+      {t:'View: Split left and right',kw:'split pane side by side columns layout',run:clickIf('#splitLrBtn')},
+      {t:'View: Split top and bottom',kw:'split pane stacked rows layout',run:clickIf('#splitTbBtn')},
+      {t:'View: Close this document',kw:'close pane split document',run:clickIf('#paneCloseBtn')},
+      {t:'History: In-scope only filter',kw:'scope filter in scope only toggle',run:clickIf('#scopeToggle')},
+      {t:'Connection details',kw:'live connection proxy listener device address control ui',run:()=>setTimeout(openConnectionPopover,0)},
+    ],
+  });
+}
 function readSavedIdentity(){try{return localStorage.getItem(projectStorageKey('activeIdentity'))||'';}catch(e){return '';}}
 function saveActiveIdentity(name){try{if(name)localStorage.setItem(projectStorageKey('activeIdentity'),name);else localStorage.removeItem(projectStorageKey('activeIdentity'));}catch(e){}}
 initCtxbar({
