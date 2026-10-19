@@ -11,10 +11,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -152,7 +150,8 @@ func run() error {
 	// --project <name|path> (or INTERSEPTOR_PROJECT) skips the startup prompt.
 	fs := flag.NewFlagSet("interseptor", flag.ContinueOnError)
 	projectFlag := fs.String("project", "", "project name or directory (skips the startup picker)")
-	openFlag := fs.Bool("open", false, "open the UI in your browser on start (default: don't)")
+	openFlag := fs.Bool("open", false, "open the UI window even when started over SSH")
+	headlessFlag := fs.Bool("headless", false, "don't open the UI window on start (also INTERSEPTOR_HEADLESS)")
 	controlPortFlag := fs.Int("control-port", 0, "control UI/API TCP port on loopback (default 9966)")
 	controlAddrFlag := fs.String("control-addr", "", "control UI/API listen address host:port (overrides --control-port)")
 	dataDirFlag := fs.String("data-dir", "", "global data directory (default ~/.interseptor; also INTERSEPTOR_DATA_DIR)")
@@ -388,12 +387,9 @@ func run() error {
 
 	uiURL := "http://" + cm.Addr()
 	log.Printf("Interseptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
-	// Quiet, daemon-style start by default: only open the browser when the operator
-	// opts in (--open / INTERSEPTOR_OPEN_BROWSER), so restarts and headless runs
-	// don't pop a new tab. The UI URL is logged above to open yourself.
-	if *openFlag || os.Getenv("INTERSEPTOR_OPEN_BROWSER") != "" {
-		openBrowser(uiURL)
-	}
+	// Open the UI as its own app window unless running headless; when no window
+	// can be shown, the URL is logged to open in any browser.
+	openUIWindow(uiURL, *headlessFlag, *openFlag)
 
 	// Best-effort update check (every run). Non-blocking; silent on failure;
 	// opt out with INTERSEPTOR_NO_UPDATE_CHECK. Result is also served at /api/version.
@@ -777,25 +773,4 @@ func selfPorts(addrs ...string) []int {
 		}
 	}
 	return ports
-}
-
-// openBrowser best-effort opens url in the default browser.
-// (--open / INTERSEPTOR_OPEN_BROWSER); INTERSEPTOR_NO_BROWSER hard-disables it.
-func openBrowser(url string) {
-	if os.Getenv("INTERSEPTOR_NO_BROWSER") != "" {
-		return
-	}
-	var cmd string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		cmd, args = "open", []string{url}
-	case "windows":
-		cmd, args = "rundll32", []string{"url.dll,FileProtocolHandler", url}
-	default:
-		cmd, args = "xdg-open", []string{url}
-	}
-	if path, err := exec.LookPath(cmd); err == nil {
-		_ = exec.Command(path, args...).Start()
-	}
 }

@@ -55,7 +55,9 @@ tracks the latest release.)
 ## Quick start
 
 1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
-   Open that URL in your browser — or start with `--open` to launch it automatically.
+   The UI opens in its own app window (an installed Chrome, Edge, Chromium or Brave in app mode,
+   with no tabs or address bar). With `--headless`, over SSH, or when no such browser or desktop
+   is available, the log says which URL to open in any browser instead.
 2. **Send traffic through it.** Point your browser/HTTP client at `127.0.0.1:8080`, or let
    Interseptor set the OS proxy for you (macOS, Windows, and GNOME Linux) — the first-run **Setup**
    wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at
@@ -87,8 +89,10 @@ Continue with the [workspace guide](workspace.md) for the main menus and respons
 
 | Environment variable | Effect |
 |---|---|
-| `INTERSEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
-| `INTERSEPTOR_NO_BROWSER` | Hard-disable browser auto-open, overriding `--open`/`INTERSEPTOR_OPEN_BROWSER`. |
+| `INTERSEPTOR_HEADLESS` | Don't open the UI window on start (same as `--headless`); the UI URL is logged instead. |
+| `INTERSEPTOR_OPEN_BROWSER` | Open the UI window even when started over SSH (same as `--open`). |
+| `INTERSEPTOR_NO_BROWSER` | Never open the UI window, overriding `--open`/`INTERSEPTOR_OPEN_BROWSER`. |
+| `INTERSEPTOR_CHROME` | Exact Chrome/Chromium binary for the UI window and PDF export. |
 | `INTERSEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](architecture.md#security-model). |
 | `INTERSEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). External MCP clients connect through this server; model providers are configured outside Interseptor. |
 | `INTERSEPTOR_CONTROL_ADDR` | Env equivalent of `--control-addr`: full control UI/API listen address (`host:port`). |
@@ -118,4 +122,6 @@ auto-allocated control+proxy ports, sharing only the global CA and Starlark chec
 launcher does not stop the instances it spawned.
 
 **`interseptor stop`** gracefully stops all running Interseptor instances (SIGINT/SIGTERM, waiting
-up to a `--timeout`, default 6s); add `--force`/`-f` to force-kill immediately instead.
+up to a `--timeout`, default 6s); add `--force`/`-f` to force-kill immediately instead. It leaves
+AI agents' `interseptor mcp` bridges, the launcher and the vault running and says so; add `--all`
+to stop those too.

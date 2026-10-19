@@ -9,8 +9,9 @@ interseptor [flags]
 | Flag or environment variable | Meaning |
 |---|---|
 | `--project <name\|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
-| `--open` / `INTERSEPTOR_OPEN_BROWSER` | Open the control UI after startup. |
-| `INTERSEPTOR_NO_BROWSER` | Disable browser opening even when another option enables it. |
+| `--headless` / `INTERSEPTOR_HEADLESS` | Don't open the UI window on start; the UI URL is logged instead. |
+| `--open` / `INTERSEPTOR_OPEN_BROWSER` | Open the UI window even when started over SSH. |
+| `INTERSEPTOR_NO_BROWSER` | Never open the UI window, even when another option enables it. |
 | `--control-port <port>` | Bind the control UI/API to that port on loopback. |
 | `--control-addr <host:port>` / `INTERSEPTOR_CONTROL_ADDR` | Set the complete control address; overrides `--control-port`. |
 | `--proxy-port <port>` | Bind one loopback proxy listener to that port. |
@@ -31,12 +32,14 @@ those processes.
 ## Stop and version
 
 ```text
-interseptor stop [--timeout 6s] [--force|-f]
+interseptor stop [--timeout 6s] [--force|-f] [--all]
 interseptor version
 ```
 
 Stop first requests graceful shutdown, then force-kills processes that exceed the timeout. Use
-`--force` only when preserving in-flight work is not important.
+`--force` only when preserving in-flight work is not important. By default every proxy server
+instance is stopped and `interseptor mcp` bridges, the launcher and the vault are left running (and
+counted in the output); `--all` stops them as well.
 
 ## Update
 

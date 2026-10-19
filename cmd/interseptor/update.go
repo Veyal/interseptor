@@ -53,12 +53,13 @@ Usage:
   interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
   interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
   interseptor update       install the latest release
-  interseptor stop         stop all running instances
+  interseptor stop         stop all running instances (--all: also MCP bridges, launcher, vault)
   interseptor version      print the running version
 
 Common flags / env:
   --project <name|path>    open a specific project (or INTERSEPTOR_PROJECT)
-  --open                   open the UI in your browser on start (or INTERSEPTOR_OPEN_BROWSER)
+  --headless               don't open the UI window on start (or INTERSEPTOR_HEADLESS)
+  --open                   open the UI window even over SSH (or INTERSEPTOR_OPEN_BROWSER)
   --control-port <port>    control UI/API port on 127.0.0.1 (e.g. 9967 for a second instance)
   --control-addr host:port full control listen address (overrides --control-port; also --control_port)
   --proxy-port <port>      proxy port on 127.0.0.1 (default 8080; overrides INTERSEPTOR_PROXY_ADDR)
@@ -95,6 +96,7 @@ Examples:
   interseptor update --version 0.6.0
   interseptor stop
   interseptor stop --force
+  interseptor stop --all
   interseptor launcher
 
 Updates download a prebuilt binary from GitHub Releases when one is attached
