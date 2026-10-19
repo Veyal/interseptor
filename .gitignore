@@ -48,3 +48,6 @@ docs/SPEC-agent-pentest*.md
 
 # Documentation site build output (go run ./tools/docscheck build _site).
 /_site/
+
+# Build output (make macos-app, release archives)
+/dist/

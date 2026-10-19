@@ -13,7 +13,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>__BUNDLE_ID__</string>
 	<key>CFBundleExecutable</key>
-	<string>interseptor-macapp</string>
+	<string>InterseptorApp</string>
 	<key>CFBundleShortVersionString</key>
 	<string>__VERSION__</string>
 	<key>CFBundleVersion</key>
@@ -21,12 +21,18 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>11.0</string>
+	<string>12.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<!-- Interseptor's UI is the browser, so the bundle runs as a background
-	     agent rather than claiming a Dock tile it could not draw into. -->
-	<key>LSUIElement</key>
+	<!-- The native shell owns the window, menus and status item; a second
+	     launch must reopen that window, not race for the proxy port. -->
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT licensed. See LICENSE.</string>

@@ -110,6 +110,7 @@ jobs:
           APP=dist/macos/Interseptor.app
           test -x "$APP/Contents/MacOS/interseptor"
           test -x "$APP/Contents/MacOS/interseptor-macapp"
+          test -x "$APP/Contents/MacOS/InterseptorApp"
           plutil -lint "$APP/Contents/Info.plist"
           for bin in "$APP/Contents/MacOS/"*; do
             lipo -info "$bin" | grep -q 'x86_64 arm64' || { echo "not universal: $bin"; exit 1; }

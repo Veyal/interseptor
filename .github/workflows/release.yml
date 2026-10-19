@@ -161,6 +161,7 @@ jobs:
           APP=dist/macos/Interseptor.app
           test -x "$APP/Contents/MacOS/interseptor"
           test -x "$APP/Contents/MacOS/interseptor-macapp"
+          test -x "$APP/Contents/MacOS/InterseptorApp"
           plutil -lint "$APP/Contents/Info.plist"
           expected_version="interseptor v${GITHUB_REF_NAME#v}"
           actual_version="$("$APP/Contents/MacOS/interseptor" version)"

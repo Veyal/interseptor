@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build Interseptor.app — a macOS bundle wrapping the existing static Go binary
-# and its embedded web UI. See packaging/macos/README.md for the full workflow.
+# Build Interseptor.app — a native macOS shell (packaging/macos/shell) around the
+# existing static Go binary and its embedded web UI. See packaging/macos/README.md
+# for the full workflow.
 #
 # Signing and notarization are opt-in: without credentials this produces a
 # working unsigned bundle for local use. Set the env vars below to produce a
@@ -22,7 +23,7 @@ APP_DIR="$DIST_DIR/$APP_NAME.app"
 BUNDLE_ID="${BUNDLE_ID:-com.veyal.interseptor}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-	echo "error: this script must run on macOS (needs lipo, codesign, iconutil)" >&2
+	echo "error: this script must run on macOS (needs xcrun swiftc, lipo, codesign, iconutil)" >&2
 	exit 1
 fi
 
@@ -71,9 +72,31 @@ build_universal() {
 	rm -rf "$tmp"
 }
 
+# The native shell (Swift/AppKit/WebKit) is the bundle's CFBundleExecutable.
+# It is named InterseptorApp, not Interseptor: macOS volumes are usually case
+# insensitive, so "Interseptor" would overwrite the sibling "interseptor"
+# server binary. Menu bar, Dock and Activity Monitor show CFBundleName.
+# Built per architecture with the Xcode toolchain and merged with lipo; it
+# needs no Xcode project and no third-party dependencies.
+build_shell() {
+	local out="$1" tmp arch
+	tmp="$(mktemp -d)"
+	TMPDIRS+=("$tmp")
+	for arch in x86_64 arm64; do
+		echo "    $(basename "$out") ($arch)"
+		xcrun swiftc -swift-version 5 -O -whole-module-optimization \
+			-target "$arch-apple-macos12.0" \
+			-module-name Interseptor \
+			"$REPO_ROOT"/packaging/macos/shell/*.swift -o "$tmp/$arch"
+	done
+	lipo -create -output "$out" "$tmp/x86_64" "$tmp/arm64"
+	rm -rf "$tmp"
+}
+
 echo "==> Compiling universal binaries"
 build_universal ./cmd/interseptor "$APP_DIR/Contents/MacOS/interseptor"
 build_universal ./cmd/interseptor-macapp "$APP_DIR/Contents/MacOS/interseptor-macapp"
+build_shell "$APP_DIR/Contents/MacOS/InterseptorApp"
 chmod +x "$APP_DIR/Contents/MacOS/"*
 
 # --- bundle metadata ----------------------------------------------------------
@@ -119,8 +142,18 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
 	codesign --force --timestamp --options runtime --sign "$CODESIGN_IDENTITY" "$APP_DIR"
 	codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 else
-	echo "==> CODESIGN_IDENTITY unset — leaving the bundle unsigned"
-	echo "    Gatekeeper will quarantine this build if it is downloaded."
+	# An ad-hoc signature gives the bundle a stable code identity, which
+	# UserNotifications and WebKit's process sandboxing expect. It is not a
+	# Developer ID signature: Gatekeeper still quarantines a downloaded copy.
+	# Inner Mach-O files are re-signed one by one first: Go's linker already
+	# ad-hoc signs each thin slice, and those signatures do not survive lipo
+	# plus a bundle-level --deep pass.
+	echo "==> CODESIGN_IDENTITY unset — ad-hoc signing for local use"
+	for bin in "$APP_DIR/Contents/MacOS/"*; do
+		codesign --force --sign - "$bin"
+	done
+	codesign --force --deep --sign - "$APP_DIR"
+	codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 fi
 
 # --- notarization -------------------------------------------------------------
