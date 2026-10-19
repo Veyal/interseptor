@@ -94,7 +94,7 @@ func TestUIIntruderProgressUsesDisplayedResultOwnership(t *testing.T) {
 	for _, contract := range []string{
 		"const displayState=intrDisplayOwner==='history'&&intrDisplayedHistory",
 		"liveBelongsHere?{running,total,done,capped:!!st.capped}:{running:false,total:0,done:0,capped:false}",
-		"$('#intrProgress').textContent=displayState.running",
+		"$('#intrProgress').textContent=intrProgressLabel(displayState)",
 		"bar.style.display=(displayState.running||displayState.total)?'block':'none'",
 		"fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0'",
 		"box.innerHTML=displayState.running?",

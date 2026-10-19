@@ -157,3 +157,49 @@ func TestUIFindingsExportWaitsAndBlocksUnresolvedDrafts(t *testing.T) {
 		t.Fatalf("export drafts: %v\n%s", err, out)
 	}
 }
+
+// QA round 3: the field being edited (Impact, Root cause, ...) was saved only on
+// blur while the header said "Saved", and nothing flushed it on window close.
+func TestUIFindingFieldsAutosaveAndFlushOnClose(t *testing.T) {
+	source := readUIAsset(t, "js/findings.js")
+	for _, want := range []string{
+		"el.addEventListener('input'",                      // debounced autosave while typing
+		"findingDrafts.stage(f.id, { [key]: getVal(el) })", // typing marks the field unsaved
+		"window.addEventListener('pagehide', flushFindingsOnClose)",
+		"window.addEventListener('beforeunload', flushFindingsOnClose)",
+		"document.addEventListener('visibilitychange'",
+		"keepalive: true",
+	} {
+		if !strings.Contains(source, want) {
+			t.Errorf("js/findings.js is missing %q", want)
+		}
+	}
+	notes := readUIAsset(t, "js/notes.js")
+	if !strings.Contains(notes, "flushOnClose(") || !strings.Contains(notes, "keepalive:true") {
+		t.Error("js/notes.js must flush the notebook when the window closes")
+	}
+	core := readUIAsset(t, "js/core.js")
+	for _, want := range []string{"export function flushOnClose", "'pagehide'", "'beforeunload'", "visibilitychange"} {
+		if !strings.Contains(core, want) {
+			t.Errorf("js/core.js flushOnClose is missing %q", want)
+		}
+	}
+}
+
+// QA round 4: evidence-step text was saved only on blur while the header said
+// "Saved". Typing must update the pending body and schedule the debounced save,
+// the close flush must capture the focused textarea, and the target / impact
+// verification / claim inputs must autosave too.
+func TestUIFindingStepAndAssessmentTextAutosave(t *testing.T) {
+	source := readUIAsset(t, "js/findings.js")
+	for _, want := range []string{
+		"bodyBlocks[i].md = ta.value; scheduleSave(fid);",
+		"function scheduleAssessmentCommit(",
+		"scheduleAssessmentCommit(f.id, fields);",
+		"findingClosing = true;\n  captureActiveFindingTextEditor(bodyFindingId);",
+	} {
+		if !strings.Contains(source, want) {
+			t.Errorf("js/findings.js is missing %q", want)
+		}
+	}
+}

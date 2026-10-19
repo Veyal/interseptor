@@ -7,7 +7,7 @@ import { S, X, btn, el, fmtSize, jget, jsend, setStatus } from './collections-co
 import { paintEnvDot, reloadEnvs, setPhone } from './collections-env.js';
 
 // Functions sibling modules call through X (see collections-core.js).
-Object.assign(X, { copyCurl, openInRepeater, renderResponse, sendCurrent });
+Object.assign(X, { addHostToScope, copyCurl, openInRepeater, renderResponse, sendCurrent });
 
 export async function sendCurrent() {
   if (!S.ed) return;
@@ -37,6 +37,7 @@ export async function sendCurrent() {
     S.resTab = (res.tests || []).length && M.stepSummary(res).kind !== 'sent' ? 'tests' : S.resTab;
     renderResponse();
     renderConsole();
+    X.paintSentOver();
     if ((res.varChanges || []).length) { await reloadEnvs(); }
     if (M.stepSummary(res).kind === 'blocked') setStatus('warn', M.stepSummary(res).label, M.needsAddHost(res) ? [{ label: 'Add host to scope', run: () => addHostToScope() }] : []);
     else setStatus('', '');
@@ -57,17 +58,24 @@ export function setSendBusy(on) {
   b.setAttribute('aria-busy', on ? 'true' : 'false');
 }
 
-export async function addHostToScope() {
-  const host = M.hostOf(S.step && S.step.url || S.ed.url);
-  if (!host) { toast('Could not read the host from the URL'); return; }
+export async function addHostToScope(url = '') {
+  const host = M.hostOf(url || (S.step && S.step.url) || (S.ed && S.ed.url));
+  if (!host) { toast('Could not read the host from the URL'); return false; }
   const h = host.replace(/:\d+$/, '');
   const ok = await uiConfirm('Add host to scope', 'Add <b>' + esc(h) + '</b> as an in-scope host for this project? Requests from this collection to it will then be allowed.', 'Add to scope', 'btn accent');
-  if (!ok) return;
+  if (!ok) return false;
+  // Resolves true once the host is in scope (added now or already there), so a
+  // caller such as the runner detail can update its own state.
   try {
-    await jsend('POST', '/api/scope', { action: 'include', host: h });
+    await jsend('POST', '/api/scope', { action: 'include', host: h, enabled: true });
     toast('Added ' + h + ' to scope');
     setStatus('', '');
-  } catch (e) { toastError('Could not add the host', e); }
+    return true;
+  } catch (e) {
+    if (e && e.status === 409) { toast(h + ' is already in scope'); setStatus('', ''); return true; }
+    toastError('Could not add the host', e);
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------ response */
@@ -104,6 +112,9 @@ export function renderResponse(opts = {}) {
     bar.append(el('span', 'coll-code', sum.kind === 'blocked' ? 'Blocked' : sum.kind === 'skipped' ? 'Skipped' : 'Error'));
   }
   host.append(bar);
+  // A warn-policy send goes out anyway; the server's warnings (out of scope, ...)
+  // must stay visible next to the response they describe.
+  if (sum.kind === 'sent' && (S.step.warnings || []).length) host.append(sentWarnings(S.step.warnings));
 
   if (sum.kind === 'blocked' || sum.kind === 'error' || sum.kind === 'skipped') {
     const pane = el('div', 'coll-pane');
@@ -168,6 +179,14 @@ export function renderResponse(opts = {}) {
   host.append(acts);
 }
 
+
+function sentWarnings(list) {
+  const box = el('div', 'coll-blocked');
+  box.dataset.k = 'warn';
+  box.setAttribute('role', 'status');
+  list.forEach((w) => box.append(el('span', '', w)));
+  return box;
+}
 
 export const BINARY_MIME = /^(image|audio|video|font)\/|octet-stream|zip|pdf|wasm/i;
 

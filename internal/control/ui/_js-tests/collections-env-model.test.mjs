@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { envNameError, copyName, createBody, duplicateBody, renameBody, deleteWarning } from '../js/collections-env-model.js';
+import { envNameError, copyName, createBody, duplicateBody, renameBody, deleteWarning, currentInputType, applySavedCurrents } from '../js/collections-env-model.js';
 
 const others = [{ name: 'Staging' }, { name: 'Staging copy' }];
 
@@ -40,4 +40,18 @@ test('deleteWarning names the env and says variables go with it', () => {
   const w = deleteWarning({ name: 'Dev', variables: [{}, {}] });
   assert.equal(w.name, 'Dev');
   assert.match(w.tail, /2 variables/);
+});
+
+test('a secret current value is masked while typed and never kept in the row after save', () => {
+  assert.equal(currentInputType({ secret: true }), 'password');
+  assert.equal(currentInputType({ secret: false }), 'text');
+  const secretRow = { key: 'token', secret: true, current: '', hasCurrent: false };
+  const plainRow = { key: 'host', secret: false, current: 'old', hasCurrent: true };
+  const goneRow = { key: 'x', secret: true };
+  const currents = new Map([[secretRow, { value: 's3cret', secret: true }], [plainRow, { value: 'new', secret: false }], [goneRow, { value: 'z', secret: true }]]);
+  applySavedCurrents(currents, [secretRow, plainRow]);
+  assert.equal(secretRow.hasCurrent, true);
+  assert.equal(secretRow.current, '', 'the secret stays out of the row');
+  assert.equal(plainRow.current, 'new');
+  assert.equal(goneRow.hasCurrent, undefined, 'removed rows are ignored');
 });

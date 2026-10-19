@@ -27,7 +27,7 @@ func TestUIRepeaterRenderOwnsResponseAndUsesSandbox(t *testing.T) {
 	}
 	core := readUIAsset(t, "js/core.js")
 	source := readUIAsset(t, "js/tools.js")
-	script := repeaterRenderJS(t, core, "export function formatHexDump(strOrBytes, maxBytes=32768)") +
+	script := hexDumpTestJS(t) +
 		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
 		repeaterRenderJS(t, source, "function repSyncResView(t)") +
 		repeaterRenderJS(t, source, "export async function renderRepResponse()") + `
@@ -37,7 +37,7 @@ const RENDER_CAP=2*1024*1024,fmtSize=String,flowBodyDownloadHref=id=>'/body/'+id
 const buttons=['raw','pretty','decoded','hex','render'].map(view=>({dataset:{view},hidden:false,attrs:{},classList:{toggle(){}},setAttribute(k,v){this.attrs[k]=v;}}));
 const pane={innerHTML:'',textContent:'',querySelector(){return null;}};
 const $=s=>s==='#repResView'?pane:{querySelectorAll:()=>buttons};
-let repResponseEpoch=0,active,api;
+let repResponseEpoch=0,active,api,apiBytes;
 const repCur=()=>active;
 const response=body=>'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n'+body;
 function tab(id=1,mime='text/html',view='render'){return {resId:id,resMime:mime,resView:view,resLen:40,sendPending:false,sendError:''};}
@@ -47,8 +47,8 @@ if(!pane.innerHTML.includes('sandbox=""')||!pane.innerHTML.includes('Fixture')||
 if(!renderHTMLResponse('HTTP/1.1 200 OK\n\n<p>LF body</p>').includes('LF body'))throw Error('LF header separator lost body');
 active=tab(2,'application/json');api=async()=>'{"ok":true}';await renderRepResponse();
 if(active.resView!=='pretty'||!buttons.find(b=>b.dataset.view==='render').hidden||buttons[1].attrs['aria-pressed']!=='true'||pane.innerHTML.includes('<iframe'))throw Error('non-HTML did not fall back to Pretty accessibly');
-active=tab(4,'application/json','hex');api=async()=>'foo';await renderRepResponse();
-if(!pane.innerHTML.includes('hex-dump')||!pane.innerHTML.includes('00000000'))throw Error('hex view did not render canonical dump');
+active=tab(4,'application/json','hex');api=async()=>{throw Error('hex view fetched text');};apiBytes=async()=>new Uint8Array([0x66,0x80,0xff]);await renderRepResponse();
+if(!pane.innerHTML.includes('hex-dump')||!pane.innerHTML.includes('00000000')||!pane.innerHTML.includes('66 80 ff'))throw Error('hex view did not render the canonical byte dump');
 active=tab();const pending=[];api=()=>new Promise(resolve=>pending.push(resolve));
 const old=renderRepResponse(),latest=renderRepResponse();
 pending[1](response('<p>Newest</p>'));await latest;pending[0](response('<p>Old</p>'));await old;

@@ -13,6 +13,9 @@ export const MAX_RENDER_BYTES = 1024 * 1024;
 export const WS_FRAME_CAP = 500;
 export const FLAG_WS = 32;
 export const DRAWER_WIDTH = { min: 320, max: 640, def: 420 };
+export const DRAWER_HEIGHT = { min: 200, max: 720, def: 380 };
+export const FLOW_DRAWER_LAYOUTS = ['bottom', 'popup', 'side'];
+export const DEFAULT_FLOW_DRAWER_LAYOUT = 'bottom';
 
 export const FLOW_TABS = [
   { id: 'request', label: 'Request' },
@@ -48,6 +51,16 @@ export function clampDrawerWidth(w, { min = DRAWER_WIDTH.min, max = DRAWER_WIDTH
   const n = Number(w);
   if (!Number.isFinite(n)) return Math.min(max, Math.max(min, DRAWER_WIDTH.def));
   return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+export function clampDrawerHeight(h, { min = DRAWER_HEIGHT.min, max = DRAWER_HEIGHT.max } = {}) {
+  const n = Number(h);
+  if (!Number.isFinite(n)) return Math.min(max, Math.max(min, DRAWER_HEIGHT.def));
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+export function normalizeFlowDrawerLayout(layout) {
+  return layout === 'popup' || layout === 'side' ? layout : 'bottom';
 }
 
 // stepSibling returns the neighbouring id in the opener's list, or null at the

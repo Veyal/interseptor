@@ -40,7 +40,8 @@ const (
 
 const maxDispatchDelayMs = int64(1<<63-1) / int64(time.Millisecond)
 
-var marker = regexp.MustCompile(`§[^§]*§`)
+// Empty §§ pairs are not fuzz points.
+var marker = regexp.MustCompile(`§[^§]+§`)
 
 // ErrClosed is returned when an attack is started after engine shutdown.
 var ErrClosed = errors.New("intruder engine is closed")

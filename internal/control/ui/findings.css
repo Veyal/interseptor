@@ -268,7 +268,7 @@
 .find-properties>label{font-size:var(--fs-sm);color:var(--fg2)}
 .find-properties .ui-select,.find-properties .ui-select-trigger{width:100%}
 .find-properties #findCvssEditor{grid-column:2;display:grid;gap:10px;min-width:0}
-.cvss-vector{width:100%;font-family:var(--mono);font-size:var(--fs-sm)!important}
+.cvss-vector{width:100%;font-family:var(--mono);font-size:var(--fs-sm)!important;resize:vertical;min-height:calc(3 * 1.5em + 14px);line-height:1.5;overflow-wrap:anywhere}
 .cvss-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .cvss-metric{display:grid;gap:4px;color:var(--fg3);font-size:var(--fs-xs)}
 .cvss-metric .ui-select,.cvss-metric .ui-select-trigger{width:100%}
@@ -409,14 +409,14 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .et.is-drag-over{border:var(--drag-over);background-color:var(--accentDim)}
 .et-head{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-2);font-size:var(--fs-sm)}
 .et-help{margin-left:auto;font-size:var(--fs-xs)}
-.et-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:var(--sp-2);list-style:none;margin:0;padding:0}
+.et-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:var(--sp-2);list-style:none;margin:0;padding:0}
 .et-tile{display:flex;align-items:center;gap:var(--sp-2);min-width:0;padding:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2)}
 .et-tile:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .et-tile.is-missing{border-style:dashed;border-color:var(--rd-gap);color:var(--fg2)}
 .et-thumb{width:40px;height:40px;flex:none;object-fit:cover;border-radius:var(--r-sm);background:var(--bg3)}
 .et-kind{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;border-radius:var(--r-sm);background:var(--bg3);color:var(--fg2)}
 .et-body{display:grid;min-width:0;flex:1}
-.et-title,.et-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.et-title,.et-meta{overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
 .et-title{font-size:var(--fs-sm);font-weight:600}
 .et-meta{font-size:var(--fs-xs);color:var(--fg3)}
 .et-actions{display:flex;gap:var(--sp-1);flex:none}
@@ -490,7 +490,7 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .sev-critical,.sev-high{color:var(--red)}
 .sev-medium{color:var(--amber)}
 .sev-low{color:var(--blue)}
-.sev-info,.find-st-false_positive,.find-st-wont_fix,.find-st-other{color:var(--fg3)}
+.sev-info,.find-st-false_positive,.find-st-wont_fix,.find-st-ignored,.find-st-other{color:var(--fg3)}
 .find-st-verified,.find-st-fixed{color:var(--accent)}
 .find-st-needs_verification{color:var(--amber)}
 .find-gate-ok.is-pass{color:var(--accent)}
@@ -514,3 +514,29 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 /* findings.uiEditing off: controls that only exist to write a finding are removed, not left as dead ends. */
 :root:not([data-findings-editing="on"]) .findings-write{display:none}
+/* Evidence block header: the "What this proves" caption stays on one line and
+   the field takes the rest of the row (it wraps below the role when too narrow). */
+.find-block-meta .find-proof-label{flex:1 1 260px}
+.find-block-meta .find-proof-label{white-space:nowrap}
+.find-block-meta .find-proof-label .find-block-proof{flex:1 1 120px;min-width:0}
+/* A ~900px window gives the workspace ~450px: the "Editing on" chip keeps only its
+   icon (its aria-label names it) so Done and the more-menu stay on the first row. */
+@container findws (max-width:520px){
+  .find-workspace .find-header-top .find-mode-chip span{display:none}
+  .find-workspace .find-header-top .find-mode-chip{padding-inline:6px}
+}
+.find-inline-new input[aria-invalid="true"]{border-color:var(--rd-block)}
+
+.find-triage-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 0 2px;font-size:var(--fs-xs)}
+.find-triage-label{color:var(--fg3);font-weight:600;margin-right:2px;font-size:var(--fs-xs)}
+.find-triage-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:var(--fs-xs);border-radius:var(--r-md);line-height:1.2}
+.find-triage-btn .icon{width:13px;height:13px;flex:none}
+.find-triage-valid:hover,.find-triage-valid.is-active{color:var(--accent);border-color:var(--accent)}
+.find-triage-invalid:hover,.find-triage-invalid.is-active{color:var(--red);border-color:var(--red)}
+.find-triage-ignore:hover,.find-triage-ignore.is-active{color:var(--amber);border-color:var(--amber)}
+.find-ignored-banner{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:12px;font-size:var(--fs-sm);color:var(--fg2)}
+.find-ignored-banner .icon{width:16px;height:16px;color:var(--fg3);flex:none}
+@media(pointer:coarse){
+  .find-triage-btn{min-height:44px}
+}
+

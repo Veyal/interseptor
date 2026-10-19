@@ -59,3 +59,16 @@ export function rememberSentOver(map, uid, base) {
 }
 export function sentOverFor(map, uid) { return map.get(uid) || null; }
 export function forgetSentOver(map, uid) { map.delete(uid); }
+
+// sentOverText is the callout's sentence. A send that was blocked or skipped put
+// nothing on the wire, so it must not claim the request was sent.
+export function sentOverText(kind) {
+  const unsent = kind === 'blocked' || kind === 'skipped';
+  return (unsent ? 'Saved with edits that replaced the stored request; nothing was sent.' : 'Sent with edits that replaced the stored request.')
+    + ' The previous version is kept until you reload.';
+}
+
+// statusGoesStale reports whether the status bar (the "N imported scripts are
+// quarantined" banner, a blocked-send reason, ...) describes a collection the
+// user is leaving. Reloading the same collection keeps it.
+export function statusGoesStale(prevUid, nextUid) { return !!prevUid && prevUid !== nextUid; }

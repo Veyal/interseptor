@@ -15,23 +15,23 @@ html.desktop-app #panel-proxy .proxy-toolbar>.search{flex:1 1 520px;min-width:24
 /* The toolbar degrades with the panel's width, never by clipping (900 to 1920px
    windows): first the filter tokens collapse to one count chip and Filters drops
    its word, then the pills drop their chevrons. The search text keeps 120px. */
-html.desktop-app #panel-proxy .proxy-toolbar{container:dsk-proxy-tb/inline-size}
+/* The tiers are attributes desktop-panel-proxy.js sets from a ResizeObserver on the
+   panel, not container queries: any size container around #rows (the panel or the
+   toolbar) makes desktop WebKit lay the panel out while the list is half rebuilt, so
+   History snapped to the top after a panel round trip and live flows jumped the rows
+   under the pointer. */
 html.desktop-app #panel-proxy .search .dsk-chip-count{flex:none;align-self:center;height:20px;margin:0 0 0 6px;padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--accent-subtle);color:var(--text-primary);font-size:12px;font-weight:500;line-height:20px;white-space:nowrap;display:none}
 html.desktop-app #panel-proxy .search .dsk-chip-count:hover{background:color-mix(in srgb,var(--accent) 22%,transparent)}
-@container dsk-proxy-tb (max-width:880px){
-  html.desktop-app #panel-proxy .search #chips{display:none}
-  html.desktop-app #panel-proxy .search .dsk-chip-count:not([hidden]){display:inline-flex;align-items:center}
-  html.desktop-app #panel-proxy .search #fSearch{min-width:120px}
-  html.desktop-app #panel-proxy #filtersBtn{gap:0;width:auto;min-width:var(--control-h);padding:0 6px;font-size:0}
-  html.desktop-app #panel-proxy #filtersBtn .icon{width:15px;height:15px}
-  html.desktop-app #panel-proxy #filtersBtn .filters-count{margin-left:4px;font-size:var(--text-caption)}
-}
-@container dsk-proxy-tb (max-width:760px){
-  html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger{padding:0 8px}
-  html.desktop-app #panel-proxy .dsk-pill .ui-select-trigger>.icon,
-  html.desktop-app #panel-proxy .dsk-pill .ui-select-caret{display:none}
-  html.desktop-app #panel-proxy .search .ui-select-search .ui-select-trigger{padding:0 4px 0 8px}
-}
+html.desktop-app #panel-proxy[data-tb-narrow] .search #chips{display:none}
+html.desktop-app #panel-proxy[data-tb-narrow] .search .dsk-chip-count:not([hidden]){display:inline-flex;align-items:center}
+html.desktop-app #panel-proxy[data-tb-narrow] .search #fSearch{min-width:120px}
+html.desktop-app #panel-proxy[data-tb-narrow] #filtersBtn{gap:0;width:auto;min-width:var(--control-h);padding:0 6px;font-size:0}
+html.desktop-app #panel-proxy[data-tb-narrow] #filtersBtn .icon{width:15px;height:15px}
+html.desktop-app #panel-proxy[data-tb-narrow] #filtersBtn .filters-count{margin-left:4px;font-size:var(--text-caption)}
+html.desktop-app #panel-proxy[data-tb-compact] .dsk-pill .ui-select-trigger{padding:0 8px}
+html.desktop-app #panel-proxy[data-tb-compact] .dsk-pill .ui-select-trigger>.icon,
+html.desktop-app #panel-proxy[data-tb-compact] .dsk-pill .ui-select-caret{display:none}
+html.desktop-app #panel-proxy[data-tb-compact] .search .ui-select-search .ui-select-trigger{padding:0 4px 0 8px}
 /* The one-time scope tip sits in the Filters popover's scope group. */
 html.desktop-app #panel-proxy #scopeCoach{flex:0 0 100%;color:var(--text-secondary);font-size:var(--text-ui)}
 
@@ -159,3 +159,14 @@ html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:fo
 html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) #noteInput:hover{background:var(--surface-hover)}
 html.desktop-app #panel-proxy #noteBar:has(#noteInput:placeholder-shown):not(:focus-within) #noteInput::placeholder{color:var(--text-secondary)}
 html.desktop-app #panel-proxy #noteBar #noteSaved{font-size:var(--text-caption)}
+
+/* ---- narrow viewport (a browser; the native window never goes below 900) ----
+   The one-row toolbar and one-line TLS callout would push Filters, Views, More
+   and the callout's Details/dismiss past the right edge with no way to scroll
+   to them. Below 900px they wrap onto further rows instead. */
+@media (max-width:899.98px){
+  html.desktop-app #panel-proxy .proxy-toolbar{flex-wrap:wrap;height:auto;padding-block:6px}
+  html.desktop-app #panel-proxy .proxy-toolbar>.search{flex:1 1 200px;min-width:0}
+  html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-head{flex-wrap:wrap}
+  html.desktop-app #panel-proxy #tlsDiagBanner .tls-diag-detail{flex:1 1 100%}
+}

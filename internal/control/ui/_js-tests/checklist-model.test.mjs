@@ -45,3 +45,9 @@ test('complete and dismissed both hide the card', () => {
   assert.equal(checklistVisible(all, false), false);
   assert.equal(checklistVisible(deriveChecklist({}), true), false);
 });
+
+test('Do it actions target the CA wizard step and the capture walkthrough', () => {
+  const byId = Object.fromEntries(CHECKLIST_STEPS.map((s) => [s.id, s.action]));
+  assert.equal(byId.ca, 'setup-ca');
+  assert.equal(byId.flow, 'capture');
+});

@@ -19,7 +19,7 @@ func TestUIRepeaterResponseStates(t *testing.T) {
 	if release < 0 || paint < 0 || release > paint {
 		t.Fatal("Send must be released (and Cancel hidden) before a large response body is fetched and painted")
 	}
-	script := repeaterRenderJS(t, core, "export function formatHexDump(strOrBytes, maxBytes=32768)") +
+	script := hexDumpTestJS(t) +
 		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
 		repeaterRenderJS(t, source, "function friendlySendError(raw)") +
 		repeaterRenderJS(t, source, "function repStatusLine(f)") +

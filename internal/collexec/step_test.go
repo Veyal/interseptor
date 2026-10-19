@@ -163,7 +163,7 @@ func TestPrivateDestinationNeedsExplicitScopeUnderBlock(t *testing.T) {
 	// Everything "in scope" but not an explicit allow-list: loopback must be refused at dial time.
 	e.pipe.Scope = openScope{}
 	res := e.step(StepInput{Chain: chainOf(store.Item{Method: "GET", URL: js(rec.srv.URL)}), Source: SourceRunner})
-	if res.Outcome != OutcomeBlocked || res.BlockReason != BlockScope {
+	if res.Outcome != OutcomeBlocked || res.BlockReason != BlockIPGuard {
 		t.Fatalf("%+v", res)
 	}
 	if rec.count() != 0 {

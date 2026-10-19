@@ -174,7 +174,7 @@ func BuildHandoff(it store.Item, o HandoffOptions) (*Handoff, error) {
 		}
 	}
 	if len(b.pos) == 0 {
-		return nil, errors.New("collmatrix: no variable to fuzz; pass positions")
+		return nil, errors.New("collmatrix: this request has no {{variable}} in its URL, query or body to fuzz; name the variable(s) to fuzz, or put a {{variable}} where the payload should go")
 	}
 
 	// Resolve the target from the URL with only the non-position variables.

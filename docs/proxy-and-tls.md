@@ -57,6 +57,12 @@ bind only the interfaces the engagement needs, prefer a tailnet or LAN you contr
 listener after capture. Interseptor removes `Proxy-Authorization` before forwarding, so the
 listener password is never sent to the target origin.
 
+A full project archive or vault backup never carries the listener password. Restoring one keeps
+authentication on (it fails closed rather than opening the proxy), so clients get `407` until you
+re-enter the password. Settings shows "Password not included in the backup" under **Proxy
+authentication**, and the Proxy health chip and desktop status bar show a warning instead of a green
+"listening". See [Restoring a backup without its passwords](projects-and-data.md#restoring-a-backup-without-its-passwords).
+
 ## Browser background traffic suppression
 
 **Settings → Proxy & network → Browser background traffic** is enabled by default. It forwards
@@ -154,7 +160,12 @@ the same upstream endpoint, credentials, DNS mode, and HTTPS-proxy CA shown in S
 
 1. Select **HTTP** or **HTTPS**.
 2. Enter the proxy host and port, for example `proxy.example.com` and `8080`.
-3. Add username and password only if the proxy requires authentication.
+3. Add username and password only if the proxy requires authentication. A saved password is never
+   shown again; leave the field blank to keep it, including when you change only the username,
+   scheme or port. Changing the proxy host or clearing the username drops it, and Settings warns
+   you and asks you to enter it again when needed. Importing a portable project never changes the
+   upstream proxy; a restored full archive brings its own upstream proxy without the password and
+   shows "Password not included in the backup" until you save it again.
 4. For an HTTPS proxy signed by a private CA, open **Advanced trust settings** and paste the CA PEM.
 5. Choose **Save upstream proxy** and confirm the summary shows the expected endpoint.
 

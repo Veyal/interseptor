@@ -24,8 +24,13 @@ func TestProxyBasicAuthSetting_uiOffersOptionalCredentials(t *testing.T) {
 		}
 	}
 	settings := readUIAsset(t, "js/settings.js")
-	if !strings.Contains(settings, "saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password})") {
-		t.Fatal("proxy authentication save does not send the optional basic-auth fields")
+	for _, want := range []string{
+		"const patch={proxyAuthEnabled:enabled,proxyAuthUser:user};",
+		"if(password)patch.proxyAuthPassword=password; // blank keeps the saved password",
+	} {
+		if !strings.Contains(settings, want) {
+			t.Fatalf("proxy authentication save does not send the optional basic-auth fields (%s)", want)
+		}
 	}
 	if !strings.Contains(settings, "'proxyAuthUser','proxyAuthPassword'") {
 		t.Fatal("proxy authentication fields are not guarded as unsaved drafts")
@@ -105,7 +110,8 @@ func TestProxyBasicAuthSetting_persistsThenApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if saved["proxyAuthEnabled"] != false || saved["proxyAuthUser"] != "proxy" || saved["proxyAuthPassword"] != "secret" {
+	// The password is write-only: the response only says one is saved.
+	if saved["proxyAuthEnabled"] != false || saved["proxyAuthUser"] != "proxy" || saved["proxyAuthPassword"] != "" || saved["proxyAuthPasswordSet"] != true {
 		t.Fatalf("disabled settings = %#v", saved)
 	}
 	if len(applied) != 2 || applied[1] {

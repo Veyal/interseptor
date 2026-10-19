@@ -47,10 +47,12 @@ func ReportableFindings(findings []store.Finding) []store.Finding {
 }
 
 // FindingMarkdown renders one finding exactly as the engagement report renders
-// it, minus the report's numbered heading. titles may be nil.
+// it, minus the report's numbered heading and the internal review state
+// (workflow status, readiness gaps) that does not belong in a submission.
+// titles may be nil.
 func FindingMarkdown(f store.Finding, titles map[int64]string) string {
 	var b strings.Builder
-	renderFinding(&b, 1, f, titles)
+	renderFindingSection(&b, 1, f, titles, false)
 	md := strings.TrimLeft(b.String(), "\n")
 	// renderFinding opens with "### 1. <title>"; an adapter carries the title in
 	// its own field, so drop the heading and keep the body.

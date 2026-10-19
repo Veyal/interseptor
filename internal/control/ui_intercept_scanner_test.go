@@ -168,7 +168,7 @@ func TestUIInterceptKeepsHeldBadgeAndScopeHonesty(t *testing.T) {
 func TestUIInterceptForwardAllAndForwardToRepeaterReuseExistingEndpoints(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/intercept.js"))
 	requireUIContains(t, src,
-		"forwardAllPlan(heldItems(),{dropping:dropMarks,rawCache:heldRawCache,originalCache:heldOriginalCache})",
+		"forwardAllPlan(heldItems(),{dropping:dropMarks,rawCache:heldRawCache,originalCache:heldOriginalCache,binary:new Set(heldBinaryInfo.keys())})",
 		"await uiConfirm('Forward all held items?'",
 		"api(forwardPath(step.side,step.id),",
 		"await $('#forwardBtn').onclick();",

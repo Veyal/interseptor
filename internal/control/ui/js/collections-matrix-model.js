@@ -4,6 +4,8 @@
 // Server strings reach the DOM renderer untouched; it is the renderer's job
 // to use textContent/esc(), never this module's.
 
+import { blockText } from './collections-model.js';
+
 // ---- identity matrix --------------------------------------------------------
 
 // cellVerdict returns a short glyph+word for one matrix cell, in the same
@@ -25,6 +27,22 @@ export const CLASS_LABEL = {
 };
 
 export function classLabel(c) { return CLASS_LABEL[c] || c || ''; }
+
+// cellTitle is the tooltip of one matrix cell: identity, class (with the HTTP
+// status), the verdict word and, when there is one, the cause -- the same reason
+// the run detail shows (the server's message, else the block-reason sentence).
+export function cellTitle(identity, cell) {
+  const c = cell || {};
+  const v = cellVerdict(c);
+  const label = classLabel(c.class);
+  let t = `${identity}: ${label}${c.status ? ' (HTTP ' + c.status + ')' : ''}`;
+  let reason = '';
+  if (c.class === 'blocked') reason = c.error || blockText(c.reason);
+  else if (c.class === 'error') reason = c.error || 'the request failed before a response';
+  else if (c.reason && c.reason !== 'skipped') reason = c.reason;
+  if (v.word !== label && c.class !== 'blocked' && c.class !== 'error') t += ' — ' + v.word;
+  return reason ? t + ' — ' + reason : t;
+}
 
 // matrixCaption summarises a matrix for the sheet header / alt text.
 export function matrixCaption(m) {
@@ -106,6 +124,13 @@ export function filterOperations(ops, state, q) {
   });
 }
 
+// latestRunUid picks the run the timing breakdown should read: the API lists
+// runs newest first, so the first one with a uid.
+export function latestRunUid(runs) {
+  const r = (runs || []).find((x) => x && x.uid);
+  return r ? r.uid : '';
+}
+
 // ---- timing ------------------------------------------------------------------
 
 export function fmtMs(ms) {
@@ -125,6 +150,12 @@ export function phaseBars(phases) {
     biggest.pct += 100 - sum;
   }
   return rows;
+}
+
+// timingEmpty: a run that sent nothing has no timing to chart, so the sheet
+// shows a hint instead of "0 requests", an empty table and a full-width bar.
+export function timingEmpty(tr) {
+  return !tr || !(Number(tr.requests) > 0) || !(tr.items || []).length;
 }
 
 export function timingSummaryText(tr) {
@@ -160,4 +191,11 @@ export function handoffSummaryText(h) {
   if (!h) return '';
   const n = (h.positions || []).length;
   return `${h.attackType || 'sniper'} · ${n} position${n === 1 ? '' : 's'} (${(h.positions || []).join(', ')})`;
+}
+
+// untrustedScriptCount: how many scripts of GET /api/collections/{uid}/scripts
+// are still quarantined. The identity matrix refuses to run while any are, so
+// its review step warns before anything is sent.
+export function untrustedScriptCount(view) {
+  return ((view && view.scripts) || []).filter((s) => s && !s.trusted).length;
 }

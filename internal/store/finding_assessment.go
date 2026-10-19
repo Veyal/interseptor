@@ -42,6 +42,7 @@ type FindingProofReview struct {
 	// mismatch is rejected at write time.
 	SeverityOverride string                              `json:"severityOverride,omitempty"`
 	Evidence         map[string]FindingEvidenceReference `json:"evidence,omitempty"`
+	IgnoreReason     string                              `json:"ignoreReason,omitempty"`
 }
 
 type FindingEvidenceReference struct {

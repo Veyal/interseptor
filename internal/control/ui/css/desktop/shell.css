@@ -14,6 +14,18 @@
    zone, which reserves --titlebar-inset-left for them (set by the shell; 0 in
    full screen and in a Chrome --app window, which keeps its own title bar). */
 html.desktop-app #bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,360px) minmax(0,1fr);align-items:center;gap:8px;padding:0 12px;background:var(--surface-0);border-bottom:1px solid var(--border-subtle);font-size:var(--text-ui)}
+/* Narrower than the 900px minimum window (a resized browser tab): the side
+   zones keep their content and the command field takes what is left, so it
+   never slides under the Intercept pill. */
+/* Near the 900px window minimum the end zone (Act-as select, Intercept pill,
+   status ring) needs about 280px to show "No identity" whole, so the command
+   field narrows a little instead of the select truncating to "No i...". */
+@media (max-width:960px){
+  html.desktop-app #bar{grid-template-columns:minmax(0,1fr) minmax(180px,280px) minmax(0,1fr)}
+}
+@media (max-width:720px){
+  html.desktop-app #bar{grid-template-columns:auto minmax(0,1fr) auto}
+}
 html.desktop-app .fb-start{padding-left:var(--titlebar-inset-left,0px)}
 html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptStat,#icptCompact,#offlineBanner,.nav-rail-foot){display:none!important}
 html.desktop-app .fb-zone{gap:8px;min-width:0}
@@ -71,6 +83,17 @@ html.desktop-app #actBadge:not(.u-hidden){width:6px;min-width:0;height:6px;paddi
 
 /* ---- workspace: flush against the rail ---- */
 html.desktop-app #main{margin:0;border:0;border-left:1px solid var(--border-subtle);border-radius:0}
+/* The reset above drops flow.css's room for the docked flow drawer; restore it so
+   the drawer sits beside the panel instead of over its right edge. */
+html.desktop-app body.flow-drawer-docked #main{margin-right:var(--flow-drawer-w)}
+html.desktop-app body.flow-drawer-docked-bottom #main{margin-bottom:var(--flow-drawer-h);margin-right:0}
+html.desktop-app .flow-drawer:not([data-layout="side"]):not([data-layout="popup"]){left:var(--rail-w);right:0;bottom:var(--statusbar-h);border-left:1px solid var(--border-subtle)}
+html.desktop-app .flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) .flow-drawer-panel{border:0;border-top:1px solid var(--border-subtle);border-radius:0;background:var(--surface-1)}
+html.desktop-app .flow-drawer[data-layout="popup"] .flow-drawer-panel{background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--elev-3)}
+html.desktop-app .flow-drawer-head{min-height:var(--pane-header-h);padding:0 8px;background:var(--surface-0);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app .flow-drawer-title{font-size:var(--text-ui);font-weight:600;color:var(--text-primary)}
+html.desktop-app .flow-drawer-head .btn{height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0 6px;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app .flow-drawer-head .btn:hover{background:var(--surface-hover);color:var(--text-primary)}
 html.desktop-app .panel{background:var(--surface-1)}
 html.desktop-app #canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}
 html.desktop-app .canvas-sash{flex-basis:1px;background:var(--border-subtle)}

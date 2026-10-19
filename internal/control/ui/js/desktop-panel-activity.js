@@ -21,8 +21,8 @@ export function initActivityDesktop() {
   input.after(chips);
 }
 
-const TYPE_ICON = { proxy: 'proxy', agent: 'agent', findings: 'finding', scope: 'scope', settings: 'settings' };
-const TYPE_LABEL = { proxy: 'Proxy', agent: 'Agent/MCP', findings: 'Findings', scope: 'Scope', settings: 'Settings' };
+const TYPE_ICON = { proxy: 'proxy', agent: 'agent', findings: 'finding', notes: 'notes', scope: 'scope', settings: 'settings' };
+const TYPE_LABEL = { proxy: 'Proxy', agent: 'Agent/MCP', findings: 'Findings', notes: 'Notes', scope: 'Scope', settings: 'Settings' };
 
 // The category icon for a timeline row; the label is its tooltip.
 export function actTypeIconHTML(tool) {

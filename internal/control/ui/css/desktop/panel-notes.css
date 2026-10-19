@@ -44,6 +44,8 @@ html.desktop-app #notesPreview .acc-body{padding:2px 0 0 20px}
 /* renderMD pads blocks with <br>; the desktop rhythm comes from margins instead. */
 html.desktop-app #notesPreview .acc-body>br{display:none}
 html.desktop-app #notesPreview :is(p,ul,ol){margin:6px 0}
+/* The first block starts on the editor's first line: no top margin above it. */
+html.desktop-app #notesPreview>:first-child{margin-top:0}
 html.desktop-app #notesPreview li{margin:2px 0}
 html.desktop-app #notesPreview ul.md-tasks{padding-left:0}
 html.desktop-app #notesPreview li.md-task.done{color:var(--text-muted)}

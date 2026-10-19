@@ -7,6 +7,7 @@
 // to the shared `state` object are visible across modules (live object binding).
 
 import { placeFloatingSurface } from './surface-position.js';
+import { formatHexDump, hexLineFor } from './hexdump.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
@@ -62,6 +63,7 @@ function evictToasts(c) {
   keep('.toast-item.error', 5);
 }
 function dismissToast(t) {
+  t.classList.add('dying');
   t.classList.remove('show');
   setTimeout(() => t.remove(), 220);
 }
@@ -88,6 +90,11 @@ export function toast(m, sev) {
   const c = $('#toast');
   if (!c) return null;
   const loud = sev === 'error' || sev === 'warn';
+  // An identical notice that is still on screen is not stacked again (repeated clicks).
+  const cls = 'toast-item ' + (sev || 'info');
+  for (const el of c.children) {
+    if (el.className.split(/\s+/).slice(0, 2).join(' ') === cls && el.firstChild && el.firstChild.nodeValue === m && !el.classList.contains('dying')) return el;
+  }
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
@@ -120,9 +127,13 @@ export function findingsEditable(){ return !!state.findingsUIEditing; }
 // (keyboard shortcut, palette entry, stale handler): it refuses and says why.
 export function requireFindingsEditing(){
   if(findingsEditable())return true;
+  // One notice at a time: a second blocked action replaces the first (and
+  // restarts its timer) instead of stacking an identical toast.
+  document.querySelectorAll('#toast [data-toast-key="findings-off"]').forEach(x=>x.remove());
   // Offer the fix in place instead of sending the user to an unrelated page.
   const t=toast(FINDINGS_EDITING_OFF,'warn');
   if(t){
+    t.dataset.toastKey='findings-off';
     const b=document.createElement('button');
     b.type='button';b.className='btn xs toast-action';b.textContent='Enable editing';
     b.addEventListener('click',()=>{enableFindingsEditing();dismissToast(t);});
@@ -363,6 +374,13 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //                 omit to leave the span unstyled)
 // Returns tab/ID allocation, rendering, persistence, switching, closing, and
 // initialization operations for the owning panel.
+// revealActiveTab scrolls a crowded tab strip so the active tab is fully in view
+// (the sticky + keeps its own room through scroll-padding-inline-end).
+export function revealActiveTab(bar){
+  const tab=bar.querySelector('.rep-tab.on');
+  if(!tab||bar.scrollWidth<=bar.clientWidth)return;
+  try{tab.scrollIntoView({block:'nearest',inline:'nearest'});}catch(e){/* layout not ready */}
+}
 export function createTabManager(opts){
   const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs',tabPanelId='',storageLabel='workspace',onStorageWarning}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
@@ -412,7 +430,10 @@ export function createTabManager(opts){
     if(typeof onPersist==='function'){try{onPersist(blob);}catch(e){}}
     return storedLocally;
   };
-  mgr.persistDebounced=function(){clearTimeout(mgr.persistT);mgr.persistT=setTimeout(mgr.persist,400);};
+  mgr.persistDebounced=function(){mgr.persistPending=true;clearTimeout(mgr.persistT);mgr.persistT=setTimeout(()=>{mgr.persistPending=false;mgr.persist();},400);};
+  // Edits typed inside the debounce window must survive a reload or quit.
+  mgr.flushPending=function(){if(!mgr.persistPending)return;clearTimeout(mgr.persistT);mgr.persistPending=false;mgr.persist();};
+  flushOnClose({isDirty:()=>mgr.persistPending,flush:()=>mgr.flushPending()});
   mgr.render=function(barSel){
     mgr.focusEpoch++;
     const bar=$(barSel);if(!bar)return;
@@ -429,6 +450,7 @@ export function createTabManager(opts){
     </button>
     <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">${icon('close')}</button></div>`;
     }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">${icon('plus')}</button>`;
+    revealActiveTab(bar);
     const tabPanel=document.getElementById(tabPanelId);
     const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
     if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
@@ -775,6 +797,9 @@ export function enhanceSelect(sel){
     if(sel.disabled)return;
     if(!menu.hidden){inst.close();return;}
     openUiSelectMenu(inst);
+    // WebKit does not focus a button on mouse click; the arrow keys, Enter and
+    // Escape are handled on the trigger, so an open menu must own focus.
+    if(document.activeElement!==trigger)trigger.focus({preventScroll:true});
   });
   trigger.addEventListener('keydown',e=>{
     const open=!menu.hidden;
@@ -945,6 +970,19 @@ async function apiRequest(path,opts,asText){
   return ct.includes('json')?r.json():r.text();
 }
 
+// apiBytes GETs a path as raw bytes (a Uint8Array). Text decoding would turn
+// every invalid UTF-8 byte into U+FFFD, so byte views (Hex) must use this.
+export async function apiBytes(path){
+  const init={};
+  if(typeof AbortSignal!=='undefined'&&AbortSignal.timeout)init.signal=AbortSignal.timeout(30000);
+  let r;
+  try{r=await fetch(path,init);}
+  catch(e){throw apiFetchError(e,{...init,defaultTimeout:true});}
+  if(r.status===401){if(location.pathname!=='/login')location.href='/login';throw new Error('unauthorized');}
+  if(!r.ok){const err=new Error(await apiErrorMessage(r));err.status=r.status;throw err;}
+  return new Uint8Array(await r.arrayBuffer());
+}
+
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
 export async function apiTry(path, opts, {toastOnError=true, label=''}={}){
   try{return await api(path, opts);}
@@ -1008,14 +1046,19 @@ export function loadFlowStore(store,flows){
   store.byId.clear();
   for(const f of flows)store.byId.set(f.id,f);
 }
-// upsertFlow inserts a new flow at the front of `order` (the live-tail position)
-// or merges onto the existing object in place (so any other reference held to it,
-// e.g. state.detail, sees the update without a second lookup). Returns
-// {flow, isNew} so callers can branch on whether this was an insert or a merge.
+// upsertFlow inserts a new flow at its id position in `order` (newest first, the
+// live-tail sort) or merges onto the existing object in place (so any other
+// reference held to it, e.g. state.detail, sees the update without a second
+// lookup). Concurrent clients can deliver flows out of id order, so a flow is not
+// simply prepended; the scan stops at the first older id, which is index 0 for
+// the usual in-order arrival. Returns {flow, isNew} so callers can branch on
+// whether this was an insert or a merge.
 export function upsertFlow(store,f){
   const ex=store.byId.get(f.id);
   if(ex){Object.assign(ex,f);return {flow:ex,isNew:false};}
-  store.order.unshift(f);
+  let i=0;
+  while(i<store.order.length&&store.order[i].id>f.id)i++;
+  store.order.splice(i,0,f);
   store.byId.set(f.id,f);
   return {flow:f,isNew:true};
 }
@@ -1181,12 +1224,24 @@ window.addEventListener('densitychange',()=>{
    panels call through core, so panels never import each other. `openFlow` is
    backed by the Flow Drawer; `renderFlowBody` by the shared flow body renderer. ---- */
 const hooks=new Map();
+const hookWaiters=new Map();
 export function registerHook(name,fn){
   if(typeof fn!=='function')throw new Error('registerHook: '+name+' needs a function');
   hooks.set(name,fn);
+  const waiting=hookWaiters.get(name);
+  if(waiting){hookWaiters.delete(name);waiting.forEach(cb=>{try{cb(fn);}catch(e){}});}
   return ()=>{if(hooks.get(name)===fn)hooks.delete(name);};
 }
 export function getHook(name){return hooks.get(name)||null;}
+// onHook(name, cb) runs cb(fn) as soon as the hook is registered, immediately
+// when it already is. Optional modules load after the panels that use them, so
+// a panel must not read a hook once at load and give up.
+export function onHook(name,cb){
+  const fn=hooks.get(name);
+  if(fn){cb(fn);return;}
+  if(!hookWaiters.has(name))hookWaiters.set(name,[]);
+  hookWaiters.get(name).push(cb);
+}
 // openFlow(id, {source, tab}) opens a flow wherever the unified flow inspector is
 // mounted; it returns false when no implementation is registered yet.
 export function openFlow(id,opts){const h=hooks.get('openFlow');return h?h(id,opts||{}):false;}
@@ -1365,9 +1420,9 @@ export function createListView(opts){
    the last-saved value and no-ops (like notes.js bailing when
    v===notesState.loaded) instead of scheduling a redundant save. ---- */
 export function createAutosave({delay=800,save,onStatus}={}){
-  let timer=null,saving=null,lastSaved='',current='';
-  const status=k=>{if(onStatus)onStatus(k);};
-  async function flush(){
+  let timer=null,saving=null,lastSaved='',current='',shown='';
+  const status=k=>{shown=k;if(onStatus)onStatus(k);};
+  async function flush(opts){
     clearTimeout(timer);timer=null;
     if(saving)return saving;
     if(current===lastSaved)return;
@@ -1377,7 +1432,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
         while(current!==lastSaved){
           submitted=current;
           status('saving');
-          await save(submitted);
+          await save(submitted,opts);
           lastSaved=submitted;
           clearTimeout(timer);timer=null;
         }
@@ -1393,7 +1448,12 @@ export function createAutosave({delay=800,save,onStatus}={}){
   }
   function schedule(value){
     current=value;
-    if(value===lastSaved){clearTimeout(timer);timer=null;return;}
+    if(value===lastSaved){
+      clearTimeout(timer);timer=null;
+      // Edited back to the saved text: nothing is unsaved any more.
+      if(!saving&&shown==='dirty')status('saved');
+      return;
+    }
     status('dirty');
     clearTimeout(timer);
     timer=setTimeout(()=>{flush().catch(()=>{});},delay);
@@ -1404,6 +1464,24 @@ export function createAutosave({delay=800,save,onStatus}={}){
   return {schedule,flush,setBaseline,isDirty:()=>current!==lastSaved};
 }
 
+/* ---- flushOnClose: save pending edits when the window is closed, reloaded or
+   hidden, instead of losing whatever was typed inside the debounce delay.
+   `flush(opts)` is called with {keepalive:true}, which a save can pass to
+   fetch so the request outlives the page. `isDirty()` gates the call. ---- */
+export function flushOnClose({isDirty,flush}){
+  const run=()=>{if(isDirty()){try{const p=flush({keepalive:true});if(p&&p.catch)p.catch(()=>{});}catch(e){}}};
+  window.addEventListener('pagehide',run);
+  window.addEventListener('beforeunload',run);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')run();});
+  return run;
+}
+
+export const FLAG_DROPPED=4; // held request/response dropped by the operator or abandoned by its client (store.FlagDropped; the latter carries error "client disconnected while held")
+// flowPending: the flow is still in flight (no status, no error, not dropped).
+// A dropped flow never gets a status; older builds stored it without an error.
+export function flowPending(f){
+  return !f.status&&!f.error&&!(f.flags&FLAG_DROPPED);
+}
 export const FLAG_WS=32;
 export const FLAG_TLS=16;
 export const FLAG_AI=1024;
@@ -1704,7 +1782,13 @@ function ctxPaintPanel(el,sections){
 
 function ctxViewport(){
   const vv=window.visualViewport;
-  return {width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+  const v={width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+  // The desktop app's title bar (search, project, status) stays visible: a tall
+  // menu flipped above its anchor must not cover it.
+  const de=document.documentElement;
+  const bar=de.classList.contains('desktop-app')?parseFloat(getComputedStyle(de).getPropertyValue('--titlebar-h'))||0:0;
+  if(bar>0&&v.top<bar){v.height-=bar-v.top;v.top=bar;}
+  return v;
 }
 
 // ctxPaintSel highlights the current row of one panel. Focus moves only when
@@ -2069,40 +2153,28 @@ document.addEventListener('contextmenu',e=>{
   openWorkspaceCtxMenu(e);
 });
 
-// formatHexDump returns a canonical hexdump (offset, 16 hex bytes, ASCII text).
-export function formatHexDump(strOrBytes, maxBytes=32768){
-  if(!strOrBytes) return '';
-  let bytes;
-  if(typeof strOrBytes === 'string'){
-    const encoder = new TextEncoder();
-    bytes = encoder.encode(strOrBytes);
-  } else {
-    bytes = new Uint8Array(strOrBytes);
-  }
-  const total = bytes.length;
-  const len = Math.min(total, maxBytes);
-  const lines = [];
-  for(let i = 0; i < len; i += 16){
-    const offset = i.toString(16).padStart(8, '0');
-    const chunk = bytes.subarray(i, Math.min(i + 16, len));
-    const h1 = [], h2 = [];
-    let ascii = '';
-    for(let j = 0; j < 16; j++){
-      if(j < chunk.length){
-        const b = chunk[j];
-        const hex = b.toString(16).padStart(2, '0');
-        if(j < 8) h1.push(hex); else h2.push(hex);
-        ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
-      } else {
-        if(j < 8) h1.push('  '); else h2.push('  ');
-      }
-    }
-    lines.push(`${offset}  ${h1.join(' ')}  ${h2.join(' ')}  |${ascii}|`);
-  }
-  if(total > maxBytes){
-    lines.push(`... [truncated, ${fmtSize(total)} total]`);
-  }
-  return lines.join('\n');
+// formatHexDump (hexdump.js) is a canonical hexdump: offset, hex bytes, ASCII text.
+export { formatHexDump };
+// mountHexDump fills host with a hexdump that fits its width: 16 bytes per line
+// when that leaves the ASCII column visible, 8 when the pane is too narrow (a
+// 16-byte line is ~78 characters). It re-fits when the pane is resized.
+export function mountHexDump(host,raw){
+  if(host._hexRO){host._hexRO.disconnect();host._hexRO=null;}
+  host.innerHTML='<pre class="hex-dump"></pre>';
+  const pre=host.firstChild;
+  let canvas=null,lineW=0;
+  const paint=()=>{
+    const cs=getComputedStyle(pre);
+    canvas=canvas||document.createElement('canvas').getContext('2d');
+    canvas.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;
+    const avail=pre.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+    const w=hexLineFor(avail,canvas.measureText('0').width);
+    if(w===lineW)return;
+    lineW=w;
+    pre.textContent=formatHexDump(raw,32768,w);
+  };
+  paint();
+  if(typeof ResizeObserver==='function'){host._hexRO=new ResizeObserver(()=>{if(pre.isConnected)paint();});host._hexRO.observe(host);}
 }
 
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
@@ -2619,9 +2691,11 @@ export function uiPrompt(opts){
     activePromptFinish=finish;
     openModal(m,{initialFocus:inp,onEscape:()=>finish(null),onDismiss:()=>finish(null)});
     setTimeout(()=>inp.select(),0);
-    $('#promptOk').onclick=()=>finish(inp.value.trim()||null);
+    // allowEmpty: an empty OK answers '' so a caller can tell it from Cancel (null).
+    const answer=()=>inp.value.trim()||(opts.allowEmpty?'':null);
+    $('#promptOk').onclick=()=>finish(answer());
     $('#promptCancel').onclick=()=>finish(null);
-    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(inp.value.trim()||null);}};
+    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(answer());}};
   });
 }
 
@@ -2685,9 +2759,10 @@ export function renderMD(src){
     });
     return html+'</tbody></table></div>';
   });
-  s=s.replace(/(?:^|\n)((?:>\s?.*(?:\r?\n|$))+)/g,(m,block)=>{
-    const inner=block.trim().split(/\r?\n/).map(l=>l.replace(/^>\s?/,'')).join('\n');
-    return '<blockquote class="md-quote">'+inner.replace(/\n/g,'<br>')+'</blockquote>';
+  // Quote markers arrive escaped too (esc() turned "> " into "&gt; ").
+  s=s.replace(/(?:^|\n)((?:&gt;[ \t]?.*(?:\r?\n|$))+)/g,(m,block)=>{
+    const inner=block.trim().split(/\r?\n/).map(l=>l.replace(/^&gt;[ \t]?/,'')).join('\n');
+    return '\n\n<blockquote class="md-quote">'+inner.replace(/\n/g,'<br>')+'</blockquote>\n\n';
   });
   s=s.replace(/(?:^|\n)((?:[-*] \[[ xX]\] .*(?:\r?\n|$))+)/g,(m,list)=>{
     const items=list.trim().split(/\r?\n/).map(l=>{

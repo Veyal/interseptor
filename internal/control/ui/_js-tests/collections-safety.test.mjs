@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   UNDO_WINDOW_MS, MAX_UNDO_REQUESTS, orderForRestore, restoreBody, needsScriptStrip, undoable,
-  rememberSentOver, sentOverFor, forgetSentOver, undoMessage,
+  rememberSentOver, sentOverFor, forgetSentOver, undoMessage, sentOverText, statusGoesStale,
 } from '../js/collections-safety.js';
 
 const f = (uid, parentUid = '', rank = 'a') => ({ uid, parentUid, kind: 'folder', rank, name: uid });
@@ -65,4 +65,16 @@ test('undoMessage names the item and counts descendants', () => {
   assert.equal(UNDO_WINDOW_MS, 15000);
   assert.match(undoMessage('login', 0), /Deleted "login"/);
   assert.match(undoMessage('Auth', 3), /and 3 items/);
+});
+
+test('the sent-over callout never claims a blocked send was sent', () => {
+  assert.match(sentOverText('sent'), /^Sent with edits/);
+  assert.match(sentOverText('error'), /^Sent with edits/);
+  for (const k of ['blocked', 'skipped']) assert.match(sentOverText(k), /nothing was sent/);
+});
+
+test('the status bar goes stale only when the collection changes', () => {
+  assert.equal(statusGoesStale('a', 'b'), true);
+  assert.equal(statusGoesStale('a', 'a'), false);
+  assert.equal(statusGoesStale('', 'a'), false);
 });

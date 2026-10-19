@@ -26,14 +26,14 @@
         {
           "level": "needs-review",
           "feature": "target-host",
-          "message": "3 request(s) target api.example.com; sends are blocked until the host is in scope",
-          "suggestion": "Add the host to the engagement scope"
+          "message": "3 request(s) target api.example.com",
+          "suggestion": "Check the host is in the engagement scope"
         },
         {
           "level": "needs-review",
           "feature": "target-host",
-          "message": "1 request(s) target cdn.example.com; sends are blocked until the host is in scope",
-          "suggestion": "Add the host to the engagement scope"
+          "message": "1 request(s) target cdn.example.com",
+          "suggestion": "Check the host is in the engagement scope"
         },
         {
           "level": "degraded",
@@ -244,14 +244,14 @@
       {
         "level": "needs-review",
         "feature": "target-host",
-        "message": "3 request(s) target api.example.com; sends are blocked until the host is in scope",
-        "suggestion": "Add the host to the engagement scope"
+        "message": "3 request(s) target api.example.com",
+        "suggestion": "Check the host is in the engagement scope"
       },
       {
         "level": "needs-review",
         "feature": "target-host",
-        "message": "1 request(s) target cdn.example.com; sends are blocked until the host is in scope",
-        "suggestion": "Add the host to the engagement scope"
+        "message": "1 request(s) target cdn.example.com",
+        "suggestion": "Check the host is in the engagement scope"
       },
       {
         "level": "degraded",

@@ -11,11 +11,11 @@
 html.desktop-app #panel-collections{background:var(--surface-1)}
 
 /* ---- toolbar: picker, +, collection actions · env, Run, More ---- */
-html.desktop-app #panel-collections .coll-bar{flex-wrap:nowrap;gap:6px;overflow:hidden}
+html.desktop-app #panel-collections .coll-bar{flex-wrap:wrap;gap:6px;row-gap:4px;overflow:visible}
 html.desktop-app #panel-collections .coll-field{flex:0 1 220px;min-width:140px}
 html.desktop-app #panel-collections .coll-field .ui-select{max-width:none;width:100%}
 html.desktop-app #panel-collections .coll-env{flex:0 1 auto;min-width:0;gap:6px}
-html.desktop-app #panel-collections .coll-env .ui-select{max-width:200px}
+html.desktop-app #panel-collections .coll-env .ui-select{max-width:200px;min-width:min(120px,30vw)}
 html.desktop-app #panel-collections #collNew .lbl-long{display:none}
 html.desktop-app #panel-collections #collNew,
 html.desktop-app #panel-collections #collMore{min-width:var(--control-h);padding:0 6px;justify-content:center}
@@ -69,8 +69,10 @@ html.desktop-app #panel-collections .coll-title strong{padding:0 14px 0 0;border
 html.desktop-app #panel-collections .coll-title strong:first-child{padding-left:14px}
 html.desktop-app #panel-collections .coll-urlbar{align-items:center;min-height:var(--toolbar-h)}
 html.desktop-app #panel-collections .coll-resolved{padding:6px var(--gutter);border-bottom:1px solid var(--border-subtle);font-size:var(--text-code);color:var(--text-muted)}
-html.desktop-app #panel-collections .coll-tabs{gap:0;padding:0 6px;border-bottom:1px solid var(--border-subtle);scrollbar-width:none}
-html.desktop-app #panel-collections .coll-tabs::-webkit-scrollbar{display:none}
+/* The seven sections wrap onto a second row in a narrow pane. A scrolling strip
+   with a hidden scrollbar clipped "Settings" to "Se" once a tab carried a badge,
+   and no shadow cue was enough to notice the hidden tabs. */
+html.desktop-app #panel-collections .coll-tabs{gap:0;padding:0 6px;border-bottom:1px solid var(--border-subtle);background:var(--surface-1)}
 html.desktop-app #panel-collections .coll-tab{padding:0 7px;white-space:nowrap}
 /* The editor's seven sections fit its width (a 1280px window gives it ~410px). */
 html.desktop-app #panel-collections .coll-editor{container:dsk-coll-ed/inline-size}
@@ -82,7 +84,7 @@ html.desktop-app #panel-collections .coll-tab .coll-n{min-width:16px;padding:0 5
 html.desktop-app #panel-collections .coll-pane{padding:var(--gutter)}
 html.desktop-app #panel-collections .coll-note{font-size:var(--text-ui);color:var(--text-muted)}
 html.desktop-app #panel-collections .coll-kv th{font-size:var(--text-caption);font-weight:500;color:var(--text-muted)}
-html.desktop-app #panel-collections .coll-kv input[type="text"]{min-height:var(--control-h-sm);font-size:var(--text-code)}
+html.desktop-app #panel-collections .coll-kv :is(input[type="text"],input[type="password"]){min-height:var(--control-h-sm);font-size:var(--text-code)}
 html.desktop-app #panel-collections .coll-body-raw{background:var(--surface-inset);border-color:var(--border-subtle);border-radius:var(--radius-sm);font-size:var(--text-code);line-height:var(--lh-code)}
 
 /* Footer: Save, then hand-offs. The resting "matches" line is for screen readers. */
@@ -96,7 +98,7 @@ html.desktop-app #panel-collections .coll-response{container:dsk-coll-res/inline
   html.desktop-app #panel-collections .coll-response .coll-actions .btn:not(:first-child){gap:0;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;font-size:0}
   html.desktop-app #panel-collections .coll-response .coll-actions .btn .icon{width:15px;height:15px}
 }
-@container dsk-coll-ed (max-width:400px){
+@container dsk-coll-ed (max-width:480px){
   html.desktop-app #panel-collections .coll-editor .coll-actions .btn:not(#collSave){gap:0;width:var(--control-h);min-width:var(--control-h);padding:0;justify-content:center;font-size:0}
   html.desktop-app #panel-collections .coll-editor .coll-actions .btn .icon{width:15px;height:15px}
 }
@@ -115,7 +117,11 @@ html.desktop-app #panel-collections .coll-sentover .btn:hover{background:var(--s
 html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty){grid-template-columns:minmax(0,1fr)}
 html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty) .coll-response{display:none}
 html.desktop-app #panel-collections .coll-main:has(.coll-editor .state-empty) .coll-editor{border-right:0;justify-content:center}
-html.desktop-app #panel-collections:has(.coll-editor .state-empty) .coll-state{display:none}
+/* Stacked (narrow) layouts show only the tree, so its own empty state stays. */
+html.desktop-app #panel-collections .coll-root:not([data-mode="stack"]):has(.coll-editor .state-empty) .coll-state{display:none}
+/* A tree with no rows gives its height to the state, centred like every panel's. */
+html.desktop-app #panel-collections .coll-tree:empty{flex:0 0 auto;padding:0}
+html.desktop-app #panel-collections .coll-tree:empty+.coll-state:not(:empty){flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;min-height:0;overflow:auto}
 
 /* ---- response ---- */
 html.desktop-app #panel-collections .coll-response{background:var(--surface-1)}

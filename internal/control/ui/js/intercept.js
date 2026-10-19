@@ -3,9 +3,10 @@ import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection, focusOption } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, heldForwardRaw, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText } from './intercept-model.js';
+import { heldKey, dropPath, dropPendingPath, createDropScheduler, forwardAllPlan, forwardPath, heldForwardBody, heldEditorBaseline, binaryNoteText, binaryTailWarning, previewableImage, heldReleasedText, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText, filterCheckboxChecked, filterErrorText } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
+import { wireOverlayGutter } from './overlay-gutter.js';
 import { registerSseHandler } from './shell-hooks.js';
 import { on as busOn, EVENTS } from './bus.js';
 
@@ -14,6 +15,9 @@ import { on as busOn, EVENTS } from './bus.js';
 // is {id, side:'req'|'resp'} for the selected item, or null.
 const heldRawCache=new Map();
 const heldOriginalCache=new Map();
+// Held messages whose body is binary (key -> {bodyLen}): the editor holds the
+// head only and the server keeps the body bytes (intercept_binary.go).
+const heldBinaryInfo=new Map();
 let heldKeysReady=false;
 let knownHeldKeys=new Set();
 let heldSignalWindowAt=0,heldSignalCount=0;
@@ -22,7 +26,8 @@ let heldActionEpoch=0;
 let heldLoadingKey=null;
 let heldDecodeEpoch=0;
 // Deferred drops (key -> true) and the shared context shown in the held header.
-// There is no server-side undo, so a drop waits DROP_DELAY_MS on the client.
+// A drop sent to the server is final, so it waits DROP_DELAY_MS on the client;
+// meanwhile the server only marks the item drop-pending (see markDropPending).
 const dropMarks=new Set();
 let forwardAllBusy=false;
 const icptCtx={scope:null,identity:'',pane:null};
@@ -60,6 +65,13 @@ function commitFilterConfig(config){
   state.intercept={...(state.intercept||{}),...config};
   filterCommitEpoch++;
 }
+// setFilterError marks the pattern field invalid with an inline reason, or clears it.
+function setFilterError(text){
+  const field=$('#interceptFilterPattern'),msg=$('#interceptFilterError');
+  if(field){if(text)field.setAttribute('aria-invalid','true');else field.removeAttribute('aria-invalid');}
+  if(msg){msg.textContent=text;msg.hidden=!text;}
+}
+function filterErrorShown(){return $('#interceptFilterPattern')?.getAttribute('aria-invalid')==='true';}
 function readFilterControls(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
   return {
@@ -76,12 +88,6 @@ function stageInterceptFilter(){
 function filterControlsMatch(input){
   const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
   return !!enabled&&!!target&&!!pattern&&enabled.checked===!!input.enabled&&target.value===input.target&&pattern.value===input.pattern;
-}
-function syncFilterControls(config){
-  const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
-  if(enabled)enabled.checked=!!config?.filterEnabled;
-  if(target)target.value=config?.filterTarget||'any';
-  if(pattern)pattern.value=config?.filterPattern||'';
 }
 function mergeIncomingInterceptState(next){
   const incoming=next||{};
@@ -133,7 +139,7 @@ async function applyFilterMutation(request,draft){
       acknowledgedFilterConfig={...config};
       const latest=epoch===filterMutationEpoch;
       const summaryCurrent=generation===interceptSummaryEpoch;
-      if(latest)pendingFilterMutation=null;
+      if(latest){pendingFilterMutation=null;setFilterError('');}
       if(summaryCurrent){replaceInterceptState(summary);renderIntercept();}
       else if(latest)commitFilterConfig(config);
       return latest;
@@ -142,7 +148,10 @@ async function applyFilterMutation(request,draft){
         pendingFilterMutation=null;
         const fallback=acknowledgedFilterConfig||currentFilterConfig();
         commitFilterConfig(fallback);
-        if(filterControlsMatch(input))syncFilterControls(fallback);
+        // Keep the operator's text (it is what they are fixing) and say, next to
+        // it, that it was not saved and which filter the server still enforces.
+        if(filterControlsMatch(input))setFilterError(filterErrorText(error?.message,fallback));
+        error.shown=true;
         throw error;
       }
       return false;
@@ -170,6 +179,7 @@ function setHeldDecodeState(show){
   button.setAttribute('aria-pressed',show?'true':'false');
 }
 function heldOriginal(h){return h.original||h.raw||'';}
+function forgetHeld(side,id){const k=heldKey(side,id);heldRawCache.delete(k);heldOriginalCache.delete(k);heldBinaryInfo.delete(k);}
 function setHeldModified(raw, original){
   const badge=$('#heldModified');
   // A <textarea> value is LF-normalized while the held original is CRLF, so a
@@ -178,8 +188,45 @@ function setHeldModified(raw, original){
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
   // The server rewrites Content-Length from the edited body, so the header in
   // the editor is stale after a body edit: say what will really be sent.
+  // A binary message keeps its body, so its length never changes.
   const cl=$('#heldClNote');
-  if(cl){const text=modified?contentLengthText(contentLengthNote(raw)):'';cl.hidden=!text;cl.textContent=text;}
+  syncBinaryTailWarning();
+  if(cl){const text=modified&&!selectionBinary()?contentLengthText(contentLengthNote(raw)):'';cl.hidden=!text;cl.textContent=text;}
+}
+function heldBinaryLen(sel){const info=sel&&heldBinaryInfo.get(heldKey(sel.side,sel.id));return info?Math.max(Number(info.bodyLen)||0,1):0;}
+// Text typed under a binary message's head is never sent (the server keeps the
+// held body bytes), so show that next to the editor while it is there.
+function syncBinaryTailWarning(){
+  const warn=document.querySelector('#heldBody .icpt-body-warn');if(!warn)return;
+  const text=selectionBinary()?binaryTailWarning($('#heldRaw').value):'';
+  warn.textContent=text;warn.hidden=!text;
+}
+function selectionBinary(){const sel=state.heldSel;return !!sel&&heldBinaryInfo.has(heldKey(sel.side,sel.id));}
+// renderHeldBody shows what the text editor cannot: a binary body's size (it is
+// forwarded untouched) and a preview of an image response.
+function renderHeldBody(h){
+  const box=$('#heldBody');if(!box)return;
+  const key=h&&heldKey(h.side,h.id),info=key&&heldBinaryInfo.get(key);
+  const ct=h?contentTypeFromRaw(h.raw||''):'';
+  const image=!!h&&h.side==='resp'&&previewableImage(ct);
+  box.hidden=!info&&!image;
+  if(box.hidden){box.replaceChildren();return;}
+  const note=document.createElement('span');
+  note.className='hint icpt-body-note';
+  note.textContent=info?binaryNoteText(info):'';
+  note.hidden=!info;
+  const warn=document.createElement('span');
+  warn.className='hint icpt-body-warn';warn.setAttribute('role','status');warn.hidden=true;
+  box.replaceChildren(note,warn);
+  syncBinaryTailWarning();
+  if(image){
+    const img=document.createElement('img');
+    img.className='icpt-preview';
+    img.alt='Held response image preview';
+    img.src='/api/intercept/held/'+encodeURIComponent(h.id)+'/body?side=resp';
+    img.onerror=()=>{img.remove();if(!info)box.hidden=true;};
+    box.prepend(img);
+  }
 }
 
 /* ---- Raw | Pretty (editable) ----
@@ -274,7 +321,7 @@ function ensureHeldRepeaterButton(){
   b.onclick=()=>{
     const sel=state.heldSel,h=sel&&sel.side==='req'&&heldItem(sel.id,sel.side);
     if(!h)return;
-    sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value});
+    sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value,heldState:'held',binaryBodyLen:heldBinaryLen(sel)});
   };
   forward.parentNode.insertBefore(b,forward);
   return b;
@@ -371,9 +418,9 @@ export function renderIntercept(){
   setSwitch('#interceptToggle','#icptReqState',ic.enabled);
   setSwitch('#respInterceptToggle','#icptResState',ic.responseEnabled);
   // conditional-intercept filter (don't clobber fields the user is editing)
-  const fo=$('#interceptFilterOn');if(fo&&document.activeElement!==fo)fo.checked=!!ic.filterEnabled;
+  const fo=$('#interceptFilterOn');if(fo&&document.activeElement!==fo)fo.checked=filterCheckboxChecked(ic,fo.checked);
   const ft=$('#interceptFilterTarget');if(ft&&document.activeElement!==ft)ft.value=ic.filterTarget||'any';
-  const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp)fp.value=ic.filterPattern||'';
+  const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp&&!filterErrorShown())fp.value=ic.filterPattern||'';
   // unified queue: requests then responses, each tagged with its side
   const items=[...rq.map(h=>({...h,side:'req'})),...rrq.map(h=>({...h,side:'resp'}))];
   if(heldActionInFlight&&!items.some(h=>heldKey(h.side,h.id)===heldActionInFlight.key)){
@@ -431,6 +478,7 @@ function showEditor(h){
     setHeldChrome(false);
     resetHeldView();
     if(ta){ta.style.display='none';ta.disabled=false;ta.removeAttribute('placeholder');}
+    renderHeldBody(null);
     if(empty)empty.style.display='flex';
     const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
     setHeldDecodeState(false);
@@ -443,10 +491,13 @@ function showEditor(h){
   if(empty)empty.style.display='none';
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
   setHeldDecodeState(false);
-  const original=heldOriginal(h);
+  // Compare with the original the item was first shown with: h.raw is the cached
+  // edit when the operator comes back to an edited item.
+  const original=heldEditorBaseline(heldOriginalCache,heldKey(h.side,h.id),h);
   resetHeldView();
   if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
   setHeldControlsDisabled(false);
+  renderHeldBody(h);
   syncHeldRepeaterButton(h.side);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
@@ -468,6 +519,7 @@ export async function selectHeld(id,side,opts={}){
    const cacheKey=side+':'+id;
    let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
    if(!heldOriginalCache.has(cacheKey))heldOriginalCache.set(cacheKey,heldOriginal(h));
+   if(h.binary)heldBinaryInfo.set(cacheKey,{bodyLen:h.bodyLen});
 
   if(heldLoadingKey===cacheKey&&opts.keepEditor)return;
 
@@ -489,6 +541,7 @@ export async function selectHeld(id,side,opts={}){
         // body while the selection is item B.
         if(!state.heldSel||state.heldSel.id!==id||state.heldSel.side!==side)return;
         raw=d.raw||'';
+        if(d.binary)heldBinaryInfo.set(cacheKey,{bodyLen:d.bodyLen});
         heldRawCache.set(cacheKey,raw);
         if(!heldOriginalCache.get(cacheKey))heldOriginalCache.set(cacheKey,raw);
         h.raw=raw;
@@ -523,9 +576,29 @@ export function applyInterceptDelta(message,resnapshot){
     }
     return;
   }
+  const gone=kind==='released'&&message.reason==='canceled'?heldItem(delta.id,delta.side):null;
   state.intercept=res.state;
   interceptSeq=res.seq;
+  if(gone)noteHeldCanceled({...gone,side:delta.side});
   renderHeldDelta(kind,delta.side,delta.id,delta.item);
+}
+// noteHeldCanceled: the client of a held item gave up (timeout, closed
+// connection), so the server released it. Say so instead of letting the item
+// vanish, and keep an edited request reachable from the toast.
+function noteHeldCanceled(h){
+  const key=heldKey(h.side,h.id);
+  const selected=heldSelectionOwns(key);
+  const edit=selected?$('#heldRaw').value:heldRawCache.get(key);
+  const original=heldOriginalCache.get(key);
+  const binaryLen=heldBinaryLen(h);
+  const edited=typeof edit==='string'&&original!=null&&heldIsModified(edit,original);
+  forgetHeld(h.side,h.id);
+  const t=toast(heldReleasedText(h,edited),edited&&h.side==='req'?'error':'warn');
+  if(!t||!edited||h.side!=='req')return;
+  const b=document.createElement('button');
+  b.type='button';b.className='btn xs';b.textContent='Open in Repeater';
+  b.onclick=()=>{sendRawToRepeater({scheme:h.scheme,host:h.host,raw:edit,heldState:'released',binaryBodyLen:binaryLen});t.querySelector('.toast-dismiss')?.click();};
+  t.insertBefore(b,t.querySelector('.toast-dismiss'));
 }
 function renderHeldDelta(kind,side,id,item){
   const list=$('#heldList');
@@ -586,11 +659,17 @@ function removeHeldRow(side,id){
   syncInterceptBanner();
 }
 export async function toggleResponseIntercept(){
-  try{await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}
+  // Turning response interception off releases every held response: a drop
+  // still in its Undo window is committed first so it never reaches the client.
+  try{if(state.intercept.responseEnabled)await commitPendingDrops('resp');
+    await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}
 }
 $('#respInterceptToggle').onclick=toggleResponseIntercept;
 export async function toggleIntercept(){
-  try{await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
+  // Turning intercept off forwards everything held: commit the pending drops
+  // first so a request the operator dropped is never sent upstream.
+  try{if(state.intercept.enabled)await commitPendingDrops('req');
+    await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
 }
 $('#interceptToggle').onclick=toggleIntercept;
 // Arrow/Home/End over the hold queue. wireListbox binds traversal to the rows of
@@ -676,11 +755,11 @@ $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   // bytes exactly; viewing Pretty never changes #heldRaw, so it stays untouched.
   const held=heldItem(sel.id,sel.side);
   const original=heldOriginalCache.get(actionKey)??(held?heldOriginal(held):null);
-  const rawOut=original==null?$('#heldRaw').value:heldForwardRaw($('#heldRaw').value,original);
-  try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rawOut==null?{}:{raw:rawOut})});
+  const binary=heldBinaryInfo.has(actionKey);
+  const out=original==null?{raw:$('#heldRaw').value,...(binary?{keepBody:true}:{})}:heldForwardBody($('#heldRaw').value,original,{binary});
+  try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(out||{})});
     await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
-    heldRawCache.delete(sel.side+':'+sel.id);
-    heldOriginalCache.delete(heldKey(sel.side,sel.id));
+    forgetHeld(sel.side,sel.id);
     reconcileHeldRemoval(sel);
     setHeldActionResult(button,actionKey,'success','Forwarded');
     resetHeldAction(button,'Forward',600,epoch,actionKey);
@@ -732,6 +811,7 @@ $('#heldRaw').addEventListener('input',()=>{
     });
     // Keep the colored overlay scrolled in lockstep with the editor.
     ed.addEventListener('scroll',()=>{const hl=$('#heldPrettyHL');if(hl){hl.scrollTop=ed.scrollTop;hl.scrollLeft=ed.scrollLeft;}});
+    wireOverlayGutter(ed,$('#heldPrettyHL'));
   }
 }
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
@@ -777,8 +857,7 @@ async function performDrop(sel){
   if(heldSelectionOwns(actionKey))setHeldActionState(button,'pending','Dropping…');
   try{await api(base+sel.id+'/drop',{method:'POST'});
     await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
-    heldRawCache.delete(sel.side+':'+sel.id);
-    heldOriginalCache.delete(heldKey(sel.side,sel.id));
+    forgetHeld(sel.side,sel.id);
     reconcileHeldRemoval(sel);
     setHeldActionResult(button,actionKey,'success','Dropped');
     resetHeldAction(button,'Drop',600,epoch,actionKey);
@@ -797,7 +876,7 @@ export async function applyInterceptFilter(draft=pendingFilterMutation||stageInt
       const on=!!(input.enabled&&input.pattern);
       if(saved&&(on||wasOn))toast(on?'filter applied':'filter off');
       return saved;
-    }catch(e){toast(e.message,'error');return false;}
+    }catch(e){if(!e.shown)toast(e.message,'error');return false;}
   })();
   return draft.promise;
 }
@@ -980,19 +1059,53 @@ function scheduleDrop(){
   const sel=state.heldSel;if(!sel||selectionDropping()||heldActionInFlight)return;
   const key=heldKey(sel.side,sel.id);
   if(!dropScheduler.schedule(key,{side:sel.side,id:sel.id}))return;
+  markDropPending({side:sel.side,id:sel.id},true);
   const t=showDropToast(dropToastText(sel.side),{
-    onUndo:()=>{dropToasts.delete(key);if(dropScheduler.undo(key))toast(sel.side==='resp'?'response kept on hold':'request kept on hold','success');},
+    onUndo:()=>{dropToasts.delete(key);if(dropScheduler.undo(key)){markDropPending({side:sel.side,id:sel.id},false);toast(sel.side==='resp'?'response kept on hold':'request kept on hold','success');}},
     onPause:()=>dropScheduler.pause(key),
     onResume:()=>dropScheduler.resume(key),
   });
   dropToasts.set(key,t);
 }
 $('#dropBtn').onclick=scheduleDrop;
+// markDropPending tells the server a drop is waiting on its Undo toast. While
+// marked, turning intercept off from any client (another window, MCP, REST)
+// drops the item instead of sending it, and a Forward is refused. Calls for one
+// item are chained so an Undo's clear can never overtake the mark it cancels.
+const dropPendingChains=new Map();
+function markDropPending(entry,pending){
+  const key=heldKey(entry.side,entry.id);
+  const p=(dropPendingChains.get(key)||Promise.resolve())
+    .then(()=>api(dropPendingPath(entry.side,entry.id),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pending})}))
+    .catch(e=>{if(!pending&&heldItem(entry.id,entry.side))toast('Undo: the server still marks this item to drop ('+e.message+')','error');});
+  dropPendingChains.set(key,p);
+  p.then(()=>{if(dropPendingChains.get(key)===p)dropPendingChains.delete(key);});
+  return p;
+}
+// commitPendingDrops sends the pending drops (of one side, or all) now instead
+// of waiting out their Undo toasts. It runs before anything that releases held
+// items in bulk: turning intercept off here, and the window closing, reloading
+// or switching project (pagehide, with keepalive so the request outlives the
+// page). The drop calls start synchronously, which pagehide requires.
+async function commitPendingDrops(side,opts){
+  const entries=dropScheduler.takeAll(e=>!side||e.side===side);
+  if(!entries.length)return;
+  const sent=entries.map(e=>{
+    const key=heldKey(e.side,e.id);
+    dropToasts.get(key)?.dismiss();dropToasts.delete(key);dropMarks.delete(key);
+    return api(dropPath(e.side,e.id),{method:'POST',...(opts&&opts.keepalive?{keepalive:true}:{})})
+      .then(()=>{forgetHeld(e.side,e.id);return true;},()=>false); // already released: nothing left to drop
+  });
+  syncDropMarks();
+  const n=(await Promise.all(sent)).filter(Boolean).length;
+  if(n)toast(n===1?'dropped':n+' items dropped');
+}
+window.addEventListener('pagehide',()=>{commitPendingDrops('',{keepalive:true});});
 
 $('#forwardRepeaterBtn')&&($('#forwardRepeaterBtn').onclick=async()=>{
   const sel=state.heldSel,h=sel&&sel.side==='req'&&heldItem(sel.id,sel.side);
   if(!h)return;
-  const sent={scheme:h.scheme,host:h.host,raw:$('#heldRaw').value};
+  const sent={scheme:h.scheme,host:h.host,raw:$('#heldRaw').value,heldState:'forwarded',binaryBodyLen:heldBinaryLen(sel)};
   await $('#forwardBtn').onclick();
   // Forward reports failure with a toast and leaves the item held: only open
   // Repeater when the request really left the queue.
@@ -1001,7 +1114,7 @@ $('#forwardRepeaterBtn')&&($('#forwardRepeaterBtn').onclick=async()=>{
 
 async function forwardAll(){
   if(forwardAllBusy||heldActionInFlight)return;
-  const plan=forwardAllPlan(heldItems(),{dropping:dropMarks,rawCache:heldRawCache,originalCache:heldOriginalCache});
+  const plan=forwardAllPlan(heldItems(),{dropping:dropMarks,rawCache:heldRawCache,originalCache:heldOriginalCache,binary:new Set(heldBinaryInfo.keys())});
   if(!plan.length)return;
   if(!await uiConfirm('Forward all held items?','Forward <b>'+plan.length+'</b> held item'+(plan.length===1?'':'s')+' now? Edits you made are kept. Items waiting to be dropped are skipped.','Forward all','btn btn-primary'))return;
   forwardAllBusy=true;setHeldControlsDisabled(false);
@@ -1010,8 +1123,8 @@ async function forwardAll(){
   for(const step of plan){
     if(!heldItem(step.id,step.side)){done++;continue;}
     try{
-      await api(forwardPath(step.side,step.id),step.raw!=null?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:step.raw})}:{method:'POST'});
-      heldRawCache.delete(heldKey(step.side,step.id));heldOriginalCache.delete(heldKey(step.side,step.id));
+      await api(forwardPath(step.side,step.id),step.raw!=null?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(step.keepBody?{raw:step.raw,keepBody:true}:{raw:step.raw})}:{method:'POST'});
+      forgetHeld(step.side,step.id);
       reconcileHeldRemoval({side:step.side,id:step.id});
       done++;
       if(status)status.textContent=forwardAllProgress(done,plan.length);

@@ -257,3 +257,20 @@ test('host checks: isDesktop reads html.desktop-app; nothing runs in a browser t
   dom.fireObservers();
   assert.equal(ran, true, 'setup runs once the class arrives');
 });
+
+test('overflow: a split control wrapped in a div keeps none of its buttons in the Tab order', async () => {
+  installDom();
+  const kit = await load();
+  const split = new FakeNode('div');
+  split.className = 'evr-split';
+  const main = button('intrRenderBtn', 'Preview image');
+  const caret = button('intrRenderMenuBtn', 'More');
+  split.appendChild(main); split.appendChild(caret);
+  const more = kit.createOverflow({ id: 'intrMore', items: [split] });
+  assert.equal(main.tabIndex, -1);
+  assert.equal(caret.tabIndex, -1);
+  main.tabIndex = 0; // something re-enabled it while the menu was closed
+  more.refresh();
+  more.button.click();
+  assert.equal(main.tabIndex, -1, 'opening re-locks every descendant');
+});

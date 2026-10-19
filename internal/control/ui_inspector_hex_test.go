@@ -6,10 +6,9 @@ import (
 )
 
 func TestUIHexDumpAndInspectorCopy(t *testing.T) {
-	core := readUIAsset(t, "js/core.js")
 	proxy := readUIAsset(t, "js/proxy.js")
 
-	script := repeaterRenderJS(t, core, "export function formatHexDump(strOrBytes, maxBytes=32768)") +
+	script := hexDumpTestJS(t) +
 		repeaterRenderJS(t, proxy, "export function toggleSelectCurrentFlow()") +
 		repeaterRenderJS(t, proxy, "export async function copyFlowRaw(f,side='req')") +
 		repeaterRenderJS(t, proxy, "export async function copyFlowBody(f,side='req')") + `

@@ -131,11 +131,14 @@ export function renderActivity(){
     const status=it.ok?'Success':'Error';
     const activityId=it.id!=null?String(it.id):String(it._uiId||(it._uiId='client-'+Date.now()+'-'+i));
     const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'')+(it.intent?'. Intent: '+it.intent:'');
-    const expandable=!fid;
+    // Rows with no flow expand in place. A failed row expands even when it names a
+    // flow, so its reason is readable without opening the drawer; the detail then
+    // carries an explicit link to that flow.
+    const expandable=!fid||!it.ok;
     const expanded=expandable&&openIds.has(activityId);
     const cat=ACTIVITY_CATEGORIES.find(c=>c.id===activityCategory(it.tool));
-    const detail=expandable?`<div class="act-detail" id="actDetail-${i}"${expanded?'':' hidden'}><div><b>Summary</b><span>${esc(it.summary||'—')}</span></div><div><b>Result</b><span>${esc(it.result||'—')}</span></div>${it.intent?`<div><b>Intent</b><span>${esc(it.intent)}</span></div>`:''}</div>`:'';
-    return `<div class="act-row${fid?' act-jump':''}${expandable?' act-expandable':''}${expanded?' expanded':''}${grp}" tabindex="0" role="button"${expandable?` aria-expanded="${expanded}" aria-controls="actDetail-${i}"`:''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}"${fid?' title="Open flow #'+fid+'"':''}>
+    const detail=expandable?`<div class="act-detail" id="actDetail-${i}"${expanded?'':' hidden'}><div><b>Summary</b><span>${esc(it.summary||'—')}</span></div><div><b>Result</b><span>${esc(it.result||'—')}</span></div>${it.intent?`<div><b>Intent</b><span>${esc(it.intent)}</span></div>`:''}${fid?`<div><b>Flow</b><button type="button" class="btn xs act-open-flow" data-flow="${fid}">Open flow #${fid}</button></div>`:''}</div>`:'';
+    return `<div class="act-row${fid&&!expandable?' act-jump':''}${expandable?' act-expandable':''}${expanded?' expanded':''}${grp}" tabindex="0" role="button"${expandable?` aria-expanded="${expanded}" aria-controls="actDetail-${i}"`:''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}"${fid&&!expandable?' title="Open flow #'+fid+'"':''}>
     <span class="ok ${it.ok?'is-ok':'is-fail'}" aria-hidden="true" title="${status}"></span>
     ${isDesktopSkin()?actTypeIconHTML(it.tool):''}
     <span class="act-actor" title="Recorded from an AI assistant (MCP)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-agent"/></svg>AI</span>
@@ -151,7 +154,7 @@ export function renderActivity(){
   }).join('')}</section>`).join('');
   box.querySelectorAll('.act-row').forEach(row=>{const open=()=>{
     if(window.getSelection()?.toString())return;
-    const id=Number(row.dataset.flow);
+    const id=row.classList.contains('act-expandable')?0:Number(row.dataset.flow);
     if(id){if(openFlow(id,{source:'activity'}))return;document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(id);return;}
     if(!row.classList.contains('act-expandable'))return;
     // The detail is the row's sibling, not its child: content inside a
@@ -162,6 +165,11 @@ export function renderActivity(){
     detail.hidden=expanded;
     row.classList.toggle('expanded',!expanded);
   };row.onclick=open;wireRowKey(row,open);});
+  box.querySelectorAll('.act-open-flow').forEach(btn=>{btn.onclick=()=>{
+    const id=Number(btn.dataset.flow);
+    if(openFlow(id,{source:'activity'}))return;
+    document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(id);
+  };});
   restoreActivityFocus(box,focusedId);
 }
 function restoreActivityFocus(box,focusedId){

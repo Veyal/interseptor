@@ -92,3 +92,13 @@ test('findMatches: literal, case, regex, cap and invalid regex', () => {
   assert.deepEqual(findMatches('abc', '', {}).matches, []);
   assert.equal(findMatches('aaa', 'x*', { regex: true }).matches.length, 0, 'zero-length matches are skipped');
 });
+
+test('a list pane can be capped so a proportional default stays a sidebar on wide windows', async () => {
+  const { splitBounds, clampSplitSize } = await import('../js/layout-math.js');
+  assert.deepEqual(splitBounds(2560, [200, 360], 8, 320), { min: 200, max: 320 });
+  assert.equal(clampSplitSize(0.22 * 2560, 2560, [200, 360], 8, 320), 320, 'QA: Settings nav grew to 522px in a full-screen window');
+  assert.equal(clampSplitSize(0.22 * 1280, 1280, [200, 360], 8, 320), 0.22 * 1280);
+  // The cap never undercuts the minimum or widens a small container's max.
+  assert.deepEqual(splitBounds(500, [200, 360], 8, 320), { min: 200, max: 200 });
+  assert.deepEqual(splitBounds(2560, [200, 360], 8), { min: 200, max: 2192 }, 'no cap by default');
+});

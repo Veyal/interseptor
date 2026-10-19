@@ -52,6 +52,26 @@ release workflow when a `v*` tag is pushed) —
 download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
 tracks the latest release.)
 
+### macOS app
+
+Each release also attaches `Interseptor_<version>.dmg` and `Interseptor-v<version>-unsigned.zip`, a
+native macOS app (macOS 12 or later, Apple silicon and Intel) that runs the same proxy and UI in its
+own window with a menu bar, Dock tile and notifications.
+
+1. Download the DMG from the [Releases](https://github.com/Veyal/interseptor/releases) page, open it,
+   and drag **Interseptor** to **Applications**.
+2. The app is not notarized, so the first launch is blocked. Open **System Settings → Privacy &
+   Security**, find the message about Interseptor, and click **Open Anyway**. Or clear the quarantine
+   flag once from a terminal:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Interseptor.app
+   ```
+
+3. Launch **Interseptor**. The app starts the proxy on `127.0.0.1:8080` and the UI on
+   `127.0.0.1:9966`, and stops them when you quit. If an Interseptor server is already running, the
+   app opens that one and leaves it running when you quit.
+
 ## Quick start
 
 1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.

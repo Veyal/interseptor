@@ -7,8 +7,11 @@
    :focus-visible, so a mouse click already shows none and keyboard focus does.
    The browser context menu is already replaced app-wide by core.js. */
 
-/* No rubber-band overscroll or scroll chaining anywhere; no tap flash. */
-html.desktop-app,html.desktop-app *{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+/* No rubber-band overscroll on the page and no tap flash. Not on every element:
+   a truncating cell is an overflow:hidden scroll container, and overscroll-
+   behavior on it stops a wheel over a row from scrolling the list. */
+html.desktop-app,html.desktop-app body{overscroll-behavior:none}
+html.desktop-app *{-webkit-tap-highlight-color:transparent}
 
 /* Arrow cursor on controls. !important because the component layer sets
    pointer per component; busy and pending controls keep their progress cursor,

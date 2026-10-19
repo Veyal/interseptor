@@ -140,7 +140,7 @@ async function runExport(mode) {
       throw new Error((body && body.error) || 'Export failed (' + res.status + ')');
     }
     const blob = await res.blob();
-    await saveFile(blob, exportFilename(S.options.format), blob.type);
+    await saveFile(blob, exportFilename(S.options.format, mode), blob.type);
     toast(mode === 'draft' ? 'draft report exported' : 'report exported');
   } catch (e) {
     if (!e || e.name !== 'AbortError') toast(e && e.message ? e.message : 'Export failed', 'error');

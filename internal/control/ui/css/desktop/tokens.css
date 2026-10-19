@@ -13,7 +13,7 @@
    colours. Every colour the dark block sets is set again in the light block.
 
    Deviations from the spec table, for WCAG AA on 13px text: --text-muted/--fg3
-   are lifted (dark #8b8c94, light #6b6c74; the spec values are 3.5:1), and the
+   are lifted (dark #9899a1, light #6b6c74; the spec values are 3.5:1, and #8b8c94 fell to 3.98:1 on a selected row), and the
    light accent, warning and success text tokens are one step darker. */
 
 html.desktop-app{
@@ -21,7 +21,7 @@ html.desktop-app{
   --surface-0:#16171a; --surface-1:#1c1d21; --surface-2:#25262b; --surface-inset:#141518; --surface-tag:#2b2c32;
   --surface-hover:rgba(255,255,255,.045); --surface-selected:rgba(62,201,142,.13);
   --border-subtle:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.13);
-  --text-primary:#ececee; --text-secondary:#a4a5ac; --text-muted:#8b8c94; --text-on-accent:#06140e;
+  --text-primary:#ececee; --text-secondary:#aeafb6; --text-muted:#9899a1; --text-on-accent:#06140e;
   --accent-subtle:rgba(62,201,142,.14);
   --success:#3fb97a; --warning:#e2a336; --danger:#ef6262; --info:#5aa2f0; --sev-high-c:#f08a3e;
   --warning-subtle:rgba(226,163,54,.12); --warning-border:rgba(226,163,54,.32);

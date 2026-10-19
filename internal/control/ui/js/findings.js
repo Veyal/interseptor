@@ -14,6 +14,7 @@ import { evidenceSourceLabel } from './evidence-attach.js';
 import { openFlow, closeFlow } from './core.js';
 import { sendToRepeater } from './tools.js';
 import { renderCvssEditor, bindCvssEditor } from './cvss.js';
+import { titleLimitMessage, carryToFullForm } from './finding-title-model.js';
 import { readinessMeterHTML } from './readiness-meter.js';
 import { evidenceTrayHTML, wireEvidenceTray, showUndoToast } from './evidence-tray.js';
 import { createSplitPane } from './split.js';
@@ -30,7 +31,14 @@ const sourceLabel = evidenceSourceLabel;
 // Each finding has a narrative body — an ordered sequence of text blocks (markdown)
 // and flow-reference blocks (PoC request/response) interleaved freely, like a report.
 
-const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'fixed'];
+const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'ignored', 'fixed'];
+const IGNORE_REASONS = [
+  "Low impact / Client won't care",
+  "Accepted risk / Compensating controls",
+  "Out of scope / Third-party",
+  "Informational / Best practice only",
+  "Duplicate finding",
+];
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
 let findingsLoadEpoch=0;
@@ -126,6 +134,9 @@ let bodyBlocks = [];
 let bodyFindingId = null;
 let bodySaveTimers = new Map();
 let bodySaveSnapshots = new Map();
+// Debounced autosave of the single-field editors (impact, root cause, ...):
+// `${finding}:${key}` -> { timer, commit }. Flushed when the window closes.
+const fieldCommitPending = new Map();
 let bodySavesInFlight = 0;
 let findingWritesInFlight = 0;
 // PATCH requests for one finding are serialized. The API applies a PATCH as a
@@ -145,8 +156,8 @@ bindFindingPointerGuard($('#findDetail'));
 let bodyEditing = false;
 
 const sevClass = s => 'sev-' + (['critical', 'high', 'medium', 'low', 'info'].includes(String(s).toLowerCase()) ? String(s).toLowerCase() : 'info');
-const statusLabel = s => ({ needs_verification: 'needs verification' }[s] || (s || '').replace(/_/g, ' '));
-const statusBadgeClass = s => 'find-st-' + (['verified', 'fixed', 'needs_verification', 'false_positive', 'wont_fix'].includes(s) ? s : 'other');
+const statusLabel = s => ({ needs_verification: 'needs verification', wont_fix: "won't fix", false_positive: 'false positive', ignored: 'ignored' }[s] || (s || '').replace(/_/g, ' '));
+const statusBadgeClass = s => 'find-st-' + (['verified', 'fixed', 'needs_verification', 'false_positive', 'wont_fix', 'ignored'].includes(s) ? s : 'other');
 
 function textChainLabel(md) {
   return (md || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`~\[\]()]/g, '').replace(/\s+/g, ' ').trim();
@@ -255,7 +266,7 @@ function findingIsEmpty(f) {
 // a row shows what a tester scans for: the claim, where it is, and whether it is backed up.
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
 const severityKey = s => (SEVERITY_ORDER.includes(String(s).toLowerCase()) ? String(s).toLowerCase() : 'info');
-const findingStatusIcon = s => ({ verified: 'status-done', fixed: 'status-done', needs_verification: 'alert', false_positive: 'close', wont_fix: 'close' }[s] || 'status-todo');
+const findingStatusIcon = s => ({ verified: 'status-done', fixed: 'status-done', needs_verification: 'alert', false_positive: 'close', wont_fix: 'close', ignored: 'close' }[s] || 'status-todo');
 
 function findingHost(f) {
   const raw = String(f.target || '').trim().replace(/^[A-Z]+\s+/, '');
@@ -789,7 +800,13 @@ function showFindingRowCtx(event, id) {
   const f = findings.find(x => x.id === id);
   if (!f) return;
   const write = findingsEditable();
-  const setStatus = s => () => { patchFinding(id, { status: s }).then(r => { if (r && r.latest) { f.status = s; toast('status: ' + statusLabel(s)); renderFindings(); } }); };
+  const setStatus = s => () => {
+    if (s === 'ignored') {
+      openIgnoreReasonMenu(event, event.target || { getBoundingClientRect: () => ({ left: event.clientX, bottom: event.clientY }) }, f);
+      return;
+    }
+    patchFinding(id, { status: s }).then(r => { if (r && r.latest) { f.status = s; toast('status: ' + statusLabel(s)); renderFindings(); } });
+  };
   const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }); };
   openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #' + id, items: [
     { label: 'Open', icon: 'external', act: () => { location.hash = findingHref(id, 'overview').replace(/^#/, ''); } },
@@ -866,6 +883,27 @@ function startTextEdit(block, ta) {
   autoResizeTextarea(ta);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+// Targets, impact-verification and capability-claim inputs stage a draft on every
+// keystroke; commit them after a pause (and on close) so the Unsaved indicator
+// resolves without waiting for blur. Skipped while a reason the server will
+// demand is still blank: that save is rejected and blur reports it.
+function scheduleAssessmentCommit(id, fields) {
+  if (!findingsEditable()) return;
+  const pr = fields.proofReview;
+  if (pr && ['prerequisite_only', 'not_executed'].includes(pr.execution) && !String(pr.reason || '').trim()) return;
+  const key = id + ':assessment';
+  const previous = fieldCommitPending.get(key);
+  if (previous) clearTimeout(previous.timer);
+  const commit = async () => {
+    if (findingMutationBlocked(id)) return;
+    const staged = findingDrafts.values(id), payload = {};
+    for (const k of ['targets', 'proofReview']) if (staged[k] !== undefined) payload[k] = staged[k];
+    if (!Object.keys(payload).length) return;
+    try { await patchFinding(id, payload); } catch (err) { /* kept as a draft; Retry shows it */ }
+  };
+  fieldCommitPending.set(key, { commit, timer: setTimeout(() => { fieldCommitPending.delete(key); void commit().catch(() => {}); }, 700) });
 }
 
 function finishTextEdit(block, ta, fid) {
@@ -1013,7 +1051,13 @@ function renderBodyEditor(container, fid) {
     if (!view || !ta) return;
 
     if (ta.style.display !== 'none') autoResizeTextarea(ta);
-    ta.addEventListener('input', () => autoResizeTextarea(ta));
+    // Typing updates the pending body snapshot and schedules the debounced save,
+    // exactly like the annotation/caption inputs, so no step text waits on blur.
+    ta.addEventListener('input', () => {
+      autoResizeTextarea(ta);
+      const i = Number(block.dataset.i);
+      if (bodyFindingId === fid && bodyBlocks[i] && bodyBlocks[i].md !== ta.value) { bodyBlocks[i].md = ta.value; scheduleSave(fid); }
+    });
 
     view.addEventListener('click', () => startTextEdit(block, ta));
     block.querySelector('[data-edit-step]')?.addEventListener('click', () => startTextEdit(block, ta));
@@ -1306,6 +1350,8 @@ function acknowledgedFindingValue(id, key, fallback) {
     : fallback;
 }
 
+// True while the window is closing or hidden: writes then use fetch keepalive.
+let findingClosing = false;
 function enqueueFindingPatch(id, fields, onStaged) {
   if (!findingsEditable()) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
   if (findingMutationBlocked(id)) return Promise.reject(new Error('Finding is being deleted or is no longer available.'));
@@ -1334,9 +1380,12 @@ async function drainFindingWrites(id) {
       const waiters = queue.pendingWaiters.splice(0);
       try {
         assertFindingsWritable(); // editing may have been switched off while this save waited
+        const payload = JSON.stringify(fields);
+        // While the window is closing, keepalive lets the request outlive the page
+        // (browsers cap keepalive bodies at 64 KiB, so larger writes go as usual).
         await api('/api/findings/' + id, {
           method: 'PATCH', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(fields),
+          body: payload, ...(findingClosing && payload.length < 60000 ? { keepalive: true } : {}),
         });
         Object.assign(findings.find(x => x.id === id) || {}, fields);
         for (const waiter of waiters) {
@@ -1495,6 +1544,61 @@ function openFindingMore(e, trigger, f) {
   const r = trigger.getBoundingClientRect();
   openCtxMenu(r.left, r.bottom + 2, findingMoreSections(f), trigger);
 }
+function openIgnoreReasonMenu(e, trigger, f) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const applyReason = (reason) => {
+    patchFinding(f.id, {
+      status: 'ignored',
+      proofReview: { ...(f.proofReview || {}), ignoreReason: reason }
+    }).then(r => {
+      if (r && r.latest) {
+        f.status = 'ignored';
+        f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
+        toast('finding marked as ignored');
+        renderFindings();
+      }
+    });
+  };
+  const items = IGNORE_REASONS.map(reason => ({
+    label: reason,
+    on: f.status === 'ignored' && f.proofReview?.ignoreReason === reason,
+    act: () => applyReason(reason),
+  }));
+  items.push({ sep: true });
+  items.push({
+    label: 'Custom reason…',
+    icon: 'edit',
+    act: async () => {
+      const custom = await uiPrompt({
+        title: 'Ignore reason',
+        placeholder: "Why is this finding ignored? (e.g. client won't care)",
+        value: (f.status === 'ignored' && f.proofReview?.ignoreReason) || ''
+      });
+      if (custom != null && custom.trim() !== '') {
+        applyReason(custom.trim());
+      }
+    }
+  });
+  const r = (trigger && trigger.getBoundingClientRect) ? trigger.getBoundingClientRect() : { left: e?.clientX || 100, bottom: (e?.clientY || 100) - 2 };
+  openCtxMenu(r.left, r.bottom + 2, [{ head: 'REASON FOR IGNORING', items }], trigger);
+}
+
+function renderTriageBar(f) {
+  const isIgnored = f.status === 'ignored';
+  const ignoreText = isIgnored && f.proofReview?.ignoreReason ? 'Ignored: ' + esc(f.proofReview.ignoreReason) : 'Ignore…';
+  return `<div class="find-triage-bar" id="findTriageBar" role="toolbar" aria-label="Finding triage">
+    <span class="find-triage-label">Triage:</span>
+    <button type="button" class="btn xs find-triage-btn find-triage-valid${f.status === 'verified' ? ' is-active' : ''}" id="findTriageValid" title="Confirm this finding is valid and verified">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-checks"/></svg><span>Confirm Valid</span>
+    </button>
+    <button type="button" class="btn xs find-triage-btn find-triage-invalid${f.status === 'false_positive' ? ' is-active' : ''}" id="findTriageInvalid" title="Mark as false positive / invalid">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg><span>False Positive</span>
+    </button>
+    <button type="button" class="btn xs find-triage-btn find-triage-ignore${isIgnored ? ' is-active' : ''}" id="findTriageIgnore" aria-haspopup="menu" aria-expanded="false" title="Mark as valid but ignored (e.g. low impact, client won't care)">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg><span>${ignoreText}</span>
+    </button>
+  </div>`;
+}
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
   box.inert = findingDeletesPending.has(selFinding);
@@ -1604,6 +1708,7 @@ function renderFindingDetail() {
     </section>`;
   const propsEdit = `<div class="find-properties">
         <label for="findStatus">Status</label><select id="findStatus" aria-label="Finding status">${statusSel}</select>
+        ${f.status === 'ignored' ? `<label for="findIgnoreReason">Ignore reason</label><input id="findIgnoreReason" class="find-field-text" type="text" placeholder="e.g. Low impact / Client won't care" value="${escAttr(f.proofReview?.ignoreReason || '')}">` : ''}
         <label for="findConfidence">Confidence</label><select id="findConfidence" aria-label="Finding confidence"><option value="">Not set</option><option value="tentative"${f.confidence === 'tentative' ? ' selected' : ''}>Tentative</option><option value="firm"${f.confidence === 'firm' ? ' selected' : ''}>Firm</option><option value="certain"${f.confidence === 'certain' ? ' selected' : ''}>Certain</option></select>
         <label for="findEnv">Environment</label><select id="findEnv" aria-label="Environment">${envOpts}</select>
         <label for="findCwe">CWE</label><input id="findCwe" class="find-field-text" type="text" value="${escAttr(f.cwe || '')}">
@@ -1638,6 +1743,7 @@ function renderFindingDetail() {
         ${edit ? `<button class="btn xs" id="findRename" aria-label="Rename finding" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>` : ''}
       </div>
       <div class="find-context-line">${ctx.url ? `<span class="find-target"><span class="find-ctx-method">${esc(ctx.method)}</span> ${esc(ctx.url)}</span>` : `<span class="find-target">Target not recorded</span>`}${f.environment ? `<span>${esc(f.environment)}</span>` : ''}${f.cwe ? `<span>${esc(f.cwe)}</span>` : ''}</div>
+      ${findingsEditable() ? renderTriageBar(f) : ''}
       <div id="findSaveRecovery" class="find-save-recovery" hidden><span id="findSaveRecoveryMsg">Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button><button type="button" class="btn xs" id="findSaveDiscard" hidden>Discard changes</button></div>
     </header>
     <div class="find-workspace-content find-workspace-panel" tabindex="-1" role="region" aria-label="Finding document">
@@ -1660,6 +1766,7 @@ function renderFindingDetail() {
     <div class="find-doc-col" id="findDocument">
       <div class="find-doc-in">
       ${missBanner}
+      ${f.status === 'ignored' ? `<div class="find-ignored-banner" role="status"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg><span><b>Ignored:</b> ${esc(f.proofReview?.ignoreReason || "Marked as ignored / low impact")}</span></div>` : ''}
       ${edit ? claimEdit : readDocumentHTML(f, { renderMD })}
       </div>
     </div>
@@ -1689,6 +1796,43 @@ function renderFindingDetail() {
   $('#findModeChip')?.addEventListener('click', () => busEmit(EVENTS.SETTINGS_OPEN_SECTION, 'project'));
   const moreBtn = $('#findMore');
   if (moreBtn) moreBtn.onclick = e => openFindingMore(e, moreBtn, f);
+  const triageValid = box.querySelector('#findTriageValid');
+  if (triageValid) {
+    triageValid.onclick = async () => {
+      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      try {
+        const res = await patchFinding(f.id, { status: 'verified' });
+        if (res && res.latest) {
+          f.status = 'verified';
+          toast('finding marked as verified');
+          await loadFindings();
+          renderFindingDetail();
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    };
+  }
+  const triageInvalid = box.querySelector('#findTriageInvalid');
+  if (triageInvalid) {
+    triageInvalid.onclick = async () => {
+      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      try {
+        const res = await patchFinding(f.id, { status: 'false_positive' });
+        if (res && res.latest) {
+          f.status = 'false_positive';
+          toast('finding marked as false positive');
+          await loadFindings();
+          renderFindingDetail();
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    };
+  }
+  const triageIgnore = box.querySelector('#findTriageIgnore');
+  if (triageIgnore) {
+    triageIgnore.onclick = e => {
+      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      openIgnoreReasonMenu(e, triageIgnore, f);
+    };
+  }
   for (const id of expanded) { const el = box.querySelector('#' + id); if(el?.tagName==='DETAILS')el.open=true; }
   box.querySelector('.find-rail-toggle')?.addEventListener('click', () => setFindRailOpen(box, !findRailOpen));
   if (sameFinding) box.querySelector('.find-workspace-content').scrollTop = scrollTop;
@@ -1710,10 +1854,17 @@ function renderFindingDetail() {
   else renderFindReportBody(f.id);
   bindFindingRevisions(box, f.id, {
     canRestore: () => findingsEditable() && !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
-    restored: async () => { renderedFindingKey=''; await loadFindings(); renderFindingDetail(); },
+    // A restored revision can be far shorter than the one on screen: render it as a fresh
+    // finding (scroll to the top) instead of replaying the old scroll offset.
+    restored: async () => { renderedFindingKey=''; box.dataset.findingId=''; await loadFindings(); renderFindingDetail(); },
   });
   bindFindingAssessment(box, f, {
-    stage: fields => { if (findingMutationBlocked(f.id)) return; findingDrafts.stage(f.id, fields); updateFindingSaveFeedback(f.id); },
+    stage: fields => {
+      if (findingMutationBlocked(f.id)) return;
+      findingDrafts.stage(f.id, fields);
+      updateFindingSaveFeedback(f.id);
+      scheduleAssessmentCommit(f.id, fields);
+    },
     save: fields => patchFinding(f.id, fields),
     refresh: async ({ targetsChanged = false } = {}) => {
       await loadFindings();
@@ -1769,10 +1920,29 @@ function renderFindingDetail() {
         toast(err.message); return;
       }
       el.removeAttribute('aria-invalid');
+      // Typing continued while this autosave was in flight: its own save will
+      // reload, and a reload now would replace the field under the cursor.
+      if (el.isConnected && getVal(el) !== v) return;
       await loadFindings();
     };
-    el.addEventListener('blur', commit);
+    el.addEventListener('blur', () => {
+      const pending = fieldCommitPending.get(f.id + ':' + key);
+      if (pending) { clearTimeout(pending.timer); fieldCommitPending.delete(f.id + ':' + key); }
+      return commit();
+    });
     if(el.tagName==='SELECT')el.addEventListener('change',commit);
+    else el.addEventListener('input', () => {
+      // Typing marks the field unsaved and saves it after a pause, like the
+      // block editors do, instead of waiting for blur.
+      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      const pendingKey = f.id + ':' + key;
+      const previous = fieldCommitPending.get(pendingKey);
+      if (previous) clearTimeout(previous.timer);
+      findingDrafts.stage(f.id, { [key]: getVal(el) });
+      updateFindingSaveFeedback(f.id);
+      const entry = { commit, timer: setTimeout(() => { fieldCommitPending.delete(pendingKey); void commit().catch(() => {}); }, 700) };
+      fieldCommitPending.set(pendingKey, entry);
+    });
   };
   if (edit) {
     blurPatch('#findStatus', 'status', el => el.value);
@@ -1786,6 +1956,32 @@ function renderFindingDetail() {
     blurPatch('#findFix', 'fix', el => el.value);
     blurPatch('#findSummary', 'summary', el => el.value);
     blurPatch('#findRetest', 'retest', el => el.value);
+    const ignoreEl = $('#findIgnoreReason');
+    if (ignoreEl) {
+      ignoreEl.addEventListener('blur', async () => {
+        const reason = ignoreEl.value.trim();
+        if ((f.proofReview?.ignoreReason || '') === reason) return;
+        try {
+          const res = await patchFinding(f.id, { proofReview: { ...(f.proofReview || {}), ignoreReason: reason } });
+          if (res && res.latest) {
+            f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
+            await loadFindings();
+          }
+        } catch (err) { toast(err.message, 'error'); }
+      });
+      ignoreEl.addEventListener('keydown', e => { if (e.key === 'Enter') ignoreEl.blur(); });
+    }
+    const statusSelect = $('#findStatus');
+    if (statusSelect) {
+      statusSelect.addEventListener('change', () => {
+        if (statusSelect.value === 'ignored' && !f.proofReview?.ignoreReason) {
+          setTimeout(() => {
+            const btn = box.querySelector('#findTriageIgnore') || statusSelect;
+            openIgnoreReasonMenu(null, btn, f);
+          }, 60);
+        }
+      });
+    }
   }
   if (edit) blurPatch('#findVerifInstr', 'verificationInstructions', el => el.value);
   const presetEl = $('#findNarrativePreset');
@@ -2189,7 +2385,16 @@ function openFindCreate(event) {
   setFindingCreateStatus('');
   openModal($('#findCreateModal'),{initialFocus:$('#fcTitle'),onEscape:closeFindingCreate,onDismiss:closeFindingCreate});
 }
-$('#findNewDialog') && ($('#findNewDialog').onclick = openFindCreate);
+// "Full form" replaces the inline row: it hands over what was typed and closes
+// the row, so two create surfaces are never open at once.
+$('#findNewDialog') && ($('#findNewDialog').onclick = event => {
+  const carried = carryToFullForm($('#findInlineTitle')?.value, $('#findInlineSeverity')?.value);
+  hideInlineNewFinding({ restoreFocus: false });
+  openFindCreate(event);
+  if (!$('#findCreateModal') || $('#findCreateModal').style.display !== 'flex') return;
+  if (carried.title) $('#fcTitle').value = carried.title;
+  $('#fcSeverity').value = carried.severity;
+});
 
 // ---- inline "New finding" row (the dialog above stays as "Full form") ----
 let findingInlineBusy = false;
@@ -2252,6 +2457,13 @@ async function submitInlineNewFinding(event) {
 $('#findNew') && ($('#findNew').onclick = showInlineNewFinding);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = showInlineNewFinding);
 $('#findInlineNew')?.addEventListener('submit', submitInlineNewFinding);
+$('#findInlineTitle')?.addEventListener('input', event => {
+  const title = event.currentTarget;
+  const note = titleLimitMessage(title.value.length);
+  if (note) { setInlineStatus(note, 'status'); return; }
+  title.removeAttribute('aria-invalid');
+  setInlineStatus('');
+});
 $('#findInlineCancel')?.addEventListener('click', () => hideInlineNewFinding());
 $('#findInlineNew')?.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hideInlineNewFinding(); } });
 $('#fcClose') && ($('#fcClose').onclick = closeFindingCreate);
@@ -2324,6 +2536,23 @@ export async function settleFindingsBeforeExport() {
 export function flowFindings(flowId) {
   return findings.filter(f => (f.blocks || []).some(b => b.type === 'flow' && b.flowId === flowId) || (f.flows || []).some(x => x.flowId === flowId)).map(f => ({ id: f.id, title: f.title, severity: f.severity }));
 }
+
+// flushFindingsOnClose sends everything still waiting on a debounce timer: the
+// block body and the single-field editors. Registered once for pagehide,
+// beforeunload and visibilitychange (hidden).
+function flushFindingsOnClose() {
+  findingClosing = true;
+  captureActiveFindingTextEditor(bodyFindingId);
+  for (const [key, entry] of [...fieldCommitPending]) { clearTimeout(entry.timer); fieldCommitPending.delete(key); void entry.commit().catch(() => {}); }
+  for (const fid of [...bodySaveSnapshots.keys()]) void flushPendingBodySave(fid).catch(() => {});
+}
+window.addEventListener('pagehide', flushFindingsOnClose);
+window.addEventListener('beforeunload', flushFindingsOnClose);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushFindingsOnClose();
+  else findingClosing = false;
+});
+
 export function openFinding(id) {
   const epoch=++findingNavigationEpoch;
   if(selFinding!==id){findEditMode=false;findSection='overview';}

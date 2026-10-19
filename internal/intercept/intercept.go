@@ -25,12 +25,19 @@ import (
 // ErrNotHeld is returned when resolving an id that is not (or no longer) held.
 var ErrNotHeld = errors.New("intercept: request not held")
 
+// ErrDropPending is returned when forwarding an item an operator has scheduled
+// to drop (see SetDropPending). The drop must be undone before it can be sent.
+var ErrDropPending = errors.New("intercept: a drop is pending for this item; undo the drop to forward it")
+
 // Decision is the outcome of a hold: forward the (possibly edited) request, or drop it.
 type Decision struct {
-	Drop    bool
-	Edited  bool
-	Held    bool // the request actually entered the hold queue (vs. filtered straight through)
-	Request *http.Request
+	Drop   bool
+	Edited bool
+	Held   bool // the request actually entered the hold queue (vs. filtered straight through)
+	// Canceled marks a Drop caused by the client going away while held (timeout,
+	// closed connection) rather than by the operator.
+	Canceled bool
+	Request  *http.Request
 }
 
 // Held is a UI-facing snapshot of a request waiting in the hold queue.
@@ -38,6 +45,9 @@ type Held struct {
 	ID   int64
 	Flow *store.Flow
 	Raw  []byte // origin-form raw request bytes, editable before forwarding
+	// DropPending: an operator scheduled a drop (the UI's Undo window). A bulk
+	// release drops the item instead of forwarding it, and Forward is refused.
+	DropPending bool
 }
 
 type heldItem struct {
@@ -85,6 +95,9 @@ const (
 const (
 	ReleaseForwarded = "forwarded"
 	ReleaseDropped   = "dropped"
+	// ReleaseCanceled: the client went away (timeout, closed connection) while
+	// the item was held; it was never forwarded.
+	ReleaseCanceled = "canceled"
 )
 
 // Side values on a Change (and in the delta SSE events the control layer emits).
@@ -105,7 +118,7 @@ type Change struct {
 	Seq      int64
 	Side     string       // SideRequest | SideResponse (empty for ChangeReset)
 	ID       int64        // affected item id (0 for ChangeReset)
-	Reason   string       // ReleaseForwarded | ReleaseDropped (ChangeReleased only)
+	Reason   string       // ReleaseForwarded | ReleaseDropped | ReleaseCanceled (ChangeReleased only)
 	Request  Held         // populated for a request ChangeHeld
 	Response HeldResponse // populated for a response ChangeHeld
 }
@@ -165,7 +178,8 @@ func (e *Engine) Enabled() bool {
 	return e.enabled
 }
 
-// SetEnabled toggles intercept. Turning it off forwards everything currently held.
+// SetEnabled toggles intercept. Turning it off forwards everything currently
+// held, except items marked drop-pending, which are dropped.
 func (e *Engine) SetEnabled(on bool) {
 	e.mu.Lock()
 	e.enabled = on
@@ -182,6 +196,10 @@ func (e *Engine) SetEnabled(on bool) {
 	e.mu.Unlock()
 
 	for _, item := range drained {
+		if item.held.DropPending {
+			item.done <- Decision{Drop: true}
+			continue
+		}
 		item.done <- Decision{Request: item.req}
 	}
 	e.emit(Change{Kind: ChangeReset, Seq: seq})
@@ -349,8 +367,8 @@ func (e *Engine) HoldContext(ctx context.Context, flow *store.Flow, req *http.Re
 		return d
 	case <-ctx.Done():
 		if seq, ok := e.removeReq(id); ok {
-			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseDropped})
-			return Decision{Drop: true, Held: true}
+			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseCanceled})
+			return Decision{Drop: true, Held: true, Canceled: true}
 		}
 		d := <-item.done
 		d.Held = true
@@ -389,9 +407,9 @@ func (e *Engine) Forward(id int64, editedRaw []byte) error {
 		req = nr
 	}
 
-	seq, ok := e.removeReq(id)
-	if !ok {
-		return ErrNotHeld // resolved concurrently
+	seq, err := e.takeForForward(id)
+	if err != nil {
+		return err
 	}
 	item.done <- Decision{Request: req, Edited: edited}
 	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideRequest, ID: id, Reason: ReleaseForwarded})
@@ -415,6 +433,36 @@ func (e *Engine) Drop(id int64) error {
 	return nil
 }
 
+// SetDropPending marks (or unmarks) a held request as scheduled to drop. While
+// marked, turning intercept off drops it and Forward returns ErrDropPending, so
+// the operator's drop wins even if another client releases the queue during
+// the UI's Undo window. Drop still commits it; Undo clears the mark.
+func (e *Engine) SetDropPending(id int64, pending bool) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	item, ok := e.queue[id]
+	if !ok {
+		return ErrNotHeld
+	}
+	item.held.DropPending = pending
+	return nil
+}
+
+// takeForForward removes a held request for Forward under one lock, refusing a
+// drop-pending item so a mark that lands concurrently is never bypassed.
+func (e *Engine) takeForForward(id int64) (int64, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	item, ok := e.queue[id]
+	if !ok {
+		return 0, ErrNotHeld // resolved concurrently
+	}
+	if item.held.DropPending {
+		return 0, ErrDropPending
+	}
+	return e.removeReqLocked(id), nil
+}
+
 // removeReq deletes a held request and bumps the generation. It returns the new
 // Seq and whether the item was present (false when it was resolved concurrently
 // — e.g. a drain or a client cancel racing a Forward/Drop).
@@ -424,6 +472,12 @@ func (e *Engine) removeReq(id int64) (int64, bool) {
 	if _, ok := e.queue[id]; !ok {
 		return 0, false
 	}
+	return e.removeReqLocked(id), true
+}
+
+// removeReqLocked deletes a present held request and returns the new Seq. The
+// caller holds e.mu and has checked that id is queued.
+func (e *Engine) removeReqLocked(id int64) int64 {
 	delete(e.queue, id)
 	for i, v := range e.order {
 		if v == id {
@@ -432,7 +486,7 @@ func (e *Engine) removeReq(id int64) (int64, bool) {
 		}
 	}
 	e.seq++
-	return e.seq, true
+	return e.seq
 }
 
 // SetRules compiles and installs the rule set, rejecting invalid regexes.

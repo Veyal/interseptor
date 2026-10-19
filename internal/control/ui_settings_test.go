@@ -104,7 +104,7 @@ func TestUISettingsAppearanceSection(t *testing.T) {
 // keys.js registry, or turning it off changes nothing (WCAG 2.1.4).
 func TestUISettingsSingleKeySwitchGatesLegacyShortcuts(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
-	requireUIContains(t, app, "import { readSingleKeyPref } from './keys.js'")
+	requireUIContains(t, app, "import { readSingleKeyPref, isShortcutTypingTarget } from './keys.js'")
 	requireUIRegex(t, app, `function isPlainShortcut\([^\n]*readSingleKeyPref\(\)`)
 	requireUIRegex(t, app, `function isHelpShortcut\(e\)\{[^}]*readSingleKeyPref\(\)`)
 	requireUIRegex(t, app, `e\.key==='j'\|\|e\.key==='k'\)&&!readSingleKeyPref\(\)`)
@@ -208,4 +208,24 @@ func TestUIEngagementSheetIsRegisteredAsModal(t *testing.T) {
 	if !strings.Contains(core, "'engagementSheet'") {
 		t.Error("engagementSheet must stay in MODAL_IDS so shortcut gating and the focus trap see it")
 	}
+}
+
+// The checklist module is optional and registers its hook after settings.js
+// loads; reading the hook once at load left Settings > Project & data without
+// the Get started card.
+func TestUISettingsChecklistWaitsForOptionalModuleHook(t *testing.T) {
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, settings, "onHook('mountChecklist'")
+	if strings.Contains(settings, "getHook('mountChecklist')") {
+		t.Error("settings.js must not read the optional mountChecklist hook once at load")
+	}
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	requireUIContains(t, core, "export function onHook(", "hookWaiters")
+}
+
+// A project switched from another client re-execs the server; the stream's next
+// hello must notice the project changed and reload like the local switch does.
+func TestUIStreamHelloReloadsWhenProjectChanged(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app, "checkProjectIdentityAfterHello()", "'/api/project?_t='", "location.reload()")
 }

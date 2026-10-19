@@ -100,6 +100,9 @@ func NormalizeFindingBody(body string) (string, error) {
 	seenFlows := make(map[flowCitation]struct{})
 	normalized := recs[:0]
 	for i := range recs {
+		if recs[i].Text != "" {
+			return "", misplacedBlockText(i)
+		}
 		if strings.TrimSpace(recs[i].Role) != "" && normalizeFindingBlockRole(recs[i].Role) == "" {
 			return "", fmt.Errorf("body block[%d]: invalid role %q", i, recs[i].Role)
 		}
@@ -198,6 +201,9 @@ func validateFindingEvidenceMetadata(role, source string, sourceFlowID int64) er
 // MarshalFindingBlocks validates and serializes structured evidence blocks for REST/MCP callers.
 func MarshalFindingBlocks(blocks []FindingBlock) (string, error) {
 	for i, block := range blocks {
+		if block.Text != "" {
+			return "", misplacedBlockText(i)
+		}
 		if err := validateSourceRef(block.SourceRef); err != nil {
 			return "", fmt.Errorf("body block[%d]: %w", i, err)
 		}
@@ -238,7 +244,7 @@ type Finding struct {
 	TS          int64              `json:"ts"`        // created, unix millis
 	UpdatedTS   int64              `json:"updatedTs"` // last modified, unix millis
 	Severity    string             `json:"severity"`  // Critical | High | Medium | Low | Info
-	Status      string             `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
+	Status      string             `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | ignored | fixed
 	Source      string             `json:"source"`    // human | ai | scanner
 	Title       string             `json:"title"`
 	Summary     string             `json:"summary,omitempty"`
@@ -334,6 +340,11 @@ type FindingBlock struct {
 	SourceRef    string                  `json:"sourceRef,omitempty"` // e.g. intruder:<runId>; server-stamped, immutable on generated images
 	Provenance   *FindingImageProvenance `json:"provenance,omitempty"`
 
+	// Text is input-only and always rejected: it catches the common mistake of
+	// sending a text block's Markdown as "text" instead of "md", which would
+	// otherwise be dropped silently and store an empty block. Never stored.
+	Text string `json:"text,omitempty"`
+
 	// Enriched at read time from the flows JOIN — never stored in the body JSON.
 	Method string `json:"method,omitempty"`
 	Host   string `json:"host,omitempty"`
@@ -392,6 +403,13 @@ type blockRecord struct {
 	SourceRef    string                  `json:"sourceRef,omitempty"`
 	Provenance   *FindingImageProvenance `json:"provenance,omitempty"`
 	Missing      bool                    `json:"missing,omitempty"`
+	Text         string                  `json:"text,omitempty"` // input-only; rejected (see FindingBlock.Text)
+}
+
+// misplacedBlockText is the error for a block that carries "text" (the
+// Markdown belongs in "md").
+func misplacedBlockText(i int) error {
+	return fmt.Errorf("body block[%d]: a text block's Markdown goes in \"md\", not \"text\"", i)
 }
 
 // marshalBody serializes blocks for storage, stripping enriched metadata.
@@ -766,11 +784,40 @@ func normalizeFindingStatus(s string) string {
 		return "false_positive"
 	case "wont_fix", "wontfix", "won't_fix":
 		return "wont_fix"
+	case "ignored", "ignore":
+		return "ignored"
 	case "fixed", "remediated":
 		return "fixed"
 	default:
 		return "open"
 	}
+}
+
+// FindingSeverities and FindingStatuses list the canonical values the API accepts.
+var (
+	FindingSeverities = []string{"Critical", "High", "Medium", "Low", "Info"}
+	FindingStatuses   = []string{"open", "needs_verification", "verified", "false_positive", "wont_fix", "ignored", "fixed"}
+)
+
+// ValidFindingSeverity reports whether s is a severity normalizeFindingSeverity
+// understands (empty is not; callers treat omission as the default).
+func ValidFindingSeverity(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "critical", "high", "medium", "low", "info", "informational":
+		return true
+	}
+	return false
+}
+
+// ValidFindingStatus reports whether s is a status normalizeFindingStatus
+// understands, including its documented aliases.
+func ValidFindingStatus(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "open", "verified", "confirmed", "needs_verification", "needs-verification", "needsverification", "triage", "triaged",
+		"false_positive", "false-positive", "fp", "wont_fix", "wontfix", "won't_fix", "ignored", "ignore", "fixed", "remediated":
+		return true
+	}
+	return false
 }
 
 func normalizeFindingSource(s string) string {

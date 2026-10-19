@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -86,7 +85,7 @@ func TestPortableProjectExportDoesNotTruncateLargeHistory(t *testing.T) {
 
 // A stray projects/default directory must not duplicate the reserved "default"
 // entry (the root project) that availableProjects always lists first.
-func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {
+func TestPortableProjectIncludesUpstreamProxyCAButImportKeepsLocal(t *testing.T) {
 	h, st, _ := newHub(t)
 	want := strings.TrimSpace(testCertificatePEM(t))
 	if err := st.SetSetting("upstream.proxyCA", want); err != nil {
@@ -107,9 +106,11 @@ func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {
 		t.Fatalf("exported upstream CA = %q, want %q", bundle.Settings["upstream.proxyCA"], want)
 	}
 
+	// The upstream proxy and its CA are this machine's network settings: a
+	// portable import reports them as kept local instead of applying them.
 	h2, st2, _ := newHub(t)
-	var got string
-	h2.SetUpstreamProxyCA = func(v []byte) error { got = string(v); return nil }
+	called := false
+	h2.SetUpstreamProxyCA = func([]byte) error { called = true; return nil }
 	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{"upstream.proxyCA": "\n" + want + "\n"}})
 	if err != nil {
 		t.Fatal(err)
@@ -119,12 +120,14 @@ func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {
 	if imported.Code != http.StatusOK {
 		t.Fatalf("import status %d: %s", imported.Code, imported.Body.String())
 	}
-	if got != want {
-		t.Fatalf("SetUpstreamProxyCA = %q, want %q", got, want)
+	if called {
+		t.Fatal("import applied the bundle's upstream CA")
 	}
-	stored, ok, err := st2.GetSetting("upstream.proxyCA")
-	if err != nil || !ok || stored != want {
-		t.Fatalf("stored upstream CA = %q, %v, %v; want %q, true, nil", stored, ok, err, want)
+	if _, ok, _ := st2.GetSetting("upstream.proxyCA"); ok {
+		t.Fatal("import stored the bundle's upstream CA")
+	}
+	if !strings.Contains(imported.Body.String(), `"keptLocalSettings":["upstream.proxyCA"]`) {
+		t.Fatalf("import result does not name the kept setting: %s", imported.Body.String())
 	}
 }
 
@@ -203,66 +206,6 @@ func TestPortableProjectRejectsInvalidOriginTLSVerificationBeforeApplying(t *tes
 	}
 	if got, ok, _ := st.GetSetting(originTLSVerifySettingKey); !ok || got != "1" {
 		t.Fatalf("invalid bundle changed origin TLS setting to %q, ok=%v", got, ok)
-	}
-}
-
-func TestPortableProjectRejectsInvalidUpstreamCAWithoutApplyingProxy(t *testing.T) {
-	h, st, _ := newHub(t)
-	proxyCalled := false
-	h.SetUpstreamProxyCA = func([]byte) error { return errors.New("invalid certificate") }
-	h.Upstream = func(string) error { proxyCalled = true; return nil }
-	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{
-		"upstream.proxyCA": "invalid", "upstream.proxy": "http://proxy.example:8080",
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rr := httptest.NewRecorder()
-	(&projectAPI{Hub: h}).importProject(rr, httptest.NewRequest(http.MethodPost, "/api/import/project", bytes.NewReader(payload)))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("import status %d, want %d", rr.Code, http.StatusBadRequest)
-	}
-	if proxyCalled {
-		t.Fatal("upstream proxy applied after invalid CA")
-	}
-	if _, ok, _ := st.GetSetting("upstream.proxy"); ok {
-		t.Fatal("invalid import persisted upstream proxy")
-	}
-	if _, ok, _ := st.GetSetting("upstream.proxyCA"); ok {
-		t.Fatal("invalid import persisted upstream CA")
-	}
-}
-
-func TestPortableProjectRejectsUpstreamProxyFailureWithoutPersistingCA(t *testing.T) {
-	h, st, _ := newHub(t)
-	previous := strings.TrimSpace(testCertificatePEM(t))
-	current := strings.TrimSpace(testCertificatePEM(t))
-	if err := st.SetSetting("upstream.proxyCA", previous); err != nil {
-		t.Fatal(err)
-	}
-	var applied []string
-	h.SetUpstreamProxyCA = func(v []byte) error { applied = append(applied, string(v)); return nil }
-	h.Upstream = func(string) error { return errors.New("invalid proxy") }
-	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{
-		"upstream.proxyCA": current, "upstream.proxy": "http://proxy.example:8080",
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rr := httptest.NewRecorder()
-	(&projectAPI{Hub: h}).importProject(rr, httptest.NewRequest(http.MethodPost, "/api/import/project", bytes.NewReader(payload)))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("import status %d, want %d", rr.Code, http.StatusBadRequest)
-	}
-	if len(applied) != 2 || applied[0] != current || applied[1] != previous {
-		t.Fatalf("runtime CA applications did not apply current then previous")
-	}
-	stored, ok, err := st.GetSetting("upstream.proxyCA")
-	if err != nil || !ok || stored != previous {
-		t.Fatalf("stored upstream CA did not retain previous value: ok=%v err=%v", ok, err)
-	}
-	if _, ok, _ := st.GetSetting("upstream.proxy"); ok {
-		t.Fatal("failed import persisted upstream proxy")
 	}
 }
 
@@ -400,5 +343,51 @@ func TestExternalProjectSwitchRejectsUnusableFolder(t *testing.T) {
 	case target := <-fired:
 		t.Fatalf("switch fired for an unusable folder: %q", target)
 	case <-time.After(350 * time.Millisecond):
+	}
+}
+
+// QA round 2: the portable project JSON (Settings → Project → Export project,
+// the shareable bundle) carried the upstream proxy password in plaintext.
+// The bundle keeps the proxy URL and user but never a saved password, and
+// re-importing it where the same proxy is configured keeps the local password.
+func TestPortableProjectExportOmitsSavedProxyPasswords(t *testing.T) {
+	h, st, _ := newHub(t)
+	for k, v := range map[string]string{
+		"upstream.proxy":     "http://bob:s3cretPW@proxy.example.com:3128",
+		proxyAuthEnabledKey:  "1",
+		proxyAuthUserKey:     "qa",
+		proxyAuthPasswordKey: "listenerPW",
+	} {
+		if err := st.SetSetting(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	export := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(export, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if export.Code != http.StatusOK {
+		t.Fatalf("export status %d", export.Code)
+	}
+	raw := export.Body.Bytes()
+	for _, secret := range []string{"s3cretPW", "listenerPW"} {
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Fatalf("portable export leaks %q: %s", secret, raw)
+		}
+	}
+	var bundle projectBundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if got := bundle.Settings["upstream.proxy"]; got != "http://bob@proxy.example.com:3128" {
+		t.Fatalf("exported upstream = %q, want the URL without its password", got)
+	}
+
+	h.Upstream = func(string) error { return nil }
+	imported := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).importProject(imported, httptest.NewRequest(http.MethodPost, "/api/import/project", bytes.NewReader(raw)))
+	if imported.Code != http.StatusOK {
+		t.Fatalf("import status %d: %s", imported.Code, imported.Body.String())
+	}
+	if got, _, _ := st.GetSetting("upstream.proxy"); got != "http://bob:s3cretPW@proxy.example.com:3128" {
+		t.Fatalf("re-import over the same proxy dropped the local password: %q", got)
 	}
 }

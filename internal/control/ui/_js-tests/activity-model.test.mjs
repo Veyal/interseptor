@@ -5,7 +5,7 @@ import { ACTIVITY_CATEGORIES, activityCategory, filterActivity, categoryCounts, 
 const at = (y, mo, d, h = 12, mi = 0) => new Date(y, mo - 1, d, h, mi, 0).getTime();
 
 test('categories are the documented five', () => {
-  assert.deepEqual(ACTIVITY_CATEGORIES.map((c) => c.id), ['proxy', 'agent', 'findings', 'scope', 'settings']);
+  assert.deepEqual(ACTIVITY_CATEGORIES.map((c) => c.id), ['proxy', 'agent', 'findings', 'notes', 'scope', 'settings']);
 });
 
 test('tools map to a category and unknown tools fall back to agent', () => {
@@ -33,7 +33,7 @@ test('filterActivity combines categories and the intent substring', () => {
 
 test('categoryCounts counts every category including zeros', () => {
   const c = categoryCounts([{ tool: 'flows' }, { tool: 'flows' }, { tool: 'scope' }]);
-  assert.deepEqual(c, { proxy: 2, agent: 0, findings: 0, scope: 1, settings: 0 });
+  assert.deepEqual(c, { proxy: 2, agent: 0, findings: 0, notes: 0, scope: 1, settings: 0 });
 });
 
 test('dayKey and dayLabel use local days', () => {
@@ -94,8 +94,8 @@ test('real MCP tool names (verb_noun) land in their category', () => {
     list_flows: 'proxy', get_flow: 'proxy', send_request: 'proxy', run_scanner: 'proxy', start_intruder: 'proxy',
     list_issues: 'proxy', tag_flow: 'proxy', oob_new: 'proxy', authz_run: 'proxy', prune_history: 'proxy',
     create_finding: 'findings', list_findings: 'findings', update_finding: 'findings', add_finding_poc: 'findings',
-    record_finding_from_flow: 'findings', export_report: 'findings', set_note: 'findings', append_notes: 'findings',
-    get_notes: 'findings', render_evidence: 'findings',
+    record_finding_from_flow: 'findings', export_report: 'findings', set_note: 'notes', append_notes: 'notes',
+    get_notes: 'notes', set_notes: 'notes', render_evidence: 'findings',
     add_scope_rule: 'scope', list_scope: 'scope', scope_from_url: 'scope',
     get_settings: 'settings', add_rule: 'settings', list_rules: 'settings', android_setup: 'settings',
     ios_ssh_setup: 'settings', ca_info: 'settings', set_interception_setup: 'settings', export_full_project: 'settings',

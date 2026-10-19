@@ -76,7 +76,7 @@ func TestUILiveStreamFreeze(t *testing.T) {
 	}
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	requireUIContains(t, app, "toggleLiveFreeze()")
-	if !strings.Contains(app, "e.ctrlKey&&e.altKey&&!e.metaKey&&!e.shiftKey&&e.key.toLowerCase()==='p'") {
-		t.Error("Ctrl+Alt+P must toggle the live-stream freeze in Proxy")
+	if !strings.Contains(app, "(e.ctrlKey||e.metaKey)&&e.altKey&&!e.shiftKey&&(e.code==='KeyP'||e.key.toLowerCase()==='p')") {
+		t.Error("Ctrl/Cmd+Alt+P must toggle the live-stream freeze in Proxy (the sheet lists Ctrl/⌘)")
 	}
 }

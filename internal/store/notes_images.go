@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -291,6 +292,20 @@ func DecodeNotesImagePayload(mime, b64 string) (string, []byte, error) {
 		mime = "application/octet-stream"
 	}
 	return mime, data, nil
+}
+
+// SniffNotesImageMIME returns the allowlisted raster MIME type the bytes
+// actually are, judged by content rather than the declared type, or "" when
+// they are not a supported image.
+func SniffNotesImageMIME(data []byte) string {
+	if len(data) >= 12 && string(data[4:8]) == "ftyp" && (string(data[8:12]) == "avif" || string(data[8:12]) == "avis") {
+		return "image/avif"
+	}
+	mime := http.DetectContentType(data)
+	if allowedNotesImageMIME[mime] {
+		return mime
+	}
+	return ""
 }
 
 // NotesImageExists reports whether an image id is present (for tests).

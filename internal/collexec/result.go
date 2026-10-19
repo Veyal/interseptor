@@ -25,9 +25,12 @@ const (
 type BlockReason string
 
 const (
-	BlockUnresolved  BlockReason = "unresolved_variables"
-	BlockScope       BlockReason = "out_of_scope"
-	BlockPin         BlockReason = "base_target_pin"
+	BlockUnresolved BlockReason = "unresolved_variables"
+	BlockScope      BlockReason = "out_of_scope"
+	BlockPin        BlockReason = "base_target_pin"
+	// BlockIPGuard is a loopback/private/link-local destination refused at dial
+	// time because scope has no include rule naming the host.
+	BlockIPGuard     BlockReason = "ip_guard"
 	BlockOwn         BlockReason = "own_listener"
 	BlockQuarantined BlockReason = "scripts_quarantined"
 )

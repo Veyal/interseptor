@@ -427,7 +427,17 @@ type runtimeCloser interface {
 	Close()
 }
 
+// streamCloser ends the hub's long-lived streams (the UI's /api/events). An
+// open stream is an active connection that http.Server.Shutdown would wait on
+// for the whole timeout, which kept a quitting process alive for 5 s.
+type streamCloser interface {
+	CloseStreams()
+}
+
 func shutdownRuntime(timeout time.Duration, control runtimeShutdowner, hub runtimeCloser, proxy runtimeShutdowner) {
+	if s, ok := hub.(streamCloser); ok {
+		s.CloseStreams()
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	for _, shutdowner := range []runtimeShutdowner{control, proxy} {

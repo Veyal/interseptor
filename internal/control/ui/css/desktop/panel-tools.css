@@ -31,7 +31,9 @@ html.desktop-app :is(.rep-line,.coll-urlbar) .ui-select-value[style]{color:var(-
 /* One primary per bar: Send (Repeater, Collections) or Start (Intruder). */
 html.desktop-app :is(#repSend,#collSend,#intrStart){flex:none;min-height:var(--control-h);padding:0 12px;gap:8px;font-size:var(--text-ui);font-weight:600;white-space:nowrap}
 html.desktop-app :is(#repSend,#collSend) .icon{display:none}
-html.desktop-app :is(#repSend .kbd,#collSend .dsk-send-hint){display:inline-flex;align-items:center;height:18px;padding:0 5px;border:0;border-radius:var(--radius-xs);background:color-mix(in srgb,var(--text-on-accent) 16%,transparent);color:var(--text-on-accent);font:500 var(--text-caption)/18px var(--ui);letter-spacing:normal;opacity:.85}
+html.desktop-app :is(#repSend .kbd,#collSend .dsk-send-hint){display:inline-flex;align-items:center;height:18px;padding:0 5px;border:0;border-radius:var(--radius-xs);background:color-mix(in srgb,var(--text-on-accent) 16%,transparent);color:var(--text-on-accent);font:500 var(--text-caption)/18px var(--ui);letter-spacing:normal}
+/* On the light theme the accent button is mid-dark and its hint is white: a darkening tint, never a lightening one or a faded hint (3.9:1). */
+html.desktop-app[data-theme="light"] :is(#repSend .kbd,#collSend .dsk-send-hint){background:rgba(0,0,0,.16)}
 /* Everything else on a bar is ghost. */
 html.desktop-app :is(.rep-line,.intr-bar,.coll-bar) .btn:not(.btn-primary):not(.accent):not(.btn-danger):not(.danger):not(.btn-field){background:transparent;border-color:transparent;color:var(--text-secondary)}
 html.desktop-app :is(.rep-line,.intr-bar,.coll-bar) .btn:not(.btn-primary):not(.accent):not(.btn-danger):not(.danger):not(.btn-field):hover{background:var(--surface-hover);color:var(--text-primary)}

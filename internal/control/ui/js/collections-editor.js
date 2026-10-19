@@ -9,7 +9,7 @@ import * as SF from './collections-safety.js';
 import { paintEnvDot, renderScriptsChip, updateBadge } from './collections-env.js';
 
 // Functions sibling modules call through X (see collections-core.js).
-Object.assign(X, { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem, paintPane, saveForSend, scheduleResolve });
+Object.assign(X, { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem, paintPane, paintSentOver, saveForSend, scheduleResolve });
 
 export function renderEmptyEditor() {
   S.ed = null;
@@ -558,7 +558,7 @@ export function paintSentOver() {
   const prev = S.ed ? SF.sentOverFor(SENT_OVER, S.ed.uid) : null;
   host.hidden = !prev;
   if (!prev) return;
-  host.append(el('span', '', 'Sent with edits that replaced the stored request. The previous version is kept until you reload.'),
+  host.append(el('span', '', SF.sentOverText(S.step ? M.stepSummary(S.step).kind : '')),
     btn('Restore previous version', () => restoreSentOver(), 'btn xs', 'refresh'),
     btn('Keep these edits', () => { SF.forgetSentOver(SENT_OVER, S.ed.uid); paintSentOver(); }, 'btn xs'));
 }

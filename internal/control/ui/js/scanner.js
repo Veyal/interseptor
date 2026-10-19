@@ -7,7 +7,7 @@ import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { createWindowedList } from './windowed-list.js';
 import { isDesktopSkin, initScannerDesktop, scanTargetRowDesktop, scanDetailDesktopHTML } from './desktop-panel-scanner.js';
 import { stepIndex } from './list-rows-model.js';
-import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, hostCounts, issuesForHost, groupHostLabel, coverageNote } from './scanner-model.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, onlySeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget, hostCounts, issuesForHost, groupHostLabel, coverageNote, scanToastText } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -771,6 +771,9 @@ export async function loadIssues(){
   catch(e){if(resultsEpoch===scanResultsEpoch)renderLoadError(stateEl,'Scanner results',e,loadIssues,scanState.issues.length>0);}
   finally{if(resultsEpoch===scanResultsEpoch&&stateEl&&stateEl.textContent==='Loading scanner results…')stateEl.textContent='';}
 }
+// The status note is ellipsised in a one-row toolbar; its full text is the tooltip.
+{const noteEl=$('#scanRescanState');
+if(noteEl&&typeof MutationObserver==='function')new MutationObserver(()=>{const t=noteEl.textContent.trim();if(t)noteEl.title=t;else{noteEl.removeAttribute('title');delete noteEl.dataset.tooltip;}}).observe(noteEl,{childList:true,characterData:true,subtree:true});}
 export async function runScan(){
   if(scanRunPending||scanClearPending){toast(scanClearPending?'wait for scanner results to finish clearing':'scan already running');return;}
   const epoch=++scanRunEpoch;
@@ -798,7 +801,7 @@ export async function runScan(){
     const coverage=coverageNote(d.scan);
     if(stateEl)stateEl.textContent=coverage||'Rescan complete · stale issues reconciled for this scan';
     setScanRunState('success','Scan complete');resetScanRun(700,epoch);
-    toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
+    toast(scanToastText(scanState.issues,host,search));}
   catch(e){
     if(resultsEpoch!==scanResultsEpoch){
       if(epoch===scanRunEpoch){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);}
@@ -979,7 +982,7 @@ export function renderScan(opts){
   const all=groupIssues(scoped);
   const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
   renderScanChips(all);
-  $('#scanCount').textContent=summaryText(all,scoped);
+  $('#scanCount').textContent=summaryText(all,scoped,groups);
   if(!groups.length){
     scanState.sel=null;
     if(scanListWin)scanListWin.suspend();

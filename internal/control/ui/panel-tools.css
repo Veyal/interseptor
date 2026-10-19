@@ -7,7 +7,8 @@
 .rep-diff{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg1)}
 .rep-diff[hidden],#repResView[hidden],#intrResults[hidden],.intr-head[hidden]{display:none}
 .rep-diff-head{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)}
-.rep-diff-head strong{margin-right:auto;font-size:var(--fs-sm)}
+.rep-diff-head strong{flex:1 0 100%;font-size:var(--fs-sm)}
+.rep-diff-ignore{display:inline-flex;align-items:center;gap:6px}
 .rep-diff-note{flex:none;margin:0;padding:var(--sp-1) var(--sp-3)}
 .rep-diff-body{flex:1;min-height:0;overflow:auto}
 #repAttach,#repProof,#repDiffBtn,#repCopyAs,#intrAttach,#intrDiffBtn,
@@ -39,6 +40,32 @@
 .intr-chip-error,.intr-chip-status{--chip-c:var(--rd-block)}
 .intr-chip-length,.intr-chip-time,.intr-chip-flag{--chip-c:var(--rd-gap)}
 .intr-chip-match{--chip-c:var(--rd-pass)}
+/* Result rows: chips are icon-only (full label in the tooltip) so a chip never covers the payload. */
+.intr-row .intr-chip{justify-content:center;width:18px;padding:0}
+.intr-row .intr-chip-text{display:none}
+.intr-invalid{color:var(--rd-block)}
+.intr-num input[aria-invalid="true"]{border-color:var(--rd-block)}
+.intr-row .pl-text{flex:1 1 auto;min-width:8ch}
+/* The extracted value shrinks first (its full text is in the row tooltip) so chips never squeeze the payload. */
+html:not(.desktop-app) .intr-row .ext{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%}
+
+/* ---- Intruder, web, 900px and up: setup column (template over payload lists) beside Results ----
+   Both editors keep a usable height (the pane scrolls when the window is short) and every
+   payload list stays inside its pane instead of running under Results. */
+@media not all and (max-width:899px){
+  html:not(.desktop-app) .intr-work{display:grid;grid-template-columns:auto minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:minmax(0,.7fr) minmax(0,1.3fr);min-height:0}
+  html:not(.desktop-app) .intr-work>#intrHistory{grid-column:1;grid-row:1 / -1}
+  html:not(.desktop-app) .intr-work>.intr-config{grid-column:2;grid-row:1;min-height:0;min-width:0;overflow-y:auto}
+  html:not(.desktop-app) .intr-work>.intr-payload-pane{grid-column:2;grid-row:2;min-height:0;min-width:0;overflow-y:auto;border-top:1px solid var(--line)}
+  html:not(.desktop-app) .intr-work>.intr-results{grid-column:3;grid-row:1 / -1;min-height:0;min-width:0}
+  html:not(.desktop-app) .intr-payload-pane .intr-payloads{min-height:150px}
+  html:not(.desktop-app) .intr-pl{min-width:120px}
+  html:not(.desktop-app) .intr-pl textarea{min-height:64px}
+  /* Results is narrow here: the header wraps so every action stays visible (no hidden sideways scroll). */
+  html:not(.desktop-app) .intr-results>.pane-head{flex-wrap:wrap;overflow:visible;row-gap:var(--sp-1);min-height:38px;height:auto}
+  html:not(.desktop-app) .intr-results>.pane-head>*{flex:none;white-space:nowrap}
+  html:not(.desktop-app) .intr-results>.pane-head>.spacer{flex:1 1 0;min-width:0}
+}
 
 /* ---- Intruder: stepper below 900px (three columns above) ---- */
 @media (max-width:899px){

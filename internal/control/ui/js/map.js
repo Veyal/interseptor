@@ -1,6 +1,7 @@
-import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey, openFlow, getHook, openCtxMenu, icon } from './core.js';
+import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey, openFlow, getHook, openCtxMenu, ctxMenuOpen, icon } from './core.js';
 import { linkedIndex, endpointLinked, coveragePips, coverageSummary, authState } from './map-coverage.js';
 import { renderState } from './statepanel.js';
+import { wheelZoomFactor, zoomAround, gestureZoom, endpointUrl, paramsCountText, mapCountSuffix } from './map-model.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
@@ -286,9 +287,8 @@ export function fillMapTags(){
   const tags = state.tags || [];
   sel.style.display = tags.length ? '' : 'none';
   if(mapState.tag && !tags.some(t => t.tag === mapState.tag)) mapState.tag = '';
-  sel.innerHTML = '<option value="">all tags</option>'
+  sel.innerHTML = '<option value="">All tags</option>'
     + tags.map(t => `<option value="${escAttr(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
-  if(isDesktopSkin()) sel.options[0].textContent = 'All tags';
   sel.value = mapState.tag;
 }
 
@@ -301,9 +301,8 @@ export function fillMapMethods(){
   const sel = $('#mapMethod'); if(!sel) return;
   const methods = [...new Set(mapState.eps.map(e => e.method))].sort();
   const cur = sel.value;
-  sel.innerHTML = '<option value="">method</option>' + methods.map(m => `<option value="${escAttr(m)}">${esc(m)}</option>`).join('');
+  sel.innerHTML = '<option value="">All methods</option>' + methods.map(m => `<option value="${escAttr(m)}">${esc(m)}</option>`).join('');
   if(methods.includes(cur)) sel.value = cur;
-  if(isDesktopSkin()) sel.options[0].textContent = 'All methods'; // desktop: one case for the Filters popover
 }
 
 export function epMatchesSearch(e, q){
@@ -462,7 +461,9 @@ function wireMapEpRows(root){
       if(mapState.searchExpandedClusters.has(k))return;
       if(mapState.expandedClusters.has(k)) mapState.expandedClusters.delete(k);
       else mapState.expandedClusters.add(k);
-      renderMap();
+      // Expanding a cluster re-renders the tree; keep the sub-folders the user opened.
+      mapState._reopenFolders = new Set([...document.querySelectorAll('#mapTree details.map-folder[open][data-fkey]')].map(d => d.dataset.fkey));
+      try{ renderMap(); }finally{ mapState._reopenFolders = null; }
     };
   });
 }
@@ -500,16 +501,17 @@ function mapCtxFor(trigger){
 }
 
 function wireMapContextMenus(){
-  ['#mapTree', '#mapTable'].forEach(sel => {
+  ['#mapTree', '#mapTable', '#mapGraphG'].forEach(sel => {
     const box = $(sel);
     if(!box || box._mapCtxWired) return;
     box._mapCtxWired = true;
     box.addEventListener('contextmenu', ev => {
-      const row = ev.target.closest && ev.target.closest('.map-ep[data-flow], tr[data-flow]');
+      const row = ev.target.closest && ev.target.closest('.map-ep[data-flow], tr[data-flow], .g-node[data-flow]');
       const ctx = row && mapCtxFor(row);
       if(!ctx) return;
       ev.preventDefault();
       ev.stopPropagation();
+      graphTipHide(); // the hover tooltip would sit beside (or under) the menu
       const r = row.getBoundingClientRect();
       openCtxMenu(ev.clientX || r.left, ev.clientY || r.bottom, ctx.sections, null);
     });
@@ -563,7 +565,7 @@ export function mapEpRow(e, dim){
     clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cluster"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
-  return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
+  return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+endpointUrl({...e,path}))}">
     <span class="map-m" style="color:${methodColor(e.method)}">${esc(e.method)}</span>
     <span class="map-p">${esc(path)}</span>${clusterBadge}<span class="map-sts">${sts}</span>${mapCoverageHTML(e)}
     <span class="map-hits">${e.hits > 1 ? e.hits+'×' : ''}</span></div>`;
@@ -573,10 +575,12 @@ export function mapRenderNode(node, open, dim, lazy=false){
   let html = '';
   [...node.kids.values()].sort((a, b) => a.name.localeCompare(b.name)).forEach(kid => {
     const summary = `<summary><span class="map-seg">/${esc(kid.name)}</span><span class="map-c">${mapCount(kid)}</span></summary>`;
-    if(lazy && !open){
-      html += `<details class="map-folder">${summary}<div class="map-body" data-lazy-key="${escAttr(kid.key)}"></div></details>`;
+    // Folders the user had open before a re-render (cluster badge) stay open.
+    const isOpen = open || !!(mapState._reopenFolders && mapState._reopenFolders.has(kid.key));
+    if(lazy && !isOpen){
+      html += `<details class="map-folder" data-fkey="${escAttr(kid.key)}">${summary}<div class="map-body" data-lazy-key="${escAttr(kid.key)}"></div></details>`;
     }else{
-      html += `<details class="map-folder"${open ? ' open' : ''}>${summary}<div class="map-body">${mapRenderNode(kid, open, dim, lazy && !open)}</div></details>`;
+      html += `<details class="map-folder" data-fkey="${escAttr(kid.key)}"${isOpen ? ' open' : ''}>${summary}<div class="map-body">${mapRenderNode(kid, open, dim, lazy && !open)}</div></details>`;
     }
   });
   node.eps.slice().sort((a, b) => a.method.localeCompare(b.method)).forEach(e => html += mapEpRow(e, dim));
@@ -647,11 +651,12 @@ export async function loadParams(){
     const q = new URLSearchParams();
     if(mapState.domain) q.set('host', mapState.domain);
     q.set('inScope', '1');
+    q.set('limit', '2000'); // the server's maximum sample; the default 400 understated hit counts
     const d = await api('/api/params?' + q);
     if (epoch !== loadParamsEpoch) return;
     renderMapParams(d);
     if(warn) warn.style.display='none';
-    const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
+    const c=$('#mapCount');if(c)c.textContent=paramsCountText(d);
   }catch(e){
     // Parameter mining is an explicit user action; leave a retry in the panel
     // instead of reducing a failed request to a transient toast.
@@ -747,6 +752,9 @@ export function renderMap(){
     : hiddenByNoise
       ? `${mapState.noiseHiddenCount.toLocaleString()} endpoint${mapState.noiseHiddenCount === 1 ? '' : 's'} hidden by the 403/404 noise filter`
       : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
+  // The graph also leaves out media endpoints, which "before collapsing" must not count.
+  const rawCount = mapState.view === 'graph' ? mapGraphDisplayEps(filtered).length : filtered.length;
+  if(eps.length) countText = countText.replace(/^([\d,]+ endpoints?)/, '$1' + mapCountSuffix(eps.length, rawCount));
   if(mapState.truncated && mapState.total > mapState.eps.length) countText += ` (${mapState.total.toLocaleString()} total)`;
   $('#mapCount').textContent = countText;
   const warn = $('#mapWarn');
@@ -1021,7 +1029,7 @@ function renderMapTable(eps){
     ${th('status', 'Status', '88px')}
     ${th('hits', 'Hits', '52px')}
     <th class="map-th-evidence">Evidence</th>
-    <th style="width:72px"></th>
+    <th style="width:84px"></th>
   </tr></thead>`;
 
   if(sorted.length >= MAP_TABLE_VIRTUAL_MIN){
@@ -1228,6 +1236,17 @@ function mapExpandForSearch(eps){
   root.children.forEach(mark);
 }
 
+// graphLabelChars is the number of characters a node's label draws (an upper
+// estimate that does not depend on text metrics, which differ per engine).
+function graphLabelChars(n){
+  const col = n._col ? ` +${gCount(n)}`.length : 0;
+  if(n.type === 'host') return Math.min(32, String(n.label || '').length) + col;
+  if(n.type === 'ep'){
+    const e = n.ep || {};
+    return String(e.method || '').length + 1 + Math.min(36, String(e.path || '/').length) + (e.hits > 1 ? String(e.hits).length + 4 : 0);
+  }
+  return Math.min(28, String(n.label || '').length) + col;
+}
 export function graphLayout(hosts){
   const COL = 168, ROW = 24, PAD = 20;
   let leaf = 0, maxD = 0;
@@ -1246,7 +1265,12 @@ export function graphLayout(hosts){
     if(!n._col) n.children.forEach(c => { edges.push([n, c]); collect(c); });
   }
   hosts.forEach(collect);
-  return { nodes, edges, w: PAD * 2 + maxD * COL + 200, h: PAD * 2 + Math.max(1, leaf) * ROW };
+  // Width covers the right-most label (not just the last column plus a fixed
+  // allowance), so Fit never clips long leaf labels.
+  const CHAR = 7;
+  let right = PAD * 2 + maxD * COL + 200;
+  nodes.forEach(n => { right = Math.max(right, n.px + 10 + graphLabelChars(n) * CHAR + PAD); });
+  return { nodes, edges, w: right, h: PAD * 2 + Math.max(1, leaf) * ROW };
 }
 
 function graphNodeMatches(n){
@@ -1261,7 +1285,7 @@ function graphTipShow(n, ev){
   if(n.type === 'ep' && n.ep){
     const e = n.ep;
     html = `<div class="tip-m" style="color:${methodColor(e.method)}">${esc(e.method)} <span style="color:${statusColor(e.lastStatus)}">${e.lastStatus || '—'}</span></div>
-      <div>${esc((e.scheme||'http')+'://'+e.host+(e.path||'/'))}</div>
+      <div>${esc(endpointUrl(e))}</div>
       ${e.hits > 1 ? `<div class="hint">${e.hits} hits · ${(e.statuses||[]).join(', ')}</div>` : ''}`;
   }else{
     html = `<div class="tip-m">${esc(n.label)}</div><div class="hint">${gCount(n)} endpoint${gCount(n) === 1 ? '' : 's'} · click to ${mapState.collapsed.has(n.key) ? 'expand' : 'collapse'}</div>`;
@@ -1309,7 +1333,7 @@ export function gNode(n){
     hitW = Math.min(280, 10 + n.label.length * 6.5);
   }else if(n.type === 'ep'){
     const e = n.ep, col = statusColor(e.lastStatus);
-    title = esc(e.method+' '+(e.scheme||'http')+'://'+e.host+(e.path||'/'));
+    title = esc(e.method+' '+endpointUrl(e));
     mk = `<rect x="${x-5}" y="${y-5}" width="10" height="10" rx="2" fill="${col}"/>`;
     lb = `<text class="g-ep" x="${x+10}" y="${y}"><tspan fill="${methodColor(e.method)}" font-weight="700">${esc(e.method)}</tspan> <tspan class="g-dim">${esc(gTrunc((e.path||'/'), 36))}${e.hits > 1 ? ' · '+e.hits+'×' : ''}</tspan></text>`;
     hitW = Math.min(320, 10 + ((e.path||'').length + e.method.length) * 5.5);
@@ -1323,7 +1347,7 @@ export function gNode(n){
   const aria=n.type==='host'
     ?`${n.label}, host, ${gCount(n)} endpoints. Enter toggles; F focuses host.`
     :n.type==='ep'
-      ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}, status ${n.ep.lastStatus||'unknown'}, ${n.ep.hits||0} hit${n.ep.hits===1?'':'s'}. Enter opens the latest flow.`
+      ?`${n.ep.method} ${endpointUrl(n.ep)}, status ${n.ep.lastStatus||'unknown'}, ${n.ep.hits||0} hit${n.ep.hits===1?'':'s'}. Enter opens the latest flow.`
       :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
   return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="${selected?'0':'-1'}" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
@@ -1435,7 +1459,7 @@ export function renderMapGraph(eps){
     el.addEventListener('mouseenter', ev => {
       const key = el.dataset.key;
       const n = lay.nodes.find(x => x.key === key);
-      if(n) graphTipShow(n, ev);
+      if(n && !ctxMenuOpen()) graphTipShow(n, ev);
     });
     el.addEventListener('mouseleave', graphTipHide);
     el.addEventListener('dblclick', ev => {
@@ -1496,7 +1520,13 @@ export async function mapFitNow(animate=false){
   const svg = $('#mapGraphSvg'), gr = mapState._g;
   if(!svg || !gr) return;
   const vw = svg.clientWidth || 820, vh = svg.clientHeight || 520;
-  const k = Math.max(0.35, Math.min(1.5, vw / gr.w, vh / gr.h));
+  // Prefer the measured content extents (labels included); the layout estimate is the floor.
+  let gw = gr.w;
+  try{
+    const bb = $('#mapGraphG')?.getBBox?.();
+    if(bb && bb.width > 0) gw = Math.max(gw, bb.x + bb.width + 20);
+  }catch(e){}
+  const k = Math.max(0.35, Math.min(1.5, (vw - 32) / gw, vh / gr.h)); // 16px left offset + 16px right margin
   const from={...mapState.zoom};
   const next={k,x:16,y:Math.max(10,(vh-gr.h*k)/2)};
   mapState.zoom=next;
@@ -1522,13 +1552,8 @@ export function mapGraphWheel(e, zoom, apply){
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
-    // ctrlKey pinch often reports larger deltaY; normalize so one notch ≈ 10%.
-    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    const f = Math.exp(-dy * 0.01);
-    const nk = Math.max(0.1, Math.min(4, zoom.k * f));
-    zoom.x = mx - (mx - zoom.x) * (nk / zoom.k);
-    zoom.y = my - (my - zoom.y) * (nk / zoom.k);
-    zoom.k = nk;
+    // A wheel notch steps ~10%; a trackpad pinch (ctrl+wheel in Chromium) streams small deltas.
+    Object.assign(zoom, zoomAround(zoom, mx, my, zoom.k * wheelZoomFactor(e.deltaY, e.deltaMode)));
     apply();
     return 'zoom';
   }
@@ -1546,6 +1571,27 @@ export function mapGraphWheel(e, zoom, apply){
   svg.addEventListener('wheel', e => {
     mapGraphWheel(e, mapState.zoom, mapApplyZoom);
   }, { passive: false });
+  // Safari/WKWebView delivers a trackpad pinch as gesturestart/gesturechange
+  // (scale is cumulative since the start), not as ctrl+wheel.
+  let pinch = null;
+  const pinchPoint = e => {
+    const r = svg.getBoundingClientRect();
+    const cx = Number.isFinite(e.clientX) ? e.clientX : r.left + r.width / 2;
+    const cy = Number.isFinite(e.clientY) ? e.clientY : r.top + r.height / 2;
+    return [cx - r.left, cy - r.top];
+  };
+  svg.addEventListener('gesturestart', e => {
+    e.preventDefault();
+    pinch = { ...mapState.zoom };
+  }, { passive: false });
+  svg.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    if(!pinch) pinch = { ...mapState.zoom };
+    const [mx, my] = pinchPoint(e);
+    Object.assign(mapState.zoom, gestureZoom(pinch, e.scale, mx, my));
+    mapApplyZoom();
+  }, { passive: false });
+  svg.addEventListener('gestureend', e => { e.preventDefault(); pinch = null; }, { passive: false });
   svg.addEventListener('mousedown', e => {
     if(e.target.closest('.g-click')) return;
     drag = { x: e.clientX, y: e.clientY, ox: mapState.zoom.x, oy: mapState.zoom.y };

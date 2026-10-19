@@ -216,6 +216,23 @@ const count = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Math.floor(N
 // tone and accessible label). Input: {proxyAddr, intercept:{enabled,
 // responseEnabled, held}, scope:{loaded, inCount, outCount}, flows, live,
 // project, version, warnings:[{title, detail}]}. Pure, so it runs under node.
+// interceptPillModel: the title-bar pill toggles request interception, so its
+// pressed state follows Requests; its text says what is being held, so it never
+// reads "off" while responses are held (the status bar says "on" then).
+export function interceptPillModel(ic = {}) {
+  const req = !!ic.enabled, resp = !!ic.responseEnabled;
+  const held = Number(ic.held) > 0 ? Math.floor(Number(ic.held)) : 0;
+  const tail = held ? ' \u00b7 ' + held + ' held' : '';
+  const text = (req ? 'Intercept on' : resp ? 'Responses on' : 'Intercept off') + tail;
+  const also = req && resp ? ' Responses are also held.' : !req && resp ? ' Responses are held.' : '';
+  return {
+    text,
+    pressed: req,
+    label: 'Request intercept ' + (req ? 'on' : 'off') + (held ? ', ' + held + ' held' : '') + '.' + also + ' Toggle request intercept.',
+    title: 'Request intercept is ' + (req ? 'on' : 'off') + (!req && resp ? '; responses are held' : '') + '. Click to turn it ' + (req ? 'off' : 'on') + '.',
+  };
+}
+
 export function statusBarModel(s = {}) {
   const ic = s.intercept || {};
   const held = count(ic.held);
@@ -226,9 +243,14 @@ export function statusBarModel(s = {}) {
   const live = LIVE[s.live] || 'reconnecting';
   const proxy = String(s.proxyAddr || '').trim();
   const warnings = Array.isArray(s.warnings) ? s.warnings.filter((w) => w && w.title) : [];
+  // Auth on with no password (a restored backup never carries it): the listener
+  // answers every client with 407, so it is not shown as healthy.
+  const authGap = !!s.proxyAuthPasswordMissing;
+  if (authGap) warnings.unshift({ title: 'Proxy authentication has no password', detail: 'The password was not included in the backup. Every client gets 407 until you re-enter it in Settings → Proxy authentication.' });
   const flows = count(s.flows);
   return {
-    proxy: { text: proxy || 'Proxy', tone: proxy ? 'ok' : 'muted', label: proxy ? 'Proxy listening on ' + proxy + '. Open proxy settings.' : 'Proxy address loading. Open proxy settings.' },
+    proxy: { text: proxy || 'Proxy', tone: !proxy ? 'muted' : authGap ? 'warn' : 'ok',
+      label: !proxy ? 'Proxy address loading. Open proxy settings.' : authGap ? 'Proxy listening on ' + proxy + ' but proxy authentication has no password. Open proxy settings.' : 'Proxy listening on ' + proxy + '. Open proxy settings.' },
     intercept: {
       text: on ? 'Intercept on' + (held ? ' · ' + held + ' held' : '') : held ? plural(held, 'held', 'held') : 'Intercept off',
       tone: on || held ? 'warn' : '',

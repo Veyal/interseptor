@@ -160,3 +160,23 @@ func TestBuildHandoffKeepsBaseURLPathPrefix(t *testing.T) {
 		t.Fatalf("h = %q %q", h.Target, h.Template)
 	}
 }
+
+// A plain request with only a base-URL variable has nothing to auto-detect; the
+// error says so in plain words and tells the user what to do, not "pass positions".
+func TestBuildHandoffNoPositionsExplainsWhatToDo(t *testing.T) {
+	it := store.Item{UID: "i2", Kind: "request", Method: "POST", Name: "plain",
+		URL:  json.RawMessage(`"{{baseUrl}}/items"`),
+		Body: json.RawMessage(`{"mode":"raw","raw":"{\"a\":1}"}`)}
+	_, err := BuildHandoff(it, HandoffOptions{Values: map[string]string{"baseUrl": "https://api.example.com"}})
+	if err == nil {
+		t.Fatal("want an error when no variable can be fuzzed")
+	}
+	for _, want := range []string{"no {{variable}}", "name the variable(s)"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q lacks %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "pass positions") {
+		t.Fatalf("raw API wording leaked: %q", err)
+	}
+}

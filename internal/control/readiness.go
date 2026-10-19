@@ -44,6 +44,14 @@ func (h *authzAPI) buildReadiness() readinessReport {
 		proxyDetail += " · device proxy " + deviceEP.Endpoint
 	}
 	add("proxy", proxyAddr != "", proxyDetail, "start Interseptor or check bind address in Settings")
+	// Auth on without a password (a restored backup never carries it) fails
+	// closed: every client gets 407 until the password is entered again.
+	if on, _, _ := h.st.GetSetting(proxyAuthEnabledKey); on == "1" {
+		if pw, _, _ := h.st.GetSetting(proxyAuthPasswordKey); pw == "" {
+			add("proxy_auth", false, "proxy authentication is on but has no password (not included in the backup): every client gets 407",
+				"re-enter the password in Settings → Proxy authentication")
+		}
+	}
 
 	includes := 0
 	if rules, err := h.st.ListScopeRules(); err == nil {

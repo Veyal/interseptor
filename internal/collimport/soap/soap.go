@@ -300,7 +300,7 @@ func (im *importer) finish() {
 	}
 	sort.Strings(hosts)
 	for _, h := range hosts {
-		im.report(NeedsReview, h, "target-host", fmt.Sprintf("%d request(s) target %s; sends are blocked until the host is in scope", im.hosts[h], h), "Add the host to the engagement scope")
+		im.report(NeedsReview, h, "target-host", fmt.Sprintf("%d request(s) target %s", im.hosts[h], h), "Check the host is in the engagement scope")
 	}
 	r.Counts = map[Level]int{}
 	for _, e := range r.Entries {

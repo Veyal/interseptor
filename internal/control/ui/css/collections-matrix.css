@@ -92,3 +92,6 @@
 @media (max-width:720px){
   .cxm-facts{grid-template-columns:1fr}
 }
+.cxm-scripts-warn{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:8px 0}
+.cxm-scripts-warn p{flex:1 1 100%;margin:0}
+.cxm-skip-scripts{display:inline-flex;align-items:center;gap:6px}

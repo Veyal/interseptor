@@ -101,6 +101,10 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	// The portable bundle is meant for sharing: saved proxy passwords are
+	// write-only and never leave in it (the proxy-auth password is not exported
+	// at all). Import keeps the importer's own password for the same proxy host.
+	up, _ = redactUpstreamPassword(up)
 	upCA, err := readSetting("upstream.proxyCA")
 	if err != nil {
 		httpInternalErr(w, err)
@@ -187,9 +191,17 @@ func validatePortableProjectBodies(st *store.Store, flows []*store.Flow) error {
 	return nil
 }
 
-// importProject merges a project into the current session (additive for flows,
-// rules, and scope; applies the upstream-proxy setting). It does not rebind the
-// proxy listener.
+// localNetworkSettingKeys are this machine's network settings. A portable
+// project import never applies them: a bundle from another machine would
+// otherwise silently reroute (or break) this instance's traffic. The listener
+// bind, proxy authentication and system proxy are not in a bundle at all.
+var localNetworkSettingKeys = []string{"upstream.proxy", "upstream.proxyCA"}
+
+// importProject merges a project into the current session. It is additive and
+// idempotent for flows (by content signature), match-and-replace rules and
+// scope rules (by their fields), so importing the same bundle twice adds
+// nothing. Network settings stay local (see localNetworkSettingKeys) and are
+// reported in keptLocalSettings when the bundle carried a different value.
 func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	data, ok := readLimitedBody(w, r, maxPortableProjectImportBytes)
 	if !ok {
@@ -211,12 +223,21 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "project contains an invalid collections section: "+err.Error())
 		return
 	}
+	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok && raw != "0" && raw != "1" {
+		httpErr(w, http.StatusBadRequest, "invalid originTLSVerify setting")
+		return
+	}
 
-	flows := 0
+	flows, flowsSkipped := 0, 0
 	if harData := bytes.TrimSpace(bundle.HAR); len(harData) > 0 && !bytes.Equal(harData, []byte("null")) {
 		entries, err := harx.Parse(harData)
 		if err != nil {
 			httpErr(w, http.StatusBadRequest, "project contains an invalid HAR: "+err.Error())
+			return
+		}
+		seen, err := h.st.FlowImportSignatures()
+		if err != nil {
+			httpInternalErr(w, err)
 			return
 		}
 		for _, e := range entries {
@@ -235,90 +256,70 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 				ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
 				DurationMs: e.DurationMs, Flags: store.FlagImported,
 			}
-			if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
+			inserted, err := h.insertImportedFlowOnce(fl, e.ReqBody, e.ResBody, seen)
+			if err != nil {
 				httpInternalErr(w, err)
 				return
 			}
-			flows++
+			if inserted {
+				flows++
+			} else {
+				flowsSkipped++
+			}
 		}
 	}
-	rulesImported := 0
+	existingRules, err := h.st.ListRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	ruleSeen := map[string]bool{}
+	for _, rl := range existingRules {
+		ruleSeen[ruleIdentity(rl)] = true
+	}
+	rulesImported, rulesSkipped := 0, 0
 	for i := range bundle.Rules {
+		key := ruleIdentity(bundle.Rules[i])
+		if ruleSeen[key] {
+			rulesSkipped++
+			continue
+		}
 		bundle.Rules[i].ID = 0
 		if _, err := h.st.CreateRule(&bundle.Rules[i]); err != nil {
 			httpInternalErr(w, err)
 			return
 		}
+		ruleSeen[key] = true
 		rulesImported++
 	}
-	scopeImported := 0
+	existingScope, err := h.st.ListScopeRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	scopeSeen := map[string]bool{}
+	for _, sr := range existingScope {
+		scopeSeen[scopeRuleIdentity(sr)] = true
+	}
+	scopeImported, scopeSkipped := 0, 0
 	for i := range bundle.Scope {
+		key := scopeRuleIdentity(bundle.Scope[i])
+		if scopeSeen[key] {
+			scopeSkipped++
+			continue
+		}
 		bundle.Scope[i].ID = 0
 		if _, err := h.st.CreateScopeRule(&bundle.Scope[i]); err != nil {
 			httpInternalErr(w, err)
 			return
 		}
+		scopeSeen[key] = true
 		scopeImported++
 	}
-	upCA, hasUpCA := bundle.Settings["upstream.proxyCA"]
-	previousUp, _, _ := h.st.GetSetting("upstream.proxy")
-	if hasUpCA {
-		upCA = strings.TrimSpace(upCA)
-		previousCA, _, err := h.st.GetSetting("upstream.proxyCA")
-		if err != nil {
-			httpInternalErr(w, err)
-			return
-		}
-		if h.SetUpstreamProxyCA != nil {
-			if err := h.SetUpstreamProxyCA([]byte(upCA)); err != nil {
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-		if err := h.snd.SetUpstreamProxyCA([]byte(upCA)); err != nil {
-			httpErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" && h.Upstream != nil {
-			if err := h.snd.SetUpstreamProxy(up); err != nil {
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			if err := h.Upstream(up); err != nil {
-				_ = h.snd.SetUpstreamProxy(previousUp)
-				_ = h.snd.SetUpstreamProxyCA([]byte(previousCA))
-				if h.SetUpstreamProxyCA != nil {
-					_ = h.SetUpstreamProxyCA([]byte(previousCA))
-				}
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-		if err := h.setSetting("upstream.proxyCA", upCA); err != nil {
-			_ = h.snd.SetUpstreamProxyCA([]byte(previousCA))
-			if h.SetUpstreamProxyCA != nil {
-				_ = h.SetUpstreamProxyCA([]byte(previousCA))
-			}
-			httpInternalErr(w, err)
-			return
-		}
-	}
-	if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" {
-		if err := h.snd.SetUpstreamProxy(up); err != nil {
-			httpErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if !hasUpCA && h.Upstream != nil {
-			if err := h.Upstream(up); err != nil {
-				_ = h.snd.SetUpstreamProxy(previousUp)
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-		if err := h.setSetting("upstream.proxy", up); err != nil {
-			httpInternalErr(w, err)
-			return
-		}
+	keptLocal, err := h.keptLocalNetworkSettings(bundle.Settings)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
 	}
 	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
 		if err := h.st.SetSetting("authz.identities", authz); err != nil {
@@ -351,12 +352,10 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
-	if strings.TrimSpace(bundle.Notes) != "" {
-		if _, err := h.st.PersistNotes(bundle.Notes); err != nil {
-			httpInternalErr(w, err)
-			return
-		}
-		h.broadcast(map[string]any{"type": "notes.update"})
+	notesOutcome, err := h.importNotes(bundle.Notes)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
 	}
 
 	collStats, err := h.st.ImportCollectionsBundle(collBundle)
@@ -373,8 +372,92 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
-		"importedCollections": collStats,
+		"skippedFlows": flowsSkipped, "skippedRules": rulesSkipped, "skippedScope": scopeSkipped,
+		"importedCollections": collStats, "keptLocalSettings": keptLocal, "notes": notesOutcome,
 	})
+}
+
+// Notes import outcomes reported as "notes" in the import result.
+const (
+	notesNone     = ""         // the bundle carried no notes
+	notesImported = "imported" // local notes were empty; the bundle's were taken
+	notesKept     = "kept"     // the bundle's notes were identical or already contained locally
+	notesMerged   = "merged"   // local notes kept, the bundle's appended under a heading
+)
+
+// mergeImportedNotes never discards local notes: empty local takes the
+// incoming text, identical or already-contained incoming leaves local alone
+// (so re-importing a bundle is idempotent), anything else is appended under an
+// "Imported from" heading.
+func mergeImportedNotes(local, incoming string, now time.Time) (string, string) {
+	inc := strings.TrimSpace(incoming)
+	if inc == "" {
+		return local, notesNone
+	}
+	if strings.TrimSpace(local) == "" {
+		return incoming, notesImported
+	}
+	if strings.Contains(local, inc) {
+		return local, notesKept
+	}
+	return strings.TrimRight(local, "\n") + "\n\n## Imported from project export (" + now.Format("2006-01-02") + ")\n\n" + inc + "\n", notesMerged
+}
+
+// importNotes applies mergeImportedNotes to the project notes.
+func (h *projectAPI) importNotes(incoming string) (string, error) {
+	if strings.TrimSpace(incoming) == "" {
+		return notesNone, nil
+	}
+	local, err := h.st.LoadNotes()
+	if err != nil {
+		return "", err
+	}
+	merged, outcome := mergeImportedNotes(local, incoming, time.Now())
+	if merged != local {
+		if _, err := h.st.PersistNotes(merged); err != nil {
+			return "", err
+		}
+		h.broadcast(map[string]any{"type": "notes.update"})
+	}
+	return outcome, nil
+}
+
+// keptLocalNetworkSettings lists the network settings the bundle carried with
+// a value different from this machine's; import leaves them unchanged. Saved
+// passwords never travel, so the upstream URL is compared without one.
+func (h *projectAPI) keptLocalNetworkSettings(settings map[string]string) ([]string, error) {
+	kept := []string{}
+	for _, key := range localNetworkSettingKeys {
+		incoming, ok := settings[key]
+		if !ok {
+			continue
+		}
+		local, _, err := h.st.GetSetting(key)
+		if err != nil {
+			return nil, err
+		}
+		incoming, local = strings.TrimSpace(incoming), strings.TrimSpace(local)
+		if key == "upstream.proxy" {
+			incoming, _ = redactUpstreamPassword(incoming)
+			local, _ = redactUpstreamPassword(local)
+		}
+		if incoming != local {
+			kept = append(kept, key)
+		}
+	}
+	return kept, nil
+}
+
+// ruleIdentity is a match-and-replace rule's content, without id and order.
+func ruleIdentity(r store.Rule) string {
+	return fmt.Sprintf("%t\x00%s\x00%s\x00%s\x00%t", r.Enabled, r.Type, r.Match, r.Replace, r.BigBody)
+}
+
+// scopeRuleIdentity is a scope rule's content, without id and order; the
+// scheme and host compare case-insensitively like the matcher (paths keep
+// their case).
+func scopeRuleIdentity(r store.ScopeRule) string {
+	return fmt.Sprintf("%t\x00%s\x00%s\x00%s\x00%s\x00%d", r.Enabled, r.Action, strings.ToLower(r.Host), r.Path, strings.ToLower(r.Scheme), r.Port)
 }
 
 // apiProject reports the active project and the projects available to switch to.

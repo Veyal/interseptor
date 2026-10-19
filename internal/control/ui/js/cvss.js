@@ -1,47 +1,10 @@
 import { api, esc, escAttr } from './core.js';
-
-const METRICS = [
-  ['AV', 'Attack Vector', [['N', 'Network'], ['A', 'Adjacent'], ['L', 'Local'], ['P', 'Physical']]],
-  ['AC', 'Attack Complexity', [['L', 'Low'], ['H', 'High']]],
-  ['AT', 'Attack Requirements', [['N', 'None'], ['P', 'Present']]],
-  ['PR', 'Privileges Required', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['UI', 'User Interaction', [['N', 'None'], ['P', 'Passive'], ['A', 'Active']]],
-  ['VC', 'Vulnerable Confidentiality', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['VI', 'Vulnerable Integrity', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['VA', 'Vulnerable Availability', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['SC', 'Subsequent Confidentiality', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['SI', 'Subsequent Integrity', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-  ['SA', 'Subsequent Availability', [['N', 'None'], ['L', 'Low'], ['H', 'High']]],
-];
-const BASE_METRICS = new Set(METRICS.map(([key]) => key));
-
-function parseVector(vector) {
-  const values = {}, extras = [];
-  const parts = String(vector || '').trim().split('/');
-  if (parts.shift() !== 'CVSS:4.0') return { values, extras, valid: false };
-  for (const part of parts) {
-    const [key, value] = part.split(':');
-    if (!key || !value) continue;
-    if (BASE_METRICS.has(key)) values[key] = value;
-    else extras.push(part);
-  }
-  return { values, extras, valid: METRICS.every(([key]) => values[key]) };
-}
-
-function buildVector(values, extras = []) {
-  if (!METRICS.every(([key]) => values[key])) return '';
-  const base = METRICS.map(([key]) => `${key}:${values[key]}`);
-  return `CVSS:4.0/${base.concat(extras).join('/')}`;
-}
-
-function displayRating(rating) {
-  return rating === 'INFO' ? 'Info' : rating ? rating[0] + rating.slice(1).toLowerCase() : '';
-}
+import { METRICS, parseVector, buildVector, displayRating, previewGate, previewStatusText } from './cvss-model.js';
 
 export function renderCvssEditor(initialVector = '') {
   const parsed = parseVector(initialVector);
   const metrics = METRICS.map(([key, label, options]) => `<label class="cvss-metric"><span>${esc(label)}</span><select data-cvss-metric="${key}" aria-label="${escAttr(label)}"><option value="">—</option>${options.map(([value, name]) => `<option value="${value}"${parsed.values[key] === value ? ' selected' : ''}>${esc(value)} · ${esc(name)}</option>`).join('')}</select></label>`).join('');
-  return `<label for="findCvss">CVSS v4.0 vector</label><input id="findCvss" class="find-field-text cvss-vector" type="text" value="${escAttr(initialVector)}" autocomplete="off" spellcheck="false" aria-describedby="findCvssStatus"><details id="findCvssCalculator" class="cvss-calculator"><summary>Metric calculator</summary><div class="cvss-metrics">${metrics}</div></details><div class="cvss-editor-actions"><button type="button" class="btn" data-cvss-preview>Preview</button><button type="button" class="btn btn-primary" data-cvss-apply disabled>Apply vector + severity</button><button type="button" class="btn" data-cvss-discard>Discard preview</button></div><p class="hint cvss-status" id="findCvssStatus" data-cvss-status role="status" aria-live="polite"></p>`;
+  return `<label for="findCvss">CVSS v4.0 vector</label><textarea id="findCvss" class="find-field-text cvss-vector" rows="3" wrap="soft" autocomplete="off" spellcheck="false" aria-describedby="findCvssStatus">${esc(initialVector)}</textarea><details id="findCvssCalculator" class="cvss-calculator"><summary>Metric calculator</summary><div class="cvss-metrics">${metrics}</div></details><div class="cvss-editor-actions"><button type="button" class="btn" data-cvss-preview>Preview</button><button type="button" class="btn btn-primary" data-cvss-apply disabled>Apply vector + severity</button><button type="button" class="btn" data-cvss-discard>Discard preview</button></div><p class="hint cvss-status" id="findCvssStatus" data-cvss-status role="status" aria-live="polite"></p>`;
 }
 
 // bindCvssEditor deliberately keeps preview separate from persistence. Typing
@@ -90,6 +53,8 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
   };
   const runPreview = async token => {
     const vector = input.value.trim();
+    const gate = previewGate(vector);
+    if (!gate.send) { applyButton.disabled = true; setStatus(gate.message, !!vector); return; }
     setStatus('Evaluating…');
     try {
       const result = await api('/api/finding-cvss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vector }) });
@@ -97,7 +62,6 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
       if (!root.isConnected) return;
       latest = result;
       latestVector = vector;
-      const detail = result.explanation ? ` — ${result.explanation}` : '';
       if (result.legacy) {
         applyButton.disabled = true;
         setStatus(`Score ${Number(result.score).toFixed(1)} · ${displayRating(result.rating)} (${result.nomenclature}). Legacy CVSS 3.1 cannot be saved; enter a CVSS:4.0 vector.`, true);
@@ -106,8 +70,7 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
       applyButton.disabled = false;
       applyButton.textContent = `Apply vector + ${displayRating(result.rating)} severity`;
       const current = root.ownerDocument?.querySelector?.('#findSeverity')?.value;
-      const mismatch = current && current.toLowerCase() !== String(result.severity || '').toLowerCase() ? ` Current severity ${current} differs; Apply sets ${result.severity}.` : '';
-      setStatus(`Score ${Number(result.score).toFixed(1)} · ${displayRating(result.rating)} (${result.nomenclature})${detail}${mismatch}`);
+      setStatus(previewStatusText(result, current));
     } catch (error) {
       if (token !== generation) return;
       if (!root.isConnected) return;
@@ -121,6 +84,8 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
     const token = generation;
     timer = setTimeout(() => { timer = null; runPreview(token); }, 180);
   };
+  // A vector is one line: the field wraps a long one for reading, but Enter must not add a newline.
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') event.preventDefault(); });
   input.addEventListener('input', () => { editGeneration++; syncSelectsFromInput(); onPreviewChange(input.value); schedulePreview(); });
   for (const select of selects) select.addEventListener('change', () => { editGeneration++; updateVectorFromSelects(); onPreviewChange(input.value); schedulePreview(); });
   previewButton.addEventListener('click', () => {

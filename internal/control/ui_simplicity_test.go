@@ -113,6 +113,7 @@ func TestUIUpstreamHelpFollowsConnectionChoice(t *testing.T) {
 	end := strings.Index(src[start:], "function decodeURLCredential")
 	script := `const fields=new Map(); const $=id=>{if(!fields.has(id))fields.set(id,{value:'',hidden:false,textContent:''});return fields.get(id)};
 const upstreamDefaultPorts={http:'8080',https:'443',socks5:'1080',socks5h:'1080'};
+const upstreamSaved={scheme:'direct'}; const upstreamSummaryText=()=>'';
 ` + src[start:start+end] + `
 renderUpstreamProxyFields('direct');
 if(!$('#upstreamSchemeHelp').hidden)throw new Error('Direct must not show DNS help');

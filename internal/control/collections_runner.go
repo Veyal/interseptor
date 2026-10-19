@@ -145,6 +145,8 @@ func (c *collectionsAPI) runEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-c.h.streamStop:
+			return
 		case e, open := <-ch:
 			if !open {
 				return

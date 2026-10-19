@@ -114,9 +114,11 @@ test('sanitizeOptions rejects unknown formats and statuses, defaulting to every 
 test('readinessURL and exportFilename', () => {
   assert.equal(readinessURL('verified'), '/api/findings/readiness?statuses=verified');
   assert.equal(readinessURL('bogus'), '/api/findings/readiness?statuses=all');
-  assert.equal(exportFilename('html'), 'interseptor-findings.html');
-  assert.equal(exportFilename('pdf'), 'interseptor-findings.pdf');
-  assert.equal(exportFilename('weird'), 'interseptor-findings.md');
+  assert.equal(exportFilename('html'), 'interseptor-report.html');
+  assert.equal(exportFilename('pdf'), 'interseptor-report.pdf');
+  assert.equal(exportFilename('weird'), 'interseptor-report.md');
+  assert.equal(exportFilename('md', 'draft'), 'interseptor-report-draft.md');
+  assert.equal(exportFilename('html', 'final'), 'interseptor-report.html');
 });
 
 test('hiddenNotice says which statuses the filter left out', () => {
@@ -125,6 +127,9 @@ test('hiddenNotice says which statuses the filter left out', () => {
   const n = hiddenNotice({ hidden: { needs_verification: 1, false_positive: 2 } });
   assert.equal(n.count, 3);
   assert.equal(n.text, '3 findings hidden by this filter: 1 needs verification, 2 false positive.');
+  const n2 = hiddenNotice({ hidden: { ignored: 2 } });
+  assert.equal(n2.count, 2);
+  assert.equal(n2.text, '2 findings hidden by this filter: 2 ignored.');
 });
 
 test('previewRows lists the server board in order and flags blocked rows with text', () => {
@@ -133,6 +138,8 @@ test('previewRows lists the server board in order and flags blocked rows with te
   assert.deepEqual(rows[0], { id: 7, title: 'IDOR on /api/user/{id}', severity: 'High', ready: false, status: 'Blocked' });
   assert.equal(rows[2].status, 'Ready');
   assert.deepEqual(previewRows(null), []);
+  // A false positive is excluded from the report, not "Ready".
+  assert.equal(previewRows({ board: [{ id: 9, title: 'Not real', status: 'false_positive', ready: true }] })[0].status, 'Excluded');
 });
 
 test('blocker rows closed by reproduction say where to verify', async () => {

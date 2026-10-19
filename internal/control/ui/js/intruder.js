@@ -77,10 +77,12 @@ export function outlierChips(r, baseline) {
 
 const CHIP_ICON = { error: 'alert', status: 'alert', length: 'diff', time: 'clock', flag: 'finding', match: 'status-done' };
 
-// chipsHTML renders chips with icon + visible text. `esc` is core's escaper.
+// chipsHTML renders chips with icon + text. In result rows the text is hidden
+// by CSS (icon only, so a chip never covers the payload); the full label stays
+// as the tooltip and accessible name. `esc` is core's escaper.
 export function chipsHTML(r, baseline, esc) {
   return outlierChips(r, baseline)
-    .map((c) => `<span class="intr-chip intr-chip-${c.kind}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'finding'}"/></svg>${esc(c.label)}</span>`)
+    .map((c) => `<span class="intr-chip intr-chip-${c.kind}" title="${esc(c.label)}" aria-label="${esc(c.label)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'finding'}"/></svg><span class="intr-chip-text">${esc(c.label)}</span></span>`)
     .join('');
 }
 
@@ -107,14 +109,121 @@ export function createRateTracker(now = Date.now) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-export function runSummaryText({ done = 0, total = 0, rate = 0, results = [] } = {}) {
+// intrStopped: a run that is no longer running but never reached its total was
+// stopped (Stop button, or the engine closed) rather than finished.
+const intrStopped = (running, done, total) => !running && total > 0 && done < total;
+
+// intrProgressLabel is the short progress text in the Results header.
+export function intrProgressLabel({ running = false, done = 0, total = 0, capped = false } = {}) {
+  if (running) return `running ${done}/${total}`;
+  if (!total) return '';
+  if (intrStopped(running, done, total)) return `Stopped at ${done}/${total}`;
+  return `done ${done}/${total}${capped ? ' (capped)' : ''}`;
+}
+
+export function runSummaryText({ done = 0, total = 0, rate = 0, results = [], running = true } = {}) {
   if (!total) return 'No attack running';
   const rows = Array.isArray(results) ? results : [];
   const errors = rows.filter((r) => r && r.error).length;
   const anomalies = rows.filter((r) => r && r.anomaly).length;
-  const parts = [`${done} of ${total} requests`];
+  const parts = [intrStopped(running, done, total) ? `Stopped at ${done} of ${total} requests` : `${done} of ${total} requests`];
   if (rate) parts.push(`${rate} req/s`);
   parts.push(plural(errors, 'error', 'errors'), plural(anomalies, 'anomaly', 'anomalies'));
+  return parts.join(' · ');
+}
+
+// INTR_MAX_DELAY_MS bounds the per-request throttle so one typo cannot hold a
+// run for the better part of an hour (the server itself accepts any delay).
+export const INTR_MAX_DELAY_MS = 60000;
+
+// intrRequestCount is the number of requests an attack will send. Battering
+// ram substitutes one payload at every marker, so it sends one request per
+// payload; sniper sends one per payload per marker.
+export function intrRequestCount(type, counts, markers) {
+  const c = Array.isArray(counts) ? counts : [];
+  if (type === 'pitchfork') return c.length ? Math.min(...c) : 0;
+  if (type === 'cluster') return c.length ? c.reduce((a, b) => a * b, 1) : 0;
+  const n = c[0] || 0;
+  return type === 'battering' ? n : n * Math.max(markers || 0, 1);
+}
+
+// intrRepeatError validates the Race / repeat count the same way Start does.
+export const INTR_MAX_REPEAT = 2000;
+export function intrRepeatError(raw) {
+  const text = String(raw ?? '').trim();
+  const n = Number(text);
+  return text !== '' && Number.isInteger(n) && n >= 1 && n <= INTR_MAX_REPEAT ? '' : 'repeat must be between 1 and 2000';
+}
+
+// intrCountLabel is the attack-bar count for Race / repeat: the number of
+// sends, or a validation state when the field holds an unusable value.
+export function intrCountLabel(type, { repeat } = {}) {
+  if (type !== 'repeat') return '';
+  if (intrRepeatError(repeat)) return 'invalid repeat';
+  const n = Number(repeat);
+  return `${n} send${n === 1 ? '' : 's'}`;
+}
+
+// intrNumbersError returns a message for a Numbers payload range that cannot
+// produce values (empty string when it can). Step 0 means "auto direction".
+export function intrNumbersError(cfg) {
+  const c = cfg || {};
+  if (!Number.isFinite(Number(c.start)) || !Number.isFinite(Number(c.end)) || c.start === '' || c.end === '') return 'enter a start and end';
+  if ((c.mode || 'sequence') === 'random') {
+    const n = Number(c.count);
+    return Number.isInteger(n) && n >= 1 ? '' : 'how many must be a whole number of 1 or more';
+  }
+  const step = Number(c.step) || 0;
+  if (!Number.isInteger(step)) return 'step must be a whole number';
+  if ((step > 0 && Number(c.start) > Number(c.end)) || (step < 0 && Number(c.start) < Number(c.end))) return 'step goes the wrong way for start and end';
+  return '';
+}
+
+// intrValidateRegex returns an error message for a pattern the browser cannot
+// compile (the server rejects or silently ignores the same input), else ''.
+export function intrValidateRegex(label, pattern) {
+  const p = String(pattern || '').trim();
+  if (!p) return '';
+  try { new RegExp(p); return ''; } catch (e) { return `${label} is not a valid regular expression: ${e.message}`; }
+}
+
+// intrValidateTarget requires scheme://host[:port] with an http(s) scheme.
+export function intrValidateTarget(value) {
+  const v = String(value || '').trim();
+  if (!v) return 'enter a target (scheme://host)';
+  let u;
+  try { u = new URL(v); } catch (e) { return 'target must look like https://host[:port]'; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'target must start with http:// or https://';
+  if (!u.hostname) return 'target needs a host';
+  return '';
+}
+
+// intrSortRows orders result rows; the default "# ascending" sorts by attempt
+// id so threaded completion order does not leak into the table.
+export function intrSortRows(rows, sort) {
+  const col = (sort && sort.col) || 'id';
+  const dir = sort && sort.dir === 'desc' ? -1 : 1;
+  // Ties fall back to the attempt id (always ascending) so equal St/Len/Time
+  // values keep a stable, predictable order.
+  const byId = (a, b) => (a.id || 0) - (b.id || 0);
+  return rows.slice().sort((a, b) => {
+    const d = col === 'payload'
+      ? String(a.payload || '').localeCompare(String(b.payload || '')) * dir
+      : ((a[col] || 0) - (b[col] || 0)) * dir;
+    return d || byId(a, b);
+  });
+}
+
+// intrRowTitle is the result row tooltip: the full payload (the cell truncates
+// it), then what a click does.
+export function intrRowTitle(r) {
+  const id = r.id;
+  const fid = resultFlowId(r);
+  const payload = r.payload == null || r.payload === '' ? '' : String(r.payload);
+  const parts = [`#${id}`];
+  if (payload) parts.push(payload);
+  if (r.error) parts.push(String(r.error));
+  else if (fid) parts.push(`open flow #${fid}`);
   return parts.join(' · ');
 }
 
@@ -198,7 +307,7 @@ export function wireIntruderExtras(deps) {
     progress.max = p.max;
     progress.value = p.value;
     progress.setAttribute('aria-valuetext', p.text);
-    text.textContent = runSummaryText({ done, total, rate: r, results: st.results });
+    text.textContent = runSummaryText({ done, total, rate: r, results: st.results, running });
     if (running !== lastRunning) live.textContent = running ? 'Attack started' : (total ? `Attack finished: ${p.text}` : '');
     lastRunning = running;
     syncActions();

@@ -3,8 +3,9 @@
 //
 // The control API has no "undo drop": POST /api/intercept/{id}/drop is final.
 // Drop therefore stays a client-side deferral. The request keeps being held on
-// the server for DROP_DELAY_MS; Undo cancels the timer and the request is simply
-// still held. Nothing here ever claims a drop was undone after it was sent.
+// the server for DROP_DELAY_MS, marked drop-pending so no bulk release can send
+// it; Undo cancels the timer, clears the mark, and the request is simply still
+// held. Nothing here ever claims a drop was undone after it was sent.
 
 export const DROP_DELAY_MS = 5000;
 
@@ -64,6 +65,21 @@ export function createDropScheduler({ delay = DROP_DELAY_MS, setTimeout: st = gl
       arm(key, item, item.remaining);
       return true;
     },
+    // takeAll removes every pending drop whose entry passes `filter`, cancels its
+    // timer and returns the entries so the caller commits them now. It runs
+    // before anything that would release the held items in bulk (intercept off,
+    // closing the window), so a scheduled drop is never outlived by its item.
+    takeAll(filter = () => true) {
+      const out = [];
+      for (const [key, item] of [...pending]) {
+        if (!filter(item.entry)) continue;
+        ct(item.timer);
+        pending.delete(key);
+        onChange(key, 'committed');
+        out.push(item.entry);
+      }
+      return out;
+    },
     has: (key) => pending.has(key),
     size: () => pending.size,
     keys: () => [...pending.keys()],
@@ -74,23 +90,25 @@ export function createDropScheduler({ delay = DROP_DELAY_MS, setTimeout: st = gl
 // waiting on a deferred drop, in queue order. An item the operator edited keeps
 // the edit (raw is sent only when it differs from the original bytes);
 // otherwise the server forwards the held bytes unmodified.
-export function forwardAllPlan(items, { dropping = new Set(), rawCache = new Map(), originalCache = new Map() } = {}) {
+export function forwardAllPlan(items, { dropping = new Set(), rawCache = new Map(), originalCache = new Map(), binary = new Set() } = {}) {
   const plan = [];
   for (const h of Array.isArray(items) ? items : []) {
     const key = heldKey(h.side, h.id);
     if (dropping.has(key)) continue;
-    const step = { side: h.side, id: h.id };
     const raw = rawCache.get(key);
     // Same test as a single Forward: a line-ending-only difference (the textarea
     // LF-normalizes the CRLF original) is not an edit, so the held bytes go out.
-    if (typeof raw === 'string' && heldIsModified(raw, originalCache.get(key) ?? raw)) step.raw = raw;
-    plan.push(step);
+    const body = typeof raw === 'string' ? heldForwardBody(raw, originalCache.get(key) ?? raw, { binary: binary.has(key) }) : null;
+    plan.push({ side: h.side, id: h.id, ...(body || {}) });
   }
   return plan;
 }
 
 export const forwardPath = (side, id) => (side === 'resp' ? '/api/intercept/response/' : '/api/intercept/') + id + '/forward';
 export const dropPath = (side, id) => (side === 'resp' ? '/api/intercept/response/' : '/api/intercept/') + id + '/drop';
+// dropPendingPath marks (or, on Undo, clears) a scheduled drop on the server, so
+// any client's bulk release drops the item and a Forward is refused meanwhile.
+export const dropPendingPath = (side, id) => dropPath(side, id) + '-pending';
 
 // scopeNote states what the server really does. The proxy holds only in-scope
 // requests (and everything is in scope while no include rule exists); there is
@@ -177,7 +195,8 @@ export function createAutoForwardTally() {
 
 // A <textarea>'s API value normalizes CRLF to LF, so comparisons against the
 // server's CRLF original must ignore line-ending style.
-export function normalizeEOL(s) { return String(s == null ? '' : s).replace(/\r\n/g, '\n'); }
+// The HTML spec folds a lone CR into LF too, so both are line endings here.
+export function normalizeEOL(s) { return String(s == null ? '' : s).replace(/\r\n?/g, '\n'); }
 
 // heldIsModified: does the editor text differ from the held original?
 export function heldIsModified(current, original) {
@@ -189,6 +208,71 @@ export function heldIsModified(current, original) {
 // exactly (no LF-normalized copy replaces them); an edited one sends the text.
 export function heldForwardRaw(current, original) {
   return heldIsModified(current, original) ? String(current == null ? '' : current) : null;
+}
+
+// heldForwardBody is the JSON body fields for Forward, or null to send none. A
+// binary message's editor holds its head only (the server keeps the body), so an
+// edit goes out with keepBody: the server splices the head onto the held bytes.
+export function heldForwardBody(current, original, { binary = false } = {}) {
+  const raw = heldForwardRaw(current, original);
+  if (raw == null) return null;
+  return binary ? { raw, keepBody: true } : { raw };
+}
+
+// heldEditorBaseline is what the editor text is compared with: the original the
+// item was first shown with, never a cached edit.
+export function heldEditorBaseline(originalCache, key, item) {
+  if (originalCache && originalCache.has(key)) return originalCache.get(key);
+  const h = item || {};
+  return h.original || h.raw || '';
+}
+
+export function binaryNoteText(info) {
+  const n = Number(info && info.bodyLen) || 0;
+  return 'Binary body \u00b7 ' + n.toLocaleString('en-US') + ' bytes \u00b7 forwarded unchanged; only the head is editable.';
+}
+
+// binaryHandoff prepares a held request whose body is binary for Repeater, whose
+// editor holds text only. The body cannot travel, so the tab gets the head with
+// Content-Length 0 (what the empty body will really send) and the operator is
+// told how many bytes stayed behind instead of finding an empty body.
+export function binaryHandoff(raw, bodyLen) {
+  const n = Number(bodyLen) || 0;
+  const text = String(raw || '').replace(/^(content-length:[ \t]*)\d+/im, '$10');
+  const notice = 'Binary body (' + n.toLocaleString('en-US') + ' bytes) cannot be edited in Repeater: opened without a body, Content-Length 0. Forward the held request to deliver the original bytes.';
+  return { raw: text, notice };
+}
+
+// repeaterLoadedText is the toast after a held request is copied to Repeater;
+// `where` says what became of the held item.
+export function repeaterLoadedText(where) {
+  if (where === 'forwarded') return 'loaded forwarded request into Repeater';
+  if (where === 'released') return 'loaded released request into Repeater';
+  return 'loaded held request into Repeater \u00b7 it is still held';
+}
+
+// binaryTailWarning: text typed after the head of a binary message is ignored
+// (the server forwards the held body bytes), so say so while it is typed.
+export function binaryTailWarning(raw) {
+  const m = /\r?\n\r?\n/.exec(String(raw || ''));
+  if (!m) return '';
+  return /\S/.test(String(raw).slice(m.index + m[0].length))
+    ? 'Text below the blank line is ignored: this body is binary and is forwarded unchanged. Edit the headers only.'
+    : '';
+}
+
+// previewableImage: raster types the held-body endpoint serves for an <img>.
+const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/x-icon', 'image/vnd.microsoft.icon']);
+export function previewableImage(contentType) {
+  return PREVIEW_TYPES.has(String(contentType || '').split(';')[0].trim().toLowerCase());
+}
+
+// heldReleasedText names a held item its client gave up on (timeout or closed
+// connection) while the operator had it open.
+export function heldReleasedText(h, edited) {
+  const x = h || {};
+  const what = x.side === 'resp' ? 'Response ' + (x.host || '') + (x.path || '') : (x.method ? x.method + ' ' : '') + (x.host || '') + (x.path || '');
+  return what + ' was released: the client closed the connection.' + (edited && x.side !== 'resp' ? ' Your edit is kept \u2014 open it in Repeater.' : '');
 }
 
 // createPrettyBridge maps raw text <-> the text shown in the Pretty editor.
@@ -267,4 +351,22 @@ export function contentLengthText(note) {
   return note.declared === null
     ? 'Content-Length ' + note.actual + ' added on Forward'
     : 'Content-Length ' + note.declared + ' \u2192 ' + note.actual + ' on Forward';
+}
+
+/* ---- conditional hold filter ---- */
+
+// filterCheckboxChecked: the server stores an empty pattern as "off", but the
+// checkbox is the operator's intent; clearing the pattern must not uncheck it.
+export function filterCheckboxChecked(config, currentlyChecked) {
+  const c = config || {};
+  if (c.filterEnabled) return true;
+  return !c.filterPattern && !!currentlyChecked;
+}
+
+// filterErrorText explains a rejected pattern and what the server still enforces.
+export function filterErrorText(message, active) {
+  const a = active || {};
+  const msg = String(message || 'request failed').replace(/[.\s]+$/, '');
+  const now = a.filterEnabled && a.filterPattern ? 'Still holding only when it matches ' + a.filterPattern + '.' : 'No hold filter is in force.';
+  return 'Not saved \u2014 ' + msg + '. ' + now;
 }

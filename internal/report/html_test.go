@@ -62,3 +62,17 @@ func TestMarkdownToHTMLEmphasisesLinesContainingUnderscores(t *testing.T) {
 		t.Fatalf("emphasised a padded delimiter: %s", got)
 	}
 }
+
+// Regression (QA10): a Low finding marked false_positive rendered an INFO badge
+// in the appendix card while its own Severity row said Low.
+func TestProjectHTMLFalsePositiveCardKeepsItsSeverity(t *testing.T) {
+	html := ProjectHTML([]store.Finding{{ID: 1, Severity: "Low", Status: "false_positive", Title: "Dismissed claim", Target: "GET /x"}}, nil)
+	i := strings.Index(html, "Dismissed claim")
+	if i < 0 {
+		t.Fatalf("false-positive appendix missing:\n%s", html)
+	}
+	card := html[strings.LastIndex(html[:i], "<section"):i]
+	if !strings.Contains(card, "sev-low") || strings.Contains(card, "sev-info") {
+		t.Fatalf("card should carry the Low severity, got %q", card)
+	}
+}

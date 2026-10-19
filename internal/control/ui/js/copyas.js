@@ -124,6 +124,12 @@ function rawHTTP(f, redact) {
   return out;
 }
 const harHeaders = (h) => headerPairs(h).map(([name, value]) => ({ name, value }));
+// A flow's start is `ts` (unix ms) in the API; `startedAt` is an ISO override.
+function startedISO(f) {
+  if (f.startedAt) return f.startedAt;
+  const d = Number.isFinite(f.ts) && f.ts > 0 ? new Date(f.ts) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : '1970-01-01T00:00:00.000Z';
+}
 function harEntry(f, redact) {
   const url = flowURL(f);
   const q = [];
@@ -132,7 +138,7 @@ function harEntry(f, redact) {
   const reqType = headerPairs(f.reqHeaders).find(([k]) => k.toLowerCase() === 'content-type');
   const resText = typeof f.resBody === 'string' ? f.resBody : '';
   const entry = {
-    startedDateTime: f.startedAt || '1970-01-01T00:00:00.000Z',
+    startedDateTime: startedISO(f),
     time: f.durationMs || 0,
     request: {
       method: method(f), url, httpVersion: f.httpVersion || 'HTTP/1.1', cookies: [],
@@ -266,7 +272,7 @@ export async function copyAs(kind, flows, deps = {}) {
     const resolved = [];
     for (const input of flows) {
       let f = input;
-      if (!f.method || !f.host) f = { ...(await d.fetchFlow(f.id)), ...f };
+      if (!f.method || !f.host || !f.reqHeaders) f = { ...(await d.fetchFlow(f.id)), ...f };
       f = { ...f };
       for (const s of needs) {
         const k = s + 'Body';

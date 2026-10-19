@@ -118,3 +118,14 @@ export function middleEllipsis(text, max = 44) {
   const head = Math.ceil(keep * 0.6);
   return t.slice(0, head) + '\u2026' + t.slice(t.length - (keep - head));
 }
+
+// methodChoices: the Method filter's options. The common verbs are always
+// offered (a filter you can only narrow to what the loaded pages happened to
+// contain hides POST until a POST scrolls in); any other method seen is added.
+export const COMMON_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const METHOD_ORDER = [...COMMON_METHODS, 'CONNECT', 'TRACE'];
+export function methodChoices(seen = [], current = '') {
+  const all = new Set([...COMMON_METHODS, ...seen, current].filter(Boolean));
+  const rank = (m) => { const i = METHOD_ORDER.indexOf(m); return i < 0 ? 99 : i; };
+  return [...all].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}

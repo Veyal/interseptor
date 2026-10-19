@@ -1,4 +1,5 @@
 import { $, esc, escAttr, api, toast, toastError, methodColor, copyText, uiConfirm, uiPrompt, fmtBytes, renderLoadError } from './core.js';
+import { restoreNoticeText } from './settings-model.js';
 
 // Keep previously fetched read-only reference data useful during a transient
 // refresh failure, but never let it look like a current server contract.
@@ -422,8 +423,9 @@ async function vaultImport(id){
     if(!name)return;
     if(res) res.textContent='Importing…';
     const r=await api('/api/vault/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name})});
-    if(res) res.innerHTML='<span class="u-accent">Imported</span> as <b>'+esc(r.name||name)+'</b> — switch to it from Projects.';
-    toast('imported '+ (r.name||name));
+    const notice=restoreNoticeText(r);
+    if(res) res.innerHTML='<span class="u-accent">Imported</span> as <b>'+esc(r.name||name)+'</b> — switch to it from Projects.'+(notice?' <span class="u-warn">'+esc(notice)+'</span>':'');
+    toast('imported '+ (r.name||name)+(notice?'. '+notice:''),notice?'warn':undefined);
   }catch(e){if(res)res.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';toastError('Vault request failed', e);}
   finally{setVaultActionPending(false);}
 }

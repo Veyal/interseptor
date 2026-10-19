@@ -134,3 +134,25 @@ test('copyAs reports failure through toast and never throws', async () => {
   await copyAs('curl', [{ id: 1 }], { fetchFlow: async () => { throw new Error('boom'); }, fetchBody: async () => ({ text: '' }), copyText() {}, toast: (m) => toasts.push(m) });
   assert.ok(toasts.some((m) => /boom/.test(m)));
 });
+
+// History hands copyAs list rows: they carry method and host but no headers.
+test('copyAs fetches the full flow when a list row has no headers', async () => {
+  const copied = [];
+  const deps = {
+    fetchFlow: async (id) => ({ ...flow, id, reqBody: undefined, resBody: undefined }),
+    fetchBody: async () => ({ text: '', truncated: false }),
+    copyText: (t) => copied.push(t),
+    toast() {},
+  };
+  const row = { id: 7, method: 'POST', scheme: 'https', host: 'api.example.com', port: 443, path: '/v1/items?x=1', status: 201 };
+  await copyAs('curl', [row], deps);
+  assert.ok(copied[0].includes("-H 'Content-Type: application/json'"));
+  assert.ok(copied[0].includes("-H 'Authorization: Bearer secret-token'"));
+  await copyAs('raw', [row], deps);
+  assert.ok(/^Content-Type: application\/json/m.test(copied[1]));
+});
+
+test('HAR startedDateTime comes from the flow ts (unix ms) when startedAt is absent', () => {
+  const { text } = buildCopyAs('har', [{ ...flow, ts: 1792389462825 }]);
+  assert.equal(JSON.parse(text).startedDateTime, '2026-10-19T05:57:42.825Z');
+});

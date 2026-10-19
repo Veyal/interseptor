@@ -13,7 +13,7 @@ func TestUIRepeaterCancelAbortsTheInFlightSend(t *testing.T) {
 	ui := readUIAsset(t, "index.html")
 	requireUIContains(t, ui, `id="repCancel"`, `title="Stop the request in flight (Esc)" hidden>Cancel</button>`)
 	source := readUIAsset(t, "js/tools.js")
-	requireUIContains(t, source, "onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);}", "if(repCancelSend())e.preventDefault()")
+	requireUIContains(t, source, "onClose:t=>{t.sendAbort?.abort();return repDeleteHistory(t);}", "else if(action==='cancel'&&repCancelSend())e.preventDefault();")
 	script := repeaterRenderJS(t, source, "function friendlySendError(raw)") +
 		repeaterRenderJS(t, source, "function setRepSendState(stateName,label)") +
 		repeaterRenderJS(t, source, "export function repCancelSend()") +

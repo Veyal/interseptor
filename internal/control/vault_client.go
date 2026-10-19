@@ -263,7 +263,7 @@ func (h *Hub) vaultImport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"imported": true, "name": name, "dir": destDir})
+	writeJSON(w, http.StatusOK, withRestoreNotice(map[string]any{"imported": true, "name": name, "dir": destDir}, destDir))
 }
 
 func (h *Hub) vaultMerge(w http.ResponseWriter, r *http.Request) {

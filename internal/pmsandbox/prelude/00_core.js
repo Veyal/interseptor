@@ -26,8 +26,11 @@ function unsupported(api) {
   if (unsupportedSeen.indexOf(api) < 0) unsupportedSeen.push(api);
   throw new UnsupportedError(api);
 }
+// GRANT_NAMES maps each internal capability flag to the grant name the Scripts
+// sheet shows, so a denial tells the user what to tick.
+const GRANT_NAMES = { varsRead: 'vars.read', varsWrite: 'vars.write', cookiesRead: 'cookies.read', cookiesWrite: 'cookies.write', netSend: 'net.send', secretsRead: 'secrets.read' };
 function need(cap, what) {
-  if (!CAPS[cap]) throw new Error('capability denied: ' + what + ' requires ' + cap);
+  if (!CAPS[cap]) throw new Error('capability denied: ' + what + ' requires ' + (GRANT_NAMES[cap] || cap) + '. Grant it under Scripts > Capabilities and approve the scripts.');
 }
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

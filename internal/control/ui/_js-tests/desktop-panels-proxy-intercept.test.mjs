@@ -1,7 +1,7 @@
 // The pure rules behind the desktop History and Intercept layouts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitViews, moreLabel, activeTokenCount, isViewHidden, notePlaceholder, NOTE_PLACEHOLDER_SHORT, sentenceCase, PRIMARY_VIEWS } from '../js/desktop-panel-proxy-model.js';
+import { splitViews, moreLabel, activeTokenCount, isViewHidden, notePlaceholder, NOTE_PLACEHOLDER_SHORT, sentenceCase, PRIMARY_VIEWS, toolbarWidthTier } from '../js/desktop-panel-proxy-model.js';
 import { orderActions, sameOrder, holdRuleSummary, ACTION_ORDER } from '../js/desktop-panel-intercept-model.js';
 
 const req = ['raw', 'pretty', 'headers', 'json', 'params', 'gql', 'decoded', 'hex'].map((view) => ({ view, label: view }));
@@ -71,4 +71,23 @@ test('holdRuleSummary names the rule', () => {
   assert.match(holdRuleSummary({ on: false }), /everything/);
   assert.equal(holdRuleSummary({ on: true, target: 'url', pattern: '/admin' }), 'Holding when URL matches /admin');
   assert.match(holdRuleSummary({ on: true, target: 'nope', pattern: '' }), /anything matches \(add a pattern\)/);
+});
+
+test('pressBubbles: only copy-image buttons need their synthetic click to bubble', async () => {
+  const { pressBubbles } = await import('../js/desktop-panel-proxy-model.js');
+  const node = (...c) => ({ classList: { contains: (x) => c.includes(x) } });
+  assert.equal(pressBubbles(node('btn', 'js-copy-image')), true);
+  assert.equal(pressBubbles(node('btn')), false);
+  assert.equal(pressBubbles(null), false);
+});
+
+test('toolbarWidthTier replaces the History size container: narrow at 880px, compact at 760px', () => {
+  assert.deepEqual(toolbarWidthTier(1200), { narrow: false, compact: false });
+  assert.deepEqual(toolbarWidthTier(881), { narrow: false, compact: false });
+  assert.deepEqual(toolbarWidthTier(880), { narrow: true, compact: false });
+  assert.deepEqual(toolbarWidthTier(761), { narrow: true, compact: false });
+  assert.deepEqual(toolbarWidthTier(760), { narrow: true, compact: true });
+  // A parked (display:none) panel measures 0: keep the wide layout rather than flap.
+  assert.deepEqual(toolbarWidthTier(0), { narrow: false, compact: false });
+  assert.deepEqual(toolbarWidthTier(NaN), { narrow: false, compact: false });
 });

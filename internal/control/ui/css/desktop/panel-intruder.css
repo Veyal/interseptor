@@ -11,7 +11,7 @@ html.desktop-app #panel-intruder{background:var(--surface-1)}
 
 /* ---- setup column + results, one grid (the web stepper keeps < 900px) ---- */
 @media (min-width:900px){
-  html.desktop-app #panel-intruder #intrTabPanel{display:grid;grid-template-columns:auto minmax(340px,5fr) minmax(0,6fr);grid-template-rows:auto auto minmax(96px,1fr) minmax(136px,1fr) auto;min-height:0;overflow:hidden}
+  html.desktop-app #panel-intruder #intrTabPanel{display:grid;grid-template-columns:auto minmax(380px,1fr) minmax(0,1fr);grid-template-rows:min-content min-content minmax(96px,.7fr) minmax(196px,1.3fr) min-content;min-height:0;overflow:hidden}
   html.desktop-app #panel-intruder .intr-work{display:contents}
   html.desktop-app #panel-intruder .intr-bar{grid-column:2;grid-row:1;border-right:1px solid var(--border-subtle)}
   html.desktop-app #panel-intruder #intrConfirmRow{grid-column:2;grid-row:2;margin:0;border-radius:0;border-width:0 1px 1px 0;border-style:solid;border-color:var(--warning-border)}
@@ -21,6 +21,20 @@ html.desktop-app #panel-intruder{background:var(--surface-1)}
   html.desktop-app #panel-intruder .intr-opts-disc{grid-column:2;grid-row:5;border-right:1px solid var(--border-subtle)}
   html.desktop-app #panel-intruder .intr-results{grid-column:3;grid-row:1 / -1;min-width:0;min-height:0;border-right:0}
   html.desktop-app #panel-intruder #intrHistory{grid-column:1;grid-row:1 / -1;min-height:0}
+}
+
+/* Below 1440px the run history is a drawer over the Results side (where the menu
+   that opens it lives) instead of a fixed
+   220px column that crushes Results (Esc or the History toggle closes it). */
+@media (min-width:900px) and (max-width:1439px){
+  html.desktop-app #panel-intruder #intrTabPanel{position:relative}
+  html.desktop-app #panel-intruder #intrHistory{position:absolute;inset:0 0 0 auto;z-index:5;max-width:80%;box-shadow:var(--shadow-pop,0 8px 24px rgba(0,0,0,.28))}
+}
+
+/* From 1280px the setup column is a little narrower than Results; the editors keep a
+   minimum size at every window size (the payload pane scrolls instead of shrinking them). */
+@media (min-width:1280px){
+  html.desktop-app #panel-intruder #intrTabPanel{grid-template-columns:auto minmax(340px,5fr) minmax(0,6fr)}
 }
 
 /* ---- target bar ---- */
@@ -49,22 +63,25 @@ html.desktop-app #panel-intruder .intr-config>textarea.rep-edit{flex:1;min-heigh
 html.desktop-app #panel-intruder .intr-config .pane-head .btn .icon{width:15px;height:15px}
 
 /* ---- payloads ---- */
-html.desktop-app #panel-intruder .intr-payload-pane{background:var(--surface-1);box-shadow:none;border-right:1px solid var(--border-subtle);border-top:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-payload-pane{overflow-y:auto;background:var(--surface-1);box-shadow:none;border-right:1px solid var(--border-subtle);border-top:1px solid var(--border-subtle)}
 html.desktop-app #panel-intruder .intr-payload-pane .intr-payloads{flex:1;height:auto;min-height:0}
-html.desktop-app #panel-intruder .intr-pl{min-width:150px;border-left:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-pl{min-width:112px;min-height:min-content;border-left:1px solid var(--border-subtle)}
+html.desktop-app #panel-intruder .intr-pl textarea{min-height:96px}
+html.desktop-app #panel-intruder .intr-payloads{overflow:auto}
 html.desktop-app #panel-intruder .intr-pl-h{flex-wrap:nowrap;gap:4px 6px;min-height:32px;padding:2px 10px;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);font-size:var(--text-ui);font-weight:500;color:var(--text-secondary);overflow:visible;white-space:normal}
 html.desktop-app #panel-intruder .intr-pl-h .sw{width:8px;height:8px;border-radius:50%}
+html.desktop-app #panel-intruder .intr-pl-h{flex-wrap:wrap}
 html.desktop-app #panel-intruder .intr-pl-h>*{flex:none}
 html.desktop-app #panel-intruder .intr-pl-h>.spacer{flex:1 1 0;min-width:0}
-html.desktop-app #panel-intruder .intr-pl-h .dsk-pl-name{flex:0 1 auto;min-width:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.desktop-app #panel-intruder .intr-pl-h .dsk-pl-name{flex:1 1 calc(100% - 20px);min-width:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html.desktop-app #panel-intruder .intr-pl-h .btn{min-height:var(--control-h-sm);padding:0 6px}
-html.desktop-app #panel-intruder .intr-pl-h .intr-file-load{width:var(--control-h-sm);padding:0;justify-content:center;background:transparent;border-color:transparent;color:var(--text-secondary)}
-html.desktop-app #panel-intruder .intr-pl-h .intr-file-load:hover{background:var(--surface-hover);color:var(--text-primary)}
+html.desktop-app #panel-intruder .intr-pl-h :is(.intr-file-load,.intr-file-clear){width:var(--control-h-sm);padding:0;justify-content:center;background:transparent;border-color:transparent;color:var(--text-secondary)}
+html.desktop-app #panel-intruder .intr-pl-h :is(.intr-file-load,.intr-file-clear):hover{background:var(--surface-hover);color:var(--text-primary)}
 html.desktop-app #panel-intruder .intr-pl-h .ui-select-trigger{min-height:var(--control-h-sm);height:var(--control-h-sm);padding:0 6px 0 8px;font-size:var(--text-ui)}
 @media (max-width:1279px){html.desktop-app #panel-intruder .intr-pl-h .sw{display:none}}
 html.desktop-app #panel-intruder .intr-src-seg{margin-left:0}
 html.desktop-app #panel-intruder .intr-src-seg .btn{min-height:20px;padding:0 7px;border:0}
-html.desktop-app #panel-intruder .intr-pl-note:not(:empty){padding:4px var(--gutter);color:var(--text-muted)}
+html.desktop-app #panel-intruder .intr-pl-note:not(:empty){padding:4px var(--gutter);color:var(--text-muted);white-space:normal;overflow-wrap:anywhere}
 html.desktop-app #panel-intruder .intr-nums{padding:8px var(--gutter);font-size:var(--text-ui)}
 html.desktop-app #panel-intruder .intr-nums input[type="number"],
 html.desktop-app #panel-intruder .intr-nums select{min-height:var(--control-h-sm);background:var(--surface-inset);border:1px solid var(--border-subtle);border-radius:var(--radius-xs);font-size:var(--text-ui)}
@@ -116,6 +133,7 @@ html.desktop-app #panel-intruder .intr-row .intr-id{color:var(--text-muted)}
 html.desktop-app #panel-intruder .intr-row.flag,
 html.desktop-app #panel-intruder .intr-row.match{background:transparent}
 html.desktop-app #panel-intruder .intr-row:hover{background:var(--surface-hover)}
+html.desktop-app #panel-intruder .intr-row.sel{background:var(--surface-selected);box-shadow:none}
 html.desktop-app #panel-intruder .intr-row .pl{gap:6px;color:var(--text-primary)}
 html.desktop-app #panel-intruder .intr-row .pl-text{flex:1 1 auto;font-family:var(--mono);font-size:var(--text-code)}
 html.desktop-app #panel-intruder .intr-row.flag .pl{color:var(--text-primary);font-weight:500}
@@ -128,3 +146,13 @@ html.desktop-app #panel-intruder .intr-chip{flex:none;display:inline-flex;align-
 html.desktop-app #panel-intruder .intr-chip .icon{width:14px;height:14px}
 html.desktop-app #panel-intruder .intr-anomaly{font-weight:600}
 html.desktop-app #panel-intruder #intrResults .state-error{padding:24px}
+
+/* In a 900px window Results is ~335px wide: slimmer number columns and smaller flag icons keep the payload readable. */
+@media (max-width:1279px){
+  html.desktop-app #panel-intruder .intr-head,
+  html.desktop-app #panel-intruder .intr-row{grid-template-columns:36px minmax(0,1fr) 40px 52px 48px;padding:0 10px}
+  html.desktop-app #panel-intruder .intr-row .pl{gap:3px}
+  html.desktop-app #panel-intruder .intr-chip{width:14px;height:14px}
+  html.desktop-app #panel-intruder .intr-chip .icon{width:13px;height:13px}
+  html.desktop-app #panel-intruder .intr-row .pl-text{min-width:8ch}
+}

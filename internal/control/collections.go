@@ -337,6 +337,18 @@ func (c *collectionsAPI) duplicateItem(w http.ResponseWriter, r *http.Request) {
 	cp := *cur
 	cp.UID, cp.Rev, cp.Rank = "", 0, ""
 	cp.Name = cur.Name + " copy"
+	// Slot the copy right after the original: its rank sits between the
+	// original's and the next sibling's, so the position is stored, not a
+	// client-side reorder.
+	if sibs, err := c.h.st.ListItems(cur.CollectionUID); err == nil {
+		next := ""
+		for _, s := range sibs {
+			if s.ParentUID == cur.ParentUID && s.Rank > cur.Rank && (next == "" || s.Rank < next) {
+				next = s.Rank
+			}
+		}
+		cp.Rank = store.RankBetween(cur.Rank, next)
+	}
 	out, err := c.h.st.CreateItem(cp)
 	if err != nil {
 		collErr(w, err)

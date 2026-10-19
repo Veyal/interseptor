@@ -49,6 +49,12 @@ func (s *Store) AnywhereSearchFilter(f FlowFilter, maxScan int) (FlowFilter, str
 	if term == "" {
 		return out, "", nil
 	}
+	// An id lookup (#123, id:123) is exact, not a text search: keep the term so
+	// the list query resolves it as an id.
+	if _, ok := flowSearchAsID(f.Search, ""); ok {
+		out.Search = f.Search
+		return out, "", nil
+	}
 	ids, capped, bound, err := s.flowIDsBodyScan(out, term, maxScan, true)
 	if err != nil {
 		return out, "", err

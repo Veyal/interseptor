@@ -388,11 +388,11 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 	start := time.Now()
 	text, err := t.call(args)
 	if s.report != nil {
-		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil, Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
+		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
 		if err != nil {
-			a.Result = firstLine(err.Error(), 160)
+			a.Result = activityResult(err.Error())
 		} else {
-			a.Result = firstLine(text, 160)
+			a.Result = activityResult(text)
 		}
 		s.report(a)
 	}
@@ -1052,11 +1052,17 @@ func (s *Server) registerTools() {
 			if side == "" {
 				side = "both"
 			}
+			var firstErr error
+			fetched := 0
 			get := func(sd string) string {
 				raw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/raw?side=%s", id, sd))
 				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
 					return "(" + err.Error() + ")"
 				}
+				fetched++
 				return truncate(raw, max)
 			}
 			var out string
@@ -1064,6 +1070,10 @@ func (s *Server) registerTools() {
 				out = "=== REQUEST ===\n" + get("req") + "\n\n=== RESPONSE ===\n" + get("res")
 			} else {
 				out = get(side)
+			}
+			// Nothing readable (a missing flow): a failure, not a "successful" 404 body.
+			if fetched == 0 && firstErr != nil {
+				return "", fmt.Errorf("flow %d: %w", id, firstErr)
 			}
 			return out + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
 		})
@@ -1425,11 +1435,11 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" A title-only create is allowed only as an intermediate step: attach evidence in the same run with add_finding_poc or add_finding_image before you move on. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
+		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" A title-only create is allowed only as an intermediate step: attach evidence in the same run with add_finding_poc or add_finding_image before you move on. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to needs_verification.",
 		obj(map[string]any{
 			"title":                    pt("string"),
 			"severity":                 pt("string"),
-			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
+			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|ignored|fixed"),
 			"summary":                  p("string", "one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title"),
 			"target":                   p("string", "legacy primary target; first targets entry takes precedence"),
 			"targets":                  findingTargetsSchema(),
@@ -1494,8 +1504,12 @@ func (s *Server) registerTools() {
 			if hard != nil {
 				return "", hard
 			}
+			status := argStr(a, "status")
+			if status == "" {
+				status = "needs_verification"
+			}
 			reqBody := map[string]any{
-				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
+				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": status,
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
 			}
@@ -1612,7 +1626,7 @@ func (s *Server) registerTools() {
 		"Update a finding (only fields you pass change) using the same evidence-first format as the UI. "+findingFormatGuide+" Prefer structured blocks and the atomic evidence tools. Legacy body remains accepted but cannot be sent with blocks. Returns the updated finding, readiness data, missingFlowIds, and UI URL.",
 		obj(map[string]any{
 			"id":                       pt("integer"),
-			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
+			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|ignored|fixed"),
 			"severity":                 pt("string"),
 			"title":                    pt("string"),
 			"summary":                  p("string", "one sentence, <=140 chars; <METHOD path> <what happens> to <role>; do not restate the title"),
@@ -1770,7 +1784,7 @@ func (s *Server) registerTools() {
 			"fix":      p("string", "remediation at the failed trust boundary"),
 			"proof":    p("string", "what this request/response establishes (auto-generated if omitted)"),
 			"role":     p("string", "context|setup|baseline|action|result|control|retest|observation (default result)"),
-			"status":   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed (default open)"),
+			"status":   p("string", "open|needs_verification|verified|false_positive|wont_fix|ignored|fixed (default needs_verification)"),
 			"tags":     p("string", "optional tags"),
 			"intent":   p("string", "optional: short 'why' shown in Activity"),
 		}, "flowId", "title"),
@@ -1828,7 +1842,7 @@ func (s *Server) registerTools() {
 
 			status := argStr(a, "status")
 			if status == "" {
-				status = "open"
+				status = "needs_verification"
 			}
 
 			why := argStr(a, "why")
@@ -2236,11 +2250,13 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return "", err
 			}
-			var pr struct {
-				ID int64 `json:"id"`
-			}
+			var pr sentFlowSummary
 			_ = json.Unmarshal([]byte(out), &pr)
 			msg := out + "\n(call get_flow with this id for the full response)"
+			if line := pr.line(); line != "" {
+				// A readable first line: the Activity feed shows it as the result.
+				msg = line + "\n\n" + msg
+			}
 			if pr.ID != 0 {
 				msg += fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, pr.ID)
 			}

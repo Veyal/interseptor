@@ -48,13 +48,15 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 
 	var flows []*store.Flow
 	var err error
+	capped := false
 	if inScope {
-		flows, _, err = h.queryInScopeFlowsFull(f, limit)
+		flows, capped, err = h.queryInScopeFlowsFull(f, limit)
 	} else {
 		f.Limit = limit + 1
 		flows, err = h.st.QueryFlowsFilter(f)
 		if len(flows) > limit {
 			flows = flows[:limit]
+			capped = true
 		}
 	}
 	if err != nil {
@@ -111,6 +113,7 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hosts":        out,
 		"flowsScanned": len(flows),
+		"capped":       capped, // true when older flows were left out of the sample
 	})
 }
 

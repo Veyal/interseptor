@@ -280,7 +280,7 @@ run:
 				m.Collection = s.scrub(rep.CollectionName)
 			}
 			if rep.Status != collrun.StatusDone && rep.Status != collrun.StatusStopped {
-				m.Warnings = append(m.Warnings, s.scrub(fmt.Sprintf("%s: run ended %s %s", id.Name, rep.Status, rep.StopReason)))
+				m.Warnings = append(m.Warnings, s.scrub(runEndedWarning(id.Name, rep)))
 				if rep.Status == collrun.StatusAborted {
 					m.Partial = true
 				}
@@ -562,4 +562,22 @@ func summarize(m *Matrix) Summary {
 		}
 	}
 	return sum
+}
+
+// runEndedWarning words why one identity's run did not finish. A run stopped by
+// unapproved scripts gets a plain instruction instead of the raw status code.
+func runEndedWarning(identity string, rep *collrun.Report) string {
+	if rep.Status == collrun.StatusNotApproved {
+		n := rep.Totals.Quarantined
+		what := "scripts are"
+		if n == 1 {
+			what = "script is"
+		}
+		count := ""
+		if n > 0 {
+			count = fmt.Sprintf("%d ", n)
+		}
+		return fmt.Sprintf("%s: nothing was sent because %s%s not approved. Approve them in Collections > Scripts, or run the matrix without scripts.", identity, count, what)
+	}
+	return fmt.Sprintf("%s: run ended %s %s", identity, rep.Status, rep.StopReason)
 }

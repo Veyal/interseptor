@@ -57,6 +57,16 @@ test('summary text', () => {
   assert.equal(summaryText([], []), '');
 });
 
+// The header counts what the list shows once a severity chip narrows it.
+test('summary text follows an active severity chip', () => {
+  const g = groupIssues(issues);
+  const shown = g.slice(0, 1);
+  const targets = shown[0].items.length;
+  assert.equal(summaryText(g, issues, shown), '1 of 3 issues · ' + targets + ' target' + (targets === 1 ? '' : 's'));
+  assert.equal(summaryText(g, issues, g), '3 issues · 4 targets');
+  assert.equal(summaryText(g, issues, []), '0 of 3 issues · 0 targets');
+});
+
 test('issue hosts: parsed from every target shape, counted and filterable', () => {
   assert.equal(issueHost('GET app.example.com/p?q=1'), 'app.example.com');
   assert.equal(issueHost('POST API.example.com'), 'api.example.com');
@@ -125,4 +135,17 @@ test('splitScanTarget separates method, host and path', () => {
   assert.deepEqual(splitScanTarget('GET example.com'), { method: 'GET', host: 'example.com', path: '' });
   assert.deepEqual(splitScanTarget(''), { method: '', host: '', path: '' });
   assert.deepEqual(splitScanTarget(null), { method: '', host: '', path: '' });
+});
+
+test('completion toast counts grouped issues, not target rows', async () => {
+  const { scanToastText } = await import('../js/scanner-model.js');
+  const issues = [
+    { title: 'Missing HSTS', severity: 'Low', target: 'GET a.test/x' },
+    { title: 'Missing HSTS', severity: 'Low', target: 'GET a.test/y' },
+    { title: 'Missing HSTS', severity: 'Low', target: 'GET a.test/z' },
+    { title: 'Server banner', severity: 'Info', target: 'GET a.test/' },
+  ];
+  assert.equal(scanToastText(issues), '2 issues');
+  assert.equal(scanToastText(issues.slice(0, 1), 'a.test', 'x'), '1 issue · a.test · "x"');
+  assert.equal(scanToastText([]), '0 issues');
 });

@@ -101,20 +101,26 @@ func assessFindingQuality(f store.Finding) (reportFindingQuality, reportBoardRow
 }
 
 func assessReportQuality(findings []store.Finding) reportQuality {
-	out := reportQuality{Ready: len(findings) > 0, Total: len(findings), Findings: []reportFindingQuality{}, Board: []reportBoardRow{}}
-	if len(findings) == 0 {
-		out.Message = "No findings to report yet."
-	}
+	out := reportQuality{Findings: []reportFindingQuality{}, Board: []reportBoardRow{}}
 	for _, f := range findings {
 		q, row := assessFindingQuality(f)
+		out.Findings = append(out.Findings, q)
+		out.Board = append(out.Board, row)
+		if f.Status == "false_positive" {
+			// Rendered only in the excluded appendix: it stays on the board
+			// but is not one of the findings the report counts.
+			continue
+		}
+		out.Total++
 		if !q.Ready {
-			out.Ready = false
 			out.Summary.Blocked++
 		} else {
 			out.Summary.Ready++
 		}
-		out.Findings = append(out.Findings, q)
-		out.Board = append(out.Board, row)
+	}
+	out.Ready = out.Total > 0 && out.Summary.Blocked == 0
+	if out.Total == 0 {
+		out.Message = "No findings to report yet."
 	}
 	sort.SliceStable(out.Board, func(i, j int) bool {
 		a, b := out.Board[i], out.Board[j]

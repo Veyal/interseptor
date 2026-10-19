@@ -67,8 +67,16 @@ func (s *Store) UpdateScopeRule(r *ScopeRule) error {
 	return nil
 }
 
-// DeleteScopeRule removes a scope rule by id.
+// DeleteScopeRule removes a scope rule by id; sql.ErrNoRows when none exists.
 func (s *Store) DeleteScopeRule(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM scope_rules WHERE id=?`, id)
-	return err
+	res, err := s.db.Exec(`DELETE FROM scope_rules WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }

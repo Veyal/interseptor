@@ -7,13 +7,22 @@
 /* ---- toolbar: one row ---- */
 html.desktop-app #panel-scanner>.toolbar{overflow:visible;padding-block:0}
 html.desktop-app #scanPassiveBar{flex:1;flex-wrap:nowrap;gap:6px;min-width:0}
-html.desktop-app #scanPassiveBar .ui-select{flex:0 1 190px;min-width:110px;max-width:190px}
+html.desktop-app #scanPassiveBar .ui-select{flex:0 1 190px;min-width:176px;max-width:190px}
 html.desktop-app #scanPassiveBar .ui-select .ui-select-trigger{width:100%}
-html.desktop-app #scanTarget{min-width:110px}
-html.desktop-app #scanFilter{flex:0 1 150px;min-width:80px;width:auto}
+html.desktop-app #scanTarget{min-width:176px}
+html.desktop-app #scanFilter{flex:0 1 150px;min-width:96px;width:auto}
 html.desktop-app #scanPassiveBar .spacer{flex:1 1 0}
-html.desktop-app #scanRescanState{flex:0 1 auto;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-caption);color:var(--text-muted)}
+/* A status note wraps to two lines before it is clipped; the full text is also its tooltip. */
+html.desktop-app #scanRescanState{flex:0 1 auto;min-width:0;max-width:min(440px,42vw);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;white-space:normal;overflow-wrap:anywhere;font-size:var(--text-caption);line-height:14px;color:var(--text-muted)}
 html.desktop-app #scanRescanState:empty{display:none}
+/* Narrow window: the status note gets its own row under the toolbar instead of a 60px clipped box, so it is readable without hover hints. */
+@media (max-width:1100px){
+  html.desktop-app #scanPassiveBar{flex-wrap:wrap;row-gap:2px}
+  html.desktop-app #panel-scanner>.toolbar{padding-block:4px}
+  html.desktop-app #scanPassiveBar .ui-select{flex-basis:176px}
+  html.desktop-app #scanFilter{flex-basis:110px}
+  html.desktop-app #scanRescanState{order:99;flex:1 0 100%;max-width:none;display:block;-webkit-line-clamp:unset;line-clamp:unset;overflow:visible}
+}
 html.desktop-app #scanCount{flex:none;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 html.desktop-app #scanCount:empty{display:none}
 /* Run is the one primary button; while a scan runs Stop and the progress take its place. */
@@ -41,6 +50,8 @@ html.desktop-app .scan-run-reason[hidden]{display:none}
 /* ---- list column: filter bar and the issue nav list ---- */
 html.desktop-app .scan-list-col{background:var(--surface-1)}
 html.desktop-app .scan-filterbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px var(--gutter);border-bottom:1px solid var(--border-subtle)}
+/* Nothing to filter (no results, e.g. after Clear results): no empty bar, no stray divider. */
+html.desktop-app .scan-filterbar:not(:has(>:not([hidden]))){display:none}
 html.desktop-app .scan-filterbar .scan-host-filter,html.desktop-app .scan-filterbar .scan-sev-chips{display:contents}
 html.desktop-app .scan-filterbar .scan-host-filter[hidden],html.desktop-app .scan-filterbar .scan-sev-chips[hidden]{display:none}
 html.desktop-app .scan-host-filter label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

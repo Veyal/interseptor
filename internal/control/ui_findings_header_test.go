@@ -117,3 +117,15 @@ if(!l.includes('Copy link'))throw Error('Copy link must remain in read-only mode
 		t.Fatalf("More handler: %v\n%s", err, out)
 	}
 }
+
+func TestFindingTriageBarAndIgnoredBanner(t *testing.T) {
+	js := readUIAsset(t, "js/findings.js")
+	requireUIContains(t, js, "renderTriageBar", "openIgnoreReasonMenu", "findTriageBar", "findTriageValid", "findTriageInvalid", "findTriageIgnore", "find-ignored-banner", "Confirm Valid", "False Positive")
+	requireUIContains(t, js, "Low impact / Client won't care")
+
+	css := readUIAsset(t, "findings.css")
+	requireUIContains(t, css, ".find-st-ignored", ".find-triage-bar", ".find-triage-btn", ".find-ignored-banner")
+
+	html := readUIAsset(t, "index.html")
+	requireUIContains(t, html, `value="ignored"`)
+}

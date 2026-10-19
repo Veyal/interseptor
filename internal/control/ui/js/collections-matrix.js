@@ -11,7 +11,8 @@ import { openSheet, closeSheet } from './sheet.js';
 import { renderState } from './statepanel.js';
 import { createDiffView, diffLines, normalizeBody } from './diff.js';
 import * as MM from './collections-matrix-model.js';
-import { buildRunPlan, planSummary, methodBreakdown, planConfirmed, CONFIRM_PHRASE } from './collections-run-plan.js';
+import { loadBlockCheck } from './collections-core.js';
+import { buildRunPlan, planSummary, methodBreakdown, planConfirmed, resolvePlanUrls, CONFIRM_PHRASE } from './collections-run-plan.js';
 
 function injectStylesheet() {
   if (document.querySelector('link[href="/css/collections-matrix.css"]')) return;
@@ -41,6 +42,21 @@ function activeCollection() {
 function activeEnv() {
   const sel = $('#collEnv');
   return sel ? sel.value || '' : '';
+}
+
+// selectedRequestUid is the request open in the Collections tree (folders carry
+// aria-expanded). The analysis tools default to it rather than asking for a UID
+// nobody can see.
+function selectedRequestUid() {
+  const row = document.querySelector('#collTree .coll-row[aria-selected="true"]:not([aria-expanded])');
+  return row ? row.dataset.uid || '' : '';
+}
+
+async function latestRunUid(collectionUid) {
+  try {
+    const r = await api('/api/collections/' + encodeURIComponent(collectionUid) + '/runs');
+    return MM.latestRunUid(r && r.runs);
+  } catch (e) { toastError('Could not list runs', e); return ''; }
 }
 
 async function pickCollection() {
@@ -79,7 +95,7 @@ function matrixTable(m) {
       const td = el('td', 'cxm-cell');
       td.dataset.flag = cell.flag || '';
       td.dataset.class = cell.class || '';
-      td.title = `${m.identities[i]}: ${MM.classLabel(cell.class)}${cell.status ? ' (HTTP ' + cell.status + ')' : ''} — ${v.word}`;
+      td.title = MM.cellTitle(m.identities[i], cell);
       const g = el('span', 'cxm-glyph', v.glyph);
       td.append(g);
       if (cell.status) td.append(el('span', 'cxm-status', String(cell.status)));
@@ -172,12 +188,22 @@ async function loadReview(collectionUid, body) {
       api('/api/collections/' + encodeURIComponent(collectionUid)),
       api('/api/authz').catch(() => ({ identities: [] })),
     ]);
+    const resolved = await resolvePlanUrls(coll.items || [], { scope: 'collection' }, (it) => api('/api/variables/resolve', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ template: typeof it.url === 'string' ? it.url : (it.url && it.url.raw) || '', itemUid: it.uid, envUid: activeEnv() }),
+    }));
+    // The active environment's target pin and the scope rules decide which
+    // requests the run will refuse; the review says so before RUN.
+    const envs = await api('/api/environments').catch(() => ({ environments: [] }));
+    const env = (envs.environments || []).find((e) => e.uid === activeEnv());
+    const blockCheck = await loadBlockCheck((env && env.baseTargetPin) || '');
+    const scriptsView = await api('/api/collections/' + encodeURIComponent(collectionUid) + '/scripts').catch(() => null);
     const plan = buildRunPlan(coll.items || [], {
-      scope: 'collection',
+      scope: 'collection', resolved, blockCheck,
       collectionName: coll.collection && coll.collection.name,
       identities: MM.matrixRunIdentities(authz.identities),
     });
-    renderReview(body, collectionUid, plan);
+    renderReview(body, collectionUid, plan, MM.untrustedScriptCount(scriptsView));
   } catch (e) {
     renderState(body, 'error', { title: 'Could not work out what a run would send', message: e.message, status: e.status, onRetry: () => loadReview(collectionUid, body) });
   }
@@ -186,7 +212,7 @@ async function loadReview(collectionUid, body) {
 // renderReview states the scope, the live request count, who it is sent as,
 // the per-method breakdown and the hosts BEFORE anything is sent. All text is
 // set with textContent; plan strings are never parsed as markup.
-function renderReview(body, collectionUid, plan) {
+function renderReview(body, collectionUid, plan, quarantined = 0) {
   body.textContent = '';
   const wrap = el('div', 'cxm-wrap cxm-review');
   wrap.append(el('h4', '', 'Review before running'), el('p', 'cxm-summary', planSummary(plan)));
@@ -204,7 +230,8 @@ function renderReview(body, collectionUid, plan) {
   fact('Scope', plan.scopeLabel + ' (' + plan.requests + ' request' + (plan.requests === 1 ? '' : 's') + ', not a folder)');
   fact('Identities', plan.identityNames.length + ': ' + plan.identityNames.join(', '));
   fact('Live requests', String(plan.liveRequests));
-  fact('Target hosts', plan.hosts.length ? plan.hosts.join(', ') : 'taken from variables at send time (not known until it runs)');
+  fact('Target hosts', plan.hosts.length ? plan.hosts.join(', ') : 'none could be determined');
+  if (plan.unresolvedRequests) fact('Unresolved hosts', plan.unresolvedHosts.join(', ') + ' (' + plan.unresolvedRequests + ' request' + (plan.unresolvedRequests === 1 ? '' : 's') + ' use variables the active environment does not define)');
   wrap.append(facts);
 
   const ul = el('ul', 'cxm-methods');
@@ -217,12 +244,31 @@ function renderReview(body, collectionUid, plan) {
   });
   wrap.append(ul);
 
+  // Quarantined scripts cannot run, and the matrix refuses to run at all while
+  // any are unapproved (a skipped auth script would give misleading verdicts).
+  // Say so here and let the operator approve them or send without scripts.
+  let skipScripts = false;
+  if (quarantined > 0) {
+    const warn = el('div', 'cxm-note cxm-scripts-warn');
+    warn.setAttribute('role', 'alert');
+    warn.append(el('p', '', quarantined + (quarantined === 1 ? ' script in this collection is' : ' scripts in this collection are') + ' not approved. Unapproved scripts never run, so the matrix will not start until you approve them or choose to send without scripts.'));
+    const review = btn('Review scripts', () => { closeSheet('collMatrixSheet'); $('#collScripts')?.click(); }, 'btn');
+    const lab = el('label', 'cxm-skip-scripts');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.addEventListener('change', () => { skipScripts = cb.checked; sync(); });
+    lab.append(cb, document.createTextNode(' Send without running any scripts'));
+    warn.append(review, lab);
+    wrap.append(warn);
+  }
+
   let typed = '';
   const run = btn('Send ' + plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's'), null, 'btn accent');
-  const sync = () => { run.disabled = !planConfirmed(plan, typed); };
+  const scriptsOk = () => quarantined === 0 || skipScripts;
+  const sync = () => { run.disabled = !planConfirmed(plan, typed) || !scriptsOk(); };
   const go = () => {
-    if (!planConfirmed(plan, typed)) return;
-    runMatrix(plan, collectionUid, body, typed);
+    if (!planConfirmed(plan, typed) || !scriptsOk()) return;
+    runMatrix(plan, collectionUid, body, typed, skipScripts);
   };
   run.addEventListener('click', go);
   let input = null;
@@ -231,6 +277,7 @@ function renderReview(body, collectionUid, plan) {
     lab.append(el('span', '', plan.destructive + ' of these requests change state on the target. Type ' + CONFIRM_PHRASE + ' (capitals) to send them.'));
     input = document.createElement('input');
     input.type = 'text';
+    input.className = 'btn btn-field';
     input.autocomplete = 'off';
     input.spellcheck = false;
     input.setAttribute('aria-label', 'Type ' + CONFIRM_PHRASE + ' to confirm');
@@ -250,17 +297,17 @@ function renderReview(body, collectionUid, plan) {
 // runMatrix is the only function that talks to /api/collmatrix/run, and it
 // refuses to unless the plan is non-empty and planConfirmed() accepts what was
 // typed. Retry re-enters here, so a retry is gated the same way.
-async function runMatrix(plan, collectionUid, body, typed) {
+async function runMatrix(plan, collectionUid, body, typed, noScripts = false) {
   if (!plan || plan.empty || !planConfirmed(plan, typed)) {
     toast('Run not confirmed; nothing was sent');
     return;
   }
   renderState(body, 'loading', { title: 'Running ' + plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's') + ' (' + plan.scopeLabel + ')' });
   try {
-    const r = await api('/api/collmatrix/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ collectionUid, envUid: activeEnv() }) });
+    const r = await api('/api/collmatrix/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ collectionUid, envUid: activeEnv(), noScripts }) });
     renderMatrix(body, r.matrix, r.timing);
   } catch (e) {
-    renderState(body, 'error', { title: 'Could not run the identity matrix', message: e.message, status: e.status, onRetry: () => runMatrix(plan, collectionUid, body, typed) });
+    renderState(body, 'error', { title: 'Could not run the identity matrix', message: e.message, status: e.status, onRetry: () => runMatrix(plan, collectionUid, body, typed, noScripts) });
   }
 }
 
@@ -347,6 +394,12 @@ async function loadCoverage(collectionUid, body) {
 
 function renderTiming(body, tr) {
   body.textContent = '';
+  if (MM.timingEmpty(tr)) {
+    const h = el('div');
+    body.append(h);
+    renderState(h, 'empty-first', { title: 'No timing yet', hint: 'The latest run sent no requests, so there is nothing to time. Run the collection from the Run button, then open this again.' });
+    return;
+  }
   const wrap = el('div', 'cxm-wrap');
   wrap.append(el('p', 'cxm-summary', MM.timingSummaryText(tr)), el('p', 'cxm-note', tr.note));
   const bars = el('div', 'cxm-phasebar');
@@ -391,8 +444,8 @@ async function openTimingSheet() {
   injectStylesheet();
   const collectionUid = await pickCollection();
   if (!collectionUid) return;
-  const runUid = (await uiPrompt({ title: 'Run timing — Run UID (see the Runner view or History)', placeholder: 'run uid' }) || '').trim();
-  if (!runUid) return;
+  const runUid = await latestRunUid(collectionUid);
+  if (!runUid) { toast('Run the collection first; timing is read from its latest run'); return; }
   openSheet({
     id: 'collTimingSheet', title: 'Run timing', detents: ['half', 'full'], detent: 'full',
     content: (body) => { renderState(body, 'loading', { title: 'Loading timing' }); loadTiming(collectionUid, runUid, body); return body; },
@@ -437,9 +490,11 @@ async function openDiffSheet() {
   injectStylesheet();
   const collectionUid = await pickCollection();
   if (!collectionUid) return;
-  const itemUid = (await uiPrompt({ title: 'Saved-example diff — Request item UID (open it in Collections to copy its UID)', placeholder: 'item uid' }) || '').trim();
-  if (!itemUid) return;
-  const example = (await uiPrompt({ title: 'Saved-example diff — Example name (or its 1-based position)', placeholder: 'e.g. ok' }) || '').trim();
+  const itemUid = selectedRequestUid();
+  if (!itemUid) { toast('Select a request in Collections first'); return; }
+  const exampleAnswer = await uiPrompt({ title: 'Saved-example diff — Example name (or its 1-based position)', placeholder: 'e.g. ok (empty: the first example)', allowEmpty: true });
+  if (exampleAnswer == null) return; // cancelled: do not go on to the second prompt
+  const example = String(exampleAnswer).trim();
   const flowId = Number((await uiPrompt({ title: 'Saved-example diff — Flow ID of the actual response to compare', placeholder: '123' })) || '');
   if (!flowId) return;
   openSheet({
@@ -476,9 +531,9 @@ async function openHandoffSheet() {
   injectStylesheet();
   const collectionUid = await pickCollection();
   if (!collectionUid) return;
-  const itemUid = (await uiPrompt({ title: 'Send to Intruder — Request item UID (open it in Collections to copy its UID)', placeholder: 'item uid' }) || '').trim();
-  if (!itemUid) return;
-  const positions = (await uiPrompt({ title: 'Send to Intruder — Variable name(s) to fuzz, comma-separated (leave empty to auto-detect)', placeholder: 'e.g. orderId, userId' }) || '').trim();
+  const itemUid = selectedRequestUid();
+  if (!itemUid) { toast('Select a request in Collections first'); return; }
+  const positions = (await uiPrompt({ title: 'Send to Intruder — Variable name(s) to fuzz, comma-separated (leave empty to use every {{variable}} in the URL path, query and body)', placeholder: 'e.g. orderId, userId' }) || '').trim();
   try {
     const h = await api('/api/collmatrix/handoff', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -486,7 +541,11 @@ async function openHandoffSheet() {
     });
     if (h.notes?.length) toast(h.notes[0]);
     if (loadIntoIntruder(h.target, h.template)) toast('Loaded into Intruder — ' + MM.handoffSummaryText(h));
-  } catch (e) { toastError('Send to Intruder failed', e); }
+  } catch (e) {
+    // The server prefixes its package name; the person reads only the sentence.
+    if (e && typeof e.message === 'string') e.message = e.message.replace(/^collmatrix:\s*/, '');
+    toastError('Send to Intruder failed', e);
+  }
 }
 
 /* ------------------------------------------------------------------ commands */

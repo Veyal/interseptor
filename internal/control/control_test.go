@@ -1352,3 +1352,41 @@ func TestSSEReceivesFlowNew(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// QA round 2: POST /api/scope honours "enabled"; a body without it creates a
+// disabled rule, as docs/agents.md documents. Every UI caller must therefore
+// send "enabled": true (Collections → Add host to scope did not, so the host it
+// "added" stayed out of scope).
+func TestScopeCreateHonoursEnabledAndUICallersEnableTheRule(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	for _, body := range []string{
+		`{"action":"include","host":"a.example.com"}`,
+		`{"action":"include","host":"b.example.com","enabled":true}`,
+		`{"action":"include","host":"c.example.com","enabled":false}`,
+	} {
+		resp, err := http.Post(ts.URL+"/api/scope", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("POST %s = %d", body, resp.StatusCode)
+		}
+	}
+	rules, err := st.ListScopeRules()
+	if err != nil || len(rules) != 3 {
+		t.Fatalf("rules=%v err=%v", rules, err)
+	}
+	want := map[string]bool{"a.example.com": false, "b.example.com": true, "c.example.com": false}
+	for _, r := range rules {
+		if r.Enabled != want[r.Host] {
+			t.Fatalf("%s enabled=%v, want %v", r.Host, r.Enabled, want[r.Host])
+		}
+	}
+	js := readUIAsset(t, "js/collections-response.js")
+	if !strings.Contains(js, "jsend('POST', '/api/scope', { action: 'include', host: h, enabled: true })") {
+		t.Fatal("Collections → Add host to scope must create an enabled rule")
+	}
+}

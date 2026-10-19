@@ -1115,3 +1115,50 @@ func excerpt(s, needle string) string {
 	}
 	return s[start:end]
 }
+
+func TestCreateFindingDefaultsToNeedsVerificationAndSupportsIgnored(t *testing.T) {
+	var createBody, updateBody map[string]any
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings":
+			_ = json.NewDecoder(r.Body).Decode(&createBody)
+			io.WriteString(w, `{"id":1,"title":"test","status":"needs_verification","flows":[],"blocks":[]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/findings/1":
+			_ = json.NewDecoder(r.Body).Decode(&updateBody)
+			io.WriteString(w, `{"id":1,"title":"test","status":"ignored","flows":[],"blocks":[]}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	// 1. Omitted status defaults to needs_verification
+	if _, err := s.Call("create_finding", map[string]any{"title": "test", "severity": "High"}); err != nil {
+		t.Fatalf("create_finding: %v", err)
+	}
+	if createBody["status"] != "needs_verification" {
+		t.Fatalf("expected create_finding status to default to needs_verification, got %v", createBody["status"])
+	}
+
+	// 2. update_finding supports status=ignored with proofReview.ignoreReason
+	updateArgs := map[string]any{
+		"id":     1,
+		"status": "ignored",
+		"proofReview": map[string]any{
+			"ignoreReason": "Low impact / Client won't care",
+		},
+	}
+	if _, err := s.Call("update_finding", updateArgs); err != nil {
+		t.Fatalf("update_finding: %v", err)
+	}
+	if updateBody["status"] != "ignored" {
+		t.Fatalf("expected update_finding status to be ignored, got %v", updateBody["status"])
+	}
+	pr, _ := updateBody["proofReview"].(map[string]any)
+	if pr["ignoreReason"] != "Low impact / Client won't care" {
+		t.Fatalf("expected ignoreReason to be forwarded, got %v", pr)
+	}
+}

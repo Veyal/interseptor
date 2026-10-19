@@ -46,3 +46,30 @@ test('a registered binding that reuses a legacy single key in the same scope is 
   assert.ok(legacyProxy.has('r') && legacyProxy.has('x'));
   assert.ok(!legacyProxy.has('e'), 'e is free for attach-as-evidence');
 });
+
+test('parseDisplayKeys renders platform-correct modifier labels', () => {
+  assert.deepEqual(parseDisplayKeys('Ctrl+Alt+P / Space', true), [[['⌘', '⌥', 'P']], [['Space']]]);
+  assert.deepEqual(parseDisplayKeys('Ctrl+Alt+P', false), [[['Ctrl', 'Alt', 'P']]]);
+  assert.deepEqual(parseDisplayKeys('Ctrl+Alt+P'), [[['Ctrl/⌘', 'Alt', 'P']]], 'unknown platform keeps both');
+});
+
+test('the sheet does not list Ctrl+I (Cmd+I is the Intercept Requests menu item)', () => {
+  assert.ok(!LEGACY_SHORTCUTS.some((s) => s.keys === 'Ctrl+I'));
+});
+
+test('Cmd+Space (Spotlight on macOS) is never offered as a Repeater send key on macOS', async () => {
+  const { legacyShortcutsFor } = await import('../js/shortcuts-table.js');
+  const rep = (mac) => legacyShortcutsFor(mac).filter((s) => s.scope === 'repeater').map((s) => s.keys);
+  assert.deepEqual(rep(true), ['Ctrl+Enter']);
+  assert.deepEqual(rep(false), ['Ctrl+Enter', 'Ctrl+Space']);
+  assert.equal(legacyShortcutsFor(undefined).length, LEGACY_SHORTCUTS.length);
+});
+
+test('platform hints use the native modifier and a key a Mac keyboard has', async () => {
+  const { platformHints } = await import('../js/shortcuts-table.js');
+  assert.match(platformHints(true).singleKey, /without ⌘/);
+  assert.doesNotMatch(platformHints(true).pickerKeys, /Shift\+F10/);
+  assert.match(platformHints(true).pickerKeys, /right-click/i);
+  assert.match(platformHints(false).singleKey, /without Ctrl/);
+  assert.match(platformHints(false).pickerKeys, /Shift\+F10/);
+});

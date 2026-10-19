@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/collimport/curl"
@@ -160,6 +162,7 @@ func (c *collectionsAPI) importPreview(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, code, err.Error())
 		return
 	}
+	annotateTargetHosts(&res.Report, c.h.sc)
 	pv := importPreview{Kind: res.Kind, Report: res.Report, Quarantined: scriptsQuarantined(res.Report)}
 	if res.Kind == postman.KindCollection {
 		pv.Name = res.Collection.Name
@@ -168,6 +171,35 @@ func (c *collectionsAPI) importPreview(w http.ResponseWriter, r *http.Request) {
 		pv.Environments = append(pv.Environments, e.Environment.Name)
 	}
 	writeJSON(w, http.StatusOK, pv)
+}
+
+var targetHostMsg = regexp.MustCompile(`^(\d+) request\(s\) target (\S+)$`)
+
+// annotateTargetHosts rewrites the importers' neutral "N request(s) target H"
+// entries with the host's actual scope state and what the policies do about it:
+// an interactive send only warns, while collection runs and AI sends block.
+func annotateTargetHosts(rep *postman.Report, sc interface{ HostInScope(string) bool }) {
+	if sc == nil {
+		return
+	}
+	for i := range rep.Entries {
+		e := &rep.Entries[i]
+		m := targetHostMsg.FindStringSubmatch(e.Message)
+		if e.Feature != "target-host" || m == nil {
+			continue
+		}
+		host := m[2]
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if sc.HostInScope(host) {
+			e.Level, e.Suggestion = postman.Converted, ""
+			e.Message = e.Message + " (in scope)"
+			continue
+		}
+		e.Message = e.Message + ", which is not in scope: interactive sends warn, collection runs and AI sends are blocked until it is"
+		e.Suggestion = "Add the host to the engagement scope"
+	}
 }
 
 // scriptsQuarantined reports whether the file carried scripts (every importer
@@ -205,6 +237,7 @@ func (c *collectionsAPI) importCommit(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, code, err.Error())
 		return
 	}
+	annotateTargetHosts(&res.Report, c.h.sc)
 	c.mu.Lock()
 	stats, skips, err := c.h.st.ImportUserCollectionsBundle(res.Bundle())
 	c.mu.Unlock()

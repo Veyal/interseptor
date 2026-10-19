@@ -42,7 +42,7 @@ func TestUIInterceptHeldRequestCanOpenInRepeaterWithoutForwarding(t *testing.T) 
 	requireUIContains(t, intercept,
 		"import { sendRawToRepeater } from './tools.js'",
 		"id='heldRepeaterBtn'",
-		"sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value})",
+		"sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value,heldState:'held',binaryBodyLen:heldBinaryLen(sel)})",
 		"b.hidden=side==='resp'",
 		"'#heldRepeaterBtn']",
 	)
@@ -52,7 +52,7 @@ func TestUIInterceptHeldRequestCanOpenInRepeaterWithoutForwarding(t *testing.T) 
 	tools := readUIAsset(t, "js/tools.js")
 	requireUIContains(t, tools,
 		"export function parseRawRequest(raw)",
-		"export async function sendRawToRepeater({scheme,host,raw,label})",
+		"export async function sendRawToRepeater({scheme,host,raw,label,heldState='held',binaryBodyLen=0})",
 		"const t=repNewTab();if(!t)return false;",
 	)
 }

@@ -1,13 +1,13 @@
-import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DROPPED, flowPending, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, mountHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
 import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 import { on as busOn, EVENTS } from './bus.js';
 import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL } from './inspector-structure.js';
-import { highlightJSON } from './core.js';
+import { highlightJSON, apiBytes } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
-import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
+import { sendToRepeater, sendToIntruder, openNewRepeaterTab, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
@@ -19,7 +19,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
@@ -27,6 +27,7 @@ import { createKeyRegistry } from './keys.js';
 import { openFlowDiff } from './flow-diff.js';
 import { createFinder } from './finder.js';
 import { getShellApi } from './shell-hooks.js';
+import { modShortcut, hasNativeHost } from './desktop-panel-kit.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -95,6 +96,11 @@ const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let flowSearchCursor=0;        // id a capped body search stopped at; the next page starts there
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
+let flowPageInflight=null;     // that fetch, so End's sweep can wait on it
+let flowSweeping=false;        // End is paging to the oldest flow
+let flowEndSweep=0;            // bumped to cancel a running End sweep
+const END_PAGE=2000;           // End pages in big steps (the API allows 5000)
+const END_SWEEP_MAX=50000;     // End stops loading past this many rows to stay responsive
 let flowRefreshing=false;
 let flowPageError=null;
 let flowLoadError=null;
@@ -489,11 +495,18 @@ function syncRowA11y(box,start){
 function moveTabStop(rows,stop){
   rows.forEach(r=>{const want=r===stop?'0':'-1';if(r.getAttribute('tabindex')!==want)r.setAttribute('tabindex',want);});
 }
+// A client that hung up while its request was in flight is recorded with this
+// exact error and no status (internal/proxy errClientAborted). One that hung up
+// while its request or response was held gets errClientCanceledHeld; the server
+// also sets FLAG_DROPPED on it, but nobody dropped it, so it reads as aborted.
+const CLIENT_ABORT_ERROR='client disconnected';
+const CLIENT_HELD_ABORT_ERROR='client disconnected while held';
+const clientAborted=f=>!f.status&&(f.error===CLIENT_ABORT_ERROR||f.error===CLIENT_HELD_ABORT_ERROR);
 function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
-  const pending=!f.status&&!f.error;
+  const pending=flowPending(f);
   const hasNote=!!(f.note&&String(f.note).trim());
-  const stHTML=f.status?String(f.status):(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink tr-wait" title="waiting for response" aria-label="waiting for response">…</span>');
+  const stHTML=f.status?String(f.status):clientAborted(f)?`<span title="aborted: ${escAttr(f.error)}">ABRT</span>`:(f.flags&FLAG_DROPPED)?`<span title="${escAttr(f.error||'dropped by interseptor')}">DROP</span>`:(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink tr-wait" title="waiting for response" aria-label="waiting for response">…</span>');
   const linked=attachedLabel(flowFindings(f.id));
   const phoneCard=!!(flowPhoneQuery&&flowPhoneQuery.matches);
   const rowTitle=[pending?'[pending]':'',hasNote?String(f.note).trim():''].filter(Boolean).join(' · ');
@@ -591,7 +604,12 @@ function updateTruncBanner(){
   // instead of being wiped by a textContent assignment on the whole banner.
   const message=$('#flowCapMessage')||b.querySelector('[data-flow-cap-message]')||b.querySelector('span')||b;
   const retry=$('#flowCapRetry');
-  const show=text=>{message.textContent=text;b.style.display='flex';};
+  // Paging status ends the scrolled list itself (after the last loaded row) so it
+  // never sits over a row; errors and a refresh keep the persistent bar.
+  const box=$('#rows');
+  const hideBar=()=>{b.style.display='none';if(retry)retry.hidden=true;};
+  const show=text=>{if(box)delete box.dataset.listEnd;message.textContent=text;b.style.display='flex';};
+  const end=text=>{hideBar();box.dataset.listEnd=text;};
   if(flowLoadError){
     const stale=state.flows.length>0;
     show((stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError));
@@ -601,11 +619,11 @@ function updateTruncBanner(){
     if(retry){retry.hidden=false;retry.disabled=loadingMore;retry.onclick=()=>loadMoreFlows();}
   }else if(flowRefreshing){
     show('Refreshing flows…');if(retry)retry.hidden=true;
-  }else if(loadingMore){
-    show(flowSearchCursor?'Searching older flows…':'Loading older flows…');if(retry)retry.hidden=true;
-  }else if(flowHasMore){
-    show('Scroll down to load older flows.');if(retry)retry.hidden=true;
-  }else{b.style.display='none';if(retry)retry.hidden=true;}
+  }else if(loadingMore&&box){
+    end(flowSweeping?'Loading to the oldest flow…':flowSearchCursor?'Searching older flows…':'Loading older flows…');
+  }else if(flowHasMore&&box){
+    end('Scroll down to load older flows.');
+  }else{hideBar();if(box)delete box.dataset.listEnd;}
 }
 // Infinite scroll: load the next older page as the History list nears its bottom.
 let flowScrollSource=null,flowScrollSyncing=false;
@@ -976,10 +994,13 @@ function reconcileVirtualRows(){
   const plan=diffVisibleRows(mounted.map(r=>Number(r.dataset.id)),slice.map(f=>f.id));
   if(!plan.reusable)return false;
   const byId=new Map(mounted.map(r=>[Number(r.dataset.id),r]));
-  let parkFocus=false;
+  // A focused row scrolled out of the window: park focus on the list itself (not
+  // <body>) so the arrow keys keep working, and do it before removing rows. The
+  // focus change lays the list out; with rows gone and the old pads the content is
+  // short, and Chromium clamped scrollTop (End landed ~48 rows above the oldest).
+  if(plan.remove.some(id=>byId.get(id)?.contains(document.activeElement)))box.focus({preventScroll:true});
   for(const id of plan.remove){
-    const row=byId.get(id);
-    if(row){parkFocus=parkFocus||row.contains(document.activeElement);row.remove();}
+    byId.get(id)?.remove();
     byId.delete(id);
   }
   const nextById=new Map(slice.map(f=>[f.id,f]));
@@ -1005,9 +1026,6 @@ function reconcileVirtualRows(){
     if(focus)restoreFlowListFocus(box,focus);
     else if(hadFocus)nr.focus({preventScroll:true});
   }
-  // A focused row scrolled out of the window: park focus on the list itself
-  // (not <body>) so the arrow keys keep working from the selection.
-  if(parkFocus)box.focus({preventScroll:true});
   syncRowA11y(box,win.start);
   consumeFlowSignals();
   return true;
@@ -1105,7 +1123,10 @@ export function walkFlowNav(down,e){
   if(ni===i)return null;
   const id=list[ni].id;
   if(state.selAnchorId==null&&i>=0)state.selAnchorId=list[i].id;
-  stepSelection(list.map(f=>f.id),id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
+  // Gmail-style: a plain j/k moves the cursor and keeps the rows marked with x.
+  const keepMarks=(e.key==='j'||e.key==='k')&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&state.selected.size>0;
+  if(keepMarks){state.selAnchorId=id;state.lastSelIdx=ni;}
+  else stepSelection(list.map(f=>f.id),id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
   selectFlow(id);updateSelBar();return id;
 }
 // revealFlowRow scrolls the History list so the row of flow `id` is on screen,
@@ -1149,13 +1170,26 @@ export function focusInFlowList(){
       const to=listKeyTarget(e.key,list.findIndex(f=>f.id===from),list.length,page);
       if(to==null)return;
       e.preventDefault();e.stopPropagation();
+      flowEndSweep++; // any move cancels an End sweep still paging
       const id=list[to].id;
       if(state.selAnchorId==null&&from!=null)state.selAnchorId=from;
       // Only a Shift range needs the id list; a plain move skips the O(n) copy.
       stepSelection(e.shiftKey?list.map(f=>f.id):[],id,{mod:false,shift:e.shiftKey});
       selectFlow(id);updateSelBar();
       revealFlowRow(id,{focus:true,index:to});
-      if(to>=list.length-1)loadMoreFlows();
+      // End means the oldest flow, not the last loaded one: page to the true end,
+      // then land there (unless another key moved on meanwhile).
+      if(e.key==='End'&&flowHasMore){
+        const shift=e.shiftKey,sweep=flowEndSweep;
+        loadToOldest().then(()=>{
+          if(sweep!==flowEndSweep||state.selId!==id)return;
+          const all=state.flows,last=all.length-1;
+          if(last<0||all[last].id===id)return;
+          stepSelection(shift?all.map(f=>f.id):[],all[last].id,{mod:false,shift});
+          selectFlow(all[last].id);updateSelBar();
+          revealFlowRow(all[last].id,{focus:true,index:last});
+        });
+      }else if(to>=list.length-1)loadMoreFlows();
     });
   }
 }
@@ -1209,9 +1243,9 @@ function buildFlowParams(){
 // applyPageMore reads whether older flows remain. A capped body search ends a
 // page at the last flow it read (searchCursor) even when the page is short, and
 // paging then continues from that id instead of from the last listed row.
-function applyPageMore(d,count){
+function applyPageMore(d,count,pageSize=FLOW_FETCH){
   flowSearchCursor=d&&d.searchMore?Number(d.searchCursor)||0:0;
-  flowHasMore=count>FLOW_FETCH||flowSearchCursor>0;
+  flowHasMore=count>pageSize||flowSearchCursor>0;
 }
 // continueShortSearch keeps a search paging (one bounded scan per request) while
 // the list is too short to scroll, so a match in older History still turns up.
@@ -1243,7 +1277,7 @@ export async function loadFlows(){
   const previousFlow=previousSelected==null?null:(flowStore.byId.get(previousSelected)||state.detail);
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
-  loadingMore=false;
+  loadingMore=false;flowPageInflight=null;
   flowLoadEvents=new Map();
   flowLoadOverflow=false;
   flowRefreshing=true;
@@ -1305,12 +1339,16 @@ export async function loadFlows(){
 
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
-export async function loadMoreFlows(){
-  if(flowRefreshing||loadingMore||!flowHasMore||(!state.flows.length&&!flowSearchCursor))return;
+export async function loadMoreFlows({pageSize=FLOW_FETCH}={}){
+  if(loadingMore)return flowPageInflight;
+  if(flowRefreshing||!flowHasMore||(!state.flows.length&&!flowSearchCursor))return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   flowPageError=null;
   updateTruncBanner();
+  return (flowPageInflight=fetchFlowPage(loadEpoch,pageEpoch,pageSize));
+}
+async function fetchFlowPage(loadEpoch,pageEpoch,pageSize){
   try{
     const q=buildFlowParams();
     if(flowSearchCursor)q.set('curId',String(flowSearchCursor)); // only sent for the id order
@@ -1319,15 +1357,15 @@ export async function loadMoreFlows(){
       if(!last){flowHasMore=false;return;}
       appendFlowCursor(q,last);
     }
-    q.set('limit',String(FLOW_FETCH+1));
+    q.set('limit',String(pageSize+1));
     const d=await api('/api/flows?'+q.toString());
     if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
-    applyPageMore(d,flows.length);
+    applyPageMore(d,flows.length,pageSize);
     // Still empty: repaint the empty state, whose text depends on whether the
     // search goes on.
     if(!flows.length&&!state.flows.length)renderRows();
-    if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
+    if(flows.length>pageSize)flows=flows.slice(0,pageSize);
     if(flows.length){
       // appendFlows drops any ids already present (a flow could arrive live between pages).
       const box=$('#rows');const keep=box?box.scrollTop:0;
@@ -1340,7 +1378,21 @@ export async function loadMoreFlows(){
   }catch(e){
     if(loadEpoch===flowLoadEpoch&&pageEpoch===flowPageEpoch)flowPageError=e;
   }
-  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();if(!flowPageError)continueShortSearch();}}
+  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;flowPageInflight=null;updateTruncBanner();if(!flowPageError)continueShortSearch();}}
+}
+// loadToOldest pages History to its true end for End: big pages, one at a time
+// (each awaits the network, so the UI keeps painting), stopping on an error, a
+// reload, another key (flowEndSweep) or END_SWEEP_MAX loaded rows.
+async function loadToOldest(){
+  const sweep=flowEndSweep,epoch=flowLoadEpoch;
+  flowSweeping=true;updateTruncBanner();
+  try{
+    while(flowHasMore&&!flowPageError&&sweep===flowEndSweep&&epoch===flowLoadEpoch&&state.flows.length<END_SWEEP_MAX){
+      const before=state.flows.length,cursor=flowSearchCursor;
+      await loadMoreFlows({pageSize:END_PAGE});
+      if(state.flows.length===before&&flowSearchCursor===cursor)break;
+    }
+  }finally{flowSweeping=false;updateTruncBanner();}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method
@@ -1348,10 +1400,8 @@ function refreshMethodFilter(){
   // rebuilding the <select> on every flow event janks under heavy traffic.
   if(!methodsDirty)return;
   methodsDirty=false;
-  const order=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','CONNECT','TRACE'];
-  const present=[...seenMethods]
-    .sort((a,b)=>{const ia=order.indexOf(a),ib=order.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
   const sel=$('#fMethod');if(!sel)return;const cur=sel.value;
+  const present=methodChoices([...seenMethods],cur);
   sel.innerHTML='<option value="">All methods</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
 }
 const seenMethods=new Set();
@@ -1449,7 +1499,11 @@ function showInspectorLoading(id){
   const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar'),reqDecode=$('#reqDecode'),resDecode=$('#resDecode');
   if(reqDecode)reqDecode.hidden=true;
   if(resDecode)resDecode.hidden=true;
-  if(noteBar)noteBar.style.display='none';
+  // A shown note bar keeps its room while the next flow loads: collapsing it grew
+  // the list for a moment, so a row just revealed at the bottom (End, ArrowDown)
+  // fell out of view when the bar came back.
+  if(noteBar&&noteBar.style.display==='flex')noteBar.style.visibility='hidden';
+  else if(noteBar)noteBar.style.display='none';
   if(req)req.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading flow #'+esc(id)+'…</span>';
   if(res)res.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading request and response…</span>';
   if(status){status.textContent='loading…';status.style.color='var(--fg3)';}
@@ -1528,6 +1582,11 @@ export async function selectFlow(id){
   if(switching)onAuthzSelectionChanged();
   if(!syncSelectedRow(prevSelId))renderRows();
   else syncInspectorVisibility();
+  // Opening the inspector shrinks the list; a row picked in its lower half
+  // would end up under the pane, so bring the selected row back on screen
+  // (again once the note bar below the list appears).
+  const opening=prevSelId==null;
+  if(opening)revealFlowRow(id);
   if(needsLoadingState)showInspectorLoading(id);
   try{
     const pendingNoteSave=noteSaveTails.get(id);
@@ -1540,7 +1599,8 @@ export async function selectFlow(id){
     state.detail=d;
     if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)restoreFlowNoteDraft(id,d.note||'');
     setInspectorActionState(false);
-    $('#noteBar').style.display='flex';
+    $('#noteBar').style.display='flex';$('#noteBar').style.visibility='';
+    if(opening)revealFlowRow(id);
     await renderSide('req');
     if(!current())return;
     if(d.flags&FLAG_WS){
@@ -1550,7 +1610,16 @@ export async function selectFlow(id){
     }else if(d.flags&FLAG_TLS){
       $('#resView').innerHTML=`<div class="tls-blocked"><strong class="u-danger">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span class="u-fg3">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
       $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
-    }else if(!d.status&&!d.error){
+    }else if(clientAborted(d)){
+      // The client hung up (in flight or while held): nobody dropped it.
+      $('#resView').innerHTML=`<span class="u-fg3">No response — aborted: ${esc(d.error)}.</span>`;
+      $('#resStatus').textContent='aborted';$('#resStatus').style.color='var(--fg3)';
+    }else if(!d.status&&(d.flags&FLAG_DROPPED)){
+      // Dropped while held by the operator: there is no response, and there
+      // never will be.
+      $('#resView').innerHTML=`<span class="u-fg3">No response — ${esc(d.error||'dropped by interseptor')}.</span>`;
+      $('#resStatus').textContent='dropped';$('#resStatus').style.color='var(--fg3)';
+    }else if(flowPending(d)){
       // In-flight request: response not back yet. The flow.update handler
       // re-selects this flow once it lands, filling the pane in automatically.
       $('#resView').innerHTML='<span class="blink u-fg3">waiting for response…</span>';
@@ -1818,11 +1887,13 @@ export async function renderSide(side){
         return;
       }
       if(view==='hex'){
+        // Bytes, not text: decoding would turn every byte >= 0x80 into U+FFFD.
         const raw=await fetchRawMessage(flowId,side,detail);
+        const bytes=await apiBytes('/api/flows/'+flowId+'/raw?side='+side);
         if(!current())return;
         el._rawText=raw;
         el._pretty=false;
-        el.innerHTML='<pre class="hex-dump">'+esc(formatHexDump(raw))+'</pre>';
+        mountHexDump(el,bytes);
         return;
       }
       const raw=await fetchRawMessage(flowId,side,detail);
@@ -1919,7 +1990,11 @@ loadFlowColW();
 renderFlowHead();
 if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{refreshRowHeight();renderFlowHead();renderRows();});
 {const b=$('#colPickerBtn');if(b)b.onclick=e=>{e.stopPropagation();toggleColPicker();};}
-{const m=$('#colPicker');if(m)m.onclick=e=>e.stopPropagation();}
+{const m=$('#colPicker');if(m){m.onclick=e=>e.stopPropagation();
+  // WebKit does not focus a clicked checkbox, and a label or the padding is not
+  // focusable either: the mousedown would move focus to the page and the focusin
+  // listener below would close the picker before the click toggled a column.
+  m.addEventListener('mousedown',e=>e.preventDefault());}}
 document.addEventListener('click',()=>closeColPicker());
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&$('#colPicker')?.style.display==='block'){
@@ -2102,12 +2177,18 @@ $('#noteRetry').onclick=saveNote;
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
 let viewsLoadError=null,viewsLoadEpoch=0,viewsMutationPending=false;
 export async function loadViews(){const epoch=++viewsLoadEpoch;try{const d=await api('/api/views');if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=e;renderViews();}}
+// setViewsLabel changes the Views button's text and keeps its chevron icon
+// (textContent would delete the <svg> child).
+function setViewsLabel(btn,txt){
+  const t=[...btn.childNodes].find(n=>n.nodeType===3&&n.data.trim());
+  if(t)t.data=txt+' ';else btn.insertBefore(document.createTextNode(txt+' '),btn.firstChild);
+}
 export function renderViews(){
   const btn=$('#viewsBtn'); if(!btn)return;
-  if(viewsLoadError){btn.textContent='Views !';btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
+  if(viewsLoadError){setViewsLabel(btn,'Views !');btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
   const n=state.views.length;
   const txt=n?('Views · '+n):'Views';
-  btn.textContent=txt;
+  setViewsLabel(btn,txt);
   btn.title=n?(n+' saved view'+(n===1?'':'s')+' — click to apply, save, or delete'):'No saved views yet — click to save the current filters as a view';
 }
 function applyView(v){
@@ -2180,7 +2261,7 @@ export async function loadScope(){
 export async function addHostToScope(host){
   try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})}));
     toast('added '+host+' to scope — turn on In scope only to focus');}
-  catch(e){toastError('Add to scope failed',e);}
+  catch(e){if(e&&e.status===409)toast(host+' is already in scope');else toastError('Add to scope failed',e);}
 }
 export function renderScope(){
   const body=$('#scopeBody');if(!body)return;
@@ -2245,7 +2326,7 @@ $('#addScopeBtn').onclick=async()=>{
   if(!rule.host&&!rule.path){toast('host or path required');return;}
   scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
   try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
-    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){toastError('Add scope rule failed',e);setScopeAddState('idle');}
+    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){if(e&&e.status===409)toast('That scope rule already exists','warn');else toastError('Add scope rule failed',e);setScopeAddState('idle');}
   finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
@@ -2686,9 +2767,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())r
 registerCtxDecoder(text=>openDecoder(text||''));
 registerCtxHistorySearch(text=>{if(text)setFilter('search',text);});
 registerWorkspaceCtxSection(()=>({head:'WORKSPACE',items:[
-  {label:'Command palette',icon:'search',val:'Ctrl/Cmd K',act:()=>import('./cmdk.js').then(m=>m.cmdkOpen()).catch(e=>toastError('Command palette failed',e))},
-  {label:'New Repeater tab',icon:'repeater',val:'Ctrl/Cmd T',act:()=>{document.querySelector('.tab[data-tab="tools"]')?.click();document.querySelector('#repTabs .rep-tab-add')?.click();}},
-  {label:'Open Decoder',icon:'decode',val:'Ctrl/Cmd J',act:()=>openDecoder('')},
+  {label:'Command palette',icon:'search',val:modShortcut('K'),act:()=>import('./cmdk.js').then(m=>m.cmdkOpen()).catch(e=>toastError('Command palette failed',e))},
+  // Browsers reserve Ctrl/⌘+T for their own tabs, so the chord is only
+  // advertised (and handled, app.js) inside the native app.
+  {label:'New Repeater tab',icon:'repeater',val:hasNativeHost()?modShortcut('T'):'',act:openNewRepeaterTab},
+  {label:'Open Decoder',icon:'decode',val:modShortcut('J'),act:()=>openDecoder('')},
   anyFilter()?{label:'Clear History filters',icon:'close',act:clearAllFilters}:null,
   {label:'Keyboard shortcuts',icon:'keyboard',val:'?',act:()=>openModal($('#shortcutsModal'))},
 ]}));
@@ -2960,13 +3043,41 @@ $('#selDelete').onclick=async()=>{
   // Restore persisted height on load.
   try{const saved=localStorage.getItem(SPLITTER_KEY);if(saved){const h=parseInt(saved,10);if(h>=MIN_H)applyHeight(h);}}catch(e){}
   syncRange();
+  // selectedRowSpan: top/bottom of the selected History row inside the list
+  // viewport, or null when nothing is selected or the row is not loaded.
+  function selectedRowSpan(){
+    const box=$('#rows');if(!box||state.selId==null)return null;
+    const i=state.flows.findIndex(f=>f.id===state.selId);
+    if(i<0)return null;
+    if(flowVirt.isActive()){const top=i*ROW_H-box.scrollTop;return {top,bottom:top+ROW_H};}
+    const row=box.querySelector(`.trow[data-id="${state.selId}"]`);if(!row)return null;
+    const b=box.getBoundingClientRect(),r=row.getBoundingClientRect();
+    return {top:r.top-b.top,bottom:r.bottom-b.top};
+  }
+  // A window shrink (or a taller inspector) narrows the list from below. A
+  // selected row that fitted the previous viewport but not the new one is
+  // scrolled back into view; rows the operator had scrolled away from are left.
+  let lastListH=0,resizeRaf=0;
+  function keepSelectedRowInView(){
+    const box=$('#rows');if(!box)return;
+    const prevH=lastListH,h=box.clientHeight;
+    lastListH=h;
+    if(!prevH||h>=prevH)return;
+    const span=selectedRowSpan();
+    if(!span||span.top<0||span.bottom>prevH||span.bottom<=h)return;
+    if(resizeRaf)cancelAnimationFrame(resizeRaf);
+    resizeRaf=requestAnimationFrame(()=>{resizeRaf=0;if(state.selId!=null)revealFlowRow(state.selId);});
+  }
+  lastListH=$('#rows')?.clientHeight||0;
   if(typeof ResizeObserver!=='undefined'){
     const observer=new ResizeObserver(()=>{
       if(proxyPanel?.clientHeight&&inspect.style.height)inspect.style.height=clamp(Number.parseFloat(inspect.style.height))+'px';
       syncRange();
+      keepSelectedRowInView();
     });
     observer.observe(inspect);
     if(proxyPanel)observer.observe(proxyPanel);
+    const rowsBox=$('#rows');if(rowsBox)observer.observe(rowsBox);
   }
 
   // Pointer drag.

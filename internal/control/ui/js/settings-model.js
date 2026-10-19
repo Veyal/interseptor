@@ -15,7 +15,26 @@ export const DENSITY_CHOICES = [
   { id: 'comfortable', label: 'Comfortable' },
 ];
 export const HINTS_PREF = 'interseptor.hints';
+export const FLOW_DRAWER_LAYOUT_PREF = 'interseptor.flowDrawerLayout';
+export const FLOW_DRAWER_LAYOUT_CHOICES = [
+  { id: 'bottom', label: 'Bottom panel' },
+  { id: 'popup', label: 'Popup dialog' },
+  { id: 'side', label: 'Side drawer' },
+];
 export const TYPED_CONFIRM_PHRASE = 'DELETE';
+
+export function normalizeFlowDrawerLayoutChoice(raw) {
+  return raw === 'popup' || raw === 'side' ? raw : 'bottom';
+}
+
+export function readFlowDrawerLayoutPref(storage) {
+  try { return normalizeFlowDrawerLayoutChoice((storage || globalThis.localStorage).getItem(FLOW_DRAWER_LAYOUT_PREF)); } catch (e) { return 'bottom'; }
+}
+
+export function writeFlowDrawerLayoutPref(val, storage) {
+  const norm = normalizeFlowDrawerLayoutChoice(val);
+  try { (storage || globalThis.localStorage).setItem(FLOW_DRAWER_LAYOUT_PREF, norm); return true; } catch (e) { return false; }
+}
 
 // A missing or unknown stored theme means "follow the system".
 export function normalizeThemeChoice(raw) {
@@ -132,7 +151,13 @@ export function sectionHealth(sec, ctx = {}) {
     const c = CHECK(ctx, need);
     if (!c) return { state: 'unknown', text: 'Health unavailable', detail: ctx.stale ? 'Could not read the readiness report' : 'Checking...' };
     const detail = [c.detail, !c.ok && c.fix ? c.fix : ''].filter(Boolean).join('. ');
-    if (sec === 'proxy') return c.ok ? { state: 'ok', text: 'Proxy: listening', detail } : { state: 'warn', text: 'Proxy: not listening', detail };
+    if (sec === 'proxy') {
+      // Auth on with no password (a restored backup never carries it) answers
+      // every client with 407: listening, but not healthy.
+      const auth = CHECK(ctx, 'proxy_auth');
+      if (c.ok && auth && !auth.ok) return { state: 'warn', text: 'Proxy: auth password missing', detail: [auth.detail, auth.fix].filter(Boolean).join('. ') };
+      return c.ok ? { state: 'ok', text: 'Proxy: listening', detail } : { state: 'warn', text: 'Proxy: not listening', detail };
+    }
     if (sec === 'tls') return c.ok ? { state: 'ok', text: 'TLS: intercepting', detail } : { state: 'warn', text: 'TLS: CA not verified', detail };
     if (sec === 'session') return c.ok ? { state: 'ok', text: 'Auth: ' + (c.detail || 'identities set'), detail } : { state: 'warn', text: 'Auth: no identities', detail };
     return c.ok ? { state: 'ok', text: 'OOB: ready', detail } : { state: 'warn', text: 'OOB: not configured', detail };
@@ -151,4 +176,74 @@ export function sectionHealth(sec, ctx = {}) {
 
 export function typedConfirmMatches(input, phrase = TYPED_CONFIRM_PHRASE) {
   return String(input || '').trim().toLowerCase() === String(phrase).trim().toLowerCase();
+}
+
+// systemProxyView is the System proxy switch's text and pressed state. pending is
+// the state a click asked for while the OS call (networksetup can take seconds)
+// is still running, or null. aria-pressed keeps the confirmed state; only the
+// label announces the transition so the switch never reads as unchanged.
+export function systemProxyView(s, pending = null) {
+  const enabled = !!(s && s.enabled);
+  const hint = enabled ? 'Traffic routes through ' + s.proxy : '';
+  if (pending !== null && !!pending !== enabled) {
+    return { label: pending ? 'Turning system proxy on…' : 'Turning system proxy off…', pressed: enabled, hint };
+  }
+  return { label: enabled ? 'System proxy is on' : 'System proxy is off', pressed: enabled, hint };
+}
+
+const UPSTREAM_DEFAULT_PORTS = { http: '80', https: '443', socks5: '1080', socks5h: '1080' };
+function describeUpstream(v) {
+  const scheme = (v && v.scheme) || 'direct';
+  if (scheme === 'direct') return 'Direct connection · no upstream proxy';
+  const host = String(v.host || '').trim() || 'host required';
+  const port = String(v.port || '').trim() || UPSTREAM_DEFAULT_PORTS[scheme] || 'port required';
+  const dns = scheme === 'socks5h' ? ' · remote DNS' : scheme === 'socks5' ? ' · local DNS' : '';
+  return scheme.toUpperCase() + ' · ' + host + ':' + port + dns;
+}
+const sameUpstream = (a, b) => describeUpstream(a) === describeUpstream(b);
+
+// upstreamSummaryText is the line beside "Save upstream proxy". It states the
+// saved connection; while the form holds different values it says so instead
+// of presenting the unsaved (possibly invalid) draft as the active proxy.
+export function upstreamSummaryText(saved, draft) {
+  const text = describeUpstream(saved);
+  return !draft || sameUpstream(saved, draft) ? text : 'Unsaved changes · saved: ' + text;
+}
+
+/* ---- project import / restore results ---- */
+
+const plural = (n, one, many) => (Number(n) || 0) + ' ' + ((Number(n) || 0) === 1 ? one : many);
+const LOCAL_SETTING_LABELS = { 'upstream.proxy': 'upstream proxy', 'upstream.proxyCA': 'upstream proxy CA' };
+
+// projectImportSummary turns POST /api/import/project's result into one toast:
+// counts, duplicates skipped (import is idempotent) and the network settings
+// the import kept local instead of taking the bundle's.
+export function projectImportSummary(r = {}) {
+  const parts = ['Imported ' + plural(r.importedFlows, 'flow', 'flows'), plural(r.importedRules, 'rule', 'rules'), plural(r.importedScope, 'scope rule', 'scope rules')];
+  const skipped = (Number(r.skippedFlows) || 0) + (Number(r.skippedRules) || 0) + (Number(r.skippedScope) || 0);
+  if (skipped) parts.push(plural(skipped, 'duplicate', 'duplicates') + ' skipped');
+  const notes = { imported: 'notes imported', merged: 'notes merged (imported text appended, local notes kept)', kept: 'notes kept (local notes unchanged)' }[r.notes];
+  if (notes) parts.push(notes);
+  let text = parts.join(' · ');
+  const kept = (Array.isArray(r.keptLocalSettings) ? r.keptLocalSettings : []).map((k) => LOCAL_SETTING_LABELS[k] || k);
+  if (kept.length) text += ". Kept this machine's " + kept.join(' and ') + ' (network settings are never imported)';
+  return { text, tone: kept.length ? 'warn' : '' };
+}
+
+// restoreNoticeText is the "passwords not included, re-enter them" message a
+// full-archive or vault restore returns, or '' when nothing is missing.
+export function restoreNoticeText(r = {}) {
+  if (!Array.isArray(r.credentialsNotRestored) || !r.credentialsNotRestored.length) return '';
+  return r.notice || 'Saved passwords were not included in the backup: re-enter them in Settings → Proxy & network after switching to this project.';
+}
+
+// upstreamPasswordDropWarning explains why saving the upstream proxy lost the
+// saved password (keep was requested but none is saved now), or ''.
+export function upstreamPasswordDropWarning({ keep, url, passwordSaved }) {
+  if (!keep || !url || passwordSaved) return '';
+  let user = '';
+  try { user = new URL(url).username; } catch (_) { /* treated as no user */ }
+  return user
+    ? 'Upstream proxy saved without the saved password: the proxy host changed, so enter the password again'
+    : 'Upstream proxy saved without the saved password: the username was cleared, so the password was removed too';
 }

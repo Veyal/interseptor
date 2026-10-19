@@ -22,9 +22,51 @@ export const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const plain = (s) => String(s == null ? '' : s).replace(/[<>]/g, '').trim();
 const methodOf = (it) => (String((it && it.method) || 'GET').trim().toUpperCase() || 'GET');
 
+const rawUrlOf = (it) => {
+  const u = it && it.url;
+  return String(typeof u === 'string' ? u : (u && u.raw) || '').trim();
+};
+
 function hostOf(rawUrl) {
   const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(rawUrl || '').trim());
   return m ? m[1].replace(/^[^@]*@/, '') : '';
+}
+
+// templateHostOf names the host part of a URL that still holds a {{variable}}:
+// the leading {{baseUrl}} base, or the host text around a variable. It is what
+// the review shows for a host it could not resolve.
+function templateHostOf(raw) {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/?#]*)/i.exec(raw);
+  const h = m ? m[1].replace(/^[^@]*@/, '') : raw;
+  return plain(h || raw);
+}
+
+/**
+ * planResolveTargets lists the requests in scope whose URL holds a {{variable}}.
+ * The one resolver is the server's (/api/variables/resolve), so a caller
+ * resolves exactly these before building the plan; this module stays pure.
+ */
+export function planResolveTargets(items, opts = {}) {
+  const scope = opts.scope === 'folder' ? 'folder' : 'collection';
+  return requestsInScope(items, scope, opts.folderUid).filter((it) => rawUrlOf(it).includes('{{'));
+}
+
+/**
+ * resolvePlanUrls resolves every variable URL of a run with the injected
+ * resolveOne(item) -> {value, unresolved}. A failed call leaves that request
+ * out of the result, which the plan then reports as unresolved.
+ */
+export async function resolvePlanUrls(items, opts, resolveOne) {
+  const targets = planResolveTargets(items, opts);
+  const out = {};
+  const queue = targets.slice();
+  const worker = async () => {
+    for (let it = queue.shift(); it; it = queue.shift()) {
+      try { out[it.uid] = await resolveOne(it); } catch (e) { /* reported as unresolved */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, targets.length) }, worker));
+  return out;
 }
 
 // requestsInScope walks the subtree under folderUid, or the whole collection.
@@ -79,13 +121,51 @@ export function buildRunPlan(items, opts = {}) {
 
   const perMethod = new Map();
   const hosts = new Set();
+  const unresolvedHosts = new Set();
+  const unresolvedVars = new Set();
+  const blockedHosts = new Set();
+  const resolved = opts.resolved || {};
+  const blockCheck = typeof opts.blockCheck === 'function' ? opts.blockCheck : null;
+  let unresolvedReqs = 0;
+  let unresolvedPathReqs = 0;
+  let blockedScope = 0;
+  let blockedPin = 0;
+  let blockedGuard = 0;
   let stateChangingReqs = 0;
   for (const it of reqs) {
     const m = methodOf(it);
     perMethod.set(m, (perMethod.get(m) || 0) + 1);
     if (STATE_CHANGING.has(m)) stateChangingReqs++;
-    const h = hostOf(it && it.url);
+    const raw = rawUrlOf(it);
+    let h = hostOf(raw);
+    let full = raw;
+    const r = raw.includes('{{') ? resolved[it && it.uid] : null;
+    if (raw.includes('{{')) {
+      const names = (r && r.unresolved) || [];
+      if (h && !h.includes('{{')) {
+        // The host is literal: a variable in the path or query cannot change
+        // where the request goes, so the host is known. The request itself is
+        // still blocked by the server until the variable is defined.
+        if (names.length) {
+          unresolvedPathReqs++;
+          names.forEach((n) => unresolvedVars.add(plain(n)));
+        } else if (r && r.value) full = r.value;
+      } else {
+        h = r && !names.length ? hostOf(r.value) : '';
+        if (!h) { unresolvedReqs++; unresolvedHosts.add(templateHostOf(raw)); continue; }
+        full = r.value;
+      }
+    }
     if (h) hosts.add(h);
+    // A request with unresolved variables is blocked for that reason already;
+    // only the rest can be blocked by scope or the environment target pin.
+    if (blockCheck && !(r && (r.unresolved || []).length)) {
+      const why = blockCheck(full);
+      if (why === 'base_target_pin') blockedPin++;
+      else if (why === 'ip_guard') blockedGuard++;
+      else if (why) blockedScope++;
+      if (why && h) blockedHosts.add(h);
+    }
   }
 
   const requests = reqs.length;
@@ -102,10 +182,35 @@ export function buildRunPlan(items, opts = {}) {
     destructiveMethods: [...perMethod.keys()].filter((m) => STATE_CHANGING.has(m)).sort(),
     methods: [...perMethod.entries()].map(([method, n]) => ({ method, count: n * identities })),
     hosts: [...hosts].sort(),
+    unresolvedRequests: unresolvedReqs,
+    unresolvedHosts: [...unresolvedHosts].sort(),
+    unresolvedPathRequests: unresolvedPathReqs,
+    unresolvedVariables: [...unresolvedVars].sort(),
+    blocked: {
+      total: (blockedScope + blockedPin + blockedGuard) * identities, scope: blockedScope * identities, pin: blockedPin * identities,
+      guard: blockedGuard * identities,
+      requests: blockedScope + blockedPin + blockedGuard, hosts: [...blockedHosts].sort(),
+      all: requests > 0 && blockedScope + blockedPin + blockedGuard === requests,
+    },
     empty: requests === 0,
     needsConfirm: liveRequests > 0,
     needsPhrase: destructive > 0,
   };
+}
+
+// blockedText says how many requests the scope guard or the environment pin
+// will refuse, and why. '' when none. Shown in the review before RUN is typed.
+export function blockedText(plan) {
+  const b = plan && plan.blocked;
+  if (!b || !b.total) return '';
+  const parts = [];
+  if (b.scope) parts.push(b.scope + ' out of scope');
+  if (b.guard) parts.push(b.guard + ' to a private or loopback address');
+  if (b.pin) parts.push(b.pin + ' not matching the environment target pin');
+  const addScope = b.scope || b.guard;
+  const lead = b.all ? 'Every request will be blocked' : b.total + ' of ' + plan.liveRequests + ' request' + (plan.liveRequests === 1 ? '' : 's') + ' will be blocked';
+  return lead + ' (' + parts.join(', ') + '). '
+    + (addScope ? 'Add the host' + (b.hosts.length === 1 ? '' : 's') + ' to scope' : '') + (addScope && b.pin ? ' and ' : '') + (b.pin ? (addScope ? 'pick' : 'Pick') + ' an environment whose pin matches' : '') + ' to send them.';
 }
 
 // methodBreakdown orders the methods by how many live requests each accounts
@@ -127,8 +232,10 @@ export function planConfirmed(plan, typed) {
 // to, then who it is sent as, then what it can change, then where it goes.
 //
 // Pass {withScope: false} where the scope is already on screen -- a sheet whose
-// title is the scope label would otherwise print it twice in a row.
-export function planSummary(plan, { withScope = true } = {}) {
+// title is the scope label would otherwise print it twice in a row. Pass
+// {withWarnings: false} where the blocked / unresolved-path warnings get their
+// own lines (the run review), so they are not said twice.
+export function planSummary(plan, { withScope = true, withWarnings = true } = {}) {
   if (!plan || plan.empty) return 'Nothing to send: there are no requests in scope.';
   const parts = [];
   parts.push(plan.liveRequests + ' live request' + (plan.liveRequests === 1 ? '' : 's'));
@@ -143,5 +250,13 @@ export function planSummary(plan, { withScope = true } = {}) {
   if (plan.hosts.length) {
     s += ' Sent to ' + plan.hosts.slice(0, 4).join(', ') + (plan.hosts.length > 4 ? ' and ' + (plan.hosts.length - 4) + ' more' : '') + '.';
   }
+  if (plan.unresolvedRequests > 0) {
+    s += ' ' + plan.unresolvedRequests + ' request' + (plan.unresolvedRequests === 1 ? ' goes' : 's go') + ' to a host that could not be resolved (' + plan.unresolvedHosts.join(', ') + ').';
+  }
+  if (withWarnings && plan.unresolvedPathRequests > 0) {
+    s += ' ' + plan.unresolvedPathRequests + ' request' + (plan.unresolvedPathRequests === 1 ? ' has' : 's have') + ' an unresolved variable in the path or query' + (plan.unresolvedVariables.length ? ' (' + plan.unresolvedVariables.join(', ') + ')' : '') + ' and will be blocked.';
+  }
+  const bt = withWarnings ? blockedText(plan) : '';
+  if (bt) s += ' ' + bt;
   return s;
 }

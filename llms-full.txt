@@ -1,6 +1,6 @@
 # Interseptor: complete agent documentation
 
-> One file for AI agents: the agent guide, the finding-writing contract, and the API and MCP references. Generated from the project documentation by `go run ./tools/docscheck generate`; do not edit. Index: https://veyal.github.io/interseptor/llms.txt
+> One file for AI agents: the agent guide, the finding-writing contract, the API and MCP references, and every guide to using the app and its features. Generated from the project documentation by `go run ./tools/docscheck generate`; do not edit. Index: https://veyal.github.io/interseptor/llms.txt
 
 Parts, in order:
 
@@ -8,6 +8,24 @@ Parts, in order:
 - Findings and reporting (https://veyal.github.io/interseptor/findings-and-reporting/)
 - API and MCP (https://veyal.github.io/interseptor/api-and-mcp/)
 - MCP cookbook (https://veyal.github.io/interseptor/mcp-cookbook/)
+- Getting started (https://veyal.github.io/interseptor/getting-started/)
+- Workspace guide (https://veyal.github.io/interseptor/workspace/)
+- Proxy, TLS, and networking (https://veyal.github.io/interseptor/proxy-and-tls/)
+- History search (https://veyal.github.io/interseptor/history-search/)
+- Collections (https://veyal.github.io/interseptor/collections/)
+- Projects and data (https://veyal.github.io/interseptor/projects-and-data/)
+- Settings (https://veyal.github.io/interseptor/settings/)
+- Engagement close-out (https://veyal.github.io/interseptor/engagement-closeout/)
+- Mobile testing (https://veyal.github.io/interseptor/mobile-testing/)
+- Content discovery (https://veyal.github.io/interseptor/content-discovery/)
+- Message codecs (https://veyal.github.io/interseptor/message-codecs/)
+- Custom checks (https://veyal.github.io/interseptor/custom-checks/)
+- Rule packs (https://veyal.github.io/interseptor/rule-packs/)
+- Project vault (https://veyal.github.io/interseptor/vault/)
+- Extensions (https://veyal.github.io/interseptor/extensions/)
+- HTTP/2 (https://veyal.github.io/interseptor/http2/)
+- CLI reference (https://veyal.github.io/interseptor/cli-reference/)
+- Troubleshooting (https://veyal.github.io/interseptor/troubleshooting/)
 
 ---
 
@@ -476,6 +494,29 @@ Rules:
 - When a finding lists several affected targets, repeat the story for each target you tested and link
   its flows through `flow_ids`. A target you did not test may be listed without proof; never invent a
   request for it. A `setup` or `chain` target may use `evidenceException` instead.
+
+### Score real impact, not the label
+
+Decide the impact before you pick a vector. Ask what an attacker actually gained against
+confidentiality, integrity, or availability, and what you demonstrated. Do not copy a severity from a
+scanner, a checklist, or a vulnerability class name.
+
+- Only a finding with demonstrated confidentiality, integrity, or availability impact gets a CVSS score
+  above 0.0. Everything else is `Info`, or not a finding at all.
+- Username or email enumeration on its own is `Info`. It tells an attacker which accounts exist; it
+  reads no data and changes nothing.
+- A SQL error message, stack trace, framework version, or internal path in a response is `Info`. It
+  becomes SQL injection only when you show the injected query reading or changing data; score that
+  demonstrated outcome, for example High when it reads other users' records.
+- A missing security header, a weak TLS cipher, a verbose banner, a permissive CORS policy that no page
+  abuses, or an absent hardening flag is `Info`, or left out of the report. It rises only when you
+  attach the step that uses it.
+- A reachable endpoint, a permissive response, or a readable file that holds nothing sensitive is a
+  prerequisite, not an impact.
+- When a weakness enables real impact, prove the impact and score that. Enumeration that feeds a
+  demonstrated account takeover is scored as the takeover, with the enumeration described in the steps.
+- `Info` findings use a vector with `VC:N/VI:N/VA:N/SC:N/SI:N/SA:N`, which evaluates to 0.0, and
+  `severity` `Info`.
 
 ### Severity and CVSS 4.0
 
@@ -1021,7 +1062,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `vault_merge` | `id` | Download a vault project revision and merge (additive union) into the active project. |
 | `ws_send` | `url`, `message` | Open a fresh WebSocket, send one message, return the server's reply frames. |
 
-### Finding fields (96)
+### Finding fields (97)
 
 Generated from the `create_finding` input schema. `update_finding` accepts the same fields plus a required `id`. Over REST, send the same names to `POST /api/findings` and `PATCH /api/findings/{id}`.
 
@@ -1097,6 +1138,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `proofReview.evidence.result.flowId` | integer |  |
 | `proofReview.evidence.result.hash` | string |  |
 | `proofReview.execution` | string | demonstrated\|prerequisite_only\|not_executed |
+| `proofReview.ignoreReason` | string | reason why a finding is marked ignored / accepted risk (e.g. |
 | `proofReview.reason` | string | required when impact was not demonstrated |
 | `proofReview.severityOverride` | string | documented reason severity deliberately differs from the calculated CVSS rating; without it a mismatch is rejected |
 | `proofReview.visual` | boolean | true when a real browser screenshot is required to establish the visual claim |
@@ -1105,7 +1147,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `relatedFindings[].relation` | string | enables\|enabled_by\|chain\|duplicate\|escalates |
 | `retest` | string | expected secure behavior and negative verification case |
 | `severity` | string |  |
-| `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|fixed |
+| `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|ignored\|fixed |
 | `summary` | string | one sentence, <=140 chars; `<METHOD path>` `<what happens>` to `<role>`; do not restate the title |
 | `tags` | string | report-scope labels (comma/space-separated or array): cms, website, app, api, out-of-scope |
 | `target` | string | legacy primary target; first targets entry takes precedence |
@@ -1124,7 +1166,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (293)
+### REST routes (296)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1271,19 +1313,22 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/import/burp` | Import Burp Suite Save-items XML as flows. |
 | POST | `/api/import/collection/commit` | Store a collection file (any format the preview accepts). |
 | POST | `/api/import/collection/preview` | Parse a collection file (Postman v2.0/2.1 collection/environment/globals, OpenAPI 3/Swagger 2 JSON or YAML... |
-| POST | `/api/import/full` | Upload a project zip and restore it as a new named project (?name=, ?overwrite=1) |
+| POST | `/api/import/full` | Upload a project zip and restore it as a new named project (?name=, ?overwrite=1). |
 | POST | `/api/import/full/file` | Restore a full-project archive from a server-side path into a new named project |
 | POST | `/api/import/har` | Import a HAR file as flows. |
 | POST | `/api/import/postman` | Prepare a Postman Collection v2 JSON for Repeater. |
 | POST | `/api/import/project` | Import (merge) a project bundle. |
 | GET | `/api/intercept` | Intercept state + hold queue |
 | POST | `/api/intercept/filter` | Configure the conditional-intercept regex filter ({enabled,target,pattern}) |
-| GET | `/api/intercept/held/{id}/raw` | Raw bytes of a held intercepted request/response (?side=resp for the response side, else request) |
+| GET | `/api/intercept/held/{id}/body` | Body bytes of a held message (?side=resp); raster images are served as themselves for preview, anything else... |
+| GET | `/api/intercept/held/{id}/raw` | Raw text of a held intercepted request/response (?side=resp for the response side, else request); a binary... |
 | POST | `/api/intercept/response/toggle` | Enable/disable response interception ({enabled}) |
 | POST | `/api/intercept/response/{id}/drop` | Drop a held intercepted response |
-| POST | `/api/intercept/response/{id}/forward` | Forward a held intercepted response (optionally edited) |
+| POST | `/api/intercept/response/{id}/drop-pending` | Mark or clear a scheduled drop on a held response. |
+| POST | `/api/intercept/response/{id}/forward` | Forward a held intercepted response (optionally edited). |
 | POST | `/api/intercept/toggle` | Enable/disable intercept. |
 | POST | `/api/intercept/{id}/drop` | Drop a held request |
+| POST | `/api/intercept/{id}/drop-pending` | Mark or clear a scheduled drop on a held request. |
 | POST | `/api/intercept/{id}/forward` | Forward a held request (optionally edited). |
 | GET | `/api/interception-setup` | Interception setup record: {setup:{version, proxyAddress, caFingerprint, hosts, enablers:[{tool, scriptHash... |
 | PUT | `/api/interception-setup` | Replace the interception setup record (proxy, CA fingerprint, pinning-bypass enablers, applicable hosts). |
@@ -1378,7 +1423,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/scanner/targets` | List every distinct in-scope scanner host as {hosts:[{host,count}],truncated:false}; exhaustively paginates... |
 | GET | `/api/scope` | List target-scope rules |
 | POST | `/api/scope` | Add a scope rule. |
-| DELETE | `/api/scope/{id}` | Delete a scope rule |
+| DELETE | `/api/scope/{id}` | Delete a scope rule (404 when it does not exist) |
 | PUT | `/api/scope/{id}` | Update a scope rule. |
 | POST | `/api/selection-decode` | Preview decode for highlighted text: project message codecs (when flowId given) then smart. |
 | GET | `/api/session` | Get session/auth headers auto-applied to sends |
@@ -1747,9 +1792,22 @@ escalation it would allow. A High that rests on an undemonstrated step is a Low 
 and a reviewer will find the gap before the client does. Writing a finding at Critical or High with a
 conditional impact raises a format warning.
 
-A configuration observation with no demonstrated exploitation — a missing header, a weak cipher, a
-verbose banner, an absent hardening flag — is Low or Info. It rises only when you attach the step that
-uses it. A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+Think about the impact first, then score it. Only a finding with demonstrated confidentiality,
+integrity, or availability impact gets a CVSS score above 0.0. Everything else is Info, or not a
+finding at all:
+
+- Username or email enumeration on its own is Info.
+- A SQL error message, stack trace, framework version, or internal path in a response is Info. It
+  becomes SQL injection only when you show the injected query reading or changing data, and then you
+  score that outcome, for example High when it reads other users' records.
+- A configuration observation with no demonstrated exploitation (a missing header, a weak cipher, a
+  verbose banner, an absent hardening flag) is Info, or left out of the report. It rises only when you
+  attach the step that uses it.
+- A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+
+When a weakness enables real impact, prove the impact and score that. Enumeration that feeds a
+demonstrated account takeover is scored as the takeover. Info findings use a vector with
+`VC:N/VI:N/VA:N/SC:N/SI:N/SA:N`, which evaluates to 0.0.
 
 ### When the finding is not an HTTP exchange
 
@@ -1905,8 +1963,9 @@ wrong shape because a parameter was forgotten. A `false_positive` finding return
 
 Each narrative is rendered by the same function that writes the engagement report, so the evidence
 roles, proof statements and provenance labels — including "generated evidence render from recorded
-data; not browser proof" — travel with the ticket. `?mode=final` applies the same readiness gate as
-a final report. Credential headers are masked by default here, because a ticket leaves the
+data; not browser proof" — travel with the ticket. The internal review state (workflow status and
+readiness gaps) stays out of the ticket body; check it on the readiness board before filing.
+`?mode=final` applies the same readiness gate as a final report. Credential headers are masked by default here, because a ticket leaves the
 engagement for a third-party platform; `?maskHeaders=0` keeps them verbatim.
 
 A field with no honest equivalent is left out rather than guessed, because a wrong identifier files
@@ -2331,7 +2390,7 @@ make the claim reproducible (for example `observation → result`, or `setup →
 REST endpoints:
 
 ```text
-POST   /api/findings                         create (title required; blocks or legacy body)
+POST   /api/findings                         create (title required: trimmed, 1-300 chars; severity/status validated, 400 lists allowed values; blocks or legacy body)
 GET    /api/findings/{id}                    read canonical finding and readiness
 PATCH  /api/findings/{id}                    partial update (blocks or legacy body)
 POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof?, position?}
@@ -2371,7 +2430,8 @@ For example, an AI can create the narrative without embedding raw HTTP, then att
 Use `get_finding` before an AI update so it does not replace a concurrent human edit. MCP maps
 `create_finding`, `get_finding`, `update_finding`, `add_finding_poc`, `add_finding_image`,
 `render_flow_preview`, `render_evidence`, and `export_report` to these same contracts. `body` remains accepted for
-legacy clients, but must not be sent together with `blocks`; old `ready`/`missing` fields remain
+legacy clients, but must not be sent together with `blocks`. A text block's Markdown goes in `md`;
+a block that sends it as `text` is rejected with HTTP 400 instead of being stored empty. Old `ready`/`missing` fields remain
 alongside structured `readiness` for compatibility. Report export supports Markdown, self-contained
 HTML, and JSON (`format=md|html|json`); use self-contained HTML when screenshot pixels must travel
 with the report. PDF is not an API format.
@@ -2397,6 +2457,10 @@ DELETE /api/flow-searches/{name}
 ```
 
 POST and PUT accept JSON `{name, scope, script}`. `scope` normalizes to `anywhere`, `body`, or `id`. The script must define `match(flow)` and return bool. Saved searches are project-scoped and persist in project settings. Full fields, helpers, limits, and examples live in [History search](https://veyal.github.io/interseptor/history-search/).
+
+### Scope rules API
+
+`POST /api/scope` and `PUT /api/scope/{id}` take `{action, enabled?, host?, path?, scheme?, port?}`. `enabled` defaults to `false` when omitted (a disabled rule matches nothing), so send `enabled:true`; the MCP `add_scope_rule` tool defaults it to true. The host is trimmed and lowercased on both routes; a pasted URL (`https://example.com:8443/api`) is split into scheme, host, port and path, `host:port` moves the port into the port field, and a host that can never match (spaces or other characters no hostname contains) answers `400`.
 
 Auth and trust rules for both surfaces (loopback vs. key-authorized remote access, scoped keys,
 CSRF handling) are covered in [Security model](https://veyal.github.io/interseptor/architecture/#security-model).
@@ -2463,7 +2527,7 @@ What is and is not recorded:
   are a 400. At most four renders run at once (503 when busy) with a 10 s deadline. The JSON form
   (`format=json`) adds the base64 PNG with `png=1` for PNGs up to 1 MiB, otherwise `pngOmitted` and `bytes`.
 - Rate-limit wording is descriptive: tiles say `2xx responses`, `throttle statuses (429/403/423)` and
-  `5xx/other`; a missing throttle status is reported as "no throttling status observed; body-based
+  `other non-2xx`; a missing throttle status is reported as "no throttling status observed; body-based
   lockouts are not detected unless a grep pattern was set". Grep matches are counted separately.
 - The persisted run record (`GET /api/intruder/attacks/{id}`, table `intruder_runs`, last 20 runs) is raw
   like the flow store: payloads, extracted values and rate-limit headers are not redacted, and it travels in
@@ -2615,3 +2679,2416 @@ authorization constraints, while Interseptor records requests and results.
 4. After the run: inspect flagged / interesting results in History
 5. create_finding + add_finding_poc with the best attempt's flowId
 ```
+
+---
+
+Source: https://veyal.github.io/interseptor/getting-started/
+
+# Getting started
+
+## Install
+
+Interseptor is a single static binary — **no cgo, no Node, no runtime dependencies**.
+
+### Recommended — `go install` (uses the release tags)
+
+Requires **Go 1.25+**:
+
+```bash
+# latest release:
+go install github.com/Veyal/interseptor/cmd/interseptor@latest
+# …or pin a specific release:
+go install github.com/Veyal/interseptor/cmd/interseptor@v2.1.0
+
+interseptor        # if $(go env GOPATH)/bin is on your PATH
+```
+
+**Or update in place** (no `go install` to remember):
+
+```bash
+interseptor update              # latest release
+interseptor update --check      # is a newer version out?
+interseptor update --version 2.1.0
+```
+
+`interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
+
+Every tagged version is listed on the [**Releases**](https://github.com/Veyal/interseptor/releases)
+page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins one.
+
+### From source
+
+```bash
+git clone https://github.com/Veyal/interseptor.git
+cd interseptor
+make build
+./interseptor
+```
+
+`make build` and `make run` stamp local CLI builds with `<version>-local`
+(for example, `2.1.0-local`). The version comes from the latest reachable Git
+tag, or the declared fallback version in a source archive. Published release
+binaries keep their normal version. Plain `go build` does not apply this stamp.
+
+### Prebuilt binaries
+
+Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
+`checksums.txt` on the [Releases](https://github.com/Veyal/interseptor/releases) page (built by the
+release workflow when a `v*` tag is pushed) —
+download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
+tracks the latest release.)
+
+### macOS app
+
+Each release also attaches `Interseptor_<version>.dmg` and `Interseptor-v<version>-unsigned.zip`, a
+native macOS app (macOS 12 or later, Apple silicon and Intel) that runs the same proxy and UI in its
+own window with a menu bar, Dock tile and notifications.
+
+1. Download the DMG from the [Releases](https://github.com/Veyal/interseptor/releases) page, open it,
+   and drag **Interseptor** to **Applications**.
+2. The app is not notarized, so the first launch is blocked. Open **System Settings → Privacy &
+   Security**, find the message about Interseptor, and click **Open Anyway**. Or clear the quarantine
+   flag once from a terminal:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Interseptor.app
+   ```
+
+3. Launch **Interseptor**. The app starts the proxy on `127.0.0.1:8080` and the UI on
+   `127.0.0.1:9966`, and stops them when you quit. If an Interseptor server is already running, the
+   app opens that one and leaves it running when you quit.
+
+## Quick start
+
+1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
+   The UI opens in its own app window (an installed Chrome, Edge, Chromium or Brave in app mode,
+   with no tabs or address bar). With `--headless`, over SSH, or when no such browser or desktop
+   is available, the log says which URL to open in any browser instead.
+2. **Send traffic through it.** Point your browser/HTTP client at `127.0.0.1:8080`, or let
+   Interseptor set the OS proxy for you (macOS, Windows, and GNOME Linux) — the first-run **Setup**
+   wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at
+   the proxy. See [System proxy automation](https://veyal.github.io/interseptor/proxy-and-tls/#system-proxy-automation).
+3. **For HTTPS, trust the CA** (see below) — then HTTPS flows are decrypted and editable.
+4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
+   the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.
+
+For a LAN or mobile listener, read [Proxy listener exposure](https://veyal.github.io/interseptor/proxy-and-tls/#proxy-listener-exposure)
+before rebinding. Authentication is off by default, so a non-loopback listener is an open proxy
+until you set a username and password under **Settings → Proxy & network → Proxy authentication**.
+
+Runtime data lives under `~/.interseptor/` (`interseptor.db`, `bodies/`, `ca/`). Full-project archives
+intentionally use the compatibility filename `interceptor.db`. To start with an empty workspace,
+create a new project; keep an archive before deleting existing project data. See [Projects and data](https://veyal.github.io/interseptor/projects-and-data/).
+
+Continue with the [workspace guide](https://veyal.github.io/interseptor/workspace/) for the main menus and response views, or
+[Settings](https://veyal.github.io/interseptor/settings/) to find a specific configuration section.
+
+## Intercepting HTTPS
+
+1. Point your client at the proxy (`127.0.0.1:8080`).
+2. Download the CA from the **Settings** tab (or `http://127.0.0.1:9966/api/ca.crt`) and
+   install/trust it in your OS/browser trust store.
+3. HTTPS flows are now decrypted, captured, and editable. Per-host leaf certs are minted on demand
+   and cached.
+
+## Configuration
+
+| Environment variable | Effect |
+|---|---|
+| `INTERSEPTOR_HEADLESS` | Don't open the UI window on start (same as `--headless`); the UI URL is logged instead. |
+| `INTERSEPTOR_OPEN_BROWSER` | Open the UI window even when started over SSH (same as `--open`). |
+| `INTERSEPTOR_NO_BROWSER` | Never open the UI window, overriding `--open`/`INTERSEPTOR_OPEN_BROWSER`. |
+| `INTERSEPTOR_CHROME` | Exact Chrome/Chromium binary for the UI window and PDF export. |
+| `INTERSEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](https://veyal.github.io/interseptor/architecture/#security-model). |
+| `INTERSEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). External MCP clients connect through this server; model providers are configured outside Interseptor. |
+| `INTERSEPTOR_CONTROL_ADDR` | Env equivalent of `--control-addr`: full control UI/API listen address (`host:port`). |
+| `INTERSEPTOR_PROJECT` | Env equivalent of `--project`: open a specific project by name/path. |
+| `INTERSEPTOR_PROXY_ADDR` | Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). |
+| `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the background update check Interseptor runs on every startup. |
+| `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Authenticates update checks and downloads (first non-empty wins). Required when this repository's GitHub releases are private; the token needs repository access. |
+
+The proxy bind address is also runtime-configurable in **Settings** (and persisted).
+
+For the complete command surface, see the [CLI reference](https://veyal.github.io/interseptor/cli-reference/). For CA trust, origin
+verification, passthrough, pinning, and upstream chaining, see [Proxy, TLS, and networking](https://veyal.github.io/interseptor/proxy-and-tls/).
+
+## Running multiple projects
+
+For one-off multi-instance use, `interseptor` takes root flags: `--project <name|path>` (or
+`INTERSEPTOR_PROJECT`) opens a specific project; `--control-port <port>`
+picks the control UI/API port on loopback (default `9966`); `--control-addr host:port` sets the full
+control listen address and overrides `--control-port` (or `INTERSEPTOR_CONTROL_ADDR` — see
+[Configuration](#configuration)). Pair `--control-port`/`--control-addr` with `INTERSEPTOR_PROXY_ADDR`
+to give a second manually-launched instance its own proxy port too.
+
+For running several projects at once, **`interseptor launcher`** is a small dashboard process
+(default `http://127.0.0.1:9965`, no separate auth setup — it auto-generates a local token on start)
+that starts/stops per-project Interseptor instances, each its own OS process with its own
+auto-allocated control+proxy ports, sharing only the global CA and Starlark checks. Closing the
+launcher does not stop the instances it spawned.
+
+**`interseptor stop`** gracefully stops all running Interseptor instances (SIGINT/SIGTERM, waiting
+up to a `--timeout`, default 6s); add `--force`/`-f` to force-kill immediately instead. It leaves
+AI agents' `interseptor mcp` bridges, the launcher and the vault running and says so; add `--all`
+to stop those too.
+
+---
+
+Source: https://veyal.github.io/interseptor/workspace/
+
+# Workspace guide
+
+The sidebar follows the same groups as the app: Capture, Test, Recon, Report, and Configure.
+On a narrow window, use the tool picker to reach the same panels. The project badge identifies
+the active workspace; check it before changing stored data.
+
+## Find the right menu
+
+| Group | Menu | What belongs here |
+|---|---|---|
+| Capture | Proxy | Captured HTTP history, filters, notes, request/response inspection, and WebSocket frames. |
+| Capture | Intercept | Requests and responses currently held by the proxy. |
+| Test | Repeater | Editable request tabs and their response history. |
+| Test | Intruder | Configured request variations and run results. |
+| Recon | Scanner | Passive observations that need review before becoming findings. |
+| Recon | Map | Hosts, paths, and relationships derived from captured traffic. |
+| Report | Findings | Evidence records, review state, revisions, and report export. |
+| Report | Notes | The project's reference notebook: credentials, created data, access matrix. |
+| Report | Activity | Recorded agent actions and their results. |
+| Configure | Settings | Connections, scope, integrations, session settings, and project data. |
+
+Use **Jump to…** in the top bar, or **Ctrl/⌘+K**, to find a panel. Context actions belong to
+the selected item; global settings stay in [Settings](https://veyal.github.io/interseptor/settings/).
+
+## Inspect captured traffic
+
+Open **Proxy** and select a History row. The inspector shows the request and response for that
+capture. Search and filters narrow the list without editing stored traffic. Notes and tags help
+you find an observation later; see [History search](https://veyal.github.io/interseptor/history-search/).
+
+**Copy as PNG** in the inspector (bottom dock) and the flow drawer (side dock) copies the selected
+flow as one image, request above response, ready to paste into Notion or a report. It uses the same
+server-rendered preview as Findings (`GET /api/flows/{id}/preview.png`) and follows the active UI
+theme: light renders light, dark and high contrast render dark. Browsers only allow image copy on
+HTTPS or `localhost`; over plain HTTP (for example a Tailscale `http://` address) the toast says so and
+offers **Download** instead.
+
+Response views show different representations of the same captured body. **Raw** preserves the
+text representation, **Pretty** formats supported content, and **Render**
+previews HTML. Available views depend on the response. Message codecs can add a **Decoded** view;
+see [Message codecs](https://veyal.github.io/interseptor/message-codecs/).
+
+Render is a sandboxed preview with scripts disabled. It does not reproduce a full interactive
+browser session, authenticate to the origin, or prove that page scripts executed. Use original
+browser or device captures when a finding depends on visible application behavior.
+
+## Repeater response views
+
+Each Repeater tab owns its request editor and send history. Selecting a previous response changes
+what you inspect; switching tabs keeps responses associated with the correct request. The
+response pane includes **Render** when the selected response is HTML, with the same sandbox
+limitations as History.
+
+Tab drafts are project-backed. The per-tab send list is browser-local: it survives reloads until
+the tab closes, while the underlying flows remain in the project store. Exporting the project
+does not preserve that browser-local grouping. See [Project boundaries](https://veyal.github.io/interseptor/projects-and-data/#project-boundaries).
+
+## Session inspector
+
+Select one or more History rows, open the context menu, and choose **Inspect session timeline**.
+The inspector organizes existing captures chronologically. You can assign Anonymous, User,
+Admin, or Unassigned labels to compare observations.
+
+Cookie observations are redacted. Status codes, response fingerprints, redirects, and candidate
+transitions describe the selected captures only. The view sends no requests and cannot establish
+authentication success, MFA completion, browser cookie decisions, or hidden side effects.
+See [Passive session inspection](https://veyal.github.io/interseptor/findings-and-reporting/#passive-session-inspection).
+
+## WebSocket frames
+
+Captured WebSocket connections expose sent and received frames in the Proxy inspector. Read the
+frame direction and timestamp before comparing payloads. The WebSocket replay editor opens inline
+in that inspector; captured frames and replay results retain their own context.
+
+## Intercept
+
+Intercept shows traffic held by the proxy, separate from completed History captures. Its enabled
+state affects whether matching traffic waits for a decision. If a browser appears to stall,
+check the held-item count and current intercept state before changing network settings.
+
+**Only hold when** narrows both directions. The same filter decides which requests and which
+responses are held, so switching responses on while a filter is set does not flood the queue with
+images, fonts and stylesheets. A `url` or `method` filter reads the exchange's method, host and
+path. `header` and `body` read the message in front of you: the request when a request is held,
+that response when a response is held. `any`, the default, matches the request line as well as the
+message, so a path pattern still selects the exchanges it names.
+
+## Scanner and Map
+
+Scanner groups passive observations from captured responses. An alert is a review lead; it is
+not a report-ready finding. Findings keep the reviewed claim and supporting evidence separately.
+
+Map organizes observed hosts and endpoints in tree and graph views. Search, filters, and collapsed
+groups affect what is visible; a sparse map does not establish that an application has no other
+endpoints. Its content comes from the traffic available to the project.
+
+## Findings
+
+Open **Report → Findings** to search records and move between Overview, Evidence, Remediation,
+and Review. You can inspect attached HTTP evidence inline, compare revisions, and recover a
+deleted finding. The export dialog distinguishes Final reports from Drafts with remaining gaps.
+See the [Findings guide](https://veyal.github.io/interseptor/findings-and-reporting/#read-and-edit-a-finding).
+
+## Notes
+
+Open **Report → Notes** for the project notebook. **Edit** accepts Markdown and pasted images;
+**Preview** shows the formatted document. Watch the save status before leaving the project.
+
+The notebook is the engagement's reference sheet, not a testing log. Keep the facts you or a
+teammate will need to look up later:
+
+- Credentials and test accounts, with the role each one has, so anyone can log in.
+- Data created or changed on the target (accounts, records, uploads, with their IDs), so it can
+  be wiped when the engagement ends.
+- The user access matrix: which role can reach which menu, feature or endpoint.
+- The application's menu and feature list, environment URLs, and similar reference facts.
+
+Request-by-request narration, payload attempts and tool output do not belong here. Record issues
+in Findings; agent actions are already listed in Activity.
+
+If autosave fails, the draft stays available with **Retry save**. Switching projects is blocked
+while unresolved notes or other guarded drafts remain. Notes support investigation context;
+use Findings for structured records that belong in a report.
+
+## Activity
+
+Open **Report → Activity** to review recorded external-agent actions. Filter by intent, open
+flow-linked entries in History, or expand an entry to read its summary, result, and intent.
+This is the recorded activity available to the project, not a complete audit of every action
+outside Interseptor.
+
+**Clear** permanently removes the project's activity after confirmation. Preserve required
+records before clearing them.
+
+## Decoder
+
+Use **Decoder** from a request or response text selection in Proxy/History. Paste or load text,
+choose a transformation, and inspect the separate output. Supported options include Base64,
+URL, Hex, HTML, JWT, and Smart. You can copy the result or move it back into the input.
+
+Decoder is a one-shot text utility. It does not modify captured evidence, verify JWT signatures,
+or configure persistent Message codecs.
+
+## Other workspace tools
+
+Intruder manages request variations and results. Authorization tools compare configured identity
+contexts. These tools can send new traffic, unlike History, Decoder, and passive session inspection.
+Their results still require human review before being represented as confirmed findings.
+
+Checks and rule packs extend passive analysis; Message codecs add project-specific body views.
+The [feature index](https://github.com/Veyal/interseptor/blob/main/website/pages/features.html) links to the available guides. For connection problems or
+stale drafts, start with [Troubleshooting](https://veyal.github.io/interseptor/troubleshooting/).
+
+---
+
+Source: https://veyal.github.io/interseptor/proxy-and-tls/
+
+# Proxy, TLS, and networking
+
+This guide explains the listener, optional proxy authentication, HTTPS interception, origin
+certificate verification, TLS passthrough, and chained upstream proxies.
+
+## Listener model
+
+Interseptor starts an HTTP/HTTPS forward proxy on `127.0.0.1:8080` and a control UI/API on
+`127.0.0.1:9966`. Configure one client to use the proxy for both HTTP and HTTPS. For a phone or
+another machine, add a non-loopback listener such as `0.0.0.0:8080` in **Settings → Network → Proxy
+listener**, then use the workstation's LAN address as the device proxy.
+
+`INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` disables all non-loopback listener changes. This is useful on a
+workstation that must never accept LAN traffic.
+
+## System proxy automation
+
+**Settings → Proxy & network** and the first-run **Setup** wizard can point the operating system's
+HTTP/HTTPS proxy at Interseptor and turn it back off again. It only ever acts on an explicit request
+— Interseptor never changes your system proxy on its own.
+
+| OS | Mechanism | Notes |
+| --- | --- | --- |
+| **macOS** | `networksetup` web + secure-web proxy on every active network service | Unchanged behaviour. |
+| **Windows** | The per-user WinINet registry values `ProxyServer` and `ProxyEnable` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, then a WinINet refresh so running apps pick up the change | The operator's previous proxy is saved and restored when you turn it off. |
+| **Linux (GNOME)** | `gsettings org.gnome.system.proxy` manual HTTP/HTTPS mode | The previous proxy mode is restored on disable. |
+
+On a non-GNOME Linux desktop (KDE, a headless host, or anything without `gsettings`), automatic
+configuration reports as unsupported and the control is hidden; set the proxy manually, or export
+`http_proxy` and `https_proxy=http://127.0.0.1:8080` for CLI tools. Automatic configuration changes
+only the HTTP/HTTPS proxy, never the bypass list. The Windows and Linux paths are built and
+unit-tested on every platform but are exercised end to end only on their own OS.
+
+## Test browser
+
+**Launch test browser** in the first-run **Setup** wizard starts your installed Chrome/Chromium in an
+isolated profile already pointed at the proxy — the same idea as Burp's embedded browser. Personal
+history, cookies, and extensions stay in your real profile and never pollute captured traffic. The
+browser is discovered exactly as the PDF report export discovers it (`INTERSEPTOR_CHROME`, then
+`PATH`, then the usual install locations); with none installed the action reports an honest error
+naming what it looked for. The test browser runs with `--ignore-certificate-errors` so HTTPS targets
+load through the MITM without the throwaway profile having to trust the Interseptor CA — the proxy
+itself can still verify the real origin (Origin certificate verification, below).
+
+## Proxy listener exposure
+
+Proxy listeners do not require authentication by default — not on loopback, and not on a LAN or
+tailnet address. API keys protect History and the control API; they are not a proxy password.
+
+Optional listener basic auth lives in **Settings → Proxy & network → Proxy authentication**. Turn
+it on and set a username and password of your own, then point the client at the proxy with those
+credentials (`Proxy-Authorization: Basic`). Leave it off, the default, and any client that can
+reach the listener can use it. `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` still refuses non-loopback binds.
+
+A non-loopback listener with authentication off is an open proxy for everyone who can reach it:
+bind only the interfaces the engagement needs, prefer a tailnet or LAN you control, and close the
+listener after capture. Interseptor removes `Proxy-Authorization` before forwarding, so the
+listener password is never sent to the target origin.
+
+A full project archive or vault backup never carries the listener password. Restoring one keeps
+authentication on (it fails closed rather than opening the proxy), so clients get `407` until you
+re-enter the password. Settings shows "Password not included in the backup" under **Proxy
+authentication**, and the Proxy health chip and desktop status bar show a warning instead of a green
+"listening". See [Restoring a backup without its passwords](https://veyal.github.io/interseptor/projects-and-data/#restoring-a-backup-without-its-passwords).
+
+## Browser background traffic suppression
+
+**Settings → Proxy & network → Browser background traffic** is enabled by default. It forwards
+known Firefox and Chromium background requests unchanged while excluding them from History, live
+flow and frame events, request and response interception, match-and-replace processing,
+content-addressed body storage, and WebSocket frame capture. It is capture-noise suppression, not a
+firewall: the browser can still reach those services.
+
+The curated list covers dedicated telemetry, crash, update, Remote Settings, Safe Browsing,
+connectivity, Firefox Suggest, sponsored new-tab, and related browser-managed endpoints. Some of
+these services are functional browser services rather than telemetry; the UI deliberately calls the
+category **background traffic**. The API setting retains its existing
+`suppressBrowserTelemetry` name for compatibility.
+
+Suppression applies when a new request enters the proxy. Existing History rows are not deleted or
+hidden when the setting is enabled. Disable the setting when those browser services are themselves
+part of the authorized target.
+
+Matching stays exact and conservative. Interseptor does not suppress broad domains such as
+`*.mozilla.org`, `*.googleapis.com`, Mozilla Accounts, Firefox Sync, add-on services, downloads, or
+ordinary website/application hosts. Current Firefox endpoints are reviewed against Mozilla's
+[enterprise domain inventory](https://support.mozilla.org/kb/domains-allow-firefox) and
+[source defaults](https://searchfox.org/mozilla-central/source/modules/libpref/init/all.js).
+
+## HTTPS interception
+
+For HTTPS, the client first creates a `CONNECT` tunnel. Interseptor presents a per-host certificate
+signed by its local CA, decrypts the request, forwards it to the origin, and records the exchange.
+
+1. Download the CA from **Settings → TLS / CA**, or `http://127.0.0.1:9966/api/ca.crt`.
+2. Install it in the trust store used by the test client.
+3. Confirm an HTTPS flow appears in History with a visible path and response status.
+
+Installing the CA authorizes Interseptor to impersonate HTTPS sites on that client. Remove it after
+the engagement when it is no longer required.
+
+## Origin certificate verification
+
+Client trust and origin trust are separate TLS legs. The client trusts Interseptor's CA; Interseptor
+may also verify the real origin certificate.
+
+Origin verification is off by default for compatibility with test environments. Enable **Verify
+origin certificates** by choosing **Strict** in **Settings → TLS / CA → Origin connection security**
+when authenticity matters. With verification on,
+an expired, mismatched, self-signed, or untrusted origin certificate produces an upstream TLS error
+instead of a captured response.
+
+Verification exceptions keep traffic intercepted but accept any origin certificate for matching
+hosts. Use them narrowly for known test systems. This is different from passthrough and weakens server
+authentication for those hosts.
+
+If a target is opened by IP and the certificate contains only DNS names, strict mode reports an error
+such as `x509: cannot validate certificate for 192.0.2.25 because it doesn't contain any IP SANs`.
+Prefer the hostname named by the certificate and map it to the IP with test DNS or a hosts file. When
+that is impossible for an authorized test target:
+
+1. Select the failed request in **History**.
+2. Open **Settings → TLS / CA → Origin TLS verification exceptions**.
+3. Choose **Add selected History host**. You can also enter the IP manually and choose **Add
+   exception**.
+
+Installing another CA does not repair a hostname/IP mismatch. An exception deliberately disables
+origin identity verification only for the listed host or IP.
+
+## TLS passthrough and pinning
+
+TLS passthrough tunnels selected hosts without decryption. Use it when a pinned client must continue
+working and capture is not required for that host. Passthrough rows contain connection metadata, not
+HTTP paths, headers, or bodies.
+
+Interseptor does not bypass certificate pinning. A `CONNECT` followed by a failed client handshake is
+usually an untrusted CA or pinning. Options include installing the CA correctly, using a test build,
+an emulator/rooted device with a system CA, or an authorized runtime instrumentation workflow. Do not
+add a host to passthrough if you still need HTTP evidence from it.
+
+## Upstream proxies
+
+Configure a second-hop proxy in **Settings → Proxy & network → Upstream proxy**. Select the connection
+type, then enter its host and port. The UI builds and validates the proxy URL; credentials stay in
+separate fields so percent-encoding and special characters are handled safely.
+
+The saved route applies consistently to captured browser/device traffic, Repeater, Intruder, login
+macros, and custom-check requests. A Repeater `502` should therefore be diagnosed against
+the same upstream endpoint, credentials, DNS mode, and HTTPS-proxy CA shown in Settings.
+
+| Type | Choose it when | DNS behavior | Typical port |
+| --- | --- | --- | --- |
+| **Direct** | Interseptor should connect to targets itself | Local | — |
+| **HTTP** | Chaining through a corporate proxy, Burp, or another HTTP CONNECT proxy | Proxy protocol carries target hostnames | `80` or `8080` |
+| **HTTPS** | The connection from Interseptor to the upstream proxy must itself use TLS | Proxy protocol carries target hostnames | `443` |
+| **SOCKS5** | A SOCKS service is available and target DNS should resolve on the Interseptor workstation | Local DNS; the resolved IP is sent to SOCKS | `1080` |
+| **SOCKS5H** | Target names resolve only from the proxy network, or local DNS leakage must be avoided | Remote DNS at the SOCKS proxy | `1080` |
+
+### HTTP or HTTPS upstream
+
+1. Select **HTTP** or **HTTPS**.
+2. Enter the proxy host and port, for example `proxy.example.com` and `8080`.
+3. Add username and password only if the proxy requires authentication. A saved password is never
+   shown again; leave the field blank to keep it, including when you change only the username,
+   scheme or port. Changing the proxy host or clearing the username drops it, and Settings warns
+   you and asks you to enter it again when needed. Importing a portable project never changes the
+   upstream proxy; a restored full archive brings its own upstream proxy without the password and
+   shows "Password not included in the backup" until you save it again.
+4. For an HTTPS proxy signed by a private CA, open **Advanced trust settings** and paste the CA PEM.
+5. Choose **Save upstream proxy** and confirm the summary shows the expected endpoint.
+
+HTTPS upstream-proxy certificates are always verified. The origin compatibility mode and origin
+exceptions never weaken this separate TLS connection.
+
+### SOCKS5 or SOCKS5H upstream
+
+For an SSH dynamic forward, start a local SOCKS listener:
+
+```bash
+ssh -N -D 127.0.0.1:1080 operator@example.com
+```
+
+Then select **SOCKS5H**, use host `127.0.0.1`, port `1080`, and leave credentials blank unless the SOCKS
+server requires them. Choose plain **SOCKS5** only when DNS should be resolved locally before the
+connection is sent through SOCKS.
+
+To disable chaining, select **Direct — no upstream proxy** and save. Stored proxy credentials are not
+sent to target origins; Interseptor uses them only on the upstream-proxy hop.
+
+If an upstream returns `407`, Interseptor reports an upstream authentication failure without passing
+the upstream's authentication challenge to the browser. This avoids a misleading second credential
+prompt.
+
+## Upstream TLS fingerprint (ClientHello)
+
+Interseptor dials origins with Go's standard `crypto/tls`, so its TLS ClientHello carries Go's
+fingerprint. Some anti-bot WAFs (Cloudflare, Akamai) fingerprint the ClientHello (JA3/JA4) and may
+challenge or block a connection that does not look like a mainstream browser.
+
+Mimicking a Chrome or Firefox ClientHello needs a third-party TLS stack — such as
+[uTLS](https://github.com/refraction-networking/utls) — which would be a **new production dependency**
+and is **not bundled**. It is deferred deliberately: adding a dependency is a project decision, and
+uTLS does not drop cleanly into the current upstream transport, which negotiates HTTP/2 by ALPN
+through Go's `http.Transport`/`DialTLSContext`. A uTLS `UConn` shapes the handshake but hands back a
+connection `http.Transport` will not speak HTTP/2 over, so the HTTP/2 leg would have to be wired
+explicitly (an `http2.Transport` with a custom dial) rather than inherited — a real change to the
+forwarding path, not a drop-in. If you need ClientHello mimicry today, chain Interseptor through an
+upstream proxy that performs it (see [Upstream proxies](#upstream-proxies)). The full assessment is in
+[issue #108](https://github.com/Veyal/interseptor/issues/108).
+
+## Safe network checklist
+
+- Bind only the interfaces needed for the engagement. With proxy authentication off, a non-loopback
+  listener is an open proxy for everyone who can reach it.
+- Keep the control UI loopback-only unless remote access is intentional and key-protected.
+- Enable origin verification unless the target environment requires an explicit exception.
+- Remove CA trust, listener exposure, saved credentials, and tunnels during close-out.
+
+See [Mobile testing](https://veyal.github.io/interseptor/mobile-testing/), [Troubleshooting](https://veyal.github.io/interseptor/troubleshooting/), and the
+[security model](https://veyal.github.io/interseptor/architecture/#security-model).
+
+---
+
+Source: https://veyal.github.io/interseptor/history-search/
+
+# History search
+
+Interseptor History supports ordinary filters and deterministic Starlark predicates. Saved searches run inside the project that contains them. They don't call an AI model, send traffic, or inspect anything outside captured flow data.
+
+## Anywhere search
+
+`GET /api/flows` accepts `search` and `searchScope`.
+
+```text
+GET /api/flows?search=example.com&searchScope=anywhere
+GET /api/flows?search=example.com&searchScope=body
+GET /api/flows?search=example.com&searchScope=id
+```
+
+`anywhere` is default. It checks stored flow metadata, request and response headers, tags, and request and response bodies. `body` limits matching to bodies. `id` is the ID search mode. Other filters, such as `host`, `method`, `status`, `tag`, `hasNote=1`, `inScope=1`, and `includeTools=1`, still apply.
+
+Body and Anywhere searches inspect at most the latest 8,000 filtered flows. Each stored body read is capped at 256 KiB. A capped result includes `searchNote`, for example:
+
+```json
+{"searchNote":"Anywhere search scanned the latest 8000 filtered flows. Narrow with host/method filters if results look incomplete."}
+```
+
+The normal response contains `flows` and `truncated`. `limit` defaults to 200 and accepts 1 through 5000. The server fetches one extra row to set `truncated`.
+
+## Saved Starlark searches
+
+Use a saved search when string matching isn't enough. Each script defines `match(flow)` and returns a Starlark boolean. The `flow` value exposes:
+
+| Attribute | Value |
+|---|---|
+| `method`, `scheme`, `host`, `path`, `mime` | strings |
+| `port`, `status` | integers |
+| `req_body`, `res_body` | strings |
+| `req_headers`, `res_headers` | dictionaries, first value per header |
+
+Available helpers:
+
+| Helper | Result |
+|---|---|
+| `req_header(name)`, `res_header(name)` | first matching header value, or `""` |
+| `req_header_all(name)`, `res_header_all(name)` | all matching values as a list |
+| `query_param(name)` | first URL query value, or `""` |
+
+Header lookup is case-insensitive. `req_headers` and `res_headers` use canonical header names. Each body attribute contains at most the first 64 KiB of its stored body. A saved-search request evaluates at most 64 filtered flows and reads at most 8 MiB of bodies total. Missing, unreadable, or budget-exhausted bodies appear as empty strings.
+
+### Author, test, save, select
+
+Test source before saving. Include `flowId` to execute it against that captured flow and receive its `matched` result:
+
+```bash
+curl -sS -X POST http://127.0.0.1:9966/api/flow-searches/test \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"example-get","scope":"anywhere","flowId":42,"script":"def match(flow):\n    return flow.host == \"example.com\" and flow.method == \"GET\""}'
+```
+
+A valid response has `valid: true`; a selected flow also returns `flowId` and `matched`. Save it with `POST`, or replace it with `PUT`:
+
+```bash
+curl -sS -X POST http://127.0.0.1:9966/api/flow-searches \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"example-get","scope":"anywhere","script":"def match(flow):\n    return flow.host == \"example.com\" and flow.method == \"GET\""}'
+
+curl -sS http://127.0.0.1:9966/api/flow-searches
+curl -sS http://127.0.0.1:9966/api/flow-searches/example-get/source
+curl -sS 'http://127.0.0.1:9966/api/flows?savedSearch=example-get&limit=200'
+```
+
+`GET /api/flow-searches` lists names and scopes. The source endpoint returns the saved `name`, `scope`, and `script`. `PUT /api/flow-searches/{name}` updates the source. `DELETE /api/flow-searches/{name}` removes it. Names cannot contain `/` or `\\`.
+
+Saved searches persist in project settings under `flow.searches`. They are not global. Project switching changes which saved searches are visible.
+
+`scope` accepts `anywhere`, `body`, or `id`; unknown or empty values normalize to `anywhere`. Scope is metadata for the saved search and does not change what the Starlark predicate can inspect. A project stores at most 100 saved searches; names are limited to 128 bytes. Selecting `savedSearch` runs the predicate against at most the latest 64 flows after other filters. If that limit is reached, the response includes `searchNote`:
+
+```json
+{"searchNote":"Saved search scanned the latest 64 filtered flows."}
+```
+
+## Valid examples
+
+Match response status and MIME type:
+
+```python
+def match(flow):
+    return flow.status == 200 and flow.mime == "application/json"
+```
+
+Match a request header and query parameter:
+
+```python
+def match(flow):
+    return flow.req_header("Authorization") != "" and flow.query_param("page") == "2"
+```
+
+Match any response cookie value:
+
+```python
+def match(flow):
+    return "session" in flow.res_header("Set-Cookie") or "session" in flow.res_header_all("Set-Cookie")
+```
+
+The last example is valid Starlark because `in` works on strings and lists. Use `flow.res_header_all("Set-Cookie")` when repeated header values matter.
+
+## Safety and troubleshooting
+
+Scripts are compiled and validated before test or save. Compilation requires callable `match(flow)`. Validation invokes it once with an empty flow, so guard assumptions about body, headers, and status. Runtime errors return safe API errors and don't expose flow content in the error text.
+
+Source is capped at 64 KiB. Compilation and each predicate run are capped at 100,000 Starlark steps. Active predicate evaluation stops when its HTTP request context is cancelled. `load()` has no loader. Scripts have no file, network, environment, or wall-clock access. They cannot mutate the supplied flow or its headers.
+
+Common errors:
+
+- `missing a match(flow) function`: add `def match(flow):` at top level.
+- ``match(flow) must return bool``: return a comparison or `True`/`False`, not a string, list, or dictionary.
+- `source exceeds 64 KiB`: shorten the script.
+- `execution failed` or a step-limit error: remove unbounded work and narrow filters before selecting the saved search.
+- Empty results with a limit note: add `host`, `method`, or another flow filter, then retry. The candidate limit is intentional.
+
+Search scripts are predicates only. External agents can use the same REST routes or the control API, but no built-in AI is involved.
+
+---
+
+Source: https://veyal.github.io/interseptor/collections/
+
+# Collections
+
+Collections are saved, organised requests with variables, environments, auth, scripts, a runner and
+a CI command. They replace the "author in Postman, then import" step: build or import a collection,
+send it through the same scope guard and capture path as every other tool, and keep the evidence in
+History. Open **Collections** in the Test group (on a phone, use the **All tools** select).
+
+Everything here runs in the single Interseptor binary. There is no Node, no Postman runtime and no
+cloud account. Scripts run on a pure-Go JavaScript engine ([ADR 0001](https://github.com/Veyal/interseptor/blob/main/docs/adr/0001-script-engine-goja.md))
+behind a `pm.*` compatibility layer.
+
+- [Migrate from Postman](#migrate-from-postman)
+- [Variables and scopes](#variables-and-scopes)
+- [Requests and auth](#requests-and-auth)
+- [Scripts and pm parity](#scripts-and-pm-parity)
+- [Quarantine and trust](#quarantine-and-trust)
+- [Runner](#runner)
+- [CLI and CI](#cli-and-ci)
+- [Importers](#importers)
+- [Security model for imported scripts](#security-model-for-imported-scripts)
+- [Secrets and archives](#secrets-and-archives)
+- [Differences from Postman](#differences-from-postman)
+
+## Migrate from Postman
+
+1. In Postman, export the collection (Collection v2.1 is best; v2.0 also imports) and, if you use
+   them, each environment and your globals. Keep the files as engagement material.
+2. In Interseptor open **Collections → Import**, drop the collection file (or several files), and
+   choose **Preview**. Nothing is stored or run by a preview. `format=auto` detects Postman,
+   OpenAPI/Swagger, curl, Insomnia, Bruno, HAR and Burp XML.
+3. Read the import report. Every construct is labelled `converted`, `degraded`, `preserved-inert`,
+   `unsupported`, `blocked` or `needs-review`, with the path of the item it came from. Every literal
+   credential in the file (auth, headers, URL query, body) gets its own `embedded-credential` entry
+   naming the field, with a suggestion to lift it to a variable. The report never contains credential
+   values. `scriptsQuarantined` is true only when the file actually carried scripts.
+4. Choose **Commit**. Folders, requests, examples, auth, variables, events and unknown keys are
+   stored losslessly. **Credentials you import are kept**: a token, password or API key written
+   literally in the file stays in the stored request so it still authenticates when sent (export is
+   where credentials are scrubbed, see [Secrets and archives](#secrets-and-archives)). Secret-typed
+   variables arrive with a blank initial value; if the file carried a value it is kept only as a local
+   current value on this machine. Importing the same file again never duplicates requests: requests
+   already present (same place, name, method, URL and body) are skipped, and each skip is listed in
+   the report. Two same-named sibling folders, or two requests in one folder that differ only in body,
+   stay separate. A UTF-8 byte order mark is ignored. A Postman data dump (several collections in one
+   file) and Postman collection v1 are refused with a message telling you to export each collection as
+   v2.1.
+5. Import the environment files the same way. Each becomes an environment, and secret values stay
+   local. Globals become the globals environment.
+6. Set the scope. Open **Scope** and include the hosts the collection targets. Runs, scripts and
+   MCP sends are blocked outside scope (see [scope policy](#security-model-for-imported-scripts)).
+7. Imported scripts are quarantined: the requests run, the scripts do not. Open **Scripts**,
+   read each one and its analysis (APIs used, hosts it names, risky constructs), then trust the ones
+   you accept. See [Quarantine and trust](#quarantine-and-trust).
+8. Send one request, then run the folder. Compare results with Postman. Anything a script needs
+   that is not shipped fails with status `unsupported` and names the API, never a false pass.
+
+The older **Import Postman to Repeater tabs** button is unchanged. It flattens a collection into
+editable Repeater tabs and does not create a collection. Use it when you only want a few requests in
+Repeater.
+
+Postman Collection v3 files, Postman cloud workspaces and monitors are not supported (see
+[Differences](#differences-from-postman)).
+
+## Variables and scopes
+
+Variables use double braces around a name: `{{token}}`. One resolver serves the UI, runner, CLI,
+MCP and scripts, so a preview always matches what is sent.
+
+Precedence, narrowest to widest:
+
+| Layer | Source |
+| --- | --- |
+| local | Values a script sets with `pm.variables.set` for the current request |
+| data | The current row of the iteration data file (runner and CLI) |
+| environment | The selected environment |
+| folder | Variables on the item's folders, inner folder first |
+| collection | Variables on the collection |
+| global | The globals environment |
+
+Rules that differ from what you may expect:
+
+- **Unresolved variables block the send** by default. The request is not sent with a literal
+  `{{name}}` on the wire. A request or folder can opt into `literal` or `empty` explicitly in its settings.
+- **Initial and current values.** The initial value is shared (it travels in exports). The current
+  value is local to this machine and is what scripts write. Secret-typed variables have no initial
+  value at all: the value lives only in the local current-value table.
+- **Variables that look like credentials are secrets.** A script that writes `token`, `password`,
+  `api_key` or similar creates a secret-typed variable automatically, so listings mask it and exports
+  blank it.
+- **Dynamic values** `$guid`, `$randomUUID`, `$timestamp`, `$isoTimestamp`, `$randomInt`,
+  `$randomAlphaNumeric`, `$randomBoolean`, `$randomFirstName`, `$randomLastName`, `$randomFullName`,
+  `$randomEmail`, `$randomUserName`, `$randomIP`, `$randomPassword`, `$randomHexColor`, `$randomWord`
+  and `$randomPhoneNumber` are generated per use. Time and randomness come from an injected clock
+  and random source, so runs can be made reproducible.
+- **Pipes** transform a value in place: `b64`, `b64url`, `urlenc`, `json`, `md5`, `sha256`,
+  `hmac:KEY`, `upper`, `lower`, `trim`.
+- **Limits.** Expansion depth is 8, expansions per resolve 10,000, output 1 MiB. Cycles and
+  overruns are reported problems, never hangs.
+- **Environments** are managed from the **Environments** button in the Collections toolbar: create,
+  rename, duplicate or delete one, with the variable count and the active environment marked. When a
+  collection has none, a **New environment** button sits beside the picker. Duplicating copies
+  variable names and initial values only, never a secret or a locally held current value. They can
+  be bound to an identity label and carry a base-target pin so a mis-selected environment cannot
+  send to a different target.
+
+## Requests and auth
+
+A request is Postman-shaped: method, URL (host, path, query, path variables), headers, params, body
+(raw, urlencoded, multipart, GraphQL, binary placeholders), auth, saved examples, scripts and
+per-item settings (redirects, timeout, TLS verification, unresolved policy, codec).
+
+- **Auth types:** basic, bearer, API key, JWT signing (HS/RS/ES), digest, AWS SigV4 (header signing),
+  OAuth 2.0 (client credentials, password, refresh with auto-refresh, authorization code with PKCE)
+  and mTLS client configuration. Auth is applied after scripts and variable resolution; an explicit
+  `Authorization` header always wins. The request editor's Auth tab authors inherit, none, bearer,
+  basic and API key; the other types are set by import, the API or MCP, run as stored, and show
+  in the editor as "(imported, read-only)".
+- **OAuth tokens** are cached per collection, environment and identity, stored locally and never
+  returned by an API. Token endpoints go through the same scope guard as ordinary sends. The
+  authorization-code callback is served on the control port and shows no token data.
+- **Cookies** use a per-collection, per-environment, per-identity jar. Whether a run keeps its
+  cookie changes follows the same persist policy as variable writes.
+- **Session headers.** Collection requests skip the global session headers (the Authorization or
+  Cookie auto-injected into Repeater and Intruder) unless the item opts in, so a collection request
+  is reproducible.
+- **Codecs.** A [message codec](https://veyal.github.io/interseptor/message-codecs/) can encode the plaintext body on send.
+- **Files.** Local file bodies and multipart file parts are refused: no collection reads from disk.
+- **History.** Every send is a normal flow in History, tagged **COLL**, with a **Collections** filter
+  chip. `GET /api/flows?collection=0|only` filters it.
+
+Every send path (interactive, runner, CLI, MCP, `pm.sendRequest`, OAuth token fetch) goes through one
+pipeline, so scope, dial guard and capture rules are identical.
+
+## Scripts and pm parity
+
+Pre-request and test scripts run on a pure-Go engine with a `pm.*` shim, the legacy `postman.*` /
+`tests[]` / `responseBody` globals, `console`, `require()` of a small set of modules, and an additive
+`isp.*` namespace. Scripts get a fresh runtime per run, an injected clock and random source, and hard
+limits on time, stack, source size, console output, allocation, sends and heap.
+
+The rule is **absent means absent**. The runtime does not stub an unsupported API so a script
+"works". An unsupported `pm.*` member, global, module or Chai word stops the script with status
+`unsupported` naming the API. That status is distinct from pass and fail, appears in the runner, in
+reports (JUnit records it as an `UnsupportedAPI` error, never a pass or a failure) and exits the CLI with code 2. A static
+analyser lists unsupported APIs, required modules, literal hosts and risky constructs before a script
+runs, from the same data.
+
+The table below is generated from `internal/pmsandbox/pm_coverage.json` and tested against the running
+shim, so it cannot drift.
+
+<!-- pm-parity:begin (generated from internal/pmsandbox/pm_coverage.json; run UPDATE_DOCS=1 go test ./internal/pmsandbox -run TestDocsParityTable) -->
+
+| Object | Supported members |
+| --- | --- |
+| `pm` | `info`, `environment`, `globals`, `collectionVariables`, `iterationData`, `variables`, `request`, `response`, `cookies`, `test`, `expect`, `sendRequest`, `execution`, `visualizer` |
+| `pm.collectionVariables` | `get`, `set`, `unset`, `has`, `clear`, `toObject`, `replaceIn`, `toJSON` |
+| `pm.cookies` | `get`, `has`, `toObject`, `jar` |
+| `pm.environment` | `name`, `get`, `set`, `unset`, `has`, `clear`, `toObject`, `replaceIn`, `toJSON` |
+| `pm.execution` | `setNextRequest`, `skipRequest` |
+| `pm.globals` | `get`, `set`, `unset`, `has`, `clear`, `toObject`, `replaceIn`, `toJSON` |
+| `pm.info` | `eventName`, `iteration`, `iterationCount`, `requestName`, `requestId` |
+| `pm.iterationData` | `get`, `has`, `toObject`, `replaceIn`, `toJSON` |
+| `pm.request` | `name`, `id`, `method`, `url`, `headers`, `body`, `auth`, `getHeaders`, `addHeader`, `removeHeader`, `upsertHeader`, `update`, `toJSON` |
+| `pm.request.body` | `mode`, `raw`, `urlencoded`, `formdata`, `options`, `isEmpty`, `toString`, `update`, `toJSON` |
+| `pm.request.headers` | `get`, `one`, `has`, `add`, `append`, `prepend`, `upsert`, `remove`, `clear`, `count`, `all`, `idx`, `each`, `map`, `filter`, `find`, `reduce`, `populate`, `toObject`, `members`, `toJSON` |
+| `pm.request.url` | `protocol`, `host`, `port`, `path`, `query`, `hash`, `auth`, `update`, `getHost`, `getPath`, `getQueryString`, `getPathWithQuery`, `getRemote`, `addQueryParams`, `removeQueryParams`, `toString`, `toJSON` |
+| `pm.response` | `code`, `status`, `headers`, `responseTime`, `responseSize`, `cookies`, `text`, `json`, `reason`, `size`, `to`, `toJSON` |
+| `pm.response.cookies` | `get`, `one`, `has`, `each`, `map`, `filter`, `find`, `count`, `all`, `idx`, `toObject`, `members`, `add`, `append`, `prepend`, `upsert`, `remove`, `clear`, `populate`, `reduce`, `toJSON` |
+| `pm.response.headers` | `get`, `one`, `has`, `each`, `map`, `filter`, `find`, `count`, `all`, `idx`, `toObject`, `members`, `add`, `append`, `prepend`, `upsert`, `remove`, `clear`, `populate`, `reduce`, `toJSON` |
+| `pm.response.to` | assertion chain: `status`, `header`, `jsonBody`, `body`, `ok`, `success`, `info`, `redirection`, `clientError`, `serverError`, `error`, `accepted`, `badRequest`, `unauthorized`, `forbidden`, `notFound`, `rateLimited`, `withBody`, `json` |
+| `pm.variables` | `get`, `set`, `unset`, `has`, `clear`, `toObject`, `replaceIn` |
+
+Chai `pm.expect()` words: `equal`, `equals`, `eq`, `eql`, `eqls`, `include`, `includes`, `contain`, `contains`, `property`, `ownProperty`, `a`, `an`, `instanceof`, `instanceOf`, `above`, `gt`, `greaterThan`, `below`, `lt`, `lessThan`, `least`, `gte`, `greaterThanOrEqual`, `most`, `lte`, `lessThanOrEqual`, `within`, `closeTo`, `approximately`, `lengthOf`, `length`, `oneOf`, `match`, `matches`, `string`, `keys`, `key`, `members`, `satisfy`, `throw`, `throws`, `ok`, `true`, `false`, `null`, `undefined`, `NaN`, `exist`, `exists`, `empty`.
+
+Globals: `pm`, `postman`, `tests`, `responseBody`, `responseCode`, `responseHeaders`, `responseCookies`, `responseTime`, `environment`, `globals`, `data`, `iteration`, `request`, `console`, `CryptoJS`, `Buffer`, `atob`, `btoa`, `TextEncoder`, `TextDecoder`, `URL`, `URLSearchParams`, `require`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `setImmediate`, `performance`, `Promise`, `JSON`, `Math`, `Date`, `isp`.
+
+`require()` modules: `crypto`, `crypto-js`, `buffer`, `uuid`, `url`, `chai`, `querystring`, `atob`, `btoa`, `util`.
+
+| Not shipped | Result |
+| --- | --- |
+| `pm.execution.location` (pm API) | `unsupported`: pm.execution.location is not shipped |
+| `pm.execution.runRequest` (pm API) | `unsupported`: pm.execution.runRequest is not shipped |
+| `pm.iterationData.clear` (pm API) | `unsupported`: pm.iterationData is read-only |
+| `pm.iterationData.set` (pm API) | `unsupported`: pm.iterationData is read-only |
+| `pm.iterationData.unset` (pm API) | `unsupported`: pm.iterationData is read-only |
+| `pm.request.certificate` (pm API) | `unsupported`: client certificates are configured per item, not from scripts |
+| `pm.require` (pm API) | `unsupported`: pm.require (package library) is not shipped |
+| `pm.response.stream` (pm API) | `unsupported`: streamed response bodies are not shipped |
+| `pm.response.to.have.jsonSchema` (pm API) | `unsupported`: JSON-schema assertions (ajv/tv4) are not shipped |
+| `pm.response.to.have.jsonSchemaValidate` (pm API) | `unsupported`: JSON-schema assertions (ajv/tv4) are not shipped |
+| `pm.vault` (pm API) | `unsupported`: pm.vault is not shipped |
+| `WebSocket` (global) | `unsupported`: network egress is only available through pm.sendRequest |
+| `XMLHttpRequest` (global) | `unsupported`: network egress is only available through pm.sendRequest |
+| `_` (global) | `unsupported`: lodash is not shipped (deferred, data-driven) |
+| `ajv` (global) | `unsupported`: ajv is not shipped |
+| `cheerio` (global) | `unsupported`: cheerio is not shipped (deferred, data-driven) |
+| `fetch` (global) | `unsupported`: network egress is only available through pm.sendRequest |
+| `moment` (global) | `unsupported`: moment is not shipped (deferred, data-driven) |
+| `process` (global) | `unsupported`: no process access in the sandbox |
+| `tv4` (global) | `unsupported`: tv4 is not shipped |
+| `xml2Json` (global) | `unsupported`: xml2Json is not shipped |
+| `ajv` (module, deferred) | `unsupported`: ajv is not shipped |
+| `cheerio` (module, deferred) | `unsupported`: cheerio is not shipped (deferred, data-driven) |
+| `csv-parse/lib/sync` (module, deferred) | `unsupported`: csv-parse is not shipped |
+| `lodash` (module, deferred) | `unsupported`: lodash is not shipped (deferred, data-driven) |
+| `moment` (module, deferred) | `unsupported`: moment is not shipped (deferred, data-driven) |
+| `postman-collection` (module, deferred) | `unsupported`: postman-collection is not shipped |
+| `tv4` (module, deferred) | `unsupported`: tv4 is not shipped |
+| `xml2js` (module, deferred) | `unsupported`: xml2js is not shipped (deferred, data-driven) |
+| `child_process` (module, never) | `unsupported`: no process access |
+| `cluster` (module, never) | `unsupported`: no process access |
+| `dgram` (module, never) | `unsupported`: no raw sockets |
+| `dns` (module, never) | `unsupported`: no DNS access |
+| `fs` (module, never) | `unsupported`: no filesystem access |
+| `http` (module, never) | `unsupported`: network egress is only available through pm.sendRequest |
+| `http2` (module, never) | `unsupported`: network egress is only available through pm.sendRequest |
+| `https` (module, never) | `unsupported`: network egress is only available through pm.sendRequest |
+| `net` (module, never) | `unsupported`: no raw sockets |
+| `os` (module, never) | `unsupported`: no host information |
+| `path` (module, never) | `unsupported`: not available |
+| `stream` (module, never) | `unsupported`: not available |
+| `tls` (module, never) | `unsupported`: no raw sockets |
+| `vm` (module, never) | `unsupported`: no code loading |
+| `worker_threads` (module, never) | `unsupported`: no threads |
+| `zlib` (module, never) | `unsupported`: not available |
+| `pm.visualizer` (stub) | `unsupported`: pm.visualizer is a no-op stub; visualizer output is not rendered |
+
+<!-- pm-parity:end -->
+
+Scripts can send requests with `pm.sendRequest`. The send uses the collection pipeline: scope policy,
+dial guard, send budget and flow capture all apply, and the request needs the `net.send` capability.
+
+## Quarantine and trust
+
+Imported, merged, vault-restored, MCP-supplied and CLI-supplied scripts are **quarantined**: the
+request still runs, the script does not, and the result says how many scripts were skipped.
+
+- **Trust is bound to content.** The trust hash covers the exact source, the loaded libraries and the
+  capability set. Any edit from an import, merge or AI write resets it.
+- **Only a person in the UI can trust.** Open **Collections → Scripts**, review each script's source
+  and analysis, pick the capabilities to grant and confirm. AI, MCP, API-key and agent callers, and
+  archives, can never trust a script or set a capability (HTTP 403). There is no MCP trust tool.
+  The UI session is identified by a fixed request header, not a per-session secret, so a local shell
+  process that can reach the control port and omits the agent headers is inside the trust boundary
+  (it is the same user on the same machine). Callers that label themselves AI, MCP or API are refused.
+- **Your own edits** typed in the UI are trusted when their hash is new. A rename or an AI edit never
+  approves an existing script.
+- **Capabilities are default-deny**, per collection: `vars.read`, `vars.write`, `cookies.read`,
+  `cookies.write`, `net.send`, `secrets.read`. Sending outside scope is not grantable.
+- **Revoke** from the same sheet at any time. Trust is never exported, imported or merged.
+
+## Runner
+
+**Run** (collection, folder or a selection) starts a run that belongs to the server, so closing the
+view does not stop it. The view follows it live with a progress bar, per-request results with their
+tests and console, and Pause, Resume and Abort.
+
+Before anything is sent, the Run sheet shows the plan: its scope in the title (`Folder "Users"` or
+`Whole collection "Demo API"`), the number of live requests, a per-method breakdown with
+state-changing methods marked, and the target hosts. A run that contains a POST, PUT, PATCH or
+DELETE needs `RUN` typed to confirm, because those can change state on the target. The same review
+gates the identity matrix, which multiplies the request count by every identity it runs as.
+
+A request's verdict distinguishes what was asserted from what merely happened:
+
+| Verdict | Meaning |
+| --- | --- |
+| Passed | Assertions ran and all of them passed |
+| Sent 200 | Sent, nothing asserted, the response was below 400 |
+| 401 Unauthorized | Sent, nothing asserted, the response was 400 or above |
+| Failed | An assertion failed |
+| Error, Blocked, Skipped, Unsupported | As before |
+
+Only an assertion can produce a pass, so an imported collection with no tests reports what the
+target actually returned instead of a column of green rows. The run summary counts the groups apart,
+and 4xx/5xx rows appear under **Show problems only** and **Rerun failed**.
+
+- **Iterations and data.** Upload a CSV or JSON data file (max 10,000 rows, 32 MiB). Each row is one
+  iteration and its columns are the `data` variable layer. The run records the data file's hash.
+- **Options:** stop on first failure or error, delay between requests, requests per second, rerun
+  only the failures of a previous run, no scripts.
+- **Persist.** Script variable and cookie writes follow a policy: `ask` (the default for the UI; a
+  prompt after the run offers keep or discard), `keep` or `discard`. Discard is exact: writes go to an
+  overlay, so token chains still work inside the run and nothing is left behind.
+- **Order.** `pm.execution.setNextRequest` is honoured with a loop guard (a hard cap, never a hang).
+- **Reports.** A finished run produces one model that is scrubbed once and rendered as CLI text,
+  JSON, JUnit or HTML. Rows list tests, `unsupported` results and skipped scripts separately, never as
+  passes.
+- **Scope policy.** Runner, MCP and script sends use the collection's policy, default `block`.
+  Interactive single sends default to `warn`.
+- **Getting work back.** The editor status line always says whether what you see matches the stored
+  request, with **Revert** while it differs. Sending an edited request saves it, and the version it
+  replaced is offered as **Restore previous version**. Deleting a request or folder offers **Undo**
+  for 15 seconds. Both are in-session only and are lost on reload, and a restored item drops any
+  script that was not already trusted.
+
+REST and MCP reach the same runner. See [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/#collections-api-and-mcp).
+
+## Access control matrix
+
+Access-control (authorization) testing runs on one differential engine, fed from
+either source:
+
+- **Collection identity matrix** (`POST /api/collmatrix/run`) replays the chosen
+  collection requests as every saved identity plus anonymous.
+- **History flow matrix** (`POST /api/collmatrix/flow-run`) replays selected
+  captured history flows the same way. Both produce the same matrix shape,
+  classification, evidence and renderer, so the History and Collections
+  surfaces no longer diverge.
+
+Each cell is classified `success`, `auth_failure`, `authz_failure`,
+`validation_failure`, `other`, `error`, `blocked` or `not_run`, and compared to
+the baseline identity. A lower-privileged identity that gets the same successful
+response as the baseline is flagged — as a **candidate to confirm, not a finding**
+(the matrix carries a hypothesis line that says to reproduce before reporting).
+
+### Object-identifier substitution (BOLA / IDOR)
+
+The classic broken-object-level-authorization test swaps one identity's object id
+for another's. Set `objectParam` to the request variable that carries the object
+id (reference it in the request as `{{userId}}` in the URL, query, or body) and
+`objectIds` to the id each identity legitimately owns:
+
+```json
+{
+  "collectionUid": "c_1",
+  "objectParam": "userId",
+  "objectIds": {"admin": "1", "userA": "101", "userB": "102"}
+}
+```
+
+The matrix then permutes every identity across every owner's object id: it runs
+each request once per owner (with `objectParam` pinned to that owner's id) as
+every identity. A row is one request against one owner's object; the owner's own
+cell is the legitimate baseline for that row, and any other identity that still
+gets a `success` is flagged as a candidate horizontal privilege escalation.
+`objectParam` without `objectIds` (or vice versa) runs the ordinary matrix. The
+captured-flow matrix does not substitute object ids (it has no request template);
+use the collection matrix for object-id permutation.
+
+## CLI and CI
+
+```text
+interseptor run <collection> [options]
+interseptor lint <collection> [options]
+```
+
+Run a collection headless, for a pipeline or a pre-engagement check:
+
+```text
+interseptor run "Orders API" -e staging --scope api.example.com \
+  --data users.csv --report cli,junit=results.xml,json=results.json --out reports
+```
+
+| Option | Meaning |
+| --- | --- |
+| `-e, --env` | Environment name or uid |
+| `-d, --data FILE` | Iteration data (`.csv` or `.json`); `-n` sets the iteration count |
+| `--folder` | Run only one folder |
+| `--bail[=on-failure\|on-error]` | Stop at the first failing test, or only at the first runtime error |
+| `--delay-request`, `--rps` | Pace the run (`250ms`, `2s`, requests per second) |
+| `--env-var K=V` | Set a variable for the whole run (repeatable) |
+| `--scope HOSTS` | Extra in-scope hosts; a run refuses to send without any declared scope |
+| `--no-scripts` | Run no script at all |
+| `--allow-scripts --trust-hash SHA` | Run only scripts whose hash you pin, for this process only |
+| `--persist` | Store script variable writes (the CLI default is discard) |
+| `--report SPEC` | `cli`, `json=FILE`, `junit=FILE`, `html=FILE`, comma separated; `--out DIR` for bare names |
+| `--project`, `--data-dir` | Which project and data directory |
+
+The CLI opens no listeners and never trusts anything by itself. Quarantined scripts do not run; a
+script becomes runnable for one process only through `--allow-scripts` with its hash pinned. Run
+`interseptor lint` to list the hashes, check undefined variables and unapproved scripts (use
+`--strict` to fail on warnings).
+
+**Exit codes** are a contract:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Everything passed |
+| 1 | One or more tests failed |
+| 2 | Runtime, transport, unresolved variable, unsupported API or loop-guard error |
+| 3 | Scripts not approved (checked before any request is sent) |
+| 4 | A request was blocked by scope |
+| 5 | Import/lint error or bad usage |
+
+In CI, run `interseptor lint` first, then `run` with `junit=results.xml`, publish the XML with your
+CI's test reporter, and treat a non-zero code as a failed job. The JUnit file validates against the
+JUnit 10 schema; unsupported tests are `UnsupportedAPI` errors naming the API, and secrets are masked
+everywhere.
+
+## Importers
+
+| Source | Notes |
+| --- | --- |
+| Postman Collection v2.0/v2.1, environments, globals | Lossless: key order, unknown keys, scripts and variables are preserved |
+| OpenAPI 3.x, Swagger 2 (JSON or YAML) | Tags become folders; servers become environments with a `baseUrl` variable; security schemes become auth plus blank secret variables; external `$ref` is reported, never fetched |
+| curl commands | Quotes, continuations, Chrome and PowerShell forms; unknown flags reported; `@file` becomes a needs-asset row, never read |
+| Insomnia v4 JSON and v5 YAML | Template tags map to variables where they have an equivalent; chained response tags are reported and left unresolved |
+| Bruno `.bru` files or a folder | Declarative `assert` rows become assertions; unsupported operators become `unsupported` assertions |
+| HAR and Burp saved-items XML | Requests only; header order is not preserved. To keep exact captured bytes use the History import instead |
+
+All importers are bounded (size, nesting, item and alias budgets), never execute or fetch anything,
+and quarantine every script. Insomnia and Bruno scripts that use their own APIs (`bru.*`, `insomnia.*`)
+are marked `unsupported`: there is no shim for them in this release.
+
+Moving a collection between machines works through the project bundle and the full project archive,
+which carry collections in scrubbed form (see [Secrets and archives](#secrets-and-archives)). A
+single collection also exports on its own, see [Export](#export).
+
+## Export
+
+The **Export** button next to Import opens a sheet with three downloads for the selected collection:
+
+- **Postman v2.1.** Lossless for collections that came from Postman: key order, unknown keys and
+  script text are kept, so importing the file again and exporting it returns the same bytes (apart
+  from blanked secrets).
+- **curl script.** One `curl` command per request, in tree order. A credential that was removed is
+  written as `REDACTED`; `{{variable}}` references are kept for you to substitute.
+- **Interseptor JSON** (`.ixcol.json`). The native format with environments and variable
+  declarations.
+
+REST: `GET /api/collections/{uid}/export?format=postman|curl|native` returns the file with a
+`Content-Disposition` filename. An unknown format is a 400 that lists the supported ones; an unknown
+collection is a 404.
+
+**Every export is scrubbed, for every caller.** Tokens, passwords, API keys, secret variable values
+and credential-named variables are blanked, script trust and capabilities are not exported, and local
+current values, cookies and OAuth tokens never leave. There is no option to include secrets: a
+request carrying `secrets`, `includeSecrets`, `reveal`, `scrub` or `raw` is refused with a 400
+instead of being ignored. Review the file before you share it; a secret pasted into a request name or
+a free-text body field cannot be recognised.
+
+## Security model for imported scripts
+
+An imported collection is untrusted code from someone else. The design assumes a malicious one.
+
+- **Quarantine first.** No script from any import, merge, restore, MCP or CLI source runs until a
+  person trusts its exact hash in the UI. Trust is invalidated by any change and is never
+  transferable ([ADR 0003](https://github.com/Veyal/interseptor/blob/main/docs/adr/0003-script-trust-model.md)).
+- **Default-deny capabilities.** Variables, cookies, sends and secrets each need a grant.
+- **No ambient authority.** There is no filesystem, process, environment, DNS, socket, `fetch` or
+  `XMLHttpRequest`. `require('fs')`, `child_process`, `net`, `http` and the like are refused. The only
+  egress is `pm.sendRequest` through the proxied sender.
+- **Process isolation.** Approved scripts run in a separate worker process (`interseptor
+  __scriptworker`) with no inherited environment, a memory limit, a wall-clock deadline and a kill on
+  breach. The worker never dials; the parent re-checks scope and the send budget. Setting
+  `INTERSEPTOR_SCRIPTS_INPROCESS=1` lets owner-trusted scripts run in-process instead.
+- **Scope policy.** `block` for runner, CLI, scripts and MCP; `warn` for interactive sends from the UI.
+  The collection's own policy can be set by a person, but an AI caller cannot loosen it. Loopback,
+  link-local, private (RFC 1918) and 100.64/10 destinations and Interseptor's own listeners are denied
+  unless the exact host is in scope, enforced at dial time and again on every redirect hop.
+- **Hard limits** on source size, stack, console output, timers, allocations, sends per script and
+  heap growth. Time and randomness are injectable for reproducible runs.
+- **Honest failure.** Anything the engine cannot run is `unsupported`, not a pass.
+
+Residual risk: a script you trust is trusted code. Review it, grant the smallest capability set, and
+prefer the CLI's `--no-scripts` for untrusted collections.
+
+## Secrets and archives
+
+Collections hold secrets (secret variable values, auth credentials, cookies, OAuth tokens). One scrub
+function removes them from everything that leaves the machine, unless you explicitly opt in.
+
+- **Archives and vault.** Full project archives (download, file export, merge push) and vault backups
+  snapshot the database through the scrubbed copy: secret variables, current values, cookies, tokens,
+  auth credentials and script trust are removed from the file itself, not only from a view of it.
+  The same scrub blanks literal credentials in a request's URL (userinfo password and secret-named
+  query values) and body (secret-named JSON members, form pairs and XML elements); `{{references}}`
+  and every other value stay. Importers flag these as embedded credentials.
+- **Import keeps your credentials; export scrubs them.** A file you deliberately import keeps its
+  literal credentials at rest (the same place real secret values already live), because blanking them
+  on the way in silently turned every authenticated request into a 401. Nothing leaves the project
+  unscrubbed: archives, vault, project bundle and every export still blank them. Bundles and peer
+  projects restored or merged from elsewhere are untrusted and are still scrubbed on the way in.
+- **Restore and vault pull** clear script trust, reset collection capabilities to default-deny and
+  downgrade scope policy `off` to `block` before the project is installed, so a crafted archive can
+  never arrive with scripts already trusted. Re-approve scripts in the UI after a restore.
+- **Project bundle** (portable JSON v2) carries a scrubbed `collections` section; scripts arrive
+  quarantined, capabilities default-deny.
+- **Merge** (peer pull and push, archive and vault merge) unions collections by uid; it never merges
+  current values, cookies, tokens, trust or runs, and downgrades scope policy `off` to `block`.
+- **MCP and the AI channel** read scrubbed data, get no script source, cannot reveal secrets, and get
+  a second masking pass on every response.
+- **Reports and logs.** Run reports, step results, console output and test messages are masked with
+  the secrets the run used plus common credential shapes. Values shorter than six characters cannot
+  be tracked, so use real credentials.
+
+Captured History flows are evidence and keep their exact wire bytes, including an Authorization
+header a collection request sent. The AI channel can read those flows (the History list and flow
+detail), so a secret a collection request put on the wire is readable through its captured flow even
+though the variable itself stays masked; do not treat "cannot reveal secrets" as covering History. Treat History exports, the project bundle's HAR section and
+findings evidence as sensitive, as described in [Projects and data](https://veyal.github.io/interseptor/projects-and-data/#collections-secrets-and-archives).
+
+## Differences from Postman
+
+| Area | Postman | Interseptor |
+| --- | --- | --- |
+| Unsupported script API | Not applicable (full Node-like sandbox) | Stops with status `unsupported` naming the API; never a pass |
+| Script engine | Postman sandbox | Pure-Go engine with a `pm.*` shim; lodash, moment, cheerio, ajv/tv4, `pm.vault`, `pm.require`, `jsonSchema` assertions are not shipped |
+| Imported scripts | Run on import | Quarantined until a person trusts the exact hash |
+| Unresolved variable | Sent literally | Blocks the send |
+| Scope | None | Enforced on every send; policy `block` or `warn`; the CLI refuses to send without a declared scope |
+| Network from scripts | Anywhere | Only `pm.sendRequest` through the scope-guarded sender |
+| Global session headers | Not applicable | Skipped by collection items unless opted in |
+| Variable persistence | Writes are kept | Policy `ask`, `keep` or `discard`; the CLI discards by default |
+| Evidence | Console only | Every send is a History flow with exact wire bytes |
+| Sync and sharing | Postman cloud | Local projects, bundles and the vault |
+| `setNextRequest` | Unbounded | Honoured with a hard loop guard |
+
+Not in this release: gRPC and MQTT requests, a mock server, monitors, Postman Collection v3,
+`pm.visualizer` (a no-op stub) and Postman cloud workspaces.
+
+---
+
+Source: https://veyal.github.io/interseptor/projects-and-data/
+
+# Projects and data
+
+## Choose a project
+
+Open the project badge, the mobile **Project** action, or **Settings → Project & data** to choose
+an existing project or create one. Named projects and explicitly opened folders are separate
+workspaces, each with its own captured traffic and findings.
+
+The project picker groups saved projects into collapsible folders such as `Clients/Acme`. A folder
+is only a label: it does not move the project directory and it does not share history, scope, or
+findings with the other projects in that folder. Each row shows when the project was created and
+when it was last opened. Filter the list when there are many projects; the list scrolls inside the
+dialog so the create form stays on screen.
+
+A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved
+work first, and confirm the new project badge before continuing.
+
+## Storage layout
+
+The default project lives in `~/.interseptor/`. Named projects normally live in
+`~/.interseptor/projects/<name>/`; an explicit path can place a project elsewhere. A project contains
+SQLite metadata, content-addressed captured bodies, project settings, findings, and message codecs.
+The CA and custom scanner checks are shared globally rather than copied into every project.
+
+Captured data is not encrypted at rest. Protect the workstation, backups, exported reports, and
+project archives as engagement evidence.
+
+## Project boundaries
+
+History, scope, rules, findings, notes, session settings, Repeater and Intruder drafts and presets,
+Map view preferences, setup-wizard completion, and codecs are project-scoped. Presentation-only
+preferences—such as theme, the last open top-level panel and Settings section, History columns,
+and inspector height—remain browser-wide. Device-helper form state may remain in the current
+browser tab.
+
+Repeater and Intruder tab drafts and presets are synchronized with the project database and cached
+in the browser under the project's full canonical directory. Older name-based browser keys migrate
+only when they belong unambiguously to the active project; ambiguous, malformed, or oversized
+drafts remain untouched and produce a recovery warning. Each Repeater or Intruder workspace accepts
+up to 200 tabs, and each project-backed UI-state document is limited to 4 MiB of UTF-8 JSON. A
+retained draft is replaced only after an explicit edit, and unavailable browser storage does not
+block project-database synchronization.
+
+If the project-list endpoint is temporarily unavailable but the version endpoint still identifies
+the canonical directory, the workspace can operate from project storage. When an older unscoped or
+name-keyed browser draft also exists, Interseptor does not guess its owner: migration or removal of
+that legacy value is deferred while new edits continue to use the exact canonical-directory browser
+key and synchronize with the project database. Unscoped state is migrated only when the project list
+proves exactly one valid entry whose name matches the active project. Duplicate names and malformed
+or blank entries are not ownership proof. The legacy value remains untouched for recovery. Reload after project
+identity is fully available to retry the guarded migration.
+
+A Repeater tab's send list is project-keyed but browser-local. It survives request edits, tab
+switches, and reloads, and is deleted when that Repeater tab closes. The corresponding request and
+response flows remain in the project store; project export and peer sync do not preserve their
+browser-local tab grouping.
+
+Switching projects restarts/re-executes the application so proxy and control listeners move to the
+new store together. Finish unsaved edits and check the project badge before sending traffic.
+
+Use one project per target or engagement boundary. This reduces accidental cross-target evidence,
+session-header reuse, and report contamination.
+
+## Export formats
+
+| Format | Purpose | Behavior |
+|---|---|---|
+| Portable project JSON | Sharing selected operational state with another Interseptor instance | Imports additively into the current project and is idempotent: flows (same request line, millisecond timestamp and status, the fields that survive a HAR round trip, so a project's own export imports back as all duplicates), match-and-replace rules and scope rules already present are skipped, so importing the same bundle twice adds nothing. Project **notes** are never overwritten (see [Notes on import](#notes-on-import)). Carries the upstream proxy URL and user name but never a saved proxy password, and import never applies them (see [Network settings stay local](#network-settings-stay-local)). |
+| HAR | Interchange with browser and proxy tooling | Imports flows into History; some Interseptor-only metadata is not represented. |
+| Burp saved-items XML | Migrating Proxy history or Target traffic from Burp Suite | Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. |
+| Postman collection JSON | Preparing editable requests in Repeater | Imports Collection v2.0/v2.1 with optional environment resolution; unsupported values are reported and no requests are sent by import. |
+| Collections | Requests, environments, variables and scripts for [Collections](https://veyal.github.io/interseptor/collections/) | Travel inside the full project ZIP, the portable project JSON (v2 `collections` section), peer merge and vault backups, always in scrubbed form. Importers: Postman, OpenAPI/Swagger, curl, Insomnia, Bruno, HAR, Burp XML. |
+| Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project that is a copy of the archived one, including its upstream proxy and proxy-listener settings, minus saved passwords. |
+| Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
+
+The full archive intentionally excludes the global CA and custom checks. Transfer those separately
+only when authorized and necessary.
+
+### Migrate traffic from Burp Suite
+
+In Burp, select the HTTP items to migrate in Proxy history or the Target tool, use **Save items**, and
+save the XML export. In Interseptor, open **Settings → Project & data → Import Burp XML**. The import
+merges valid HTTP/HTTPS items into the current project's History and keeps existing flows.
+
+Native `.burp` project files are not accepted. PortSwigger documents project-file management but does
+not publish the native persistence format as an interchange format; exporting selected items as XML
+is the supported migration boundary. Keep exports protected as engagement evidence, and review the
+reported imported/skipped counts before deleting the Burp project.
+
+## Collections, secrets, and archives
+
+[Collections](https://veyal.github.io/interseptor/collections/) store secrets: secret variable values, auth credentials, cookies, OAuth
+tokens and script trust. They are removed by one scrub function, not by per-feature filtering.
+
+| Path | What leaves the machine |
+| --- | --- |
+| Full project ZIP (download, file export, merge push) | A scrubbed copy of the database: secret variables, current values, cookies, tokens, auth credentials, saved proxy passwords (upstream proxy and proxy listener) and script trust are deleted from the file itself, and freed pages are overwritten. Shareable collection data (names, URLs, variable references, initial values of ordinary variables) survives. |
+| Vault backup | The same scrubbed snapshot. |
+| Portable project JSON v2 | A scrubbed `collections` section, and the upstream proxy URL without its password (the proxy-listener password is never included). Import keeps the importing machine's own upstream proxy. Version 1 bundles still import; bundles newer than 2 are rejected. |
+| Merge (peer, archive, vault) | Collections are unioned by uid. Current values, cookies, tokens, trust and runs are never merged; scripts arrive quarantined with empty capabilities, and scope policy `off` becomes `block`. |
+| MCP and AI-source REST | Scrubbed reads, no script source, no reveal. |
+| Run reports (CLI, JSON, JUnit, HTML) | Masked with the run's secrets and credential shapes. |
+
+One thing is deliberately not scrubbed: a request that was **sent** is a captured flow with its exact
+wire bytes, so an Authorization header it carried is in History and in History exports (HAR, the
+project bundle's `har` section, findings evidence). Treat evidence exports as sensitive, and prefer
+secret variables over literal credentials in request headers so the collection itself stays
+shareable. A secret that must move to another machine has to be re-entered there.
+
+### Restoring a backup without its passwords
+
+A full project ZIP or vault backup never carries the upstream proxy password or the proxy-listener
+password. A restore fails closed: proxy authentication stays on, so the listener never silently
+becomes an open proxy, and every client gets `407` until the password is entered again. The restore
+says so instead of looking healthy:
+
+- The restore result (Settings → Project & data → Import full project, and Vault → Import) names
+  the passwords that were not included and asks you to re-enter them. The API returns them in
+  `credentialsNotRestored` (`proxyAuthPassword`, `upstreamProxyPassword`) with a readable `notice`.
+- After you switch to the restored project, **Settings → Proxy & network → Proxy authentication**
+  shows "Password not included in the backup", the Proxy section health reads
+  "Proxy: auth password missing" instead of a green "listening", the desktop status bar shows the
+  proxy as a warning, and the readiness report has a failing `proxy_auth` check.
+- An upstream proxy whose password was dropped shows the same notice under **Upstream proxy** until
+  you save it again, with or without a password.
+
+### Notes on import
+
+A portable project import never discards the local project notes. If the local notes are empty the
+bundle's notes are taken. If the bundle's notes are empty, identical to the local notes, or already
+contained in them, the local notes are kept. Otherwise the local notes are kept and the bundle's are
+appended under an `## Imported from project export (YYYY-MM-DD)` heading. Re-importing the same bundle
+therefore adds nothing. The result reports `notes` as `imported`, `merged` or `kept` and the import
+toast says so. Peer, archive and vault merges do not touch notes; only a full archive restore, which
+creates a separate project, brings its notes with it.
+
+### Network settings stay local
+
+Importing or merging a project never changes this machine's network settings. A portable project
+import keeps the local upstream proxy and its CA, and its result lists the ones the bundle carried
+with a different value (`keptLocalSettings`, shown in the import toast). The proxy listener and bind
+address, proxy authentication and the system proxy are not in a bundle at all, and peer, archive and
+vault merges do not touch settings. Only a full archive *restore*, which creates a separate project
+that is a copy of the archived one, brings its network settings with it (minus passwords); they apply
+when you switch to that project.
+
+## Retention and deletion
+
+Automatic retention can enforce a maximum age, maximum flow count, or both. The job runs periodically;
+**Run now** applies it immediately. Host purge and “keep only” are destructive.
+
+Flow deletion removes metadata first. Content-addressed bodies may still be referenced by another
+flow, a finding screenshot, or another record. **Reclaim space** garbage-collects only unreferenced
+body files. A finding that references a deleted flow preserves a missing-evidence marker, but the
+request/response cannot be reconstructed; archive required PoC evidence before pruning.
+
+**Reclaim space** runs alongside live traffic. On a large engagement it spends seconds walking the
+body directory, and capture continues throughout: a body written during the pass is kept, including
+one whose bytes match a file the pass had already listed as unreferenced. Run it while proxying if
+you need to; it no longer pauses capture for the length of the walk. One pass runs at a time, so a
+second **Reclaim space** waits for the first.
+
+## Backup and collaboration
+
+For handoff, prefer a full project archive when exact bodies and report evidence must survive. Use
+portable JSON or peer merge for additive collaboration. Preview merge counts, confirm the target
+project, and review scope/session settings afterward.
+
+The optional [Project vault](https://veyal.github.io/interseptor/vault/) stores revisioned project archives. It is not a replacement for
+access control, encrypted disks, retention policy, or an engagement-approved backup location.
+
+## Close-out
+
+Export the required report and archive, verify each artifact opens, revoke API keys and tunnels,
+remove client CA trust and proxy settings, then delete local evidence according to the engagement's
+retention agreement. See [Engagement close-out](https://veyal.github.io/interseptor/engagement-closeout/).
+
+---
+
+Source: https://veyal.github.io/interseptor/settings/
+
+# Settings
+
+Open **Configure → Settings**. Search matches both section names and their contents; **Escape**
+clears the search. In a narrow window the sections wrap into a row of buttons; on a phone they form a grouped list.
+
+## Network
+
+| Section | Use it for |
+|---|---|
+| Proxy & network | Listener addresses, optional proxy username/password (off by default), system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. |
+| TLS / CA | Local CA trust, origin certificate verification, passthrough, and host-specific TLS handling. |
+| Mobile devices | Android and iOS device connection and setup helpers. |
+
+Most desktop setups use the local proxy at `127.0.0.1:8080` and control UI at `127.0.0.1:9966`.
+Read the active listener summary before changing a port. A remote or mobile client needs the correct
+network access; changing the address alone is not sufficient.
+
+See [Proxy, TLS, and networking](https://veyal.github.io/interseptor/proxy-and-tls/) or [Mobile testing](https://veyal.github.io/interseptor/mobile-testing/) for
+the connection-specific details.
+
+## Testing
+
+| Section | Use it for |
+|---|---|
+| Target scope | Include/exclude rules used by relevant History, intercept, and scanner controls. |
+| Scanner & OOB | Enablement and configuration for the optional callback service. |
+| Session / auth | Saved session headers and existing macro configuration. |
+
+Passive scan controls live in **Recon → Scanner**. Upstream proxy CA trust is under
+**Proxy & network → Upstream proxy → Advanced trust settings**, separate from origin verification.
+
+Scope and session settings belong to the project. Review them after importing or switching
+projects. The passive **Session inspector** in History is separate from **Session / auth**;
+the inspector reads existing captures and does not refresh a session.
+
+## System
+
+| Section | Use it for |
+|---|---|
+| Project & data | Active project, saved projects, the Findings editing switch, imports, exports, retention, and storage. |
+| API & MCP | Client connections, API keys, network allowlist, and MCP contract information. |
+
+**Findings editing** (Project & data) is off by default. Findings are written by agents over MCP
+and REST, so the web UI does not write to findings (edit, delete, restore, add or attach evidence,
+promote) unless you turn this on. It is a UI guard only, not access control: it does not change what
+agents can do through `/api/findings` or MCP, and the setting itself can be changed with `PUT /api/settings`.
+
+For backups and migrations, choose the export format for the data you need to preserve.
+A report, HAR, portable JSON, and a full project archive serve different purposes. See
+[Projects and data](https://veyal.github.io/interseptor/projects-and-data/#export-formats).
+
+The API & MCP panel exposes connection status and contract version/hash information for clients.
+After an app update, reconnect clients that report stale capabilities. See [API & MCP](https://veyal.github.io/interseptor/api-and-mcp/).
+
+## Save state and recovery
+
+Settings show pending changes and save failures in place. Keep failed edits available, correct
+invalid values, and use the displayed retry action. A background refresh should not be treated
+as confirmation that an unsaved value reached the server.
+
+Switching projects restarts the application and waits for the new project's identity. Pending
+Notes, Findings, History notes, Settings changes, or revision restore can block the switch.
+Use the project badge, the mobile **Project** action, or **Project & data** to enter the same
+switching flow. See [Project boundaries](https://veyal.github.io/interseptor/projects-and-data/#project-boundaries).
+
+## Appearance and shortcuts
+
+The theme control lives in the top bar. **Jump to…** and **Ctrl/⌘+K** provide quick panel
+navigation. Theme and presentation preferences are browser-wide; changing them does not change
+the project's captured data.
+
+---
+
+Source: https://veyal.github.io/interseptor/engagement-closeout/
+
+# End an engagement — close-out checklist
+
+Use this when you are wrapping a pentest / bug-bounty session in Interseptor.
+The goal is a **report-ready project**, not just a pile of History rows.
+
+## 1. Scope & capture
+
+- [ ] Target scope include rules cover every host you tested
+- [ ] Out-of-scope noise is excluded (or filtered via Views)
+- [ ] Session / login macro still refreshes auth if you need last-minute PoCs
+
+## 2. Triage → Findings
+
+- [ ] Run **Scanner** (passive) and triage hits worth promoting
+- [ ] Review scanner and agent evidence, then file findings manually or through MCP using the shared
+  evidence-first envelope: claim/summary, impact, why, target, typed reproduction blocks, fix, retest,
+  and confidence
+- [ ] Tag findings by deliverable scope (`cms` / `website` / `app` / `api`; use
+  `out-of-scope` for adjacent evidence you want to keep out of the client pack)
+- [ ] Attach **PoC flows** (`add_finding_poc` / UI) with a role and exact proof statement
+- [ ] Attach a real browser/device **screenshot as primary visual evidence** when it visibly proves the issue;
+  use `add_finding_image` with `source=browser_screenshot`. Use `render_flow_preview` for a labeled visual
+  HTTP record and `render_evidence` for generated renders of recorded Intruder/authz data (`source=evidence_render`; never browser proof), not as a substitute for a real screenshot when one is available
+- [ ] Mark uncertain items `needs_verification` with concrete check steps
+- [ ] Intruder: filter **Interesting** → **→ Finding** to attach flagged attempts
+
+## 3. Active work and external orchestration
+
+- [ ] Review external-agent activity and verification results in History
+- [ ] Reproduce important candidates with `send_request` or Repeater
+- [ ] Attach evidence flows and record concrete verification steps
+- [ ] Confirm Critical/High with a human read of the PoC
+
+## 4. Retest before you write it up
+
+- [ ] Retest the findings you are claiming (`POST /api/findings/{id}/retest`) and read the
+  observation, not a verdict: `unchanged`, `changed` or `inconclusive`. A differing response is not
+  proof of remediation, and the retest never moves the finding's status
+- [ ] Leave non-idempotent requests skipped unless you mean to re-send them (`allowUnsafeMethods`)
+- [ ] Keep the attached `retest` evidence block: it is a new revision, and the original evidence
+  stays as it was
+
+## 5. Export & handoff
+
+- [ ] Set **report branding** (`PUT /api/report-branding`) if the deliverable is client-facing:
+  report title, company and client names and logos, assessment dates, lead assessor, classification,
+  and a cover page. Unset leaves the default Interseptor report unchanged
+- [ ] Export **Findings report** (Markdown / self-contained HTML / PDF / JSON / SARIF) with PoC
+  bodies as needed; enable **Group by tag** (omits `out-of-scope` by default) for multi-scope
+  write-ups
+- [ ] Decide on **credential masking** (`?maskHeaders=1`). Off by default, which is right for an
+  internal evidence pack; on for a client deliverable, which replaces `Authorization`, `Cookie`,
+  `Set-Cookie` and `Proxy-Authorization` values in attached raw evidence with a length and digest.
+  It does not touch bodies, URLs or prose — read the secret-lint notice at the top of the HTML
+  report for those
+- [ ] For PDF, confirm a headless Chrome is available (`INTERSEPTOR_CHROME` to point at one). A
+  missing browser is a 503 naming it, never a silent fall back to HTML
+- [ ] File into a tracker or platform from `GET /api/finding-export/{id}?format=…`
+  (HackerOne / Bugcrowd / Jira / SARIF). Add the identifiers only you hold — a Jira project key, for
+  example — before posting
+- [ ] Export **full project** zip if the client needs a portable archive
+- [ ] Copy deep links (`/#finding-N`, `/#flow-N`) into notes / ticket system
+- [ ] Install any custom checks you want to reuse as a **rule pack** for next time
+
+## 6. Hygiene
+
+- [ ] Retention policy set if the project will sit idle (`Settings → Project & data`)
+- [ ] API keys still valid for remote/Tailscale follow-up
+- [ ] Clear or archive the project when the engagement is done
+
+For agent-driven close-out, see [MCP cookbook](https://veyal.github.io/interseptor/mcp-cookbook/) recipe **Close out findings**.
+
+### Evidence format
+
+Findings use one ordered `blocks` array across the UI, REST API, MCP, and reports. Blocks are text,
+captured flows, or images. Give evidence a role (`baseline`, `action`, `result`, `control`, or
+`retest`), state exactly what it proves, and preserve provenance (`captured_flow`,
+`browser_screenshot`, `flow_preview` plus `sourceFlowId`, or `evidence_render` plus `sourceRef` where applicable). Before→Action→After
+is an optional Differential preset for authorization/state comparisons; use a shorter role sequence
+when the vulnerability does not require a before/after comparison. See [API & MCP](https://veyal.github.io/interseptor/api-and-mcp/)
+for the complete field and endpoint contract.
+
+---
+
+Source: https://veyal.github.io/interseptor/mobile-testing/
+
+# Mobile testing
+
+## Choose a connection mode
+
+- **Android over USB:** Interseptor uses `adb reverse`; the device proxy points to loopback and no LAN
+  listener is required.
+- **Android or iOS over Wi-Fi:** bind the proxy to `0.0.0.0:8080` (or a specific LAN interface), put
+  both devices on a reachable network, and configure the phone with the workstation's LAN address.
+- **iOS Simulator:** use the built-in Simulator setup on macOS with Xcode tools installed.
+
+Wi-Fi clients use a non-loopback listener. Proxy authentication is off unless you set a username
+and password in Settings; see [Proxy listener exposure](https://veyal.github.io/interseptor/proxy-and-tls/#proxy-listener-exposure).
+
+## Android
+
+Install `adb`, enable USB debugging, connect exactly one authorized device, then open **Settings →
+Mobile devices**. **Setup all** selects a system CA for an emulator/rooted target and a user CA for a
+normal phone, then configures the chosen proxy mode. Use **Clear proxy** during close-out.
+
+Android 7+ applications do not automatically trust user-installed CAs. A user CA may work in the
+browser while an app still rejects it. For an authorized test, use a debuggable build with a network
+security configuration, an emulator/rooted device with a system CA, or an approved instrumentation
+method. Interseptor does not defeat pinning itself.
+
+### Android 14+ and the read-only system trust store
+
+`adb remount` can no longer write `/system/etc/security/cacerts/` on Android 14+ and many Google APIs
+emulator images, because the Conscrypt trust store moved into a read-only APEX
+(`/apex/com.android.conscrypt/cacerts`). Two rooted options install a system CA without a writable
+`/system`:
+
+- **Rebootless tmpfs overlay** (CA mode `system-tmpfs`): Interseptor roots `adbd`, mirrors the
+  existing system certs plus its own onto a `tmpfs` mounted over the system trust store, then repeats
+  the overlay inside each zygote mount namespace so the APEX copy is covered too. It takes effect
+  immediately and lasts until the next reboot.
+- **Magisk / KernelSU module** (`GET /api/android/magisk-module.zip`): a flashable module that
+  reinstalls the CA as a system CA and reapplies the APEX overlay on every boot, for a persistent
+  rooted trust. Flash it in Magisk/KernelSU Manager and reboot.
+
+Both require root — a rooted phone or an emulator image with root. The classic `adb remount`
+system-CA path still works on older or userdebug images and is unchanged. The tmpfs command
+construction and the generated module are unit-tested inside Interseptor, but the on-device steps
+must be verified on your real Android 14+ hardware; neither path is a pinning bypass — an app that
+pins a specific certificate still rejects the CA.
+
+## iOS
+
+For Simulator, select the target and use **Setup all** or install the CA and open the profile
+separately. For a physical device, download the `.mobileconfig` profile over a trusted path and install
+it. Then enable full trust under **Settings → General → About → Certificate Trust Settings**.
+
+The profile can configure the global HTTP proxy but cannot bypass application pinning. Jailbroken SSH
+automation sends credentials only for the setup request and does not persist them in project settings.
+
+## Verification
+
+1. Open an HTTP test URL and confirm a History row.
+2. Open an HTTPS URL and confirm a decrypted path rather than only a `CONNECT` row.
+3. Check the device proxy address, CA trust, and client time if HTTPS fails.
+4. If browsers work but one app fails, treat pinning or app-specific trust as the leading hypothesis.
+5. If no traffic arrives, verify Wi-Fi reachability, host firewall, listener bind, and whether the app
+   ignores the operating-system proxy.
+
+Use the TLS diagnostic in **Settings → TLS / CA** to distinguish no traffic, no HTTPS, and a failed
+client TLS handshake. See [Troubleshooting](https://veyal.github.io/interseptor/troubleshooting/) for the complete decision tree.
+
+## Cleanup
+
+Clear device proxies, remove profiles and CA trust, remove any temporary system CA or instrumentation,
+revoke the device API key, and restore the proxy listener to loopback.
+
+---
+
+Source: https://veyal.github.io/interseptor/content-discovery/
+
+# Content discovery (guided)
+
+Interseptor intentionally has **no built-in forced-browse engine**. The old Discover
+feature polluted Proxy History and AI agents over-relied on it. Recon still belongs
+here — via **external tools pointed through the proxy**, then triage in History / Map.
+
+## Operator flow
+
+1. Set **scope** (include the target host).
+2. Point the browser or tool at the proxy (`127.0.0.1:8080` by default).
+3. Run feroxbuster / gobuster / ffuf (copy-paste from **Map → Discovery ▸**).
+4. Triage in **Proxy** History and **Map** (403/404-only noise hidden by default; soft-404 clusters).
+
+### Example commands
+
+```bash
+# feroxbuster through Interseptor
+feroxbuster -u https://app.example.com -p http://127.0.0.1:8080 --dont-extract-links -t 20
+
+# ffuf
+ffuf -u https://app.example.com/FUZZ -w wordlist.txt -x http://127.0.0.1:8080 -mc all -fc 404
+```
+
+## Soft-404 policy (Map)
+
+Map clusters endpoints whose latest response body matches a not-found signature
+even when status is 200 (**soft-404**), separate from byte-identical response clusters.
+Nothing is auto-deleted — collapse only.
+
+## History policy
+
+- Prefer tools that rate-limit and respect scope.
+- Map’s **Hiding 403/404-only** filters dead forced-browse paths from the endpoint view
+  (toggle off to see everything: `?hideNoise=0` on `/api/endpoints`).
+- Legacy `FlagDiscovery` / DSC badges remain for old projects; new runs are ordinary proxied flows.
+
+## MCP
+
+RECON guidance tells agents to run a real forced-browser **through this proxy**, then
+`list_flows` / `host_stats` — there is no `start_discovery` tool.
+
+## Future (engine return)
+
+A scope-aware, soft-404-calibrated engine with strict History policy may return later.
+Until then, guided external tools are the supported path (issue #22).
+
+---
+
+Source: https://veyal.github.io/interseptor/message-codecs/
+
+# Message codecs
+
+Project-scoped **Starlark** transforms that decrypt/encrypt (or otherwise decode/encode)
+application-layer request and response bodies so History, Repeater, Intercept, and MCP
+can show plaintext without leaving Interseptor.
+
+This is **not** Content-Encoding decompression (gzip/br/…) and **not** the one-shot
+Decoder tool (base64/url/hex/html/jwt). Codecs are for engagement-specific app crypto
+(AES-wrapped JSON fields, custom token packing, …).
+
+## Where codecs live
+
+`<project>/codecs/*.star` — created automatically under the active project directory.
+They are **not** shared across projects (unlike global scanner checks).
+
+UI: **Scanner → Codecs**. REST under `/api/codecs` and `/api/flows/{id}/decoded`.
+MCP: `list_codecs`, `test_codec`, `save_codec`, `delete_codec`, `get_flow_decoded`, `encode_codec`.
+
+## Contract
+
+```python
+meta = {
+    "id": "aes-content-field",
+    "title": "JSON content (prefix+AES-ECB)",
+    "apply_on_send": False,  # default: display-only
+}
+
+def match(flow, side):
+    # side is "req" | "res"
+    return True
+
+def decode(flow, side, raw):
+    # return plaintext string OR {"plaintext": "...", "fields": {...}, "note": "..."}
+    return raw
+
+def encode(flow, side, plaintext):
+    # required only if apply_on_send is True
+    return plaintext
+```
+
+`flow` matches the custom-check surface (`method`, `host`, `path`, `req_body` / `res_body`,
+`req_header(n)`, …). See [custom checks](https://veyal.github.io/interseptor/custom-checks/).
+
+## Builtins
+
+Shared Starlark stdlib (`internal/starx`) plus AES-ECB helpers:
+
+| Builtin | Notes |
+|---|---|
+| `aes_ecb_encrypt(key, plaintext)` | PKCS7 pad → AES-ECB → **base64** ciphertext |
+| `aes_ecb_decrypt(key, ciphertext)` | base64 or raw → AES-ECB → plaintext string |
+| `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | same as checks |
+
+`key` may be 16/24/32 raw bytes **or** hex of that length (32/48/64 hex chars).
+
+## Safety
+
+- Codecs run only on explicit UI/API/MCP decode requests — **never** on the proxy hot path.
+- Failures fall back to raw; forwarding is never broken by a bad codec.
+- `apply_on_send` is opt-in. Repeater Send with Decoded view re-encodes only when that flag is set.
+
+## Example
+
+See [`examples/codecs/aes-content-field.star`](https://github.com/Veyal/interseptor/blob/main/examples/codecs/aes-content-field.star) for the
+common `prefix + Base64(AES-ECB(JSON))` wire shape.
+
+---
+
+Source: https://veyal.github.io/interseptor/custom-checks/
+
+# Writing custom scanner checks
+
+> The control UI embeds [`internal/control/checks_reference.md`](https://github.com/Veyal/interseptor/blob/main/internal/control/checks_reference.md)
+> for the in-app **Docs** tab — keep both files in sync when editing this guide.
+
+Interseptor's passive scanner is extensible: drop a check written in **Starlark** (a small,
+Python-like language) into your checks folder and it runs on every scan, right alongside the
+built-in checks. This page is the **standard** every check is written against.
+
+- **Where checks live:** `~/.interseptor/checks/*.star` (global — shared across all projects, like the CA).
+- **When they run:** every time you **Run scan** (or `POST /api/scanner/run`). Files are re-read
+  each run, so editing a check takes effect immediately — no restart.
+- **Why Starlark:** it's deterministic and **sandboxed** — a check cannot read files, open network
+  connections, read the clock, or import anything. That makes checks safe to download and share.
+
+## The contract
+
+A check is a `.star` file that defines one function:
+
+```python
+def check(flow):
+    # inspect `flow`, return a list of finding(...) — or [] for "nothing found"
+    return []
+```
+
+The file name (without `.star`) is the check's id. `check` is called once per captured in-scope
+flow. Return a list of `finding(...)`; return `[]` (or `None`) when there's nothing to report.
+
+## Test a check before saving it
+
+`POST /api/checks/test` compiles source and runs it against one captured flow without writing
+anything:
+
+```bash
+curl -s -X POST http://127.0.0.1:9966/api/checks/test \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"def check(flow):\n    print(flow.path)\n    return []\n"}'
+```
+
+Body: `{source, flowId?}` — omit `flowId` and it uses the most recent captured flow. The response is
+`{findings, logs, flowId}`, or `{error, logs}` when the check fails to compile or errors at runtime.
+A bad check is always a `200`, so a caller can show the error inline.
+
+`logs` is the check's `print()` output, in the order it happened: module-level prints from the
+compile first, then the run's. It comes back even when the check errored — what it printed before
+failing is usually the reason. Over MCP the same thing is `test_check`.
+
+## The `flow` object
+
+| Field | Type | Notes |
+|---|---|---|
+| `flow.method` | str | `GET`, `POST`, … |
+| `flow.scheme` | str | `http` / `https` |
+| `flow.host` | str | hostname |
+| `flow.port` | int | |
+| `flow.path` | str | path + query, e.g. `/search?q=1` |
+| `flow.status` | int | response status (0 if the request never completed) |
+| `flow.mime` | str | response Content-Type |
+| `flow.req_body` / `flow.res_body` | str | bodies (bounded) |
+| `flow.req_headers` / `flow.res_headers` | dict | canonicalized name → first value |
+| `flow.query_params` | dict | every query parameter, url-decoded, as name → **list** of values. A list because a query string can repeat a name meaningfully (`?id=1&id=2`) and a check that enumerates parameters has to see both. Iteration follows the order they appear in the query string. `{}` when there is no query string. |
+| `flow.cookies` | dict | request cookies parsed from the `Cookie` header, as name → value. A plain string per name, not a list: unlike a query string a `Cookie` header does not repeat names meaningfully, so the first occurrence wins. Malformed segments are skipped. `{}` when there is no `Cookie` header. |
+
+Methods:
+
+| Call | Returns |
+|---|---|
+| `flow.req_header(name)` / `flow.res_header(name)` | header value (**case-insensitive**), or `""` if absent |
+| `flow.req_header_all(name)` / `flow.res_header_all(name)` | **all** values for a header as a list (use for multi-`Set-Cookie`, etc.); `[]` if absent |
+| `flow.query_param(name)` | first value of one query parameter, or `""`. Use `flow.query_params` to enumerate them. |
+
+## Builtins
+
+| Builtin | Description |
+|---|---|
+| `finding(severity, title, detail="", evidence="", fix="")` | construct one finding. `severity` ∈ `high` / `medium` / `low` / `info` (`critical` → high; anything else → info). |
+| `re_search(pattern, text)` | first regex match (RE2 syntax) as a string, or `None`. |
+| `json_decode(text)` | parse JSON into dicts/lists/strings/ints/floats/bools/`None`. |
+| `json_encode(value)` | serialize a Starlark value to a compact JSON string. |
+| `b64decode(text)` / `b64encode(text)` | base64 decode/encode. |
+| `url_decode(text)` / `url_encode(text)` | percent-encoding decode/encode (query escaping). |
+| `hash(algo, text)` | hex digest; `algo` ∈ `sha256`, `sha1`, `sha512`, `md5`. |
+| `hmac(algo, key, message)` | lowercase-hex HMAC digest; same algorithms as `hash`. |
+| `print(...)` | Starlark's own `print`. Its output is captured, not discarded: `POST /api/checks/test` returns it as `logs`, and during a scan it goes to the server log labelled with the check id and flow id. This is how you debug a check that returns an empty list. Capture is bounded at 200 lines or 32 KiB per run, then cut with a truncation notice. |
+
+## Example
+
+```python
+# ~/.interseptor/checks/missing-hsts.star
+def check(flow):
+    if flow.scheme == "https" and not flow.res_header("Strict-Transport-Security"):
+        return [finding(
+            "medium",
+            "Missing Strict-Transport-Security (HSTS)",
+            evidence="(no HSTS response header)",
+            fix="Send Strict-Transport-Security: max-age=63072000; includeSubDomains.",
+        )]
+    return []
+```
+
+More ready-to-copy examples live in [`examples/checks/`](https://github.com/Veyal/interseptor/tree/main/examples/checks/).
+
+## Limits & safety
+
+- **Sandboxed:** no file/network/clock access, no `load()`, no imports. Checks are pure functions of
+  the flow you pass in.
+- **Bounded:** each `check()` call is capped at a few million execution steps, so a runaway loop
+  aborts that one check instead of hanging the scan.
+- **Isolated failures:** a check that fails to compile or errors at runtime is logged and skipped —
+  it never aborts the scan or the other checks.
+- **Bounded output:** `print()` is captured per run, up to 200 lines or 32 KiB, then cut with a
+  truncation notice. A check cannot flood memory or the log with output.
+- **Run in parallel:** a scan runs one goroutine per CPU, so your check runs on several flows at
+  once. Checks are pure functions of the flow handed to them and hold no state between calls, so
+  this needs nothing from you — but a check that depends on being called in flow order never had
+  that guarantee and now definitely does not have it.
+
+---
+
+Source: https://veyal.github.io/interseptor/rule-packs/
+
+# Rule packs
+
+A **rule pack** is a shareable bundle of passive Starlark checks
+plus a manifest. It's how a community shares detection logic: build a pack from
+a folder of `.star` files, hand the `.tar.gz` to a teammate (or publish it), and
+they install it with one command — no fork, no copy-paste.
+
+> Packs install checks that **run on every scan**, so install/remove are
+> human-gated (CLI or the full-scope REST surface). The AI agent surface is
+> **read-only** (`list_packs`, `pack_info`) — an agent can see what's installed
+> and suggest checks, but can't install them unsupervised.
+
+## Pack format
+
+A pack is a `.tar.gz` containing:
+
+```
+manifest.json              name, version, author, entries[] (each: kind, id, sha256)
+signature.json             optional ed25519 publisher signature
+checks/<id>.star           passive checks
+```
+
+Every check file's **sha256** is recorded in the manifest at build time and
+**verified on install**, so a corrupted or tampered pack is rejected before any
+check reaches disk. An optional **ed25519 publisher signature** (`signature.json`)
+covers the manifest digest (name, version, per-file hashes) so install can verify
+*who* published the pack — see [PRD-0003](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0003-rule-packs.md).
+
+### Trust model
+
+| Source | Policy |
+|--------|--------|
+| Official catalog (bundled) | Trusted as **builtin** (same trust as app code) |
+| Signed install | Verified against `interseptor-1` + `~/.interseptor/trusted-pack-keys/<id>.pub` |
+| Unsigned | Refused unless `--allow-unsigned` / UI checkbox / `?allowUnsigned=1` |
+
+## CLI
+
+```bash
+# Build a pack from a folder that has a checks/ subdir.
+interseptor rules create --name owasp-top --version 1.0.0 --author Priya ./mychecks --out owasp.tar.gz
+
+# Sign while building (32-byte hex seed file or literal):
+interseptor rules create --name owasp-top --sign ./my.seed --key-id priya ./mychecks --out owasp.tar.gz
+
+# Install (verifies integrity + signature).
+interseptor rules install owasp.tar.gz
+interseptor rules install --allow-unsigned legacy.tar.gz
+
+# See what's installed.
+interseptor rules list
+
+# Inspect one pack.
+interseptor rules info owasp-top
+
+# Uninstall (deletes exactly the check files that pack owned).
+interseptor rules remove owasp-top
+```
+
+Installed checks live in the global `~/.interseptor/checks` directory, so they run
+immediately alongside your other passive checks and built-ins — no restart.
+
+## REST + MCP
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/packs` | list installed packs |
+| `GET` | `/api/packs/{name}` | one pack's record |
+| `GET` | `/api/packs/catalog` | official packs bundled in the binary |
+| `POST` | `/api/packs/catalog/{name}/install` | one-click install of an official pack |
+| `POST` | `/api/packs/install` | upload a `.tar.gz` (full-scope; `?allowUnsigned=1` optional) |
+| `DELETE` | `/api/packs/{name}` | uninstall (full-scope key) |
+
+UI: **Scanner → Checks** has an Official packs list plus a `.tar.gz` upload
+(with **Allow unsigned packs**).
+
+MCP tools: `list_packs`, `pack_info` (read-only — see the note above).
+
+## Authoring checks for a pack
+
+A check in a pack is just a normal passive Starlark check (see
+[custom checks](https://veyal.github.io/interseptor/custom-checks/)),
+optionally with a `# key: value` front-matter header for provenance:
+
+```python
+# name: JWT in response
+# description: Flags a JWT returned in a response body or header.
+# author: Priya
+# version: 1.0.0
+# severity: medium
+def check(flow):
+    if re_search("ey[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+", flow.res_body):
+        return [finding("medium", "JWT in response body", evidence="see response")]
+    return []
+```
+
+The front-matter is parsed and surfaced in `list_checks`
+so a pack listing can show what each check does without reading its source.
+
+## Match-and-replace body size
+
+Match-and-replace rules (`req-body` / `res-body` on `POST`/`PUT /api/rules`) are
+not the Starlark checks inside a pack. An enabled body rule reads at most 2 MB.
+A larger body is forwarded unchanged and that rule is skipped (logged once per
+rule). Set `"bigBody": true` on the rule JSON to opt that rule into the 64 MB
+transform cap. The interactive intercept hold still buffers up to 64 MB either
+way. The rules table keeps a stored `bigBody` value when you edit the rule in
+the UI.
+
+---
+
+Source: https://veyal.github.io/interseptor/vault/
+
+# Project vault
+
+Always-on archive store for Interseptor projects. Run `interseptor vault` on a durable host
+(Mac mini, VPS, NAS), expose it over **Tailscale Serve** (tailnet-only), and use any laptop’s
+Interseptor UI / REST / MCP to **backup**, **list**, **import**, or **merge** without USB zips
+or a live peer process.
+
+This is complementary to peer sync (`/api/merge/*`): peers need both Interseptors online; the
+vault keeps revisions on disk.
+
+## Server
+
+```bash
+# default: ~/.interseptor/vault, listen 127.0.0.1:9977, keep last 10 revs
+interseptor vault
+
+# external disk later
+interseptor vault --dir /Volumes/Backup/interseptor-vault --keep 20
+# or: INTERSEPTOR_VAULT_DIR=/Volumes/Backup/interseptor-vault
+```
+
+On first start a bootstrap token (`iv_…`) is printed and written to
+`<dir>/vault.token` (mode `0600`). Use that as `Authorization: Bearer …` from clients.
+
+### Tailscale Serve (recommended)
+
+Keep the vault on loopback; Serve publishes HTTPS on the tailnet only (not Funnel):
+
+```bash
+# on the vault host
+interseptor vault --addr 127.0.0.1:9977
+
+# proxy https://<this-host>:9977 → local vault
+tailscale serve --bg --https=9977 http://127.0.0.1:9977
+```
+
+Clients on the tailnet use `https://mac-mini.tailXXXX.ts.net:9977` (or your MagicDNS name)
+plus the vault token.
+
+### Vault HTTP API
+
+| Method | Path | Scope | Notes |
+|--------|------|-------|--------|
+| `GET` | `/api/vault/status` | read | dir, keep, counts |
+| `GET` | `/api/vault/projects` | read | list projects + latest rev |
+| `GET` | `/api/vault/projects/{id}` | read | revision list |
+| `PUT` | `/api/vault/projects/{id}?label=` | full | body = full-project zip |
+| `GET` | `/api/vault/projects/{id}/latest` | read | download zip |
+| `GET` | `/api/vault/projects/{id}/revs/{n}` | read | download zip |
+| `DELETE` | `/api/vault/projects/{id}/revs/{n}` | full | drop one rev |
+| `DELETE` | `/api/vault/projects/{id}` | full | drop project |
+
+Archive format matches **Export full project**: `interceptor.db` + `bodies/**`.
+
+## Client (any Interseptor)
+
+Machine-wide config: `~/.interseptor/vault-client.json` (`url` + `key`).
+
+**UI:** Settings → API & MCP → **Share** → **Project Vault** — save URL/token, Backup, list,
+Import as new, Merge into current (dry-run confirm).
+
+**REST (proxied by the control plane):**
+
+| Method | Path | Body |
+|--------|------|------|
+| `GET`/`PUT` | `/api/vault/config` | `{url?, key?}` — key never echoed |
+| `GET` | `/api/vault/remote` | list remote projects |
+| `POST` | `/api/vault/backup` | `{id?, label?}` |
+| `POST` | `/api/vault/import` | `{id, name?, rev?, overwrite?}` |
+| `POST` | `/api/vault/merge` | `{id, rev?, label?, dryRun?}` |
+
+**MCP:** `vault_list`, `vault_backup`, `vault_import`, `vault_merge`.
+
+## Layout on disk
+
+```
+~/.interseptor/vault/
+  meta.json
+  vault.token          # bootstrap raw token (local only)
+  tokens.json          # hashed tokens
+  projects/<id>/
+    meta.json
+    rev-000001.zip
+    …
+```
+
+---
+
+Source: https://veyal.github.io/interseptor/extensions/
+
+# Writing Interseptor extensions
+
+Interseptor has a small, stable **in-process hook API** for extending the tool
+without forking it. This is Phase 1 of [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md)
+(issue [#25](https://github.com/Veyal/interseptor/issues/25)): first-party Go
+packages register hooks at startup. Later phases add UI panel slots and an
+untrusted (WASM / Starlark) host; the hook contract described here is the
+foundation they build on.
+
+## The hook API — `internal/plugin`
+
+Two lifecycle hooks are available today. Both pass **only IDs and small
+scalars** — never `store` or `proxy` types — so an extension can never create an
+import cycle and never stall the proxy hot path.
+
+```go
+// Fired after a flow reaches its final recorded state (request + response, or a
+// terminal error). Fires for every persisted flow, MITM or plain HTTP.
+plugin.OnFlowCaptured(func(flowID int64) { ... })
+
+// Fired after the scanner records an issue against a flow.
+plugin.OnScanIssue(func(flowID int64, severity, title string) { ... })
+```
+
+### Two rules every hook must follow
+
+1. **Never block.** The emitter runs your hook inline, best-effort. By the time
+   `OnFlowCaptured` fires the proxy has already answered the client, but a slow
+   hook still delays connection reuse — so hand off to a goroutine and return
+   immediately.
+2. **Never import proxy/control types.** Reach the host through a narrow
+   interface you declare yourself (see below). This keeps your extension
+   decoupled and unit-testable, and keeps the dependency graph acyclic.
+
+Both emitters snapshot their hook slice under a lock and invoke hooks **outside**
+the lock, so registering a hook from inside another hook is safe.
+
+## The official example — a flow annotator
+
+`internal/plugin/annotator` is a complete, tested example extension. It tags
+every captured flow whose host matches a configured substring — e.g. auto-label
+everything that touches an internal admin host.
+
+It talks to the host through a minimal interface rather than importing the
+concrete store:
+
+```go
+type Store interface {
+    GetFlow(id int64) (*store.Flow, error)
+    AddFlowTags(flowID int64, tags []string) ([]string, error)
+}
+```
+
+`*store.Store` satisfies it. The hook body just spawns a goroutine:
+
+```go
+plugin.OnFlowCaptured(func(flowID int64) {
+    go annotate(st, flowID, needles, tag)
+})
+```
+
+### Enabling it
+
+The annotator is wired in `cmd/interseptor` but **off by default**. Opt in with
+environment variables:
+
+```bash
+# Tag every captured flow whose host contains "internal" or "admin".
+INTERSEPTOR_EXT_ANNOTATE_HOSTS="internal,admin" \
+INTERSEPTOR_EXT_ANNOTATE_TAG="internal-host" \
+  interseptor
+```
+
+`INTERSEPTOR_EXT_ANNOTATE_TAG` defaults to `annotated`. With no
+`INTERSEPTOR_EXT_ANNOTATE_HOSTS` set, the extension is never registered.
+
+## Writing your own
+
+1. Add a package under `internal/plugin/<name>/`.
+2. Declare a narrow `Store`-style interface for exactly the host calls you need.
+3. Expose an `Enable(...)` that registers your hooks via `plugin.OnFlowCaptured`
+   / `plugin.OnScanIssue`, guarding against a no-op config so an accidental
+   enable can't misfire.
+4. Do real work (DB, network, notifications) in a goroutine.
+5. Wire `Enable` into `cmd/interseptor`, gated behind an opt-in setting or env
+   var so default behavior is unchanged.
+6. Unit-test the logic against a fake store — no proxy needed. See
+   `internal/plugin/annotator/annotator_test.go`.
+
+A copy-paste starting point lives in [`examples/extensions/hello/`](https://github.com/Veyal/interseptor/tree/main/examples/extensions/hello).
+
+## Roadmap
+
+- **Phase 2** — declared UI panel slots (ES module under
+  `~/.interseptor/extensions/`), so an extension can add a tab, not just a hook.
+- **Phase 3** — WASM / Starlark host for untrusted third-party logic.
+
+See [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md) for the full plan.
+
+---
+
+Source: https://veyal.github.io/interseptor/http2/
+
+# HTTP/2 and MITM
+
+## Current behavior
+
+| Leg | Protocol |
+|-----|----------|
+| Client → proxy (CONNECT + MITM TLS) | **HTTP/2 when ALPN negotiates `h2`**, else HTTP/1.1 |
+| Proxy → origin (via `http.Transport`) | **HTTP/2 when ALPN negotiates `h2`**, else HTTP/1.1 |
+
+### Client → proxy leg
+
+The forged leaf offers ALPN `h2, http/1.1` (`handleConnect`). When the client
+selects `h2`, the MITM connection is handed to an `http2.Server`
+(`serveH2MITM`, `internal/proxy/http2.go`) whose handler bridges every decoded
+stream into the **same** forwarding pipeline the HTTP/1.1 loop uses —
+`gateAndForward` → `writeResponseHTTP`. Intercept holds, match-&-replace,
+scope, capture, and history all apply identically; only the client-facing
+framing differs. When the client stays on HTTP/1.1, the request falls through
+to the `http.ReadRequest` loop unchanged.
+
+History records the **client** leg proto for h2 sessions (`HTTPVersion:
+HTTP/2.0`), captured by `buildFlow` before the forwarded request is normalized
+to HTTP/1.1 for `http.Transport` (which does its own upstream ALPN and rejects
+`ProtoMajor == 2` requests).
+
+### Proxy → origin leg
+
+Upstream HTTP/2 is enabled with `ForceAttemptHTTP2` and TLS
+`NextProtos: h2, http/1.1`. Forwarding never depends on h2 being available —
+ALPN/h1 fallback is automatic on both legs.
+
+### HTTP/1.1 client, HTTP/2 origin
+
+A client that stays on HTTP/1.1 while the origin speaks h2 still works: the
+proxy **downgrades framing to HTTP/1.1 + chunked** before writing back over the
+h1 MITM socket (`writeResponseConn`), so browsers never hang on an `HTTP/2.0`
+status line. `HTTPVersion` in that case records the upstream proto.
+
+## Ops notes
+
+- TLS-bypass (pinning) tunnels CONNECT raw — origin may speak h2 end-to-end;
+  Interseptor does not decrypt those sessions.
+- WebSocket upgrades remain a separate path (HTTP/1.1 `Upgrade`). h2 has no
+  HTTP/1.1-style Upgrade, so the WebSocket relay only runs on the h1 leg.
+- h2-only APIs that refused to work through the old h1-only MITM leg now
+  capture correctly end-to-end.
+
+---
+
+Source: https://veyal.github.io/interseptor/cli-reference/
+
+# CLI reference
+
+## Main server
+
+```text
+interseptor [flags]
+```
+
+| Flag or environment variable | Meaning |
+|---|---|
+| `--project <name\|path>` / `INTERSEPTOR_PROJECT` | Open a named project or an explicit project folder. |
+| `--headless` / `INTERSEPTOR_HEADLESS` | Don't open the UI window on start; the UI URL is logged instead. |
+| `--open` / `INTERSEPTOR_OPEN_BROWSER` | Open the UI window even when started over SSH. |
+| `INTERSEPTOR_NO_BROWSER` | Never open the UI window, even when another option enables it. |
+| `--control-port <port>` | Bind the control UI/API to that port on loopback. |
+| `--control-addr <host:port>` / `INTERSEPTOR_CONTROL_ADDR` | Set the complete control address; overrides `--control-port`. |
+| `--proxy-port <port>` | Bind one loopback proxy listener to that port. |
+| `INTERSEPTOR_PROXY_ADDR` | Override proxy listener address configuration for this launch. |
+| `--data-dir <path>` / `INTERSEPTOR_DATA_DIR` | Set the global data directory. |
+| `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` | Refuse non-loopback proxy, control, launcher, and related binds. |
+| `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the startup update check. |
+
+Underscore aliases such as `--control_port` are accepted for compatibility, but hyphenated names are
+canonical.
+
+## Launcher
+
+`interseptor launcher --addr 127.0.0.1:9965` opens the multi-project dashboard. Each started project
+runs in its own process with allocated proxy and control ports. Closing the launcher does not stop
+those processes.
+
+## Stop and version
+
+```text
+interseptor stop [--timeout 6s] [--force|-f] [--all]
+interseptor version
+```
+
+Stop first requests graceful shutdown, then force-kills processes that exceed the timeout. Use
+`--force` only when preserving in-flight work is not important. By default every proxy server
+instance is stopped and `interseptor mcp` bridges, the launcher and the vault are left running (and
+counted in the output); `--all` stops them as well.
+
+## Update
+
+```text
+interseptor update
+interseptor update --check
+interseptor update --version v1.2.3
+interseptor update --force
+```
+
+Update prefers a release binary and verifies published checksums when present; otherwise it falls
+back to `go install`.
+
+## MCP
+
+`interseptor mcp` runs the MCP server on stdio and connects to the control URL in
+`INTERSEPTOR_CONTROL_URL` (default `http://127.0.0.1:9966`). The running application also exposes
+Streamable HTTP at `/mcp`. See [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/).
+
+| Flag or environment variable | Meaning |
+|---|---|
+| `INTERSEPTOR_CONTROL_URL` | Control plane to drive (default `http://127.0.0.1:9966`). |
+| `INTERSEPTOR_MCP_PROFILE` | Which subset of the tool surface to serve: `full` (the default, every tool), `web-pentest`, `reporting` or `mobile`. Also the default for the HTTP `/mcp` endpoint, which takes `?profile=` per request. An unrecognised value falls back to `full` for stdio and is a `400` over HTTP. |
+
+## Check authoring
+
+```text
+interseptor check new <id>
+interseptor check validate [files...]
+interseptor check lint [files...]
+interseptor check test <file> --flow-json <file|->
+```
+
+Checks live under the data directory's `checks/`. Validation compiles passive checks without starting
+the server. Test consumes the documented flow JSON shape from a file or standard input.
+
+## Rule packs
+
+```text
+interseptor rules create --name <name> [--version <version>] [--out <file>] <dir>
+interseptor rules install <pack>
+interseptor rules list
+interseptor rules info <pack>
+interseptor rules remove <pack>
+```
+
+Use [Rule packs](https://veyal.github.io/interseptor/rule-packs/) for manifest, signing, and installation behavior.
+
+## Vault
+
+```text
+interseptor vault [--dir <path>] [--addr 127.0.0.1:9977] [--keep 10]
+```
+
+`INTERSEPTOR_VAULT_DIR` sets the archive directory. See [Project vault](https://veyal.github.io/interseptor/vault/) before exposing it
+through Tailscale Serve or another network layer.
+
+---
+
+Source: https://veyal.github.io/interseptor/troubleshooting/
+
+# Troubleshooting
+
+Start with the first symptom that matches. Keep a terminal open for application logs and use a generic
+test target before debugging a complex application.
+
+## No traffic appears
+
+1. Confirm Interseptor reports the expected proxy address and the port is not used by another process.
+2. Send a simple HTTP request through that exact proxy.
+3. Check client bypass lists (`localhost`, private ranges, or VPN-managed exclusions).
+4. For a phone, verify LAN reachability and workstation firewall rules.
+5. For an app, check whether it ignores the operating-system proxy or uses QUIC/HTTP3 directly.
+6. Disable History filters and confirm capture policy is not limited to a mismatched scope.
+
+## HTTP works but HTTPS fails
+
+The client does not trust Interseptor's CA, is using a different trust store, has an incorrect clock,
+or pins the server certificate. Install and explicitly trust the CA in the client actually making the
+request. A browser working while one app fails strongly suggests app-specific trust or pinning.
+
+TLS passthrough restores connectivity but removes HTTP visibility. Use it only when that tradeoff is
+intentional.
+
+## HTTPS returns an upstream TLS or 502 error
+
+If origin verification is enabled, inspect the origin certificate for hostname, expiry, chain, and
+private-CA trust. Add a narrow verification exception only for a known test host. For an HTTPS chained
+proxy, install its CA in the upstream proxy CA field; origin exceptions do not weaken upstream-proxy
+verification.
+
+For `x509: cannot validate certificate for <IP> because it doesn't contain any IP SANs`, the URL uses
+an IP that the certificate does not identify. Prefer the certificate's DNS hostname. For an authorized
+test target, select the failed History row and use **Settings → TLS / CA → Origin TLS verification
+exceptions → Add selected History host**. Installing a CA alone cannot fix a name mismatch.
+
+## Repeated 407 or upstream authentication errors
+
+A browser-visible `407` whose realm is `interseptor` means **Settings → Proxy & network → Proxy
+authentication** is on and the client did not send that username and password. A toast or log saying
+“upstream proxy authentication required” is the chained proxy instead. These are different
+credentials; neither one is an API key.
+
+For upstream setup, select a mode instead of typing a URL: **HTTP/HTTPS** for an HTTP CONNECT proxy,
+**SOCKS5** for local DNS, or **SOCKS5H** for proxy-side DNS. Verify host and port in the status summary.
+Private CA PEM applies only to HTTPS upstream proxies.
+
+If captured traffic works through the upstream but Repeater returns `502`, confirm the saved summary,
+then reopen Settings and save once. Current releases apply one shared upstream route to capture,
+Repeater, Intruder, login macros, and custom-check sends. The Repeater flow's error field
+contains the upstream dial, DNS, TLS, or authentication failure.
+
+## Send to Repeater does not look right
+
+Use the action on the attached PoC flow, wait for “loaded #… into Repeater,” and verify method, complete
+URL, headers, and body before sending. Interseptor reuses a tab for the same scheme, host, port, and
+queryless path; query values remain in the loaded request. A deleted/missing evidence flow cannot be
+sent and must be recaptured.
+
+## Repeater response shows HTML source
+
+Choose **Render** above the response to preview HTML. The tab appears for HTML responses,
+including responses selected from Repeater's History. Raw, Pretty, and Decoded remain available.
+Render displays the captured body in a sandbox with scripts disabled; JavaScript-driven pages
+may therefore look incomplete. Large HTML responses offer **Download body** or **Show anyway**.
+
+## Saved workspace does not finish loading
+
+Wait for the workspace status to offer **Reload** rather than clearing browser data. Reload retries
+module startup, project identification, and Repeater/Intruder hydration without deleting drafts. If
+the status says project-scoped tools are locked, confirm the active project is still available and
+then reload; Interseptor deliberately does not guess a project after an identity failure. A recovery
+warning means an older, malformed, or oversized browser draft was kept intact and the next explicit
+valid edit will create its replacement and resume project synchronization. See [Project boundaries](https://veyal.github.io/interseptor/projects-and-data/#project-boundaries)
+for storage and size limits.
+
+If the warning says legacy migration is deferred until project ownership is known, keep working or
+reload after the project list is available. Interseptor leaves the older legacy draft untouched,
+while new edits continue saving to the canonical project-directory browser key and project storage.
+The same guard applies to older unscoped drafts, which cannot be assigned when several projects,
+duplicate project names, or malformed project-list entries make ownership uncertain.
+
+## Finding layout or evidence is incomplete
+
+Switch to Edit to reveal block controls and add actions. Read mode intentionally hides edit-only
+controls. Use one step note per action, annotate each flow, and keep screenshots inside the article
+width. If a finding says evidence was deleted, restore from a full archive or recapture it; the marker
+does not contain the original body.
+
+## UI cannot connect or keeps returning to login
+
+On loopback, open the exact control address printed at startup. For remote access, use `/login` and a
+valid key; read keys cannot perform mutations. Confirm the browser origin matches the exposed control
+URL and that a tunnel or reverse proxy preserves same-origin behavior. Recreate expired keys rather
+than weakening control-plane guards.
+
+## Port already in use
+
+Stop the existing instance with `interseptor stop`, choose `--proxy-port` and `--control-port`, or use
+the launcher for multiple projects. Give every manual instance unique proxy and control ports.
+
+## High memory or disk use
+
+Bodies stream to content-addressed files, but a long engagement can still retain many flows. Configure
+age/count retention, purge noisy hosts, then run body-file GC. Large responses are deliberately capped
+in browser rendering and machine-tool output; download or inspect source evidence with an appropriate
+bounded workflow.
+
+## Update or installation fails
+
+Check network access to GitHub Releases and the installed Go version. Use `interseptor update --check`
+to separate update metadata problems from installation. A source build must use `CGO_ENABLED=0` and the
+Go version documented in [Getting started](https://veyal.github.io/interseptor/getting-started/).
+
+## Collecting a useful bug report
+
+Include Interseptor version, OS/architecture, exact command flags with secrets removed, the smallest
+generic reproduction, relevant log lines, and whether the problem occurs on loopback. Never attach
+real captured traffic, API keys, session tokens, or target/customer data to a public issue.

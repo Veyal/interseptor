@@ -42,6 +42,14 @@ func (h *findingsAPI) findingRevisions(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	if len(revisions) == 0 && before == 0 {
+		// A deleted finding keeps its revisions (so it can be restored); with no
+		// revisions and no finding the id simply does not exist.
+		if _, err := h.st.GetFinding(id); err != nil {
+			httpNotFoundOrInternal(w, err, "finding not found")
+			return
+		}
+	}
 	var next int64
 	if len(revisions) == 100 {
 		next = revisions[len(revisions)-1].ID

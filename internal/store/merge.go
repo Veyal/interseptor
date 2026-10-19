@@ -651,6 +651,44 @@ func (s *Store) flowSignatures(db *sql.DB) (map[string]int64, error) {
 	return out, rows.Err()
 }
 
+// FlowSignatures maps the content signature of every local flow to its id, the
+// same identity merge uses, so other importers can skip flows already present.
+func (s *Store) FlowSignatures() (map[string]int64, error) { return s.flowSignatures(s.db) }
+
+// FlowImportSignatures maps the HAR-round-trip identity (FlowImportSignature)
+// of every local flow to its id.
+func (s *Store) FlowImportSignatures() (map[string]int64, error) {
+	rows, err := s.db.Query(`SELECT id, ts, method, scheme, host, port, path, status FROM flows`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var f Flow
+		var tsMs int64
+		if err := rows.Scan(&f.ID, &tsMs, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.Status); err != nil {
+			return nil, err
+		}
+		f.TS = time.UnixMilli(tsMs)
+		out[FlowImportSignature(f)] = f.ID
+	}
+	return out, rows.Err()
+}
+
+// FlowImportSignature identifies a flow by the fields that survive a HAR
+// round trip: request line, millisecond start time and status. Body hashes and
+// lengths are left out on purpose, since HAR re-encodes bodies and drops wire
+// sizes (HEAD/304 content-length, truncated captures), so including them made
+// a project's own export import back as new flows.
+func FlowImportSignature(f Flow) string {
+	return fmt.Sprintf("%s\n%s\n%s\n%d\n%s\n%d\n%d",
+		f.Method, f.Scheme, strings.ToLower(f.Host), f.Port, f.Path, f.TS.UnixMilli(), f.Status)
+}
+
+// FlowSignature is the exported flowSig for importers.
+func FlowSignature(f Flow) string { return flowSig(f) }
+
 // flowSig is the content signature used for idempotent flow dedup on merge. It
 // covers the immutable request identity plus response-side content hashes, so the
 // same captured exchange collapses across instances but genuinely distinct replays

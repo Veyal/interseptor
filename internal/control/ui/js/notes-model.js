@@ -77,3 +77,10 @@ export function promoteRequest(selection) {
   if (detail) body.detail = detail;
   return { path: '/api/findings', method: 'POST', body };
 }
+
+// reloadClearsSaveStatus reports whether a clean reload should blank the save
+// status. A live-update echo of our own save brings back the text already shown,
+// so "Saved" must stay; only a reload that replaces the text resets it.
+export function reloadClearsSaveStatus(shown, loaded) {
+  return shown !== loaded;
+}

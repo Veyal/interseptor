@@ -20,8 +20,8 @@
           "level": "needs-review",
           "path": "bank.example.com",
           "feature": "target-host",
-          "message": "6 request(s) target bank.example.com; sends are blocked until the host is in scope",
-          "suggestion": "Add the host to the engagement scope"
+          "message": "6 request(s) target bank.example.com",
+          "suggestion": "Check the host is in the engagement scope"
         },
         {
           "level": "degraded",
@@ -491,8 +491,8 @@
         "level": "needs-review",
         "path": "bank.example.com",
         "feature": "target-host",
-        "message": "6 request(s) target bank.example.com; sends are blocked until the host is in scope",
-        "suggestion": "Add the host to the engagement scope"
+        "message": "6 request(s) target bank.example.com",
+        "suggestion": "Check the host is in the engagement scope"
       },
       {
         "level": "degraded",

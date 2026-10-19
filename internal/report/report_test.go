@@ -536,3 +536,13 @@ func TestProjectLabelsEvidenceRenderAsGenerated(t *testing.T) {
 		t.Fatalf("sourceRef missing: %s", out)
 	}
 }
+
+func TestProjectSummaryIncludesIgnoredStatus(t *testing.T) {
+	findings := []store.Finding{
+		{ID: 1, Severity: "Low", Status: "ignored", Title: "Ignored Finding", Detail: "low impact"},
+	}
+	out := Project(findings, nil)
+	if !strings.Contains(out, "| ignored | 1 |") {
+		t.Fatalf("expected ignored status in summary table, got:\n%s", out)
+	}
+}

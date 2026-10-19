@@ -106,7 +106,7 @@ func (p *Pipeline) Step(ctx context.Context, in StepInput) (*StepResult, error) 
 		x.res.Outcome = OutcomeError
 		x.res.Error = flow.Error
 		if strings.Contains(flow.Error, sender.ErrGuardBlocked.Error()) {
-			x.res.Outcome, x.res.BlockReason = OutcomeBlocked, BlockScope
+			x.res.Outcome, x.res.BlockReason = OutcomeBlocked, BlockIPGuard
 		}
 		return x.res, nil
 	}

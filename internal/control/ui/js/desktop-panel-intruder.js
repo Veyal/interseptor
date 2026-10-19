@@ -69,15 +69,14 @@ function wireSetup() {
     // One label for both preset pickers: "Presets", sentence case. The app
     // refills the list, so the placeholder (and the picker's shown value) is
     // renamed whenever it changes.
-    const presetSel = $('#intrPreset');
-    if (presetSel && presetWrap) {
-      observe(presetWrap, () => {
-        const first = presetSel.options[0];
-        if (first && first.value === '' && first.textContent !== 'Presets' && /^presets/i.test(first.textContent.trim())) first.textContent = 'Presets';
-        const shown = presetWrap.querySelector('.ui-select-value');
-        if (shown && shown.textContent !== 'Presets' && /^presets/i.test(shown.textContent.trim())) shown.textContent = 'Presets';
-      });
-    }
+    // The picker may be enhanced after this runs, so watch the whole row.
+    observe(runtime, () => {
+      const presetSel = $('#intrPreset');
+      const first = presetSel && presetSel.options[0];
+      if (first && first.value === '' && first.textContent !== 'Presets' && /^(saved )?presets/i.test(first.textContent.trim())) first.textContent = 'Presets';
+      const shown = runtime.querySelector('.ui-select-value');
+      if (shown && shown.textContent !== 'Presets' && /^(saved )?presets/i.test(shown.textContent.trim())) shown.textContent = 'Presets';
+    });
     summary.after(runtime);
     summary.textContent = 'Options';
     const sum = document.createElement('span');

@@ -61,11 +61,13 @@ export function bindFindingRevisions(root, findingId, { canRestore, restored }) 
     await loadPage(0);
   });
 }
-export async function restoreFindingRevision(findingId, revisionId, button, canRestore, restored) {
+export const REVISION_RESTORE_COPY = 'Restore this version? Current content stays in revision history.';
+export const DELETED_RESTORE_COPY = 'Restore this deleted finding? It returns to the findings list as it was when deleted.';
+export async function restoreFindingRevision(findingId, revisionId, button, canRestore, restored, copy = REVISION_RESTORE_COPY) {
   if (restoring) return;
   if (!requireFindingsEditing()) return;
   if (!canRestore()) { toast('Save or retry your current changes before restoring.', 'error'); return; }
-  if (!await uiConfirm('Restore finding', 'Restore this version? Current content stays in revision history.', 'Restore')) return;
+  if (!await uiConfirm('Restore finding', copy, 'Restore')) return;
   if (!button.isConnected || !canRestore() || restoring || !requireFindingsEditing()) return;
   restoring = true; button.disabled = true; button.textContent = 'Restoring…';
   try {
@@ -92,6 +94,6 @@ export async function openDeletedFindings({ canRestore, restored }) {
     const { revisions } = await api('/api/findings/deleted');
     if (modal.style.display !== 'flex') return;
     list.innerHTML = revisions.length ? revisions.map(r => `<article class="find-deleted-row"><div><strong>${esc(r.snapshot?.title || 'Untitled')}</strong><p class="hint">Deleted ${esc(when(r.ts))}</p></div><button class="btn" data-finding="${r.findingId}" data-revision="${r.id}" aria-label="Restore deleted finding ${escAttr(r.snapshot?.title || 'Untitled')}">Restore</button></article>`).join('') : '<p class="hint">No deleted findings to restore.</p>';
-    list.querySelectorAll('[data-revision]').forEach(button => { button.onclick = () => restoreFindingRevision(Number(button.dataset.finding), Number(button.dataset.revision), button, canRestore, async id => { closeModal(modal); await restored(id); }); });
+    list.querySelectorAll('[data-revision]').forEach(button => { button.onclick = () => restoreFindingRevision(Number(button.dataset.finding), Number(button.dataset.revision), button, canRestore, async id => { closeModal(modal); await restored(id); }, DELETED_RESTORE_COPY); });
   } catch (error) { showErrorState(list, error.message + ' Reopen to retry.'); }
 }

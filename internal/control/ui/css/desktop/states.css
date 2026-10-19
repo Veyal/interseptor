@@ -35,6 +35,10 @@ html.desktop-app:not([data-theme="hc"]) :is(.search,.pm-filter):focus-within{out
 /* Full-bleed editors (Repeater, Intruder, Intercept, Notes): an inset accent
    edge instead of a halo that the pane would clip. */
 html.desktop-app:not([data-theme="hc"]):not(#dsk-x) :is(.rep-edit,.notes-edit,.icpt-raw,#intrTemplate,.coll-code,.coll-editor textarea):focus-visible{outline:none;border-color:transparent;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent),inset 0 0 0 4px color-mix(in srgb,var(--accent) 12%,transparent);background-color:var(--surface-1)}
+/* Overlay editors are a transparent textarea over the highlighted text; an
+   opaque focus background would hide everything typed or selected. */
+/* #dsk-x never matches; it matches the ID weight :is(#intrTemplate) gives the rule above. */
+html.desktop-app:not([data-theme="hc"]):not(#dsk-x) :is(.rep-field>textarea.rep-edit,.se-ta,#dsk-x):focus-visible{background-color:transparent}
 /* Column headers sit in a clipped header row: the keyboard ring is drawn inside
    the cell (the same 2px soft accent ring, rounded), never cut to a 1px square. */
 html.desktop-app.dsk-kbd:not([data-theme="hc"]):not(#dsk-x) :is(.thead [role="button"],.thead [data-sort],[role="columnheader"],th[tabindex],th button):focus-visible{outline-offset:-2px;border-radius:var(--radius-xs)}
@@ -59,3 +63,9 @@ html.desktop-app :is(.tab.active,.settings-nav button.on,.coll-row[aria-selected
 
 /* ---- disabled: 45% ---- */
 html.desktop-app :is(button,.btn,input,select,textarea,.ui-select-trigger,.uisw):disabled,html.desktop-app [aria-disabled="true"]:is(button,a,.btn){opacity:.45}
+
+/* Text selection: a muted token (HTTP version, header name) on the system blue
+   fell under 4.5:1 in dark. One accent-tinted selection with primary text keeps
+   every token readable. :where() keeps the specificity at the pseudo-element so
+   the overlay editors' transparent-selection rules still win. */
+:where(html.desktop-app) ::selection{background:color-mix(in srgb,var(--accent) 40%,var(--surface-1));color:var(--text-primary)}

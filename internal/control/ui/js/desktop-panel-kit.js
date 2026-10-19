@@ -19,6 +19,14 @@ const DESKTOP_CLASS = 'desktop-app';
 
 export const isDesktop = () => !!document.documentElement.classList.contains('desktop-app');
 export const isMac = () => /Mac|iPhone|iPad/.test((globalThis.navigator && navigator.platform) || '') || /Mac OS X/.test((globalThis.navigator && navigator.userAgent) || '');
+// modShortcut writes a Mod+key chord the way this platform does: ⌘K on macOS,
+// Ctrl+K elsewhere.
+export function modShortcut(key) {
+  return isMac() ? '⌘' + key : 'Ctrl+' + key;
+}
+// hasNativeHost: running inside the native app's web view, where a Mod+key the
+// browser would reserve (Ctrl/⌘+T) reaches the page.
+export const hasNativeHost = () => !!(globalThis.window && globalThis.window.interseptorDesktop);
 
 // A give-up timer never keeps a node test process alive.
 const unref = (t) => { if (t && typeof t.unref === 'function') t.unref(); return t; };
@@ -227,6 +235,14 @@ function syncItem(b) {
 
 let menuSeq = 0;
 const isVisibleItem = (n) => n.tagName === 'BUTTON' && !n.hidden && !(n.closest && n.closest('.evr-menu')) && (!n.getClientRects || n.getClientRects().length > 0);
+// lockTabs takes a moved control and everything inside it out of the Tab order:
+// a split button wrapped in a div keeps its inner buttons tabbable otherwise, and
+// the closed menu would show up as an invisible tab stop.
+const TABBABLE = /^(BUTTON|INPUT|SELECT|TEXTAREA|A)$/;
+export function lockTabs(node) {
+  const all = [node, ...walk(node, [])];
+  all.forEach((n) => { if (TABBABLE.test(n.tagName)) n.tabIndex = -1; });
+}
 function walk(node, out) { for (const c of node.children || []) { out.push(c); walk(c, out); } return out; }
 
 // createOverflow builds the overflow trigger and its menu. `items` are existing
@@ -255,7 +271,7 @@ export function createOverflow({ id, label = 'More actions', tooltip, items, cla
     if (!it) return;
     const node = it.nodeType ? it : menuItem(it);
     if (it.nodeType && node.className !== 'dsk-menu-sep') move(node, menu); else menu.appendChild(node);
-    if (node.tagName === 'BUTTON') node.tabIndex = -1;
+    lockTabs(node);
   };
   (items || []).forEach(add);
 
@@ -263,6 +279,7 @@ export function createOverflow({ id, label = 'More actions', tooltip, items, cla
   // Separators show only between two visible groups.
   function tidy() {
     walk(menu, []).forEach((c) => { if (c._dsk) syncItem(c); });
+    lockTabs(menu);
     let seenItem = false;
     let pending = null;
     for (const c of [...menu.children]) {

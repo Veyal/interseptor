@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FLOW_TABS, tabsForFlow, nextTab, isWebSocketFlow, flowUrl, wsOpcodeName, wsFramesHTML, timelineHTML, authHTML, renderFlowBody, MAX_RENDER_BYTES, escapeHTML, clampDrawerWidth, stepSibling } from '../js/flowbody.js';
+import { FLOW_TABS, tabsForFlow, nextTab, isWebSocketFlow, flowUrl, wsOpcodeName, wsFramesHTML, timelineHTML, authHTML, renderFlowBody, MAX_RENDER_BYTES, escapeHTML, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, stepSibling } from '../js/flowbody.js';
 
 const detail = { id: 7, method: 'GET', scheme: 'https', host: 'example.com', port: 443, path: '/a?b=1', status: 200, reqLen: 10, resLen: 20, flags: 0 };
 
@@ -92,6 +92,23 @@ test('clampDrawerWidth honours min/max and falls back to the default', () => {
   assert.equal(clampDrawerWidth(500), 500);
   assert.equal(clampDrawerWidth('x'), 420);
   assert.equal(clampDrawerWidth(700, { max: 480 }), 480);
+});
+
+test('clampDrawerHeight honours min/max and falls back to the default', () => {
+  assert.equal(clampDrawerHeight(100), 200);
+  assert.equal(clampDrawerHeight(900), 720);
+  assert.equal(clampDrawerHeight(450), 450);
+  assert.equal(clampDrawerHeight('x'), 380);
+  assert.equal(clampDrawerHeight(500, { max: 400 }), 400);
+});
+
+test('normalizeFlowDrawerLayout defaults to bottom and only permits known modes', () => {
+  assert.equal(normalizeFlowDrawerLayout('bottom'), 'bottom');
+  assert.equal(normalizeFlowDrawerLayout('popup'), 'popup');
+  assert.equal(normalizeFlowDrawerLayout('side'), 'side');
+  assert.equal(normalizeFlowDrawerLayout('invalid'), 'bottom');
+  assert.equal(normalizeFlowDrawerLayout(null), 'bottom');
+  assert.equal(normalizeFlowDrawerLayout(undefined), 'bottom');
 });
 
 test('stepSibling walks the opener list without wrapping', () => {

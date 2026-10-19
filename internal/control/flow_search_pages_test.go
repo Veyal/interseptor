@@ -76,7 +76,7 @@ func TestUIHistoryPagesOnFromASearchCursor(t *testing.T) {
 		"flowSearchCursor=d&&d.searchMore?Number(d.searchCursor)||0:0;",
 		"if(flowSearchCursor)q.set('curId',String(flowSearchCursor));",
 		"if(!flowPageError)continueShortSearch();",
-		"show(flowSearchCursor?'Searching older flows…':'Loading older flows…');",
+		"flowSearchCursor?'Searching older flows…':'Loading older flows…');",
 		// an empty page mid-search is not "no match" yet, and the final empty
 		// page repaints the empty state once the search ends
 		"title:searching?'No matches in recent flows yet':model.title",

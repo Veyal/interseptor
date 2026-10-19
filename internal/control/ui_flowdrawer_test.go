@@ -224,3 +224,42 @@ func TestUIFlowDrawerStylesAreResponsiveAndMotionBounded(t *testing.T) {
 		t.Error("nothing may set a min-width wider than 375px")
 	}
 }
+
+func TestUIFlowDrawerBottomAndPopupModes(t *testing.T) {
+	region := flowDrawerRegion(t)
+	requireUIContains(t, region,
+		`data-layout="bottom"`,
+		`id="fdPopupBtn"`,
+		`href="#i-external"`,
+	)
+	drawer := executableJS(readUIAsset(t, "js/flowdrawer.js"))
+	requireUIContains(t, drawer,
+		"DEFAULT_FLOW_DRAWER_LAYOUT",
+		"export function togglePopup(",
+		"popupBtn.addEventListener('click', () => togglePopup())",
+		"$('#fdHead').addEventListener('dblclick'",
+		"document.body.classList.add('flow-drawer-docked-bottom')",
+		"document.body.classList.remove('flow-drawer-docked-bottom')",
+		"flowdrawerlayoutchange",
+	)
+	css := readUIAsset(t, "flow.css")
+	requireUIContains(t, css,
+		"--flow-drawer-h:380px",
+		`.flow-drawer[data-layout="bottom"]`,
+		`.flow-drawer[data-layout="popup"]`,
+		"body.flow-drawer-docked-bottom #main{margin-bottom:calc(var(--flow-drawer-h) + var(--sp-3))}",
+	)
+	dsk := readUIAsset(t, "css/desktop/shell.css")
+	requireUIContains(t, dsk,
+		"html.desktop-app body.flow-drawer-docked-bottom #main{margin-bottom:var(--flow-drawer-h);margin-right:0}",
+		`html.desktop-app .flow-drawer:not([data-layout="side"]):not([data-layout="popup"])`,
+		`html.desktop-app .flow-drawer[data-layout="popup"]`,
+	)
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index,
+		`id="flowDrawerLayoutSeg"`,
+		`data-flow-layout="bottom"`,
+		`data-flow-layout="popup"`,
+		`data-flow-layout="side"`,
+	)
+}

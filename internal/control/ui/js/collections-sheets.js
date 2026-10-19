@@ -4,9 +4,10 @@ import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
 import * as V from './varscope-model.js';
-import { S, X, btn, el, fmtSize, itemByUid, jget, jsend, setStatus } from './collections-core.js';
+import * as EM from './collections-env-model.js';
+import { S, X, btn, el, fmtSize, itemByUid, jget, jsend, loadBlockCheck, setStatus } from './collections-core.js';
 import { globalsEnv, reloadEnvs, renderEnvSelect, renderScriptsChip, updateBadge } from './collections-env.js';
-import { CONFIRM_PHRASE, buildRunPlan, methodBreakdown, planConfirmed, planSummary } from './collections-run-plan.js';
+import { CONFIRM_PHRASE, blockedText, buildRunPlan, methodBreakdown, planConfirmed, planSummary, resolvePlanUrls } from './collections-run-plan.js';
 
 // Functions sibling modules call through X (see collections-core.js).
 Object.assign(X, { openEnvSheet, openImportSheet, openScriptsSheet, runCollection });
@@ -61,12 +62,12 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
   const addRow = (r) => {
     const tr = el('tr');
     const on = el('td', 'coll-on'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.enabled; cb.setAttribute('aria-label', 'Enabled ' + r.key); cb.addEventListener('change', () => { r.enabled = cb.checked; }); on.append(cb);
-    const mkText = (prop, aria, opts = {}) => { const td = el('td'); if (opts.label) td.dataset.label = opts.label; const i = document.createElement('input'); i.type = 'text'; i.className = 'btn btn-field'; i.value = opts.value != null ? opts.value : r[prop]; i.setAttribute('aria-label', aria + ' ' + (r.key || 'new variable')); i.autocomplete = 'off'; i.spellcheck = false; if (opts.disabled) i.disabled = true; if (opts.placeholder) i.placeholder = opts.placeholder; i.addEventListener('input', () => { if (opts.onInput) opts.onInput(i.value); else r[prop] = i.value; }); td.append(i); return td; };
+    const mkText = (prop, aria, opts = {}) => { const td = el('td'); if (opts.label) td.dataset.label = opts.label; const i = document.createElement('input'); i.type = opts.type || 'text'; i.className = 'btn btn-field'; i.value = opts.value != null ? opts.value : r[prop]; i.setAttribute('aria-label', aria + ' ' + (r.key || 'new variable')); i.autocomplete = opts.type === 'password' ? 'new-password' : 'off'; i.spellcheck = false; if (opts.disabled) i.disabled = true; if (opts.placeholder) i.placeholder = opts.placeholder; i.addEventListener('input', () => { if (opts.onInput) opts.onInput(i.value); else r[prop] = i.value; }); td.append(i); return td; };
     const type = el('td'); const ts = document.createElement('select'); ts.className = 'btn btn-field'; ts.setAttribute('aria-label', 'Type of ' + (r.key || 'new variable')); ['default', 'secret'].forEach((t) => ts.append(new Option(t, t))); ts.value = r.type === 'secret' ? 'secret' : 'default'; ts.addEventListener('change', () => { r.type = ts.value; r.secret = ts.value === 'secret'; paintRows(); }); type.append(ts);
     const curPlaceholder = r.secret ? (r.hasCurrent ? 'set (hidden)' : 'not set') : '';
     tr.append(on, mkText('key', 'Name', {}), type,
       mkText('initial', 'Initial value of', { label: 'Initial value', disabled: r.secret, placeholder: r.secret ? 'never stored' : '' }),
-      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r, { value: v, secret: r.secret }); } }));
+      mkText('current', 'Current value of', { label: 'Current value', type: EM.currentInputType(r), value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r, { value: v, secret: r.secret }); } }));
     const del = el('td', 'coll-del'); const x = btn('', () => { rows.splice(rows.indexOf(r), 1); paintRows(); }, 'btn xs'); x.innerHTML = icon('trash'); x.setAttribute('aria-label', 'Remove ' + (r.key || 'variable')); del.append(x); tr.append(del);
     tb.append(tr);
   };
@@ -91,10 +92,13 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
         if (!key || !rows.includes(row) || (c.secret && c.value === '')) continue;
         await jsend('PUT', '/api/variables/' + g.kind + '/' + encodeURIComponent(g.uid) + '/current', { key, value: c.value, secret: c.secret });
       }
+      EM.applySavedCurrents(currents, rows);
+      currents.clear();
+      paintRows();
       await reloadEnvs();
       renderEnvSelect();
       X.scheduleResolve();
-      status.textContent = 'Saved';
+      status.textContent = ''; // the toast is the one confirmation
       toast('Variables saved');
     } catch (e) { status.textContent = ''; toastError('Could not save variables', e); } finally { save.disabled = false; }
   }, 'btn accent', 'save');
@@ -388,9 +392,23 @@ export function paintReport(out, report, pv) {
 
 /* ------------------------------------------------------------------ run */
 
+// resolveRunUrls asks the server's resolver (the one the runner uses, with the
+// active environment) what each {{variable}} URL in the run turns into.
+function resolveRunUrls(items, opts) {
+  return resolvePlanUrls(items, opts, (it) => jsend('POST', '/api/variables/resolve', {
+    template: typeof it.url === 'string' ? it.url : (it.url && it.url.raw) || '', itemUid: it.uid, envUid: S.envUid || undefined,
+  }));
+}
+
+// activePin is the active environment's base target pin, which the runner
+// enforces on every request of the run.
+const activePin = () => { const e = S.envs.find((x) => x.uid === S.envUid); return (e && e.baseTargetPin) || ''; };
+
 export async function runCollection(folderUid = '') {
   if (!S.colUid) { toast('Create or import a collection first'); return; }
-  const plan = buildRunPlan(S.items, { scope: folderUid ? 'folder' : 'collection', folderUid, collectionName: (S.collection && S.collection.name) || '', identities: [] });
+  const scopeOpts = { scope: folderUid ? 'folder' : 'collection', folderUid };
+  const [resolved, blockCheck] = await Promise.all([resolveRunUrls(S.items, scopeOpts), loadBlockCheck(activePin())]);
+  const plan = buildRunPlan(S.items, { ...scopeOpts, collectionName: (S.collection && S.collection.name) || '', identities: [], resolved, blockCheck });
   const title = plan.scopeLabel;
   const mount = getHook('collectionRunner');
   if (mount) {
@@ -407,6 +425,7 @@ export async function runCollection(folderUid = '') {
         let reviewed = true; // the review above covers the first run
         mount(w, {
           collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '',
+          addHostForItem: addHostForRunItem,
           confirmRun: (payload) => { const done = reviewed; reviewed = false; return done ? Promise.resolve(true) : confirmRerun(payload, folderUid); },
         });
       });
@@ -423,6 +442,20 @@ export async function runCollection(folderUid = '') {
   } });
 }
 
+// addHostForRunItem is the runner's "Add host to scope" action for a blocked
+// row: it resolves the stored request's URL the way the runner did, then offers
+// the same confirmation Send does.
+async function addHostForRunItem(itemUid) {
+  const it = itemByUid(itemUid);
+  if (!it) { toast('Could not find that request'); return false; }
+  const raw = typeof it.url === 'string' ? it.url : (it.url && it.url.raw) || '';
+  let url = raw;
+  if (raw.includes('{{')) {
+    try { url = (await jsend('POST', '/api/variables/resolve', { template: raw, itemUid, envUid: S.envUid || undefined })).value || raw; } catch (e) { /* use the template */ }
+  }
+  return X.addHostToScope(url);
+}
+
 // confirmRerun gates the second and later presses of a mounted runner's own Run
 // button. The first press is covered by the review that mounted the view; every
 // later one re-asks, because each press sends live requests again. It must not
@@ -431,15 +464,15 @@ export async function runCollection(folderUid = '') {
 async function confirmRerun(payload, folderUid) {
   const uids = (payload && payload.itemUids) || [];
   // Describe what is actually being sent. A "Rerun failed" carries itemUids.
+  const subset = uids.length ? S.items.filter((i) => uids.includes(i.uid)) : S.items;
+  const scopeOpts = uids.length ? {} : { scope: folderUid ? 'folder' : 'collection', folderUid };
+  const [resolved, blockCheck] = await Promise.all([resolveRunUrls(subset, scopeOpts), loadBlockCheck(activePin())]);
   const plan = uids.length
-    ? buildRunPlan(S.items.filter((i) => uids.includes(i.uid)), {
-      collectionName: (S.collection && S.collection.name) || '',
+    ? buildRunPlan(subset, {
+      collectionName: (S.collection && S.collection.name) || '', resolved, blockCheck,
       scopeLabel: uids.length + ' selected request' + (uids.length === 1 ? '' : 's'),
     })
-    : buildRunPlan(S.items, {
-      scope: folderUid ? 'folder' : 'collection', folderUid,
-      collectionName: (S.collection && S.collection.name) || '',
-    });
+    : buildRunPlan(S.items, { ...scopeOpts, collectionName: (S.collection && S.collection.name) || '', resolved, blockCheck });
   if (plan.empty) { toast('Nothing to send'); return false; }
   if (!plan.needsPhrase) {
     return uiConfirm('Run again', esc(planSummary(plan)),
@@ -457,7 +490,7 @@ function paintRunPlan(holder, plan, opts, onRun) {
   holder.textContent = '';
   // The sheet title is already the scope label, so neither the heading nor the
   // sentence repeats it.
-  holder.append(el('p', 'coll-runplan-sum', planSummary(plan, { withScope: false })));
+  holder.append(el('p', 'coll-runplan-sum', planSummary(plan, { withScope: false, withWarnings: false })));
   if (plan.empty) return;
   const mb = el('ul', 'coll-runplan-methods');
   methodBreakdown(plan).forEach((m) => {
@@ -466,6 +499,14 @@ function paintRunPlan(holder, plan, opts, onRun) {
   });
   holder.append(mb);
   if (plan.hosts.length) holder.append(el('p', 'coll-note', 'Target hosts: ' + plan.hosts.join(', ')));
+  const blockedNote = blockedText(plan);
+  if (blockedNote) {
+    const warn = el('p', 'coll-note coll-note-warn coll-runplan-blocked', blockedNote);
+    warn.setAttribute('role', 'alert');
+    holder.append(warn);
+  }
+  if (plan.unresolvedPathRequests) holder.append(el('p', 'coll-note coll-note-warn', plan.unresolvedPathRequests + ' request' + (plan.unresolvedPathRequests === 1 ? ' has' : 's have') + ' an unresolved variable in the path or query' + (plan.unresolvedVariables.length ? ' (' + plan.unresolvedVariables.join(', ') + ')' : '') + ' and will be blocked until it is defined.'));
+  if (plan.unresolvedRequests) holder.append(el('p', 'coll-note coll-note-warn', 'Unresolved hosts (' + plan.unresolvedRequests + ' request' + (plan.unresolvedRequests === 1 ? '' : 's') + '): ' + plan.unresolvedHosts.join(', ') + '. Pick an environment that defines them; otherwise these requests are blocked.'));
   // The mounted runner view offers Ask/Keep/Discard, so only the plain run
   // (which always discards) may promise that writes are thrown away.
   holder.append(el('p', 'coll-note', 'Scope policy is block; quarantined scripts are skipped. ' + (opts.persistNote || 'Variable changes made by scripts are discarded.')));
@@ -476,7 +517,7 @@ function paintRunPlan(holder, plan, opts, onRun) {
     const lab = el('label', 'coll-note', 'This run changes state on the target. Type ' + CONFIRM_PHRASE + ' to continue.');
     typed = document.createElement('input');
     typed.type = 'text'; typed.id = 'collRunPhrase'; typed.autocomplete = 'off'; typed.spellcheck = false;
-    typed.className = 'input';
+    typed.className = 'btn btn-field';
     lab.htmlFor = 'collRunPhrase';
     const sync = () => { go.disabled = !planConfirmed(plan, typed.value); };
     typed.addEventListener('input', sync);

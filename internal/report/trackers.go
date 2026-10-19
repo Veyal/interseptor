@@ -196,9 +196,9 @@ func jiraLabels(f store.Finding) []string {
 
 // trackerNarrative is the finding as the engagement report writes it. The
 // report states severity in its section heading, which a ticket does not
-// carry, so only that is added on top; status, confidence, CWE, environment,
-// CVSS and the affected targets are already in the finding's own metadata and
-// are not repeated.
+// carry, so only that is added on top; confidence, CWE, environment, CVSS and
+// the affected targets are already in the finding's own metadata and are not
+// repeated. The internal review state (status, readiness gaps) is left out.
 func trackerNarrative(f store.Finding, titles map[int64]string) string {
 	var b strings.Builder
 	if v := strings.TrimSpace(sanitizeLine(f.Severity)); v != "" {

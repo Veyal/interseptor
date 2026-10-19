@@ -64,3 +64,27 @@ func TestShutdownRuntimeSlowControlDoesNotStarveProxy(t *testing.T) {
 		t.Error("hub was not closed after server drains")
 	}
 }
+
+type streamHub struct {
+	closeFunc
+	streams func()
+}
+
+func (h streamHub) CloseStreams() { h.streams() }
+
+// The hub's long-lived streams end before the servers drain, so an open UI
+// event stream cannot hold the process for the whole shutdown timeout.
+func TestShutdownRuntimeEndsStreamsBeforeDrain(t *testing.T) {
+	var streamsClosed atomic.Bool
+	control := shutdownFunc(func(ctx context.Context) {
+		if !streamsClosed.Load() {
+			t.Error("control server drained before the hub's streams were closed")
+		}
+	})
+	proxy := shutdownFunc(func(ctx context.Context) {})
+	hub := streamHub{closeFunc: func() {}, streams: func() { streamsClosed.Store(true) }}
+	shutdownRuntime(time.Second, control, hub, proxy)
+	if !streamsClosed.Load() {
+		t.Fatal("CloseStreams was not called")
+	}
+}

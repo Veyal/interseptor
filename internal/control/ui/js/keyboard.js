@@ -14,7 +14,8 @@
 // for SINGLE_KEY_EVENT.
 import { MODAL_IDS, registerHook } from './core.js';
 import { createKeyRegistry, readSingleKeyPref, writeSingleKeyPref } from './keys.js';
-import { LEGACY_SHORTCUTS, parseDisplayKeys, registryKeysToDisplay } from './shortcuts-table.js';
+import { isMac } from './desktop-panel-kit.js';
+import { legacyShortcutsFor, platformHints, parseDisplayKeys, registryKeysToDisplay } from './shortcuts-table.js';
 
 export const SINGLE_KEY_EVENT = 'interseptor:singlekeychange';
 
@@ -105,13 +106,13 @@ document.addEventListener('keydown', (e) => {
 
 // ---- cheatsheet ----
 export function shortcutSheet() {
-  return keyRegistry.cheatsheet(LEGACY_SHORTCUTS.map((l) => ({ group: l.group, keys: l.keys, label: l.label, scope: l.scope })));
+  return keyRegistry.cheatsheet(legacyShortcutsFor(isMac()).map((l) => ({ group: l.group, keys: l.keys, label: l.label, scope: l.scope })));
 }
 
 function keysNode(keys) {
   const wrap = document.createElement('div');
   wrap.className = 'sc-keys';
-  parseDisplayKeys(keys).forEach((alt, ai) => {
+  parseDisplayKeys(keys, isMac()).forEach((alt, ai) => {
     if (ai) wrap.appendChild(document.createTextNode(' or '));
     alt.forEach((step, si) => {
       if (si) wrap.appendChild(document.createTextNode(' then '));
@@ -155,5 +156,7 @@ export function mountShortcutSheet() {
   const render = () => renderShortcutSheet(modal.querySelector('.sc-grid'));
   new MutationObserver(() => { if (modal.style.display === 'flex') render(); }).observe(modal, { attributes: true, attributeFilter: ['style'] });
   const box = document.getElementById('scSingleKey');
+  const foot = box && box.closest('label');
+  if (foot) foot.lastChild.textContent = ' ' + platformHints(isMac()).singleKey;
   if (box) { box.checked = singleKey; box.addEventListener('change', () => setSingleKeyShortcuts(box.checked)); }
 }

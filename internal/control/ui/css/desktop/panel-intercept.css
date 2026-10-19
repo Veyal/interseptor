@@ -60,12 +60,24 @@ html.desktop-app #panel-intercept .icpt-ctx-chip .icon{width:15px;height:15px;co
 html.desktop-app #panel-intercept .icpt-ctx-chip{line-height:var(--lh-ui)}
 html.desktop-app #panel-intercept .icpt-ctx-note{flex:1 1 0;min-width:0;white-space:normal;text-wrap:pretty;color:var(--text-muted);font-size:var(--text-ui);line-height:var(--lh-ui)}
 
+/* Binary body note and image preview: the same quiet band as the scope line. */
+html.desktop-app #panel-intercept .icpt-body{padding:7px var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-intercept .icpt-body-warn{font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app #panel-intercept .icpt-body-note{color:var(--text-muted);font-size:var(--text-ui);line-height:var(--lh-ui)}
+html.desktop-app #panel-intercept .icpt-preview{border-color:var(--border-subtle);border-radius:var(--radius-xs)}
+
+html.desktop-app #panel-intercept .icpt-filter-error{padding:6px var(--gutter);background:var(--danger-subtle);color:var(--danger);font-size:var(--text-ui);border-bottom:1px solid var(--border-subtle)}
+html.desktop-app #panel-intercept #interceptFilterPattern[aria-invalid="true"]{border-color:var(--danger)}
+
 /* ---- the message ---- */
 html.desktop-app #panel-intercept .icpt-raw{padding:12px 16px;background:var(--surface-inset)}
+/* Short windows (Match & Replace open at 900x610): the editor shrinks before the
+   action bar is pushed out of the pane. */
+html.desktop-app #panel-intercept .icpt-main .icpt-raw{min-height:96px}
 html.desktop-app #panel-intercept .icpt-raw.rep-field>pre.rep-hl,html.desktop-app #panel-intercept .icpt-raw.rep-field>textarea.rep-edit{padding:12px 16px}
 
 /* ---- actions: Forward is the one primary ---- */
-html.desktop-app #panel-intercept .icpt-actionbar{position:static;flex-wrap:nowrap;gap:6px;min-height:var(--toolbar-h);padding:6px var(--gutter);background:var(--surface-1);border-top:1px solid var(--border-subtle)}
+html.desktop-app #panel-intercept .icpt-actionbar{position:sticky;bottom:0;flex-wrap:nowrap;gap:6px;min-height:var(--toolbar-h);padding:6px var(--gutter);background:var(--surface-1);border-top:1px solid var(--border-subtle)}
 html.desktop-app #panel-intercept .icpt-actionbar .btn{min-height:var(--control-h);height:var(--control-h);white-space:nowrap}
 html.desktop-app #panel-intercept .icpt-actionbar .btn:not(.btn-primary):not(.btn-danger){background:transparent;border-color:transparent;color:var(--text-secondary)}
 html.desktop-app #panel-intercept .icpt-actionbar .btn:not(.btn-primary):not(.btn-danger):hover{background:var(--surface-hover);color:var(--text-primary)}
@@ -84,4 +96,4 @@ html.desktop-app #panel-intercept .icpt-mr{background:var(--surface-1);border-to
 html.desktop-app #panel-intercept .icpt-mr>summary{display:flex;align-items:center;gap:8px;min-height:var(--pane-header-h);padding:0 var(--gutter);color:var(--text-secondary);font-size:var(--text-ui);font-weight:500;letter-spacing:normal}
 html.desktop-app #panel-intercept .icpt-mr>summary:hover{color:var(--text-primary)}
 html.desktop-app #panel-intercept .icpt-mr[open]>summary{color:var(--text-primary)}
-html.desktop-app #panel-intercept .icpt-mr-body{padding:4px var(--gutter) var(--gutter)}
+html.desktop-app #panel-intercept .icpt-mr-body{max-height:min(240px,28vh);padding:4px var(--gutter) var(--gutter)}

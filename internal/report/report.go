@@ -210,7 +210,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 	// Status breakdown, in a stable, readable order.
 	b.WriteString("\n| Status | Count |\n")
 	b.WriteString("| --- | --- |\n")
-	for _, st := range []string{"verified", "needs_verification", "open", "wont_fix", "fixed"} {
+	for _, st := range []string{"verified", "needs_verification", "open", "wont_fix", "ignored", "fixed"} {
 		if statusCounts[st] > 0 {
 			fmt.Fprintf(&b, "| %s | %d |\n", st, statusCounts[st])
 		}
@@ -219,7 +219,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 	var extra []string
 	for st := range statusCounts {
 		switch st {
-		case "verified", "needs_verification", "open", "wont_fix", "fixed":
+		case "verified", "needs_verification", "open", "wont_fix", "ignored", "fixed":
 		default:
 			extra = append(extra, st)
 		}
@@ -239,9 +239,16 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 // into a finding — so it is neutralized before being written verbatim into the
 // exported report; see sanitizeLine/sanitizeBody for what each does and why.
 func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]string) {
+	renderFindingSection(b, n, f, titles, true)
+}
+
+// renderFindingSection is renderFinding with a choice about the internal review
+// state (workflow status and readiness gaps): the engagement report shows it,
+// a tracker or programme submission leaves it out.
+func renderFindingSection(b *strings.Builder, n int, f store.Finding, titles map[int64]string, reviewState bool) {
 	f.EnrichCompleteness()
 	fmt.Fprintf(b, "\n### %d. %s\n", n, sanitizeLine(f.Title))
-	if f.Status != "" {
+	if reviewState && f.Status != "" {
 		b.WriteString("- **Status:** " + sanitizeLine(f.Status) + "\n")
 	}
 	if f.Confidence != "" {
@@ -265,7 +272,7 @@ func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]
 	if f.ProofReview.Reason != "" {
 		b.WriteString("- **Verification limit:** " + sanitizeLine(f.ProofReview.Reason) + "\n")
 	}
-	if f.Readiness != nil && len(f.Readiness.Gaps) > 0 {
+	if reviewState && f.Readiness != nil && len(f.Readiness.Gaps) > 0 {
 		b.WriteString("- **Readiness gaps:** " + strings.Join(f.Readiness.Gaps, ", ") + "\n")
 	}
 	if withdrawn := withdrawnClaimIDs(f); len(withdrawn) > 0 {

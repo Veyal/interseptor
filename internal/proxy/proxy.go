@@ -343,6 +343,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		http.Error(w, "request dropped by interseptor", http.StatusBadGateway)
+	case err != nil && clientAborted(r.Context(), err):
+		s.recordClientAbort(flow)
 	case err != nil:
 		s.fail(w, flow, "upstream: "+err.Error())
 	default:
@@ -468,6 +470,14 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 		return false // the connection is now an opaque upgraded stream
 	}
 
+	// Unlike net/http's server, this loop owns the raw conn, so nothing cancels
+	// the request context when the client hangs up. Watch the read side while
+	// the exchange is in flight so an early disconnect aborts the upstream leg
+	// and is recorded as a client abort instead of a normal full-length 200.
+	w := watchClientGone(conn, br, req)
+	defer w.stop()
+	req = req.WithContext(w.ctx)
+
 	resp, dropped, err := s.gateAndForward(flow, req)
 	if dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -476,6 +486,10 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 		return false
 	}
 	if err != nil {
+		if clientAborted(req.Context(), err) {
+			s.recordClientAbort(flow)
+			return false
+		}
 		flow.Status = http.StatusBadGateway
 		flow.Error = "upstream: " + err.Error()
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -488,11 +502,95 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 	if err := s.writeResponseConn(conn, resp, flow); err != nil {
 		return false
 	}
+	// Stop watching before the drain below reads from br; a pending pipelined
+	// byte is left buffered for the next ReadRequest.
+	w.stop()
 	if req.Body != nil {
 		io.Copy(io.Discard, req.Body) // drain to resync the stream for keep-alive
 		req.Body.Close()
 	}
 	return keepAlive
+}
+
+// clientGoneWatcher cancels a request context when the tunnelled client's read
+// side fails (EOF/reset) while the exchange is in flight. It only reads once the
+// request body has been fully consumed, so it never steals body bytes from br,
+// and a pipelined next request (data, not EOF) just parks the watcher without
+// cancelling anything.
+type clientGoneWatcher struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	conn    net.Conn
+	br      *bufio.Reader
+	mu      sync.Mutex
+	started bool
+	stopped bool
+	done    chan struct{}
+}
+
+func watchClientGone(conn net.Conn, br *bufio.Reader, req *http.Request) *clientGoneWatcher {
+	ctx, cancel := context.WithCancel(req.Context())
+	w := &clientGoneWatcher{ctx: ctx, cancel: cancel, conn: conn, br: br, done: make(chan struct{})}
+	if req.Body == nil || req.Body == http.NoBody {
+		w.start()
+	} else {
+		req.Body = &eofNotifyBody{ReadCloser: req.Body, onEOF: w.start}
+	}
+	return w
+}
+
+func (w *clientGoneWatcher) start() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.started || w.stopped {
+		return
+	}
+	w.started = true
+	go func() {
+		defer close(w.done)
+		if _, err := w.br.Peek(1); err != nil {
+			w.mu.Lock()
+			stopped := w.stopped
+			w.mu.Unlock()
+			if !stopped {
+				w.cancel()
+			}
+		}
+	}()
+}
+
+// stop ends the watcher (waking its blocked read) and restores the conn's read
+// state so the caller can read the next request. Safe to call more than once.
+func (w *clientGoneWatcher) stop() {
+	w.mu.Lock()
+	already := w.stopped
+	w.stopped = true
+	started := w.started
+	w.mu.Unlock()
+	if already {
+		return
+	}
+	if started {
+		w.conn.SetReadDeadline(time.Unix(1, 0)) // unblock the pending Peek
+		<-w.done
+		w.conn.SetReadDeadline(time.Time{})
+	}
+	w.cancel()
+}
+
+// eofNotifyBody calls onEOF once the wrapped body has been read to its end.
+type eofNotifyBody struct {
+	io.ReadCloser
+	onEOF func()
+	once  sync.Once
+}
+
+func (b *eofNotifyBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err == io.EOF {
+		b.once.Do(b.onEOF)
+	}
+	return n, err
 }
 
 // respKeepAlive reports whether the MITM tunnel can be reused after this response.
@@ -833,6 +931,32 @@ func writeResponseHead(w io.Writer, resp *http.Response) error {
 	return err
 }
 
+// Terminal errors recorded on held flows that never complete, so History shows
+// them as dropped instead of in flight (a dropped flow has no status).
+const (
+	errDroppedByUser         = "request dropped by interseptor"
+	errResponseDroppedByUser = "response dropped by interseptor"
+	errClientCanceledHeld    = "client disconnected while held"
+	// errClientAborted marks a non-held request whose client hung up while it
+	// was in flight. No response exists, so the flow keeps status 0.
+	errClientAborted = "client disconnected"
+)
+
+// clientAborted reports whether err is the upstream leg failing only because
+// the client's own request context ended (the client closed the connection),
+// as opposed to a genuine upstream failure.
+func clientAborted(ctx context.Context, err error) bool {
+	return err != nil && ctx != nil && ctx.Err() != nil && errors.Is(err, context.Canceled)
+}
+
+// recordClientAbort persists a flow whose client disconnected mid-flight as a
+// terminal aborted flow (no status), not a 502 the proxy never sent upstream.
+func (s *Server) recordClientAbort(flow *proxyFlow) {
+	flow.Error = errClientAborted
+	flow.DurationMs = time.Since(flow.TS).Milliseconds()
+	s.record(flow)
+}
+
 // gateAndForward runs the intercept gate + match-&-replace, tees the request
 // body, forwards upstream, and finalizes the request side of flow. It returns
 // (resp, false, nil) on success, (nil, true, nil) if the request was dropped,
@@ -863,6 +987,10 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 			}
 			if d.Drop {
 				flow.Flags |= store.FlagDropped
+				flow.Error = errDroppedByUser
+				if d.Canceled {
+					flow.Error = errClientCanceledHeld
+				}
 				return nil, true, nil
 			}
 			out = d.Request
@@ -1184,6 +1312,10 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		d := s.eng.HoldResponseContext(ctx, flow.Flow, buildRawResponse(st, h, b))
 		if d.Drop {
 			flow.Flags |= store.FlagDropped
+			flow.Error = errResponseDroppedByUser
+			if d.Canceled {
+				flow.Error = errClientCanceledHeld
+			}
 			return 0, nil, nil, false, true
 		}
 		if d.Edited {

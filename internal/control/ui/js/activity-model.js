@@ -6,6 +6,7 @@ export const ACTIVITY_CATEGORIES = [
   { id: 'proxy', label: 'Proxy' },
   { id: 'agent', label: 'Agent/MCP' },
   { id: 'findings', label: 'Findings' },
+  { id: 'notes', label: 'Notes' },
   { id: 'scope', label: 'Scope' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -17,7 +18,8 @@ export const ACTIVITY_CATEGORIES = [
 // finding, add_scope_rule is scope). Anything unrecognised is a generic agent
 // action, never dropped.
 const RULES = [
-  ['findings', /^(findings?|report|evidence|notes?|poc|cvss)$/],
+  ['notes', /^notes?$/],
+  ['findings', /^(findings?|report|evidence|poc|cvss)$/],
   ['scope', /^scope$/],
   ['settings', /^(settings?|config|project|upstream|device|android|ios|ca|tls|ssl|rules?|match|interception|vault)$/],
   ['proxy', /^(flows?|history|proxy|repeat|repeater|send|replay|intruder|scan|scanner|issues?|intercept|forward|drop|endpoint|map|ws|websocket|oob|tags?|authz|decode|encode|codecs?)$/],

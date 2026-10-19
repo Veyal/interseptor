@@ -3,10 +3,10 @@
 // switching, the command palette, global keyboard shortcuts, the live SSE event
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
-import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook, clearSharedReads } from './core.js';
+import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook, clearSharedReads, revealActiveTab } from './core.js';
 import { selectFlow, revealFlowRow, focusInFlowList, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, toggleResponseIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
+import { repInit, intrInit, repSend, openNewRepeaterTab, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
@@ -29,14 +29,14 @@ import { initConnection, setConnectionStatus, openConnectionPopover, closeConnec
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
 import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
-import { readSingleKeyPref } from './keys.js';
+import { readSingleKeyPref, isShortcutTypingTarget } from './keys.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
 import { liveEventStalesReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
 import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp } from './desktop.js';
 import { initDesktopShell } from './desktop-shell.js';
-import { isMac } from './desktop-panel-kit.js';
+import { isMac, hasNativeHost } from './desktop-panel-kit.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
@@ -121,6 +121,9 @@ function isPanelVisible(name){const p=document.querySelector('.panel[data-panel=
 // the canvas calls it for the focused pane (onCanvasFocusChange) and for a second
 // pane that becomes visible in a split (onCanvasDocShown).
 function loadPanelData(name){
+  // A tab strip rendered while its panel was hidden could not measure itself, so
+  // bring the active tab into view now that the panel is displayed.
+  document.querySelectorAll('.panel[data-panel="'+name+'"] .rep-tabs').forEach(revealActiveTab);
   if(name==='proxy')renderRows();
   else if(name==='activity'){clearActSeen();loadActivity();}
   else if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
@@ -235,6 +238,8 @@ document.addEventListener('keydown',e=>{
     e.preventDefault();toggleSelectAllShown();return;
   }
   if(e.key!=='ArrowDown'&&e.key!=='ArrowUp'&&e.key!=='j'&&e.key!=='k')return;
+  // Plain j/k only: Cmd/Ctrl/Alt+J|K belong to the Decoder and the palette.
+  if((e.key==='j'||e.key==='k')&&(e.ctrlKey||e.metaKey||e.altKey))return;
   if((e.key==='j'||e.key==='k')&&!readSingleKeyPref())return;
   if(!p||!p.classList.contains('active'))return;
   if((e.key==='j'||e.key==='k')&&!singleKeyShortcutsOn())return;
@@ -326,6 +331,20 @@ function sseRetryDelay(attempt){
 //   reason 'reconnect' — any later connection: always resync.
 function shouldResyncOnReconnect(reason,hadError){
   return reason==='reconnect'||!!hadError;
+}
+// The server re-execs into the new project when ANY client switches it (the
+// UI's own switch reloads itself), so the stream drops and a fresh `hello`
+// arrives from a different project. Remember which project the stream first
+// saw and reload when a later hello reports another one: the window title,
+// status bar and detail pane would otherwise keep the old project's identity.
+let sseProjectKey=null;
+function projectIdentityKey(d){return String(d&&d.dir||'')+'\u0000'+String(d&&d.current||'');}
+async function checkProjectIdentityAfterHello(){
+  try{
+    const key=projectIdentityKey(await api('/api/project?_t='+Date.now()));
+    if(sseProjectKey===null){sseProjectKey=key;return;}
+    if(key!==sseProjectKey){sseProjectKey=key;location.reload();}
+  }catch(e){/* the next hello checks again */}
 }
 function scheduleResync(){
   clearTimeout(sseResyncTimer);
@@ -448,7 +467,9 @@ function connectEvents(){
     const reason=sseConnectedOnce?'reconnect':'boot';
     if(sseConnectedOnce)clearSharedReads();
     if(sseConnectedOnce)refreshVisibleAllowlist();
+    checkProjectIdentityAfterHello();
     if(shouldResyncOnReconnect(reason,sseHadError))scheduleResync();
+    if($('#verBadge')?.dataset.failed==='true')loadVersion(false); // the boot read failed while the server was down
     sseConnectedOnce=true;
     sseHadError=false;
   });
@@ -596,11 +617,9 @@ function isModSpace(e){return (e.key===' '||e.code==='Space')&&exactModifiers(e,
 function isPlainShortcut(e,key,{shift=false}={}){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{shift})&&readSingleKeyPref();}
 function isModShiftShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true,shift:true});}
 function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&readSingleKeyPref();}
-function isTypingTarget(t){
-  const tag=(t?.tagName||'').toLowerCase();
-  return tag==='input'||tag==='textarea'||tag==='select'||!!t?.isContentEditable
-    ||!!t?.closest?.('[role="combobox"],[role="listbox"]:not(#rows)'); // History's listbox has no typeahead: its rows take the flow shortcuts
-}
+// History's and the hold queue's listboxes have no typeahead: their rows take
+// the plain-letter shortcuts (see keys.js).
+const isTypingTarget=isShortcutTypingTarget;
 function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';});}
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
@@ -617,6 +636,9 @@ document.addEventListener('keydown',e=>{
   if(isModShortcut(e,'k')){e.preventDefault();isCommandPaletteOpen()?cmdkClose():cmdkOpen();return;}
   // Cmd/Ctrl+J opens the Decoder "Convert" drawer from anywhere (#102).
   if(isModShortcut(e,'j')){e.preventDefault();openDecoder();return;}
+  // Cmd+T opens a new Repeater tab. Only the native app gets the chord; a
+  // browser keeps Ctrl/⌘+T for its own tabs.
+  if(isModShortcut(e,'t')&&hasNativeHost()){e.preventDefault();openNewRepeaterTab();return;}
   if(isCommandPaletteOpen())return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
   if(workflowShortcutBlocked())return;
@@ -630,9 +652,9 @@ document.addEventListener('keydown',e=>{
     if(isModShortcut(e,'Enter')){e.preventDefault();$('#forwardBtn')?.click();return;}
     if(isModShiftShortcut(e,'d')){e.preventDefault();$('#dropBtn')?.click();return;}
   }
-  // Pause/resume the live History stream. Ctrl+Alt+P works anywhere in Proxy;
+  // Pause/resume the live History stream. Ctrl/Cmd+Alt+P works anywhere in Proxy;
   // capture to disk is unaffected, only the viewport is held.
-  if(activePanel()==='proxy'&&e.ctrlKey&&e.altKey&&!e.metaKey&&!e.shiftKey&&e.key.toLowerCase()==='p'){e.preventDefault();toggleLiveFreeze();return;}
+  if(activePanel()==='proxy'&&(e.ctrlKey||e.metaKey)&&e.altKey&&!e.shiftKey&&(e.code==='KeyP'||e.key.toLowerCase()==='p')){e.preventDefault();toggleLiveFreeze();return;}
   // Plain-letter workflow shortcuts never act through an editor. In particular,
   // typing an f or d into a held HTTP message must not forward or drop it.
   if(typing)return;
@@ -657,7 +679,7 @@ document.addEventListener('keydown',e=>{
     if(sendSelectedFlow('repeater'))e.preventDefault();
     return;
   }
-  if(flowSendShortcutAllowed()&&(isModShortcut(e,'i')||isPlainShortcut(e,'i'))){
+  if(flowSendShortcutAllowed()&&isPlainShortcut(e,'i')){
     if(sendSelectedFlow('intruder'))e.preventDefault();
     return;
   }
@@ -909,6 +931,7 @@ if(isDesktopApp()){
       const addr=($('#proxyAddr')?.textContent||'').trim();
       return {
         proxyAddr:addr==='…'?'':addr,
+        proxyAuthPasswordMissing:!!state.proxyAuthPasswordMissing,
         intercept:{enabled:!!ic.enabled,responseEnabled:!!ic.responseEnabled,held:(ic.queue||[]).length+(ic.responseQueue||[]).length},
         scope:{loaded:!!ps.loaded,inCount:ps.scope?.inCount,outCount:ps.scope?.outCount},
         flows:ps.evidence?.flows||(state.flows||[]).length,

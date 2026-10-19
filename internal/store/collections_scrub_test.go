@@ -505,3 +505,54 @@ func TestScrubKeepsShareableURLAndBodyParts(t *testing.T) {
 		t.Errorf("body not scrubbed: %s", b)
 	}
 }
+
+// QA round 2: the full project ZIP, vault backup and merge push ship the
+// snapshot off the machine, but it kept the saved upstream proxy password and
+// the proxy-listener password. They are dropped like every other credential;
+// the proxy URL, user names and the enabled flag survive.
+func TestSnapshotScrubDropsSavedProxyPasswords(t *testing.T) {
+	s := newTestStore(t)
+	for k, v := range map[string]string{
+		"upstream.proxy":     "http://bob:s3cretPW@proxy.example.com:3128",
+		"proxy.authEnabled":  "1",
+		"proxy.authUser":     "qa",
+		"proxy.authPassword": "listenerPW",
+	} {
+		if err := s.SetSetting(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := filepath.Join(t.TempDir(), "snap.db")
+	if _, err := s.BackupToScrubbed(p, ScrubOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"s3cretPW", "listenerPW"} {
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Fatalf("scrubbed snapshot still contains %q", secret)
+		}
+	}
+	db, err := sql.Open("sqlite", "file:"+p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	got := map[string]string{}
+	rows, err := db.Query(`SELECT key,value FROM settings`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var k, v string
+		rows.Scan(&k, &v)
+		got[k] = v
+	}
+	rows.Close()
+	if got["upstream.proxy"] != "http://bob@proxy.example.com:3128" || got["proxy.authUser"] != "qa" ||
+		got["proxy.authEnabled"] != "1" || got["proxy.authPassword"] != "" || got[UpstreamPasswordRemovedKey] != "1" {
+		t.Fatalf("scrubbed settings = %v", got)
+	}
+}

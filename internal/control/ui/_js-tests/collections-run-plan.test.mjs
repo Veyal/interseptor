@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONFIRM_PHRASE, STATE_CHANGING, buildRunPlan, planSummary, planConfirmed, methodBreakdown,
+  CONFIRM_PHRASE, STATE_CHANGING, buildRunPlan, planSummary, planConfirmed, methodBreakdown, blockedText,
 } from '../js/collections-run-plan.js';
 
 // A small collection with a destructive folder, shaped like store items.
@@ -151,4 +151,103 @@ test('a scope label carrying markup is stripped like every other plan string', (
   const p = buildRunPlan([{ uid: 'a', kind: 'request', method: 'GET', url: 'https://h.example.com/', parentUid: '' }],
     { scopeLabel: '<img src=x onerror=alert(1)>' });
   assert.doesNotMatch(p.scopeLabel, /[<>]/);
+});
+
+import { planResolveTargets, resolvePlanUrls } from '../js/collections-run-plan.js';
+
+const varItems = [
+  { uid: 'v1', kind: 'request', method: 'GET', url: '{{baseUrl}}/users', parentUid: '' },
+  { uid: 'v2', kind: 'request', method: 'POST', url: { raw: '{{baseUrl}}/users' }, parentUid: '' },
+  { uid: 'v3', kind: 'request', method: 'GET', url: 'https://{{region}}.example.com/x', parentUid: '' },
+  { uid: 'v4', kind: 'request', method: 'GET', url: 'https://plain.example.com/y', parentUid: '' },
+];
+
+test('a variable-only collection resolves its hosts and never shows zero', async () => {
+  const fake = async (it) => (it.uid === 'v3' ? { value: 'https://{{region}}.example.com/x', unresolved: ['region'] } : { value: 'https://api.example.com/users', unresolved: [] });
+  const resolved = await resolvePlanUrls(varItems, {}, fake);
+  assert.deepEqual(planResolveTargets(varItems).map((i) => i.uid), ['v1', 'v2', 'v3']);
+  const p = buildRunPlan(varItems, { resolved });
+  assert.deepEqual(p.hosts, ['api.example.com', 'plain.example.com']);
+  assert.equal(p.unresolvedRequests, 1);
+  assert.deepEqual(p.unresolvedHosts, ['{{region}}.example.com']);
+  assert.match(planSummary(p), /could not be resolved \(\{\{region\}\}\.example\.com\)/);
+});
+
+test('without any resolved data a variable URL is listed as unresolved, not omitted', () => {
+  const p = buildRunPlan(varItems.slice(0, 2), {});
+  assert.deepEqual(p.hosts, []);
+  assert.equal(p.unresolvedRequests, 2);
+  assert.deepEqual(p.unresolvedHosts, ['{{baseUrl}}']);
+});
+
+test('a failed resolve call counts as unresolved', async () => {
+  const resolved = await resolvePlanUrls(varItems, {}, async () => { throw new Error('boom'); });
+  assert.equal(buildRunPlan(varItems, { resolved }).unresolvedRequests, 3);
+});
+
+// Round 3 (a5): a literal host is a known host even when only the path holds a variable.
+test('a literal host stays resolved when only the path has an undefined variable', () => {
+  const its = [{ uid: 'p1', kind: 'request', method: 'GET', url: 'http://127.0.0.1:18695/{{p}}/x' }];
+  const p = buildRunPlan(its, { resolved: { p1: { value: 'http://127.0.0.1:18695/{{p}}/x', unresolved: ['p'] } } });
+  assert.deepEqual(p.hosts, ['127.0.0.1:18695']);
+  assert.equal(p.unresolvedRequests, 0);
+  assert.deepEqual(p.unresolvedHosts, []);
+  assert.equal(p.unresolvedPathRequests, 1);
+  assert.deepEqual(p.unresolvedVariables, ['p']);
+  const s = planSummary(p);
+  assert.doesNotMatch(s, /host that could not be resolved/);
+  assert.match(s, /unresolved variable in the path or query \(p\)/);
+});
+
+test('an undefined variable in the host part is still an unresolved host', () => {
+  const its = [{ uid: 'h1', kind: 'request', method: 'GET', url: '{{baseUrl}}/x' }];
+  const p = buildRunPlan(its, { resolved: { h1: { value: '{{baseUrl}}/x', unresolved: ['baseUrl'] } } });
+  assert.equal(p.unresolvedRequests, 1);
+  assert.equal(p.unresolvedPathRequests, 0);
+  assert.deepEqual(p.hosts, []);
+});
+
+// Round 3 (a5): the review warns before RUN when scope or the env pin will block requests.
+test('the plan counts requests that scope or the environment pin will block, and says why', () => {
+  const blockCheck = (url) => (url.includes('blocked.example.com') ? 'out_of_scope' : url.includes('pinned.example.com') ? 'base_target_pin' : '');
+  const its = [
+    { uid: 'a', kind: 'request', method: 'GET', url: 'https://blocked.example.com/a' },
+    { uid: 'b', kind: 'request', method: 'GET', url: 'https://pinned.example.com/b' },
+    { uid: 'c', kind: 'request', method: 'GET', url: 'https://ok.example.com/c' },
+  ];
+  const p = buildRunPlan(its, { blockCheck });
+  assert.equal(p.blocked.total, 2);
+  assert.equal(p.blocked.scope, 1);
+  assert.equal(p.blocked.pin, 1);
+  assert.equal(p.blocked.all, false);
+  assert.match(blockedText(p), /2 of 3 requests will be blocked \(1 out of scope, 1 not matching the environment target pin\)/);
+  assert.match(planSummary(p), /will be blocked/);
+  const all = buildRunPlan(its.slice(0, 1), { blockCheck });
+  assert.equal(all.blocked.all, true);
+  assert.match(blockedText(all), /^Every request will be blocked/);
+});
+
+test('no block check or no blocked request adds no warning; identities multiply the count', () => {
+  assert.equal(blockedText(buildRunPlan(items, {})), '');
+  const only = [{ uid: 'a', kind: 'request', method: 'GET', url: 'https://x.example.com/' }];
+  const p = buildRunPlan(only, { blockCheck: () => 'out_of_scope', identities: ['alice', 'bob'] });
+  assert.equal(p.blocked.total, 2);
+  assert.equal(p.blocked.requests, 1);
+});
+
+// Round 4 (a5) B1: an empty scope still blocks loopback/private targets (IP guard).
+test('the plan counts requests the IP guard will block and names them in the warning', () => {
+  const blockCheck = (url) => (url.includes('127.0.0.1') ? 'ip_guard' : '');
+  const its = [
+    { uid: 'a', kind: 'request', method: 'GET', url: 'http://127.0.0.1:9/a' },
+    { uid: 'b', kind: 'request', method: 'GET', url: 'https://ok.example.com/b' },
+  ];
+  const p = buildRunPlan(its, { blockCheck });
+  assert.equal(p.blocked.total, 1);
+  assert.equal(p.blocked.guard, 1);
+  assert.equal(p.blocked.scope, 0);
+  assert.match(blockedText(p), /1 of 2 requests will be blocked \(1 to a private or loopback address\)/);
+  assert.match(blockedText(p), /Add the host to scope/);
+  const all = buildRunPlan(its.slice(0, 1), { blockCheck });
+  assert.match(blockedText(all), /^Every request will be blocked \(1 to a private or loopback address\)/);
 });

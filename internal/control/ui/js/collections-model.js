@@ -135,6 +135,13 @@ export function rowLabel(item, line, unresolved = [], quarantined = false) {
   return out;
 }
 
+// folderLabel is a folder row's accessible name: "Folder Users, 3 items".
+// aria-expanded already says open or closed, so the label does not repeat it.
+export function folderLabel(item, count) {
+  const n = Number(count) || 0;
+  return 'Folder ' + ((item && item.name) || 'Untitled folder') + ', ' + n + ' item' + (n === 1 ? '' : 's');
+}
+
 // matchesQuery: case-insensitive match against name, method and URL.
 export function matchesQuery(item, q) {
   const s = String(q || '').trim().toLowerCase();
@@ -417,6 +424,23 @@ export function editorToSettings(ed, orig) {
   return out;
 }
 
+// STRUCTURED_URL_PARTS are the url-object fields that duplicate `raw`. The
+// server treats a non-empty url.query as authoritative over raw's own query,
+// and rebuilds a missing raw from host/path, so a stale copy of any of them
+// resurrects text the user deleted from the URL field.
+const STRUCTURED_URL_PARTS = ['protocol', 'host', 'port', 'path', 'query', 'hash'];
+
+// urlForSave returns the url value to store: a string stays a string; an object
+// (Postman) keeps everything while the URL is unchanged and otherwise keeps only
+// its non-structural fields (variable[], ...) with the edited raw as the source.
+export function urlForSave(orig, raw) {
+  if (typeof orig !== 'object' || !orig) return raw;
+  if (raw === (orig.raw || '')) return orig;
+  const next = { ...orig, raw };
+  for (const k of STRUCTURED_URL_PARTS) delete next[k];
+  return next;
+}
+
 // editorToItem builds the full PUT body (UpdateItem replaces the row): the
 // original item with the edited columns swapped in and `rev` for optimistic
 // concurrency.
@@ -425,7 +449,7 @@ export function editorToItem(ed, orig) {
   const urlRaw = buildURL(splitURL(ed.url).base, ed.params, splitURL(ed.url).hash);
   const hasParams = ed.params.some((p) => p.key !== '' || p.value !== '');
   const next = { ...o, name: ed.name, method: ed.method, rev: o.rev };
-  next.url = typeof o.url === 'object' && o.url ? { ...o.url, raw: hasParams ? urlRaw : ed.url } : (hasParams ? urlRaw : ed.url);
+  next.url = urlForSave(o.url, hasParams ? urlRaw : ed.url);
   next.params = hasParams || (o.params && o.params.length) ? fromRows(ed.params, o.params) : o.params;
   next.headers = fromRows(ed.headers, o.headers);
   next.body = editorToBody(ed.body, o.body);
@@ -467,12 +491,18 @@ const BLOCK_TEXT = {
   base_target_pin: 'The environment target pin does not match this host',
   own_listener: 'Requests to Interseptor itself are never sent',
   scripts_quarantined: 'Scripts are quarantined until you approve them',
+  ip_guard: 'The destination is a private or loopback address; add its host to scope to allow it',
 };
+
+// blockText is the human sentence for a block reason (never the raw enum).
+export function blockText(reason) {
+  return BLOCK_TEXT[reason] || (reason ? 'Send blocked (' + String(reason).replace(/_/g, ' ') + ')' : 'Send blocked');
+}
 
 // stepSummary condenses a StepResult for the response status line.
 export function stepSummary(res) {
   if (!res) return { kind: 'none', label: '' };
-  if (res.outcome === 'blocked') return { kind: 'blocked', label: BLOCK_TEXT[res.blockReason] || 'Send blocked', reason: res.blockReason || '' };
+  if (res.outcome === 'blocked') return { kind: 'blocked', label: blockText(res.blockReason), reason: res.blockReason || '' };
   if (res.outcome === 'error') return { kind: 'error', label: res.error || 'Request failed' };
   if (res.outcome === 'skipped') return { kind: 'skipped', label: 'Skipped by a pre-request script' };
   const r = res.response || {};
@@ -483,7 +513,7 @@ export function stepSummary(res) {
 // scopeWarnPrompt: an interactive warn-policy send to an out-of-scope host is
 // answered by the server with outcome=blocked/out_of_scope or a warning; the UI
 // offers a one-click "add host" for that case.
-export function needsAddHost(res) { return !!res && res.outcome === 'blocked' && res.blockReason === 'out_of_scope'; }
+export function needsAddHost(res) { return !!res && res.outcome === 'blocked' && (res.blockReason === 'out_of_scope' || res.blockReason === 'ip_guard'); }
 
 export function hostOf(rawUrl) {
   const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(rawUrl || '').trim());

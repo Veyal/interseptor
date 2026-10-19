@@ -21,8 +21,9 @@ type Endpoint struct {
 	Method      string `json:"method"`
 	Path        string `json:"path"`
 	Scheme      string `json:"scheme"`
-	LastStatus  int    `json:"lastStatus"` // status of the most recent hit
-	Statuses    []int  `json:"statuses"`   // every distinct status seen, sorted
+	Port        int    `json:"port,omitempty"` // destination port of the most recent hit
+	LastStatus  int    `json:"lastStatus"`     // status of the most recent hit
+	Statuses    []int  `json:"statuses"`       // every distinct status seen, sorted
 	Hits        int    `json:"hits"`
 	LastFlowID  int64  `json:"lastFlowId"`  // most recent flow, for click-through
 	ResBodyHash string `json:"resBodyHash"` // SHA-256 of latest response body (empty if none)

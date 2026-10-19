@@ -53,9 +53,12 @@
 .checklist-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3)}
 .checklist-title{margin:0;font:650 var(--fs-md)/1.3 var(--ui);color:var(--fg)}
 .checklist-count{margin-right:auto;color:var(--fg2);font:600 var(--fs-sm)/1.3 var(--ui)}
-.checklist-progress{width:100%;height:var(--sp-2);accent-color:var(--rd-pass)}
+.checklist-progress{width:100%;height:var(--sp-2);accent-color:var(--rd-pass);appearance:none;-webkit-appearance:none;border:0;border-radius:var(--r-pill);background:var(--bg3);overflow:hidden}
+.checklist-progress::-webkit-progress-bar{background:var(--bg3);border-radius:var(--r-pill)}
+.checklist-progress::-webkit-progress-value{background:var(--rd-pass);border-radius:var(--r-pill)}
+.checklist-progress::-moz-progress-bar{background:var(--rd-pass);border-radius:var(--r-pill)}
 .checklist-steps{display:flex;flex-direction:column;gap:var(--sp-1);margin:0;padding:0;list-style:none}
-.checklist-step{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);color:var(--fg)}
+.checklist-step{text-align:left;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);color:var(--fg)}
 .checklist-step .icon{flex:none;width:16px;height:16px;color:var(--rd-na)}
 .checklist-step[data-done="true"] .icon{color:var(--rd-pass)}
 .checklist-label{flex:1 1 180px;min-width:0}

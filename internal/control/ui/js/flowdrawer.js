@@ -13,13 +13,15 @@ import { $, api, state, toastError, openModal, closeModal, registerHook, project
 import { renderState } from './statepanel.js';
 import { readSingleKeyPref, isTypingTarget } from './keys.js';
 import { createFinder } from './finder.js';
-import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, stepSibling, linkedFindings, rawState, DRAWER_WIDTH } from './flowbody.js';
+import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, DEFAULT_FLOW_DRAWER_LAYOUT, stepSibling, linkedFindings, rawState, DRAWER_WIDTH, DRAWER_HEIGHT } from './flowbody.js';
 
 const root = document.getElementById('flowDrawer');
 const OVERLAY_QUERY = '(max-width: 1100px)';
 const WIDTH_KEY = 'interseptor.flowDrawerW';
+const HEIGHT_KEY = 'interseptor.flowDrawerH';
+const LAYOUT_KEY = 'interseptor.flowDrawerLayout';
 
-const cur = { id: 0, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, tab: 'request', opts: {}, epoch: 0, tabEpoch: 0, opener: null, overlay: false, open: false };
+const cur = { id: 0, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, tab: 'request', opts: {}, epoch: 0, tabEpoch: 0, opener: null, overlay: false, open: false, layout: 'bottom' };
 
 // A flow modified in Intercept carries its pre-interception bytes; the Compare
 // control (folded in from the deleted flowmodal.js) switches the Request/Response
@@ -36,9 +38,28 @@ function applyWidth(w, persist) {
   width = clampDrawerWidth(w);
   document.documentElement.style.setProperty('--flow-drawer-w', width + 'px');
   const sash = $('#fdSash');
-  if (sash) sash.setAttribute('aria-valuenow', String(width));
+  if (sash && cur.layout !== 'bottom') sash.setAttribute('aria-valuenow', String(width));
   if (persist) saveWidth(width);
 }
+
+function storedHeight() {
+  try { return clampDrawerHeight(localStorage.getItem(projectStorageKey(HEIGHT_KEY))); } catch (e) { return DRAWER_HEIGHT.def; }
+}
+function saveHeight(h) { try { localStorage.setItem(projectStorageKey(HEIGHT_KEY), String(h)); } catch (e) { /* private mode */ } }
+let height = DRAWER_HEIGHT.def;
+
+function applyHeight(h, persist) {
+  height = clampDrawerHeight(h);
+  document.documentElement.style.setProperty('--flow-drawer-h', height + 'px');
+  const sash = $('#fdSash');
+  if (sash && cur.layout === 'bottom') sash.setAttribute('aria-valuenow', String(height));
+  if (persist) saveHeight(height);
+}
+
+function storedLayout() {
+  try { return normalizeFlowDrawerLayout(localStorage.getItem(projectStorageKey(LAYOUT_KEY))); } catch (e) { return DEFAULT_FLOW_DRAWER_LAYOUT; }
+}
+function saveLayout(l) { try { localStorage.setItem(projectStorageKey(LAYOUT_KEY), normalizeFlowDrawerLayout(l)); } catch (e) { /* private mode */ } }
 
 const isOverlay = () => window.matchMedia(OVERLAY_QUERY).matches;
 
@@ -204,8 +225,20 @@ function step(delta) {
   const next = stepSibling(cur.opts.siblings, cur.id, delta);
   if (next != null) openFlow(next, { ...cur.opts, tab: cur.tab, keepOpener: true });
 }
-$('#fdNarrow').addEventListener('click', () => applyWidth(width - 64, true));
-$('#fdWide').addEventListener('click', () => applyWidth(width + 64, true));
+$('#fdNarrow').addEventListener('click', () => {
+  if (cur.layout === 'bottom') applyHeight(height - 48, true);
+  else applyWidth(width - 64, true);
+});
+$('#fdWide').addEventListener('click', () => {
+  if (cur.layout === 'bottom') applyHeight(height + 48, true);
+  else applyWidth(width + 64, true);
+});
+const popupBtn = $('#fdPopupBtn');
+if (popupBtn) popupBtn.addEventListener('click', () => togglePopup());
+$('#fdHead').addEventListener('dblclick', (e) => {
+  if (e.target.closest('button, input, select, a, [role="tab"]')) return;
+  togglePopup();
+});
 $('#fdPrev').addEventListener('click', () => step(-1));
 $('#fdNext').addEventListener('click', () => step(1));
 $('#fdHead').addEventListener('keydown', (e) => {
@@ -331,11 +364,59 @@ async function showInProxy() {
 }
 
 /* ---- open / close ---- */
+function updatePopupBtn() {
+  const btn = $('#fdPopupBtn');
+  if (!btn) return;
+  const isPopup = cur.layout === 'popup';
+  btn.setAttribute('title', isPopup ? 'Dock to bottom (or double-click header)' : 'Open as popup dialog (or double-click header)');
+  btn.setAttribute('aria-label', isPopup ? 'Dock to bottom' : 'Open as popup dialog');
+  const iconName = isPopup ? 'panel-bottom' : 'external';
+  const use = btn.querySelector('use');
+  if (use) use.setAttribute('href', '#i-' + iconName);
+  const narrow = $('#fdNarrow');
+  const wide = $('#fdWide');
+  if (narrow && wide) {
+    if (cur.layout === 'bottom') {
+      narrow.title = 'Shorter';
+      narrow.setAttribute('aria-label', 'Make the flow viewer shorter');
+      wide.title = 'Taller';
+      wide.setAttribute('aria-label', 'Make the flow viewer taller');
+    } else {
+      narrow.title = 'Narrower';
+      narrow.setAttribute('aria-label', 'Make the drawer narrower');
+      wide.title = 'Wider';
+      wide.setAttribute('aria-label', 'Make the drawer wider');
+    }
+  }
+}
+
 function syncMode() {
-  cur.overlay = isOverlay();
+  cur.overlay = cur.layout === 'popup' || (cur.layout === 'side' && isOverlay());
   const panel = $('#fdPanel');
-  root.dataset.mode = cur.overlay ? 'overlay' : 'docked';
+  root.dataset.layout = cur.layout;
+  root.dataset.mode = cur.overlay ? (cur.layout === 'popup' ? 'popup' : 'overlay') : 'docked';
   if (cur.overlay) { panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); } else { panel.setAttribute('role', 'complementary'); panel.removeAttribute('aria-modal'); }
+  const sash = $('#fdSash');
+  if (sash) {
+    if (cur.layout === 'bottom') {
+      sash.setAttribute('aria-orientation', 'horizontal');
+      sash.setAttribute('aria-valuemin', String(DRAWER_HEIGHT.min));
+      sash.setAttribute('aria-valuemax', String(DRAWER_HEIGHT.max));
+      sash.setAttribute('aria-valuenow', String(height));
+    } else {
+      sash.setAttribute('aria-orientation', 'vertical');
+      sash.setAttribute('aria-valuemin', String(DRAWER_WIDTH.min));
+      sash.setAttribute('aria-valuemax', String(DRAWER_WIDTH.max));
+      sash.setAttribute('aria-valuenow', String(width));
+    }
+  }
+}
+
+export function togglePopup() {
+  if (!cur.open) return;
+  const next = cur.layout === 'popup' ? 'bottom' : 'popup';
+  saveLayout(next);
+  openFlow(cur.id, { ...cur.opts, tab: cur.tab, layout: next, keepOpener: true });
 }
 
 function revertEvidenceRoute() {
@@ -355,6 +436,7 @@ export function closeFlowDrawer({ updateRoute = true } = {}) {
   root.style.removeProperty('display');
   root.classList.remove('is-open');
   document.body.classList.remove('flow-drawer-docked');
+  document.body.classList.remove('flow-drawer-docked-bottom');
   if (!wasOverlay && cur.opener && cur.opener.isConnected && cur.opener.focus) cur.opener.focus({ preventScroll: true });
   cur.opener = null;
   if (updateRoute) revertEvidenceRoute();
@@ -365,12 +447,23 @@ export function openFlow(id, opts = {}) {
   const flowId = Number(id);
   if (!Number.isSafeInteger(flowId) || flowId <= 0) return false;
   const reopen = cur.open;
+  if (reopen && cur.overlay && (opts.layout || cur.layout) !== 'popup') closeModal(root);
+  document.body.classList.remove('flow-drawer-docked');
+  document.body.classList.remove('flow-drawer-docked-bottom');
   cur.epoch++;
   cur.tabEpoch++;
   const epoch = cur.epoch;
-  if (!reopen) { cur.opener = opts.opener || document.activeElement; width = storedWidth(); }
+  if (!reopen) {
+    cur.opener = opts.opener || document.activeElement;
+    width = storedWidth();
+    height = storedHeight();
+    cur.layout = opts.layout || storedLayout();
+  } else if (opts.layout) {
+    cur.layout = opts.layout;
+  }
   Object.assign(cur, { id: flowId, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, opts, tab: opts.tab || 'response' });
   syncMode();
+  updatePopupBtn();
   cur.open = true;
   $('#fdTitle').textContent = 'Flow #' + flowId;
   $('#fdStatus').textContent = '';
@@ -383,8 +476,13 @@ export function openFlow(id, opts = {}) {
   if (cur.overlay) {
     openModal(root, { onEscape: () => closeFlowDrawer(), onDismiss: () => closeFlowDrawer(), initialFocus: '#fdTitle' });
   } else {
-    document.body.classList.add('flow-drawer-docked');
-    applyWidth(width, false);
+    if (cur.layout === 'bottom') {
+      document.body.classList.add('flow-drawer-docked-bottom');
+      applyHeight(height, false);
+    } else {
+      document.body.classList.add('flow-drawer-docked');
+      applyWidth(width, false);
+    }
     if (!reopen || opts.focusTitle !== false) $('#fdTitle').focus({ preventScroll: true });
   }
   api('/api/flows/' + flowId).then((detail) => {
@@ -415,6 +513,18 @@ $('#fdPanel').addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !cur.overlay && !e.defaultPrevented) { e.preventDefault(); closeFlowDrawer(); }
 });
 
+window.addEventListener('flowdrawerlayoutchange', (e) => {
+  const next = normalizeFlowDrawerLayout(e.detail);
+  saveLayout(next);
+  if (cur.open) {
+    openFlow(cur.id, { ...cur.opts, tab: cur.tab, layout: next, keepOpener: true });
+  } else {
+    cur.layout = next;
+    syncMode();
+    updatePopupBtn();
+  }
+});
+
 /* ---- resize sash (docked only) ---- */
 (function wireSash() {
   const sash = $('#fdSash');
@@ -422,25 +532,49 @@ $('#fdPanel').addEventListener('keydown', (e) => {
   sash.addEventListener('pointerdown', (e) => {
     if (cur.overlay) return;
     try { sash.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
-    drag = { x: e.clientX, w: width };
+    drag = cur.layout === 'bottom' ? { y: e.clientY, h: height } : { x: e.clientX, w: width };
     root.classList.add('is-resizing');
   });
-  sash.addEventListener('pointermove', (e) => { if (drag) applyWidth(drag.w + (drag.x - e.clientX), false); });
-  const end = () => { if (!drag) return; drag = null; root.classList.remove('is-resizing'); saveWidth(width); };
+  sash.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (cur.layout === 'bottom') applyHeight(drag.h + (drag.y - e.clientY), false);
+    else applyWidth(drag.w + (drag.x - e.clientX), false);
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    root.classList.remove('is-resizing');
+    if (cur.layout === 'bottom') saveHeight(height);
+    else saveWidth(width);
+  };
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
   sash.addEventListener('keydown', (e) => {
     const big = e.shiftKey ? 64 : 16;
-    let w = null;
-    if (e.key === 'ArrowLeft') w = width + big;
-    else if (e.key === 'ArrowRight') w = width - big;
-    else if (e.key === 'Home') w = DRAWER_WIDTH.min;
-    else if (e.key === 'End') w = DRAWER_WIDTH.max;
-    if (w == null) return;
-    e.preventDefault();
-    applyWidth(w, true);
+    if (cur.layout === 'bottom') {
+      let h = null;
+      if (e.key === 'ArrowUp') h = height + big;
+      else if (e.key === 'ArrowDown') h = height - big;
+      else if (e.key === 'Home') h = DRAWER_HEIGHT.min;
+      else if (e.key === 'End') h = DRAWER_HEIGHT.max;
+      if (h == null) return;
+      e.preventDefault();
+      applyHeight(h, true);
+    } else {
+      let w = null;
+      if (e.key === 'ArrowLeft') w = width + big;
+      else if (e.key === 'ArrowRight') w = width - big;
+      else if (e.key === 'Home') w = DRAWER_WIDTH.min;
+      else if (e.key === 'End') w = DRAWER_WIDTH.max;
+      if (w == null) return;
+      e.preventDefault();
+      applyWidth(w, true);
+    }
   });
-  sash.addEventListener('dblclick', () => applyWidth(DRAWER_WIDTH.def, true));
+  sash.addEventListener('dblclick', () => {
+    if (cur.layout === 'bottom') applyHeight(DRAWER_HEIGHT.def, true);
+    else applyWidth(DRAWER_WIDTH.def, true);
+  });
 })();
 
 // Markdown flow links (a.md-flow-link, injected by the safe markdown renderer in

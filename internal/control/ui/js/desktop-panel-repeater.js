@@ -81,7 +81,11 @@ function wireResponseActions() {
   // The status line ("200 OK · 12 ms · 403 B") leads the row, so the header
   // keeps room for the title and the views at any pane width.
   const status = $('#repStatus');
-  if (status) move(status, row);
+  if (status) {
+    move(status, row);
+    // Cut short in a narrow pane, the full line stays one hover away.
+    observe(status, () => { if (status.title !== status.textContent) status.title = status.textContent; });
+  }
   move(group, row);
   const byId = (id) => group.querySelector('#' + id);
   // "Diff vs previous" is "Diff" on the row (its tooltip keeps the full sentence).

@@ -27,6 +27,15 @@
 .icpt-work[data-mode="stack"] .icpt-list-empty{display:block}
 .icpt-clnote{flex:none;color:var(--warnFg);font-size:var(--fs-xs);font-family:var(--mono);white-space:nowrap}
 .icpt-clnote[hidden]{display:none}
+.icpt-filter-error{flex:none;margin:0;padding:var(--sp-1) var(--sp-3);font-size:var(--fs-xs);color:var(--red);background:var(--bg1);border-bottom:1px solid var(--line)}
+.icpt-filter-error[hidden]{display:none}
+#interceptFilterPattern[aria-invalid="true"]{border-color:var(--red)}
+/* What the text editor cannot hold: a binary body (kept on the server) and an image preview. */
+.icpt-body{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
+.icpt-body[hidden],.icpt-body-note[hidden],.icpt-body-warn[hidden]{display:none}
+.icpt-body-warn{flex:1 1 100%;min-width:0;font-size:var(--fs-xs);color:var(--warnFg);font-weight:600}
+.icpt-body-note{flex:1 1 240px;min-width:0;font-size:var(--fs-xs);color:var(--fg2)}
+.icpt-preview{max-width:100%;max-height:min(30vh,240px);border:1px solid var(--line);border-radius:var(--r-sm);background:repeating-conic-gradient(var(--bg2) 0% 25%,var(--bg3) 0% 50%) 0 0/16px 16px}
 
 .icpt-item.is-dropping{border-left-style:dashed}
 .icpt-dropping-tag{margin-left:auto;font-size:var(--fs-xs);font-weight:700;color:var(--amber)}

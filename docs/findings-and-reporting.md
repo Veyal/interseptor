@@ -316,9 +316,22 @@ escalation it would allow. A High that rests on an undemonstrated step is a Low 
 and a reviewer will find the gap before the client does. Writing a finding at Critical or High with a
 conditional impact raises a format warning.
 
-A configuration observation with no demonstrated exploitation — a missing header, a weak cipher, a
-verbose banner, an absent hardening flag — is Low or Info. It rises only when you attach the step that
-uses it. A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+Think about the impact first, then score it. Only a finding with demonstrated confidentiality,
+integrity, or availability impact gets a CVSS score above 0.0. Everything else is Info, or not a
+finding at all:
+
+- Username or email enumeration on its own is Info.
+- A SQL error message, stack trace, framework version, or internal path in a response is Info. It
+  becomes SQL injection only when you show the injected query reading or changing data, and then you
+  score that outcome, for example High when it reads other users' records.
+- A configuration observation with no demonstrated exploitation (a missing header, a weak cipher, a
+  verbose banner, an absent hardening flag) is Info, or left out of the report. It rises only when you
+  attach the step that uses it.
+- A permissive response, a reachable endpoint, or a readable file is a prerequisite, not an impact.
+
+When a weakness enables real impact, prove the impact and score that. Enumeration that feeds a
+demonstrated account takeover is scored as the takeover. Info findings use a vector with
+`VC:N/VI:N/VA:N/SC:N/SI:N/SA:N`, which evaluates to 0.0.
 
 ### When the finding is not an HTTP exchange
 
@@ -474,8 +487,9 @@ wrong shape because a parameter was forgotten. A `false_positive` finding return
 
 Each narrative is rendered by the same function that writes the engagement report, so the evidence
 roles, proof statements and provenance labels — including "generated evidence render from recorded
-data; not browser proof" — travel with the ticket. `?mode=final` applies the same readiness gate as
-a final report. Credential headers are masked by default here, because a ticket leaves the
+data; not browser proof" — travel with the ticket. The internal review state (workflow status and
+readiness gaps) stays out of the ticket body; check it on the readiness board before filing.
+`?mode=final` applies the same readiness gate as a final report. Credential headers are masked by default here, because a ticket leaves the
 engagement for a third-party platform; `?maskHeaders=0` keeps them verbatim.
 
 A field with no honest equivalent is left out rather than guessed, because a wrong identifier files

@@ -65,12 +65,12 @@ session-header reuse, and report contamination.
 
 | Format | Purpose | Behavior |
 |---|---|---|
-| Portable project JSON | Sharing selected operational state with another Interseptor instance | Imports additively into the current project; duplicate data is skipped. |
+| Portable project JSON | Sharing selected operational state with another Interseptor instance | Imports additively into the current project and is idempotent: flows (same request line, millisecond timestamp and status, the fields that survive a HAR round trip, so a project's own export imports back as all duplicates), match-and-replace rules and scope rules already present are skipped, so importing the same bundle twice adds nothing. Project **notes** are never overwritten (see [Notes on import](#notes-on-import)). Carries the upstream proxy URL and user name but never a saved proxy password, and import never applies them (see [Network settings stay local](#network-settings-stay-local)). |
 | HAR | Interchange with browser and proxy tooling | Imports flows into History; some Interseptor-only metadata is not represented. |
 | Burp saved-items XML | Migrating Proxy history or Target traffic from Burp Suite | Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. |
 | Postman collection JSON | Preparing editable requests in Repeater | Imports Collection v2.0/v2.1 with optional environment resolution; unsupported values are reported and no requests are sent by import. |
 | Collections | Requests, environments, variables and scripts for [Collections](collections.md) | Travel inside the full project ZIP, the portable project JSON (v2 `collections` section), peer merge and vault backups, always in scrubbed form. Importers: Postman, OpenAPI/Swagger, curl, Insomnia, Bruno, HAR, Burp XML. |
-| Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project. |
+| Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project that is a copy of the archived one, including its upstream proxy and proxy-listener settings, minus saved passwords. |
 | Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
 
 The full archive intentionally excludes the global CA and custom checks. Transfer those separately
@@ -94,9 +94,9 @@ tokens and script trust. They are removed by one scrub function, not by per-feat
 
 | Path | What leaves the machine |
 | --- | --- |
-| Full project ZIP (download, file export, merge push) | A scrubbed copy of the database: secret variables, current values, cookies, tokens, auth credentials and script trust are deleted from the file itself, and freed pages are overwritten. Shareable collection data (names, URLs, variable references, initial values of ordinary variables) survives. |
+| Full project ZIP (download, file export, merge push) | A scrubbed copy of the database: secret variables, current values, cookies, tokens, auth credentials, saved proxy passwords (upstream proxy and proxy listener) and script trust are deleted from the file itself, and freed pages are overwritten. Shareable collection data (names, URLs, variable references, initial values of ordinary variables) survives. |
 | Vault backup | The same scrubbed snapshot. |
-| Portable project JSON v2 | A scrubbed `collections` section. Version 1 bundles still import; bundles newer than 2 are rejected. |
+| Portable project JSON v2 | A scrubbed `collections` section, and the upstream proxy URL without its password (the proxy-listener password is never included). Import keeps the importing machine's own upstream proxy. Version 1 bundles still import; bundles newer than 2 are rejected. |
 | Merge (peer, archive, vault) | Collections are unioned by uid. Current values, cookies, tokens, trust and runs are never merged; scripts arrive quarantined with empty capabilities, and scope policy `off` becomes `block`. |
 | MCP and AI-source REST | Scrubbed reads, no script source, no reveal. |
 | Run reports (CLI, JSON, JUnit, HTML) | Masked with the run's secrets and credential shapes. |
@@ -106,6 +106,43 @@ wire bytes, so an Authorization header it carried is in History and in History e
 project bundle's `har` section, findings evidence). Treat evidence exports as sensitive, and prefer
 secret variables over literal credentials in request headers so the collection itself stays
 shareable. A secret that must move to another machine has to be re-entered there.
+
+### Restoring a backup without its passwords
+
+A full project ZIP or vault backup never carries the upstream proxy password or the proxy-listener
+password. A restore fails closed: proxy authentication stays on, so the listener never silently
+becomes an open proxy, and every client gets `407` until the password is entered again. The restore
+says so instead of looking healthy:
+
+- The restore result (Settings → Project & data → Import full project, and Vault → Import) names
+  the passwords that were not included and asks you to re-enter them. The API returns them in
+  `credentialsNotRestored` (`proxyAuthPassword`, `upstreamProxyPassword`) with a readable `notice`.
+- After you switch to the restored project, **Settings → Proxy & network → Proxy authentication**
+  shows "Password not included in the backup", the Proxy section health reads
+  "Proxy: auth password missing" instead of a green "listening", the desktop status bar shows the
+  proxy as a warning, and the readiness report has a failing `proxy_auth` check.
+- An upstream proxy whose password was dropped shows the same notice under **Upstream proxy** until
+  you save it again, with or without a password.
+
+### Notes on import
+
+A portable project import never discards the local project notes. If the local notes are empty the
+bundle's notes are taken. If the bundle's notes are empty, identical to the local notes, or already
+contained in them, the local notes are kept. Otherwise the local notes are kept and the bundle's are
+appended under an `## Imported from project export (YYYY-MM-DD)` heading. Re-importing the same bundle
+therefore adds nothing. The result reports `notes` as `imported`, `merged` or `kept` and the import
+toast says so. Peer, archive and vault merges do not touch notes; only a full archive restore, which
+creates a separate project, brings its notes with it.
+
+### Network settings stay local
+
+Importing or merging a project never changes this machine's network settings. A portable project
+import keeps the local upstream proxy and its CA, and its result lists the ones the bundle carried
+with a different value (`keptLocalSettings`, shown in the import toast). The proxy listener and bind
+address, proxy authentication and the system proxy are not in a bundle at all, and peer, archive and
+vault merges do not touch settings. Only a full archive *restore*, which creates a separate project
+that is a copy of the archived one, brings its network settings with it (minus passwords); they apply
+when you switch to that project.
 
 ## Retention and deletion
 

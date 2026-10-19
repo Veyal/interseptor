@@ -58,3 +58,21 @@ html.desktop-app .act-intent .icon{display:none}
 html.desktop-app .act-day>.act-detail{margin:0 16px 8px 66px}
 html.desktop-app .act-detail{padding:8px 10px;border-color:var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);font-size:var(--text-ui)}
 html.desktop-app .act-detail b{font-size:var(--text-caption);font-weight:500;letter-spacing:normal;text-transform:none;color:var(--text-muted)}
+
+/* ---- narrow desktop window (sidebar open, ~900px): the fixed columns left the
+   summary/result ~6 characters. Drop the constant "AI" column, keep the summary
+   on the first line and give the result its own full-width, wrapping line. ---- */
+@media (max-width:1180px){
+  html.desktop-app .act-row{grid-template-columns:16px 132px minmax(0,1fr) auto 44px auto;row-gap:2px}
+  html.desktop-app .act-actor{display:none}
+  html.desktop-app .act-type{grid-column:1;grid-row:1}
+  html.desktop-app .act-tool{grid-column:2;grid-row:1}
+  html.desktop-app .act-sum{grid-column:3;grid-row:1}
+  html.desktop-app .act-target{grid-column:4;grid-row:1}
+  html.desktop-app .act-outcome{grid-column:5;grid-row:1}
+  html.desktop-app .act-meta{grid-column:6;grid-row:1}
+  html.desktop-app .act-res{grid-column:2 / -1;grid-row:2;white-space:normal;overflow-wrap:anywhere}
+  html.desktop-app .act-res:empty{display:none}
+  html.desktop-app .act-intent{grid-column:2 / -1;grid-row:3}
+  html.desktop-app .act-day>.act-detail{margin-left:42px}
+}

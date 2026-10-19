@@ -306,3 +306,37 @@ test('filterTree finds a request by the URL text the row now displays', () => {
   assert.equal(RowM.filterTree(tree, '/users/1/roles').length, 1);
   assert.equal(RowM.filterTree(tree, 'nothing').length, 0);
 });
+
+test('removing the query from an object URL drops the stale structured parts', () => {
+  const item = { ...POSTMAN_ITEM, url: { raw: 'https://example.com/a/b?x=1', protocol: 'https', host: ['example', 'com'], path: ['a', 'b'], query: [{ key: 'x', value: '1' }], variable: [{ key: 'id', value: '7' }] } };
+  const ed = itemToEditor(item);
+  ed.url = 'https://example.com/a/b';
+  ed.params = syncParamsFromURL(ed.url, ed.params);
+  const out = editorToItem(ed, item);
+  assert.equal(out.url.raw, 'https://example.com/a/b');
+  assert.equal(out.url.query, undefined, 'a stale query array would still be sent');
+  assert.equal(out.url.host, undefined);
+  assert.equal(out.url.path, undefined);
+  assert.deepEqual(out.url.variable, [{ key: 'id', value: '7' }], 'path variables survive');
+  assert.deepEqual(editorToItem(itemToEditor(item), item).url, item.url, 'an unchanged URL is stored untouched');
+});
+
+import { blockText } from '../js/collections-model.js';
+test('blockText never shows the raw enum', () => {
+  assert.equal(blockText('out_of_scope'), 'The target host is out of scope');
+  assert.doesNotMatch(blockText('something_new'), /something_new/);
+  assert.equal(blockText(''), 'Send blocked');
+});
+
+test('folderLabel names the folder and its size for assistive tech', async () => {
+  const { folderLabel } = await import('../js/collections-model.js');
+  assert.equal(folderLabel({ name: 'Users' }, 3), 'Folder Users, 3 items');
+  assert.equal(folderLabel({ name: 'Users' }, 1), 'Folder Users, 1 item');
+  assert.equal(folderLabel({ name: '' }, 0), 'Folder Untitled folder, 0 items');
+});
+
+test('an IP guard block has its own reason text and offers Add host to scope', () => {
+  assert.match(blockText('ip_guard'), /private or loopback/);
+  assert.equal(needsAddHost({ outcome: 'blocked', blockReason: 'ip_guard' }), true);
+  assert.equal(needsAddHost({ outcome: 'blocked', blockReason: 'base_target_pin' }), false);
+});

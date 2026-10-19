@@ -30,14 +30,20 @@ func (h *projectAPI) getNotes(w http.ResponseWriter, r *http.Request) {
 // silently overwritten, and success returns the new rev.
 func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Notes   string `json:"notes"`
-		BaseRev string `json:"baseRev"`
+		Notes   *string `json:"notes"`
+		BaseRev string  `json:"baseRev"`
 	}
 	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
+	// PUT replaces the whole notebook: a body without "notes" (a typo, or a
+	// client meaning to append) must not wipe it. An empty string clears it.
+	if in.Notes == nil {
+		httpErr(w, http.StatusBadRequest, `notes is required (send "notes":"" to clear the notebook; PATCH appends)`)
+		return
+	}
 	if in.BaseRev != "" {
-		saved, err := h.st.PersistNotesIfRev(in.BaseRev, in.Notes)
+		saved, err := h.st.PersistNotesIfRev(in.BaseRev, *in.Notes)
 		if errors.Is(err, store.ErrNotesConflict) {
 			httpErr(w, http.StatusConflict, "notes changed elsewhere — reload and merge before saving")
 			return
@@ -50,7 +56,7 @@ func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"rev": store.NotesRev(saved)})
 		return
 	}
-	if _, err := h.st.PersistNotes(in.Notes); err != nil {
+	if _, err := h.st.PersistNotes(*in.Notes); err != nil {
 		writeNotesMutationError(w, err)
 		return
 	}
@@ -95,6 +101,14 @@ func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 	mime, raw, err := store.DecodeNotesImagePayload(in.Mime, in.Data)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Judge by content, not the declared type: anything that is not a
+	// supported raster image is refused rather than stored as an opaque blob.
+	if sniffed := store.SniffNotesImageMIME(raw); sniffed != "" {
+		mime = sniffed
+	} else if len(raw) > 0 {
+		httpErr(w, http.StatusUnsupportedMediaType, "unsupported image type: expected PNG, JPEG, GIF, WebP, BMP or AVIF")
 		return
 	}
 	id, err := h.st.InsertNotesImage(mime, raw)

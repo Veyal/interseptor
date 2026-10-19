@@ -6,7 +6,7 @@ import (
 )
 
 func TestUICVSSUsesExplicitApplyAndIgnoresStalePreview(t *testing.T) {
-	cvss := executableJS(readUIAsset(t, "js/cvss.js"))
+	cvss := executableJS(cvssSource(t))
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	for _, want := range []string{
 		"/api/finding-cvss",
@@ -33,7 +33,7 @@ func TestUICVSSUsesExplicitApplyAndIgnoresStalePreview(t *testing.T) {
 }
 
 func TestUICVSSUsesCustomMetricSelects(t *testing.T) {
-	cvss := executableJS(readUIAsset(t, "js/cvss.js"))
+	cvss := executableJS(cvssSource(t))
 	for _, metric := range []string{"AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA"} {
 		if !strings.Contains(cvss, `['`+metric+`',`) {
 			t.Errorf("CVSS editor missing metric %s", metric)

@@ -151,7 +151,12 @@ func scriptError(out pmsandbox.Output) error {
 	case pmsandbox.StatusError:
 		msg := "script error"
 		if len(out.Errors) > 0 {
-			msg = out.Errors[0].Kind + ": " + out.Errors[0].Message
+			msg = out.Errors[0].Message
+			// The step prefixes "error: " itself, so the generic kind adds nothing;
+			// a specific kind (timeout, memory, syntax ...) stays.
+			if k := out.Errors[0].Kind; k != "" && k != "error" {
+				msg = k + ": " + msg
+			}
 		}
 		return errors.New(msg)
 	}

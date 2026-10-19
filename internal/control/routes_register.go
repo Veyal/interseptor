@@ -82,13 +82,16 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 func (h *Hub) registerInterceptRoutes(ic *interceptAPI) {
 	h.mux.HandleFunc("GET /api/intercept", ic.getIntercept)
 	h.mux.HandleFunc("GET /api/intercept/held/{id}/raw", ic.getInterceptHeldRaw)
+	h.mux.HandleFunc("GET /api/intercept/held/{id}/body", ic.getInterceptHeldBody)
 	h.mux.HandleFunc("POST /api/intercept/toggle", ic.toggleIntercept)
 	h.mux.HandleFunc("POST /api/intercept/filter", ic.setInterceptFilter)
 	h.mux.HandleFunc("POST /api/intercept/{id}/forward", ic.forwardIntercept)
 	h.mux.HandleFunc("POST /api/intercept/{id}/drop", ic.dropIntercept)
+	h.mux.HandleFunc("POST /api/intercept/{id}/drop-pending", ic.setDropPending)
 	h.mux.HandleFunc("POST /api/intercept/response/toggle", ic.toggleResponseIntercept)
 	h.mux.HandleFunc("POST /api/intercept/response/{id}/forward", ic.forwardResponse)
 	h.mux.HandleFunc("POST /api/intercept/response/{id}/drop", ic.dropResponse)
+	h.mux.HandleFunc("POST /api/intercept/response/{id}/drop-pending", ic.setResponseDropPending)
 }
 
 func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *iosAPI, sess *sessionAPI) {

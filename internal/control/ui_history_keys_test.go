@@ -21,11 +21,13 @@ func TestUIHistoryListboxKeyboardModel(t *testing.T) {
 	if strings.Contains(proxy, `aria-pressed="${state.selected.has(f.id)`) {
 		t.Error("History rows are options now; multi-selection is aria-selected, not aria-pressed")
 	}
-	// Pads are resized before any focus() in the keyed reconcile: a focus forces
-	// layout, and the briefly shorter content clamped scrollTop (End jumped back).
+	// Pads are resized before any focus() once rows start leaving the keyed
+	// reconcile: a focus forces layout, and the briefly shorter content clamped
+	// scrollTop (End jumped back). Parking focus before the first removal is safe.
 	start := strings.Index(proxy, "function reconcileVirtualRows(){")
 	end := strings.Index(proxy[start:], "\n}\n")
 	body := proxy[start : start+end]
+	body = body[strings.Index(body, "for(const id of plan.remove){"):]
 	pads := strings.Index(body, "bottom.style.height=win.bottomPad+'px';")
 	if pads < 0 || strings.Index(body, ".focus(") < pads {
 		t.Error("reconcileVirtualRows must resize the pads before it moves focus")
@@ -33,7 +35,7 @@ func TestUIHistoryListboxKeyboardModel(t *testing.T) {
 
 	app := readUIAsset(t, "js/app.js")
 	requireUIContains(t, app,
-		`[role="listbox"]:not(#rows)`,
+		"const isTypingTarget=isShortcutTypingTarget;",
 		"const carryFocus=focusInFlowList();",
 		"revealFlowRow(id,{focus:carryFocus});",
 	)

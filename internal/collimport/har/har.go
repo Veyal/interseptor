@@ -198,7 +198,7 @@ func build(reqs []request, label, format string, opt Options) (*Result, error) {
 	}
 	sort.Strings(hosts)
 	for _, h := range hosts {
-		add(impkit.NeedsReview, "target-host", fmt.Sprintf("%d request(s) target %s; sends are blocked until the host is in scope", hostCount[h], h), "Add the host to the engagement scope")
+		add(impkit.NeedsReview, "target-host", fmt.Sprintf("%d request(s) target %s", hostCount[h], h), "Check the host is in the engagement scope")
 	}
 	add(impkit.Degraded, "responses-not-imported", "responses are not stored in the collection; header order is not preserved", "Import as History flows to keep evidence")
 	impkit.Finish(&res.Report, label)

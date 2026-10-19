@@ -1,5 +1,5 @@
-import { $, requireFindingsEditing, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, renderLoadError, openFlow, icon } from './core.js';
-import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest, mergeNotes } from './notes-model.js';
+import { $, requireFindingsEditing, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, flushOnClose, renderLoadError, openFlow, icon } from './core.js';
+import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest, mergeNotes, reloadClearsSaveStatus } from './notes-model.js';
 registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
@@ -50,9 +50,9 @@ function setNotesStatus(kind){
 const notesAutosave=createAutosave({
   delay:800,
   onStatus:setNotesStatus,
-  save:async v=>{
+  save:async (v,opts)=>{
     let r;
-    try{r=await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(notesState.rev?{notes:v,baseRev:notesState.rev}:{notes:v})});}
+    try{r=await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(notesState.rev?{notes:v,baseRev:notesState.rev}:{notes:v}),...(opts&&opts.keepalive?{keepalive:true}:{})});}
     catch(e){
       if(e.status===409){
         try{await mergeRemoteNotes();return;}
@@ -64,6 +64,9 @@ const notesAutosave=createAutosave({
     notesState.rev=r&&r.rev?r.rev:'';
   },
 });
+
+// Text typed inside the debounce window is saved when the window closes, reloads or hides.
+flushOnClose({isDirty:()=>notesAutosave.isDirty(),flush:o=>notesAutosave.flush(o)});
 
 // mergeRemoteNotes runs when a save is refused because the notebook changed on
 // the server (typically an agent's append_notes while the user was typing). It
@@ -105,7 +108,7 @@ export async function loadNotes(){
     // the next save then either succeeds (this was our own save echoing back)
     // or gets a 409 and merges the remote change instead of overwriting it.
     if(preserveLocal){if(ta)notesAutosave.schedule(ta.value);}
-    else{notesState.loaded=loaded;notesState.rev=d.rev||'';if(ta)ta.value=loaded;setNotesStatus('');}
+    else{notesState.loaded=loaded;notesState.rev=d.rev||'';if(ta)ta.value=loaded;if(reloadClearsSaveStatus(current,loaded))setNotesStatus('');}
     if(loadState){loadState.textContent='';loadState.style.display='none';}
     if(notesState.mode==='preview'||notesPanelWide())showNotesPreview();
   }catch(e){

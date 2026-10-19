@@ -9,7 +9,8 @@ import { registerCommand, listCommands, TAB_CHANGE_EVENT, getShellApi } from './
 import { renderState } from './statepanel.js';
 import { createSplitPane } from './split.js';
 import * as M from './collections-model.js';
-import { S, X, btn, itemByUid, jget, jsend, lsGet, lsSet, panelActive } from './collections-core.js';
+import { S, X, btn, itemByUid, jget, jsend, lsGet, lsSet, panelActive, setStatus } from './collections-core.js';
+import * as SF from './collections-safety.js';
 import { openItem, renderEditor, renderEmptyEditor, scheduleResolve } from './collections-editor.js';
 import { expandTo, refreshScope, renderEnvSelect, renderScriptsChip, selectedFolder, setPhone, updateBadge } from './collections-env.js';
 import { sendCurrent, setConsole } from './collections-response.js';
@@ -18,7 +19,7 @@ import { addItem, nudge, renderTree, repaintForScope } from './collections-tree.
 
 /* ------------------------------------------------------------------ loading */
 
-async function loadAll({ keepSelection = true } = {}) {
+async function loadAll({ keepSelection = true, select = '' } = {}) {
   const gen = ++S.loadGen;
   const treeState = $('#collTreeState');
   if (!S.collections.length) renderState(treeState, 'loading', { title: 'Loading collections', rows: 5 });
@@ -38,7 +39,7 @@ async function loadAll({ keepSelection = true } = {}) {
       return;
     }
     const saved = lsGet('collection');
-    const want = (keepSelection && S.colUid) || saved;
+    const want = select || (keepSelection && S.colUid) || saved;
     const target = S.collections.find((c) => c.uid === want) || S.collections[0];
     await loadCollection(target.uid, { keepSelection });
   } catch (e) {
@@ -59,6 +60,8 @@ function firstRequestInTreeOrder(nodes) {
 
 async function loadCollection(uid, { keepSelection = true } = {}) {
   const gen = ++S.loadGen;
+  if (SF.statusGoesStale(S.loadedColUid, uid)) setStatus('', '');
+  S.loadedColUid = uid;
   S.colUid = uid;
   lsSet('collection', uid);
   try {
@@ -106,8 +109,7 @@ async function newCollection() {
   if (!name) return;
   try {
     const c = await jsend('POST', '/api/collections', { name });
-    S.colUid = c.uid;
-    await loadAll({ keepSelection: false });
+    await loadAll({ keepSelection: false, select: c.uid });
     toast('Collection created');
   } catch (e) { toastError('Could not create the collection', e); }
 }

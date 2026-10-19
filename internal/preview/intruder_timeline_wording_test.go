@@ -45,7 +45,7 @@ func TestTimelineCountsMatchedAndOther(t *testing.T) {
 		t.Fatalf("matched=%d other=%d", st.matched, st.other)
 	}
 	r, _ := RenderIntruderTimeline(in, Opts{Width: 640})
-	for _, want := range []string{"1 matched the grep pattern", "2 5xx/other"} {
+	for _, want := range []string{"1 matched the grep pattern", "2 other non-2xx"} {
 		if !strings.Contains(r.Summary, want) {
 			t.Fatalf("summary %q missing %q", r.Summary, want)
 		}

@@ -189,6 +189,7 @@ export function readPropertiesHTML(f) {
   const row = (label, value) => rows.push(`<div class="find-prop"><dt>${label}</dt><dd>${value}</dd></div>`);
   row('Severity', `<span class="find-pval ${severityTone(f.severity)}"><span class="find-dot" aria-hidden="true"></span>${esc(f.severity)}</span>`);
   row('Status', `<span class="find-pval">${esc(String(f.status || '').replace(/_/g, ' '))}</span>`);
+  if (f.status === 'ignored' && f.proofReview?.ignoreReason) row('Ignore reason', `<span class="find-pval">${esc(f.proofReview.ignoreReason)}</span>`);
   if (f.confidence) row('Confidence', `<span class="find-pval">${esc(f.confidence)}</span>`);
   if (f.cwe) row('CWE', `<span class="find-pval">${esc(f.cwe)}</span>`);
   if (f.environment) row('Environment', `<span class="find-pval">${esc(f.environment)}</span>`);

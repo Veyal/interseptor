@@ -77,6 +77,15 @@ func checkFindingBodySize(f store.Finding) string {
 	return ""
 }
 
+// findingBodySizeStatus maps a checkFindingBodySize message to its status:
+// real size limits are 413, structural validation (image blocks) is 400.
+func findingBodySizeStatus(msg string) int {
+	if strings.Contains(msg, "too large") {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
+}
+
 // Findings: a curated, persistent vulnerability store for a project (distinct from
 // the ephemeral passive-scanner issues). A finding can have multiple request/response
 // flows attached as PoC evidence — the human (or AI) selects them from History. The
@@ -274,26 +283,27 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		findings: fs, issues: issues, groupByTag: groupByTag,
 		tagOrder: tagOrder, omitTags: omitTags,
 		ctx: h.reportContext(), brand: h.reportBranding(), audit: audit,
+		draftNote: draftReportNote(mode, quality),
 	}
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
+		w.Header().Set("Content-Disposition", reportDisposition("json", mode))
 		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
 			"engagementBriefVersion": rr.ctx.Brief.Version, "interceptionSetupVersion": rr.ctx.Interception.Version,
 			"reportBrandingVersion": rr.brand.Version})
 	case "html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
+		w.Header().Set("Content-Disposition", reportDisposition("html", mode))
 		w.Write([]byte(h.reportHTML(rr)))
 	case "pdf":
-		h.writeReportPDF(w, r, h.reportHTML(rr))
+		h.writeReportPDF(w, r, h.reportHTML(rr), mode)
 	case "sarif":
-		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.sarif"`)
+		w.Header().Set("Content-Disposition", reportDisposition("sarif", mode))
 		writeSARIF(w, report.SARIF(fs, version.String()))
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
+		w.Header().Set("Content-Disposition", reportDisposition("md", mode))
 		w.Write([]byte(rr.markdown()))
 	default:
 		httpErr(w, http.StatusBadRequest, reportFormatError)
@@ -311,13 +321,31 @@ type reportRender struct {
 	ctx        report.Context
 	brand      store.ReportBranding
 	audit      string
+	// draftNote is the visible Draft marker: a draft export whose findings still
+	// have readiness gaps must not read as a finished deliverable.
+	draftNote string
 }
 
 // markdown is the one place the report Markdown is assembled. Branding is
 // applied last so the cover sits above the engagement context.
 func (rr reportRender) markdown() string {
 	md := report.WithContext(renderReportMarkdown(rr.findings, rr.issues, rr.groupByTag, rr.tagOrder, rr.omitTags), rr.ctx) + rr.audit
-	return report.WithBranding(md, rr.brand)
+	return withDraftNote(report.WithBranding(md, rr.brand), rr.draftNote)
+}
+
+// withDraftNote places the Draft marker directly under the report title, after
+// branding has replaced it, so the title stays the first line of every export.
+func withDraftNote(md, note string) string {
+	if note == "" {
+		return md
+	}
+	if strings.HasPrefix(md, "# ") {
+		if i := strings.Index(md, "\n"); i >= 0 {
+			return md[:i] + "\n\n" + note + md[i:]
+		}
+		return md + "\n\n" + note
+	}
+	return note + "\n\n" + md
 }
 
 // reportHTML is the one place the HTML report document is assembled, so the
@@ -538,6 +566,34 @@ func (h *findingsAPI) reportBody(hash string, headers map[string][]string) (map[
 	return displayHeaders, body, truncated
 }
 
+// maxFindingTitleRunes bounds a finding title; the UI rename prompt and report
+// headings assume a one-line title.
+const maxFindingTitleRunes = 300
+
+// checkFindingTitle trims and validates a title for create and update.
+func checkFindingTitle(title string) (string, string) {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return "", "title required (must not be blank)"
+	}
+	if utf8.RuneCountInString(t) > maxFindingTitleRunes {
+		return "", fmt.Sprintf("title too long (max %d characters)", maxFindingTitleRunes)
+	}
+	return t, ""
+}
+
+// checkFindingEnums rejects unknown severity/status values instead of letting
+// the store silently coerce them. nil/omitted (or empty on create) is allowed.
+func checkFindingEnums(severity, status *string, allowEmpty bool) string {
+	if severity != nil && !(allowEmpty && strings.TrimSpace(*severity) == "") && !store.ValidFindingSeverity(*severity) {
+		return "severity must be one of " + strings.Join(store.FindingSeverities, ", ")
+	}
+	if status != nil && !(allowEmpty && strings.TrimSpace(*status) == "") && !store.ValidFindingStatus(*status) {
+		return "status must be one of " + strings.Join(store.FindingStatuses, ", ")
+	}
+	return ""
+}
+
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Severity                 string                     `json:"severity"`
@@ -571,8 +627,14 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
 	}
-	if in.Title == "" {
-		httpErr(w, http.StatusBadRequest, "title required")
+	title, msg := checkFindingTitle(in.Title)
+	if msg != "" {
+		httpErr(w, http.StatusBadRequest, msg)
+		return
+	}
+	in.Title = title
+	if msg := checkFindingEnums(&in.Severity, &in.Status, true); msg != "" {
+		httpErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	if in.Body != "" && in.Blocks != nil {
@@ -599,15 +661,20 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Body = norm
 	}
+	source := orVal(in.Source, "human")
+	status := in.Status
+	if strings.TrimSpace(status) == "" && source == "ai" {
+		status = "needs_verification"
+	}
 	f := &store.Finding{
-		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
+		Severity: in.Severity, Status: status, Source: source,
 		Title: in.Title, Summary: in.Summary, Target: in.Target, Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
 		Impact: in.Impact, Why: in.Why, Cwe: in.Cwe, Environment: in.Environment,
 		Cvss: in.Cvss, CvssV3: in.CvssV3, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
 		Tags: in.Tags,
 	}
 	if msg := checkFindingBodySize(*f); msg != "" {
-		httpErr(w, http.StatusRequestEntityTooLarge, msg)
+		httpErr(w, findingBodySizeStatus(msg), msg)
 		return
 	}
 	id, err := h.st.CreateFinding(f, findingAPIChange(""))
@@ -695,7 +762,11 @@ func missingFlowIDs(f *store.Finding) []int64 {
 }
 
 func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
 	f, err := h.st.GetFinding(id)
 	if err != nil {
 		httpNotFoundOrInternal(w, err, "finding not found")
@@ -748,6 +819,21 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
 	}
+	if !h.requireFinding(w, id) {
+		return
+	}
+	if in.Title != nil {
+		title, msg := checkFindingTitle(*in.Title)
+		if msg != "" {
+			httpErr(w, http.StatusBadRequest, msg)
+			return
+		}
+		in.Title = &title
+	}
+	if msg := checkFindingEnums(in.Severity, in.Status, false); msg != "" {
+		httpErr(w, http.StatusBadRequest, msg)
+		return
+	}
 	if in.Body != nil && in.Blocks != nil {
 		httpErr(w, http.StatusBadRequest, "send either body or blocks, not both")
 		return
@@ -786,7 +872,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		VerificationInstructions: value(in.VerificationInstructions), Retest: value(in.Retest),
 	}
 	if msg := checkFindingBodySize(mutation); msg != "" {
-		httpErr(w, http.StatusRequestEntityTooLarge, msg)
+		httpErr(w, findingBodySizeStatus(msg), msg)
 		return
 	}
 	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, CvssV3: in.CvssV3}); err != nil {
@@ -808,6 +894,9 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 
 func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, id) {
+		return
+	}
 	if err := h.st.DeleteFinding(id, findingAPIChange("")); err != nil {
 		httpInternalErr(w, err)
 		return
@@ -972,4 +1061,27 @@ func (h *findingsAPI) getFindingImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	_, _ = io.Copy(w, rc)
+}
+
+// draftReportNote is the Markdown line that marks a draft export with open
+// readiness gaps. A final export (which is gated) and a draft that would pass
+// the final gate carry no marker.
+func draftReportNote(mode string, q reportQuality) string {
+	if mode != "draft" || q.Ready || q.Total == 0 {
+		return ""
+	}
+	// Total already excludes false positives (they render only in the excluded
+	// appendix), so the count matches the findings the report body lists.
+	reported := q.Total
+	return fmt.Sprintf("> **DRAFT** - not for delivery: %d of %d finding(s) have open readiness gaps.", q.Summary.Blocked, reported)
+}
+
+// reportDisposition names a report download the same way for every format; a
+// draft says so in its filename as well as in its body.
+func reportDisposition(ext, mode string) string {
+	name := "interseptor-report"
+	if mode == "draft" {
+		name += "-draft"
+	}
+	return `attachment; filename="` + name + "." + ext + `"`
 }

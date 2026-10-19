@@ -36,6 +36,21 @@ html.desktop-app #panel-repeater .rep-res{container:dsk-rep-res/inline-size}
   html.desktop-app #panel-repeater .rep-actions .btn .icon{width:15px;height:15px}
   html.desktop-app #panel-repeater .rep-attached{font-size:var(--text-caption)}
 }
+/* Narrower still (History open in a 900px window): the status line gets its own
+   row and wraps instead of being cut ("500 Internal Server Error · 1 m…"). */
+@container dsk-rep-res (max-width:420px){
+  html.desktop-app #panel-repeater .dsk-actionrow{flex-wrap:wrap;padding-block:4px}
+  html.desktop-app #panel-repeater .dsk-actionrow #repStatus{flex:1 0 100%;white-space:normal;overflow:visible;padding-right:0}
+  /* The response header stays on one line (compact views) instead of wrapping under the title. */
+  html.desktop-app #panel-repeater .rep-res>.pane-head{flex-wrap:nowrap;gap:6px}
+  html.desktop-app #panel-repeater .rep-res>.pane-head .seg button{padding-inline:7px}
+}
+/* Narrower than the title plus four views: the title goes visually hidden (still
+   announced) so Raw / Pretty / Decoded / Hex stay on one line. */
+@container dsk-rep-res (max-width:300px){
+  html.desktop-app #panel-repeater .rep-res>.pane-head>.lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  html.desktop-app #panel-repeater #repResSeg{margin-left:0}
+}
 
 /* The response is code, not chrome. */
 html.desktop-app #panel-repeater .rep-res #repResView{flex:1;min-height:0}

@@ -2,7 +2,11 @@
 
 > Interseptor is a single-binary HTTP/HTTPS intercepting proxy and security-testing toolkit. AI agents drive the same engine as the web UI through an MCP server (stdio and Streamable HTTP) and a REST/SSE API. These pages explain how to install it, connect, follow the rules, and file findings in one consistent format.
 
-Fetch [llms-full.txt](https://veyal.github.io/interseptor/llms-full.txt) first: it is a single file containing the agent guide, the finding-writing contract, and the API and MCP references. Authorized testing only; read the hard rules before sending any request.
+Fetch [llms-full.txt](https://veyal.github.io/interseptor/llms-full.txt) first: it is a single file containing the agent guide, the finding-writing contract, the API and MCP references, and every guide to using the app and its features. Authorized testing only; read the hard rules before sending any request.
+
+## Scoring findings
+
+Think about the real impact before you score a finding, and do not copy a severity from a scanner, a checklist or the vulnerability class name. Only a finding with demonstrated confidentiality, integrity or availability impact gets a CVSS score above 0.0; everything else is Info, or not a finding at all. Username or email enumeration on its own is Info. A SQL error message, stack trace, version banner or internal path is Info; it becomes SQL injection only when you show the injected query reading or changing data, and then you score that outcome, for example High when it reads other users' records. A missing header, weak cipher or absent hardening flag is Info or left out. When a weakness enables real impact, prove the impact and score that. See "Score real impact, not the label" in llms-full.txt.
 
 ## Project notes
 
@@ -10,7 +14,7 @@ The project notebook (Report → Notes; `get_notes`, `set_notes`, `append_notes`
 
 ## Agent guide
 
-- [Complete guide as one text file](https://veyal.github.io/interseptor/llms-full.txt): agent guide, finding contract, API and MCP reference
+- [Complete guide as one text file](https://veyal.github.io/interseptor/llms-full.txt): agent guide, finding contract, API and MCP reference, and every feature guide
 - [Interseptor for AI agents](https://veyal.github.io/interseptor/ai-agents/): Rules, install, MCP and REST setup, workflow, and the finding-writing contract for AI agents
 
 ## Core guides

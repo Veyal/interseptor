@@ -54,10 +54,14 @@ func TestTrackerNarrativesKeepReportProvenance(t *testing.T) {
 				t.Errorf("%s: %q appears %d times, want once", name, want, n)
 			}
 		}
-		for _, label := range []string{"Status:", "Confidence:", "Environment:"} {
+		for _, label := range []string{"Confidence:", "Environment:"} {
 			if n := strings.Count(body, label); n != 1 {
 				t.Errorf("%s: %q appears %d times, want once", name, label, n)
 			}
+		}
+		// The internal review state stays in Interseptor.
+		if strings.Contains(body, "Status:") {
+			t.Errorf("%s: the workflow status leaked into the submission body", name)
 		}
 		if !strings.Contains(body, "https://example.com/invoices/9") {
 			t.Errorf("%s: second affected target lost", name)
@@ -74,7 +78,7 @@ func TestJiraDescriptionIsWikiMarkup(t *testing.T) {
 			t.Errorf("Jira description still carries Markdown %q:\n%s", bad, body)
 		}
 	}
-	for _, want := range []string{"{noformat}\nGET /invoices/8 HTTP/1.1", "{{https://example.com/invoices/8}}", "* *Status:* verified"} {
+	for _, want := range []string{"{noformat}\nGET /invoices/8 HTTP/1.1", "{{https://example.com/invoices/8}}", "* *Confidence:* "} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Jira description missing %q:\n%s", want, body)
 		}
@@ -234,8 +238,8 @@ func TestTrackerAdaptersHandleABareFinding(t *testing.T) {
 	if h.Title != "Bare claim" || h.Impact != "" || h.SeverityRating != "" {
 		t.Errorf("hackerone invented content: %+v", h)
 	}
-	if h.VulnerabilityInformation == "" {
-		t.Error("the narrative should still report the readiness gaps")
+	if strings.Contains(h.VulnerabilityInformation, "Readiness gaps") {
+		t.Errorf("the submission body carries the internal readiness gaps: %q", h.VulnerabilityInformation)
 	}
 	b := Bugcrowd(f, nil)
 	if b.BugURL != "" || b.ExtraInfo != "" || b.Severity != 0 {
@@ -270,10 +274,36 @@ func TestFindingMarkdownDropsOnlyTheHeading(t *testing.T) {
 	if strings.HasPrefix(md, "###") {
 		t.Fatalf("the report's numbered heading should be dropped:\n%s", md[:80])
 	}
-	if !strings.Contains(md, "**Status:** verified") {
+	if !strings.Contains(md, "**CWE:** CWE-639") {
 		t.Errorf("metadata lost:\n%s", md[:300])
 	}
-	if strings.Contains(md, "IDOR on /invoices/{id}\n- **Status") {
+	if strings.HasPrefix(md, "IDOR on /invoices/{id}") {
 		t.Error("the title line was kept as prose")
+	}
+}
+
+// QA round 2: tracker exports pasted the internal review state ("Status:
+// open", "Readiness gaps: target, impact, why, fix") into the body that goes
+// to the programme. The engagement report keeps both; a submission does not.
+func TestTrackerBodiesOmitInternalReviewState(t *testing.T) {
+	f := trackerFixture()
+	f.Status = "open" // the fixture also has open readiness gaps (proof, control, ...)
+	bodies := map[string]string{
+		"hackerone": HackerOne(f, nil).VulnerabilityInformation,
+		"bugcrowd":  Bugcrowd(f, nil).Description,
+		"jira":      Jira(f, nil).Fields.Description,
+		"markdown":  FindingMarkdown(f, nil),
+	}
+	for name, body := range bodies {
+		for _, leak := range []string{"Readiness gaps", "Status:* open", "Status:** open"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s body carries internal review text %q:\n%s", name, leak, body)
+			}
+		}
+	}
+	var b strings.Builder
+	renderFinding(&b, 1, f, nil)
+	if !strings.Contains(b.String(), "- **Status:** open") || !strings.Contains(b.String(), "- **Readiness gaps:** proof") {
+		t.Fatalf("the engagement report must keep the review state:\n%s", b.String())
 	}
 }

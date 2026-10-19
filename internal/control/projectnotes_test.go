@@ -64,7 +64,7 @@ func TestProjectNotesImageUploadAndServe(t *testing.T) {
 
 	up, _ := json.Marshal(map[string]string{
 		"mime": "image/png",
-		"data": "aGVsbG8=", // "hello"
+		"data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
 	})
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/notes/images", strings.NewReader(string(up)))
 	req.Header.Set("Content-Type", "application/json")
@@ -104,7 +104,7 @@ func TestProjectNotesStorageFailuresReturnScrubbed500(t *testing.T) {
 	}{
 		{"replace", (*projectAPI).putNotes, `{"notes":"replacement"}`},
 		{"append", (*projectAPI).patchNotes, `{"appendText":"addition"}`},
-		{"image", (*projectAPI).postNotesImage, `{"mime":"image/png","data":"aGVsbG8="}`},
+		{"image", (*projectAPI).postNotesImage, `{"mime":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestProjectNotesMutationsRejectTrailingJSONBeforeChangingState(t *testing.T
 		ts := httptest.NewServer(h.Handler())
 		defer ts.Close()
 
-		resp := request(t, http.MethodPost, ts.URL+"/api/notes/images", `{"mime":"image/png","data":"aGVsbG8="}{}`)
+		resp := request(t, http.MethodPost, ts.URL+"/api/notes/images", `{"mime":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="}{}`)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)

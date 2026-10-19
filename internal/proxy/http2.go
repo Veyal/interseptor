@@ -48,6 +48,10 @@ func (s *Server) h2Handler(dialHost, logicalHost string, port int) http.Handler 
 			return
 		}
 		if err != nil {
+			if clientAborted(r.Context(), err) {
+				s.recordClientAbort(flow)
+				return
+			}
 			flow.Status = http.StatusBadGateway
 			flow.Error = "upstream: " + err.Error()
 			flow.DurationMs = time.Since(flow.TS).Milliseconds()

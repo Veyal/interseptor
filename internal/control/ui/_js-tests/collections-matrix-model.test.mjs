@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cellVerdict, classLabel, matrixCaption, flaggedRowCount, identityChoices,
+  cellVerdict, cellTitle, classLabel, matrixCaption, flaggedRowCount, identityChoices,
   coverageLabel, coverageSummaryText, groupFraction, filterOperations,
   fmtMs, phaseBars, timingSummaryText, sortedOutliers,
-  diffHasChanges, diffSummaryText, handoffSummaryText, matrixRunIdentities, MATRIX_MAX_IDENTITIES,
+  diffHasChanges, diffSummaryText, handoffSummaryText, matrixRunIdentities, MATRIX_MAX_IDENTITIES, latestRunUid,
 } from '../js/collections-matrix-model.js';
 
 test('cellVerdict priority: blocked/error over flag over sameness', () => {
@@ -130,4 +130,37 @@ test('matrixRunIdentities with nothing saved still runs anonymous, and caps at t
   const many = Array.from({ length: 20 }, (_, i) => ({ name: 'u' + i, headers: 'X: ' + i }));
   assert.equal(matrixRunIdentities(many).length, MATRIX_MAX_IDENTITIES);
   assert.equal(MATRIX_MAX_IDENTITIES, 12);
+});
+
+test('latestRunUid takes the newest run so timing needs no pasted UID', () => {
+  assert.equal(latestRunUid([{ uid: 'new' }, { uid: 'old' }]), 'new');
+  assert.equal(latestRunUid([{}, { uid: 'x' }]), 'x');
+  assert.equal(latestRunUid([]), '');
+  assert.equal(latestRunUid(null), '');
+});
+
+test('timingEmpty is true for a run that sent nothing', async () => {
+  const { timingEmpty } = await import('../js/collections-matrix-model.js');
+  assert.equal(timingEmpty(null), true);
+  assert.equal(timingEmpty({ requests: 0, items: [] }), true);
+  assert.equal(timingEmpty({ requests: 2, items: [] }), true);
+  assert.equal(timingEmpty({ requests: 2, items: [{ name: 'a' }] }), false);
+});
+
+// Round 4 (a5) B3: a matrix cell's tooltip carries the cause, not "blocked — blocked".
+test('cellTitle names why a cell was blocked or errored', () => {
+  assert.equal(cellTitle('admin', { class: 'blocked', reason: 'out_of_scope' }), 'admin: blocked — The target host is out of scope');
+  assert.equal(cellTitle('admin', { class: 'blocked', reason: 'ip_guard', error: 'destination blocked by IP guard: 127.0.0.1 resolves to non-public address' }),
+    'admin: blocked — destination blocked by IP guard: 127.0.0.1 resolves to non-public address');
+  assert.equal(cellTitle('user', { class: 'error', error: 'Script prerequest: error: boom' }), 'user: error — Script prerequest: error: boom');
+  assert.equal(cellTitle('user', { class: 'error' }), 'user: error — the request failed before a response');
+  assert.equal(cellTitle('user', { class: 'success', status: 200, flag: 'violation', reason: 'candidate cross-object access' }),
+    'user: success (HTTP 200) — unexpected access — candidate cross-object access');
+  assert.equal(cellTitle('user', { class: 'success', status: 200, sameAsBaseline: true }), 'user: success (HTTP 200) — same as baseline');
+});
+
+test('untrustedScriptCount counts quarantined scripts only', async () => {
+  const { untrustedScriptCount } = await import('../js/collections-matrix-model.js');
+  assert.equal(untrustedScriptCount(null), 0);
+  assert.equal(untrustedScriptCount({ scripts: [{ trusted: true }, { trusted: false }, {}] }), 2);
 });

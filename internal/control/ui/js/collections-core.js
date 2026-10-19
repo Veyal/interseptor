@@ -3,14 +3,16 @@
 // Sibling modules never import each other: each registers the functions the
 // others call on X (below) and calls them as X.name(), so the static import
 // graph stays acyclic (ui_collections_cycle_test.go pins this).
-import { api, icon, projectStorageKey, $ } from './core.js';
+import { api, icon, projectStorageKey, $, compileScopeRules, flowInScope } from './core.js';
+import { pinMatches } from './varscope-model.js';
+import { restrictedHost } from './collections-guard-model.js';
 
 export const JSON_HDR = { 'content-type': 'application/json' };
 export const jget = (path) => api(path);
 export const jsend = (method, path, body) => api(path, { method, headers: JSON_HDR, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const S = {
-  booted: false, loadGen: 0, itemGen: 0, sendGen: 0,
+  booted: false, loadedColUid: '', loadGen: 0, itemGen: 0, sendGen: 0,
   collections: [], envs: [], colUid: '', collection: null, items: [], tree: [],
   selUid: '', expanded: new Set(), filter: '',
   envUid: '', scope: new Map(), scripts: null,
@@ -59,3 +61,32 @@ export function announce(text) {
 // functions when they load (collections.js imports all of them before any
 // user action can fire), so X.renderTree() and friends need no sibling import.
 export const X = { loadAll: null, loadCollection: null, repaintTree: null };
+
+/* ------------------------------------------------------------------ run guard preview */
+
+// loadBlockCheck returns blockCheck(url) -> '' | 'out_of_scope' | 'base_target_pin' | 'ip_guard',
+// the client-side mirror of the runner's guard (scope rules from /api/scope,
+// then the active environment's base target pin, then the private-address IP
+// guard) so a run review can warn before anything is sent. It answers '' whenever it cannot be sure: the scope
+// could not be read, or a rule needs a regex the browser cannot evaluate; the
+// server still enforces either way.
+export async function loadBlockCheck(pin = '') {
+  let compiled = null;
+  try { const d = await api('/api/scope'); compiled = compileScopeRules(d.rules || []); } catch (e) { /* unknown: the server decides */ }
+  // Under the block policy a loopback/private destination is refused at dial
+  // time unless an include rule names its host (Pipeline.allowPrivate). The warn
+  // and off policies do not run the guard.
+  const policy = (S.collection && S.collection.scopePolicy) || 'block';
+  return (rawUrl) => {
+    let u;
+    try { u = new URL(String(rawUrl || '')); } catch (e) { return ''; }
+    if (!/^https?:$/.test(u.protocol)) return '';
+    if (pin && !pinMatches(pin, u.port ? u.hostname + ':' + u.port : u.hostname)) return 'base_target_pin';
+    if (compiled && compiled.evaluable) {
+      const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+      if (!flowInScope({ host: u.hostname, path: u.pathname, scheme: u.protocol.slice(0, -1), port }, compiled)) return 'out_of_scope';
+    }
+    if (policy === 'block' && compiled && !compiled.hasInclude && restrictedHost(u.hostname)) return 'ip_guard';
+    return '';
+  };
+}

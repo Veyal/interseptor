@@ -486,6 +486,55 @@ func validateImportedProject(dir string) error {
 	return nil
 }
 
+// restoredCredentialGaps names the saved passwords a restored project needs
+// but that its backup did not carry (archives are scrubbed): the proxy-listener
+// password when authentication is on, and the upstream proxy password when one
+// was removed. Auth stays on (fail closed); the caller tells the operator.
+func restoredCredentialGaps(dir string) []string {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, archiveDBName)+"?mode=ro")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	get := func(key string) string {
+		var v string
+		_ = db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+		return v
+	}
+	var gaps []string
+	if get(proxyAuthEnabledKey) == "1" && get(proxyAuthPasswordKey) == "" {
+		gaps = append(gaps, "proxyAuthPassword")
+	}
+	if get(upstreamPasswordRemovedKey) == "1" {
+		if _, hasPassword := redactUpstreamPassword(get("upstream.proxy")); !hasPassword {
+			gaps = append(gaps, "upstreamProxyPassword")
+		}
+	}
+	return gaps
+}
+
+// withRestoreNotice adds credentialsNotRestored and a readable notice to a
+// restore result when the restored project needs passwords re-entered.
+func withRestoreNotice(res map[string]any, dir string) map[string]any {
+	gaps := restoredCredentialGaps(dir)
+	if len(gaps) == 0 {
+		return res
+	}
+	var names []string
+	for _, g := range gaps {
+		switch g {
+		case "proxyAuthPassword":
+			names = append(names, "the proxy authentication password (authentication stays on, so clients get 407 until it is entered)")
+		case "upstreamProxyPassword":
+			names = append(names, "the upstream proxy password")
+		}
+	}
+	res["credentialsNotRestored"] = gaps
+	res["notice"] = "Saved passwords were not included in the backup: after switching to this project, re-enter " +
+		strings.Join(names, " and ") + " in Settings → Proxy & network."
+	return res
+}
+
 func validateImportedBodyReference(dir, bodyHash string) error {
 	if len(bodyHash) != 64 {
 		return fmt.Errorf("invalid database body reference %q", bodyHash)
@@ -584,7 +633,7 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": filepath.Base(destDir), "dir": destDir})
+	writeJSON(w, http.StatusOK, withRestoreNotice(map[string]any{"name": filepath.Base(destDir), "dir": destDir}, destDir))
 }
 
 // --- HTTP handlers: server-side file paths (MCP) ---
@@ -670,5 +719,5 @@ func (h *projectAPI) importFullFile(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": filepath.Base(destDir), "dir": destDir})
+	writeJSON(w, http.StatusOK, withRestoreNotice(map[string]any{"name": filepath.Base(destDir), "dir": destDir}, destDir))
 }

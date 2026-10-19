@@ -63,11 +63,24 @@ export function toggleSeverity(active, severity) {
 }
 
 // Results are "issues": "findings" are the curated reports in the Findings tool.
-export function summaryText(groups, issues) {
+export function summaryText(groups, issues, shown) {
   const g = Array.isArray(groups) ? groups.length : 0;
   const t = Array.isArray(issues) ? issues.length : 0;
   if (!g) return '';
-  return g + ' issue' + (g === 1 ? '' : 's') + ' · ' + t + ' target' + (t === 1 ? '' : 's');
+  // A severity chip narrows the list: the header counts what the list shows and
+  // says how many there are in all ("3 of 10 issues"), like the Map header does.
+  if (Array.isArray(shown) && shown.length < g) {
+    const targets = shown.reduce((n, grp) => n + (grp.items ? grp.items.length : 0), 0);
+    return shown.length + ' of ' + g + ' issues \u00b7 ' + targets + ' target' + (targets === 1 ? '' : 's');
+  }
+  return g + ' issue' + (g === 1 ? '' : 's') + ' \u00b7 ' + t + ' target' + (t === 1 ? '' : 's');
+}
+
+// scanToastText is the completion toast: how many grouped issues the scan
+// found (the unit the list and header show), not how many target rows.
+export function scanToastText(issues, host = '', search = '') {
+  const n = groupIssues(issues).length;
+  return n + ' issue' + (n === 1 ? '' : 's') + (host ? ' · ' + host : '') + (search ? ' · "' + search + '"' : '');
 }
 
 // issueHost reads the host out of an issue target. Built-in checks write

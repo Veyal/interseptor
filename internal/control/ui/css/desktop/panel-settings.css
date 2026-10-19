@@ -31,11 +31,16 @@ html.desktop-app .settings-health[data-state="unknown"]{background:color-mix(in 
 /* Each section block is one grouped card. */
 html.desktop-app .settings-body .section{padding:16px 20px 18px;margin:0 0 16px;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--surface-1)}
 html.desktop-app .settings-body .set-sec:not([hidden])>.section{max-width:720px}
+/* On wide (full-screen) windows the 720px column sits centred in the pane, not
+   against the section list with the rest of the window empty. */
+html.desktop-app .settings-body>.set-sec:not([hidden]){max-width:720px;margin-inline:auto}
 html.desktop-app .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details)){grid-template-columns:minmax(0,720px);gap:0}
 html.desktop-app .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details))>.section{margin:0 0 16px}
 html.desktop-app .settings-body .section:last-child{margin-bottom:0}
 html.desktop-app .settings-body .section h3{margin:0 0 4px;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
 html.desktop-app .settings-body .section h3.micro-label{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:600;letter-spacing:normal;text-transform:none;color:var(--text-primary)}
+/* The h3 reset above zeroes margins; a sub-block label still needs room above it. */
+html.desktop-app .settings-body .section h3.micro-label{margin-top:16px}
 html.desktop-app .settings-body .section.danger-zone{padding:16px 20px;border-color:var(--danger-border);background:var(--danger-subtle);border-radius:var(--radius-md)}
 html.desktop-app .settings-body .section.danger-zone h3{color:var(--danger)}
 /* Helper text: muted, 13px, directly under what it explains. */

@@ -8,6 +8,7 @@ import { readSingleKeyPref } from './keys.js';
 import { setSingleKeyShortcuts, SINGLE_KEY_EVENT } from './keyboard.js';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
+  readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref,
 } from './settings-model.js';
 
 const root = document.documentElement;
@@ -57,6 +58,8 @@ export function syncAppearance() {
   $$('#themeSeg button').forEach((b) => setSeg(b, b.dataset.themeChoice === theme));
   const density = normalizeDensityChoice(getDensity());
   $$('#densitySeg button').forEach((b) => setSeg(b, b.dataset.densityChoice === density));
+  const flowLayout = readFlowDrawerLayoutPref();
+  $$('#flowDrawerLayoutSeg button').forEach((b) => setSeg(b, b.dataset.flowLayout === flowLayout));
   syncSwitch('singleKeySwitch', readSingleKeyPref(), 'Single-key shortcuts are on', 'Single-key shortcuts are off');
   syncSwitch('hintsSwitch', readHintsPref(), 'Hints are on', 'Hints are off');
 }
@@ -66,6 +69,13 @@ function applyHints() { root.setAttribute('data-hints', readHintsPref() ? 'on' :
 function wire() {
   $$('#themeSeg button').forEach((b) => { b.onclick = () => setThemeChoice(b.dataset.themeChoice); });
   $$('#densitySeg button').forEach((b) => { b.onclick = () => { setDensity(b.dataset.densityChoice); syncAppearance(); }; });
+  $$('#flowDrawerLayoutSeg button').forEach((b) => {
+    b.onclick = () => {
+      writeFlowDrawerLayoutPref(b.dataset.flowLayout);
+      syncAppearance();
+      window.dispatchEvent(new CustomEvent('flowdrawerlayoutchange', { detail: b.dataset.flowLayout }));
+    };
+  });
   const keys = $('#singleKeySwitch');
   if (keys) keys.onclick = () => { setSingleKeyShortcuts(!readSingleKeyPref()); syncAppearance(); };
   document.addEventListener(SINGLE_KEY_EVENT, syncAppearance);

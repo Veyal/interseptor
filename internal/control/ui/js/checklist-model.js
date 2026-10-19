@@ -2,10 +2,10 @@
 // state (never a manual tick). No imports and no DOM access: runs under node.
 
 export const CHECKLIST_STEPS = [
-  { id: 'ca', label: 'Trust the CA', action: 'setup' },
+  { id: 'ca', label: 'Trust the CA', action: 'setup-ca' },
   { id: 'proxy', label: 'Point a device or browser at the proxy', action: 'devices' },
   { id: 'scope', label: 'Define scope', action: 'scope' },
-  { id: 'flow', label: 'Capture a first flow', action: 'proxy' },
+  { id: 'flow', label: 'Capture a first flow', action: 'capture' },
   { id: 'finding', label: 'Create a first finding', action: 'findings' },
 ];
 

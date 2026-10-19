@@ -15,7 +15,9 @@ import (
 type ResponseDecision struct {
 	Drop   bool
 	Edited bool
-	Raw    []byte // the raw response bytes to send to the client
+	// Canceled marks a Drop caused by the client going away while held.
+	Canceled bool
+	Raw      []byte // the raw response bytes to send to the client
 }
 
 // HeldResponse is a UI-facing snapshot of a response waiting in the hold queue.
@@ -23,6 +25,8 @@ type HeldResponse struct {
 	ID   int64
 	Flow *store.Flow
 	Raw  []byte
+	// DropPending: see Held.DropPending.
+	DropPending bool
 }
 
 type respItem struct {
@@ -60,7 +64,8 @@ func (e *Engine) ResponseEnabled() bool {
 }
 
 // SetResponseEnabled toggles response interception. Turning it off forwards
-// everything currently held (unchanged).
+// everything currently held (unchanged), except drop-pending items, which are
+// dropped.
 func (e *Engine) SetResponseEnabled(on bool) {
 	e.mu.Lock()
 	e.respEnabled = on
@@ -76,6 +81,10 @@ func (e *Engine) SetResponseEnabled(on bool) {
 	seq := e.seq
 	e.mu.Unlock()
 	for _, item := range drained {
+		if item.held.DropPending {
+			item.done <- ResponseDecision{Drop: true}
+			continue
+		}
 		item.done <- ResponseDecision{Raw: item.raw}
 	}
 	e.emit(Change{Kind: ChangeReset, Seq: seq})
@@ -119,8 +128,8 @@ func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw 
 		return d
 	case <-ctx.Done():
 		if seq, ok := e.removeResp(id); ok {
-			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseDropped})
-			return ResponseDecision{Drop: true}
+			e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseCanceled})
+			return ResponseDecision{Drop: true, Canceled: true}
 		}
 		return <-item.done
 	}
@@ -139,9 +148,9 @@ func (e *Engine) ForwardResponse(id int64, editedRaw []byte) error {
 	if edited {
 		raw = editedRaw
 	}
-	seq, ok := e.removeResp(id)
-	if !ok {
-		return ErrNotHeld
+	seq, err := e.takeResponseForForward(id)
+	if err != nil {
+		return err
 	}
 	item.done <- ResponseDecision{Edited: edited, Raw: raw}
 	e.emit(Change{Kind: ChangeReleased, Seq: seq, Side: SideResponse, ID: id, Reason: ReleaseForwarded})
@@ -173,6 +182,12 @@ func (e *Engine) removeResp(id int64) (int64, bool) {
 	if _, ok := e.respQueue[id]; !ok {
 		return 0, false
 	}
+	return e.removeRespLocked(id), true
+}
+
+// removeRespLocked deletes a present held response and returns the new Seq.
+// The caller holds e.mu and has checked that id is queued.
+func (e *Engine) removeRespLocked(id int64) int64 {
 	delete(e.respQueue, id)
 	for i, v := range e.respOrder {
 		if v == id {
@@ -181,7 +196,35 @@ func (e *Engine) removeResp(id int64) (int64, bool) {
 		}
 	}
 	e.seq++
-	return e.seq, true
+	return e.seq
+}
+
+// SetResponseDropPending marks (or unmarks) a held response as scheduled to
+// drop; see SetDropPending.
+func (e *Engine) SetResponseDropPending(id int64, pending bool) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	item, ok := e.respQueue[id]
+	if !ok {
+		return ErrNotHeld
+	}
+	item.held.DropPending = pending
+	return nil
+}
+
+// takeResponseForForward removes a held response for ForwardResponse under one
+// lock, refusing a drop-pending item.
+func (e *Engine) takeResponseForForward(id int64) (int64, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	item, ok := e.respQueue[id]
+	if !ok {
+		return 0, ErrNotHeld
+	}
+	if item.held.DropPending {
+		return 0, ErrDropPending
+	}
+	return e.removeRespLocked(id), nil
 }
 
 // ResponseQueue returns a snapshot of held responses in arrival order.

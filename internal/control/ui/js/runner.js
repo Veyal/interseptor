@@ -18,6 +18,8 @@
 import { api, toast, toastError, registerHook, openFlow, icon, wireRowKey } from './core.js';
 import { renderState } from './statepanel.js';
 import { registerSseHandler } from './shell-hooks.js';
+import { blockText } from './collections-model.js';
+import { addableBlock } from './collections-guard-model.js';
 import {
   BAIL_MODES, PERSIST_MODES, buildRunBody, summarize, summaryText, failedItemUids, filterRows,
   stateIcon, newLive, applyProgress, applyEvent, runControls, phaseLabel,
@@ -72,14 +74,32 @@ function detailBlock(title, lines, emptyText) {
   return wrap;
 }
 
-function renderDetail(host, r) {
+function renderDetail(host, r, onAddHost, added) {
   host.textContent = '';
   const d = r.detail || {};
   const head = el('div', 'row');
   head.appendChild(el('strong', null, `${r.n}. ${r.name}`));
   host.appendChild(head);
   if (r.error) host.appendChild(el('p', 'field-error', r.error));
-  if (r.blockReason) host.appendChild(el('p', 'kv-dim', 'Blocked: ' + r.blockReason));
+  if (r.blockReason) host.appendChild(el('p', 'kv-dim', 'Blocked: ' + blockText(r.blockReason)));
+  if (addableBlock(r.blockReason) && r.itemUid && typeof onAddHost === 'function') {
+    if (added && added.has(r.itemUid)) {
+      // The result above is the run that happened; say what changed since.
+      const now = el('p', 'kv-dim', 'Now in scope. Rerun to send this request.');
+      now.setAttribute('role', 'status');
+      host.appendChild(now);
+    } else {
+      const add = el('button', 'btn xs', 'Add host to scope');
+      add.type = 'button';
+      add.addEventListener('click', async () => {
+        add.disabled = true;
+        let ok = false;
+        try { ok = await onAddHost(r.itemUid); } finally { add.disabled = false; }
+        if (ok && added) { added.add(r.itemUid); renderDetail(host, r, onAddHost, added); }
+      });
+      host.appendChild(add);
+    }
+  }
   if (r.quarantined) host.appendChild(el('p', 'kv-dim', `${r.quarantined} script(s) not approved and skipped`));
   const tests = (d.tests || []).map((t) => `${String(t.status).toUpperCase()}  ${t.name}${t.message ? ' - ' + t.message : ''}`);
   host.appendChild(detailBlock('Tests', tests, 'No tests ran.'));
@@ -97,7 +117,7 @@ function renderDetail(host, r) {
 
 export function mountRunner(host, opts = {}) {
   const uid = ++seq;
-  const st = { live: newLive(), busy: false, filter: 'all', sel: -1, itemUids: opts.itemUids || [], timer: 0, polling: false, closed: false };
+  const st = { addedHosts: new Set(), live: newLive(), busy: false, filter: 'all', sel: -1, itemUids: opts.itemUids || [], timer: 0, polling: false, closed: false };
 
   host.textContent = '';
   host.classList.add('runner-view');
@@ -153,7 +173,7 @@ export function mountRunner(host, opts = {}) {
       return;
     }
     const wrap = el('div', 'md-table-wrap');
-    const tbl = el('table', 'rules-tbl');
+    const tbl = el('table', 'rules-tbl run-results-tbl');
     tbl.setAttribute('aria-label', 'Run results');
     const hr = el('tr');
     for (const h of ['#', 'Request', 'Result', 'Status', 'Tests', 'Flow']) { const th = el('th', null, h); th.scope = 'col'; hr.appendChild(th); }
@@ -163,7 +183,7 @@ export function mountRunner(host, opts = {}) {
       const tr = el('tr');
       tr.tabIndex = 0;
       tr.setAttribute('aria-selected', r.n - 1 === st.sel ? 'true' : 'false');
-      const cells = [el('td', null, String(r.n)), el('td', null, r.name), el('td'), el('td', null, r.status ? String(r.status) : '-'),
+      const cells = [el('td', null, String(r.n)), el('td', 'run-req', r.name), el('td'), el('td', null, r.status ? String(r.status) : '-'),
         el('td', null, r.testsText), el('td', null, r.flowId ? '#' + r.flowId : '-')];
       cells[2].appendChild(stateBadge(r));
       tr.append(...cells);
@@ -180,7 +200,7 @@ export function mountRunner(host, opts = {}) {
   function selectRow(r) {
     st.sel = r.n - 1;
     renderRows();
-    renderDetail(detail, r);
+    renderDetail(detail, r, opts.addHostForItem, st.addedHosts);
   }
 
   function renderAsk() {

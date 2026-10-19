@@ -28,6 +28,17 @@ export function activeTokenCount(keys) {
   return (Array.isArray(keys) ? keys : []).filter((k) => !OWN_CONTROL_CHIPS.includes(k)).length;
 }
 
+// toolbarWidthTier: which toolbar tier a History panel of `width` px shows. The
+// tokens collapse to a count chip at 880px and the pills drop their chrome at
+// 760px. A parked panel measures 0 and keeps the wide layout.
+export const TOOLBAR_NARROW = 880;
+export const TOOLBAR_COMPACT = 760;
+export function toolbarWidthTier(width) {
+  const w = Number(width);
+  if (!(w > 0)) return { narrow: false, compact: false };
+  return { narrow: w <= TOOLBAR_NARROW, compact: w <= TOOLBAR_COMPACT };
+}
+
 // isViewHidden: proxy.js hides a view button with [hidden] or with an inline
 // style (Render is display:none for a response that is not HTML).
 export function isViewHidden(v) {
@@ -45,4 +56,13 @@ export function notePlaceholder(open, full) {
 export function sentenceCase(text) {
   const t = String(text || '').trim().toLowerCase();
   return t ? t[0].toUpperCase() + t.slice(1) : '';
+}
+
+// pressBubbles: should a menu item's synthetic click on `node` bubble? Source
+// buttons open their own menu and need it not to (the app-wide click-away
+// listener would close the menu at once). Copy-image buttons are the opposite:
+// core.js handles them from one delegated document listener, so the click has
+// to reach document.
+export function pressBubbles(node) {
+  return !!(node && node.classList && node.classList.contains('js-copy-image'));
 }

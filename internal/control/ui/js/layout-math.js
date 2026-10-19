@@ -14,14 +14,16 @@ export const fromPercent = (pct, total) => (pct / 100) * total;
 
 // splitBounds returns the allowed size of the primary (list) pane: it can never
 // squeeze either pane below its minimum, and a container too small for both
-// minimums keeps the list at its minimum.
-export function splitBounds(total, mins, gutter = 8) {
+// minimums keeps the list at its minimum. maxList (optional) caps the list so a
+// proportional size stays a sidebar on very wide windows.
+export function splitBounds(total, mins, gutter = 8, maxList = Infinity) {
   const [minList, minDetail] = mins;
-  return { min: minList, max: Math.max(minList, total - minDetail - gutter) };
+  const max = Math.min(maxList, total - minDetail - gutter);
+  return { min: minList, max: Math.max(minList, max) };
 }
 
-export function clampSplitSize(size, total, mins, gutter = 8) {
-  const { min, max } = splitBounds(total, mins, gutter);
+export function clampSplitSize(size, total, mins, gutter = 8, maxList = Infinity) {
+  const { min, max } = splitBounds(total, mins, gutter, maxList);
   return clamp(size, min, max);
 }
 

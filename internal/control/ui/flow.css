@@ -3,12 +3,89 @@
    transform and opacity; the global reduced-motion block in app.css removes the
    animation entirely. Colours, spacing and type come from the shared tokens. */
 
-:root{--flow-drawer-w:var(--drawer-w)}
+:root{--flow-drawer-w:var(--drawer-w);--flow-drawer-h:380px}
 .flow-drawer{display:none;position:fixed;top:calc(var(--sticky-top) + var(--safe-t));right:0;bottom:0;z-index:var(--z-drawer);width:var(--flow-drawer-w);max-width:100%;box-sizing:border-box}
 .flow-drawer.is-open{display:block}
 .flow-drawer.is-open .flow-drawer-panel{animation:fd-in var(--motion-drawer) both}
 @keyframes fd-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
 body.flow-drawer-docked #main{margin-right:calc(var(--flow-drawer-w) + var(--sp-3))}
+
+/* Bottom docked mode (default) */
+.flow-drawer[data-layout="bottom"],.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]){
+  top:auto;
+  left:calc(var(--nav-rail-w, 200px) + var(--sp-3));
+  right:var(--sp-3);
+  bottom:var(--sp-3);
+  width:auto;
+  height:var(--flow-drawer-h);
+  max-height:calc(100vh - var(--sticky-top) - var(--sp-6));
+}
+.flow-drawer[data-layout="bottom"].is-open .flow-drawer-panel,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]).is-open .flow-drawer-panel{
+  animation:fd-up var(--motion-drawer) both;
+  border-top:1px solid var(--drawer-edge);
+  border-left:1px solid var(--drawer-edge);
+  border-right:1px solid var(--drawer-edge);
+  border-radius:var(--r-lg) var(--r-lg) 0 0;
+  box-shadow:var(--elev-2);
+}
+@keyframes fd-up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+body.flow-drawer-docked-bottom #main{margin-bottom:calc(var(--flow-drawer-h) + var(--sp-3))}
+
+.flow-drawer[data-layout="bottom"] .flow-drawer-sash,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) .flow-drawer-sash{
+  top:calc(var(--split-gutter) * -1);
+  bottom:auto;
+  left:0;
+  right:0;
+  width:auto;
+  height:var(--split-gutter);
+  cursor:row-resize;
+}
+.flow-drawer[data-layout="bottom"] .flow-drawer-sash::before,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) .flow-drawer-sash::before{
+  top:auto;
+  bottom:0;
+  left:0;
+  right:0;
+  width:auto;
+  height:1px;
+}
+.flow-drawer[data-layout="bottom"] .flow-drawer-sash::after,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) .flow-drawer-sash::after{
+  top:calc(var(--sp-4) * -1);
+  bottom:calc(var(--sp-4) * -1);
+  left:0;
+  right:0;
+}
+.flow-drawer[data-layout="bottom"] #fdWide .icon,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) #fdWide .icon{transform:rotate(180deg)}
+.flow-drawer[data-layout="bottom"] #fdNarrow .icon,.flow-drawer:not([data-layout="side"]):not([data-layout="popup"]) #fdNarrow .icon{transform:none}
+
+/* Popup dialog mode */
+.flow-drawer[data-layout="popup"]{
+  top:0;
+  left:0;
+  right:0;
+  bottom:0;
+  width:100%;
+  height:100%;
+  max-width:none;
+  background:var(--scrim);
+  z-index:var(--z-modal);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:var(--sp-4);
+}
+.flow-drawer[data-layout="popup"].is-open{display:flex}
+.flow-drawer[data-layout="popup"] .flow-drawer-panel{
+  width:min(1100px, 100%);
+  height:min(85vh, 840px);
+  max-height:calc(100vh - var(--sp-6));
+  border-radius:var(--r-xl);
+  border:1px solid var(--line2);
+  box-shadow:var(--elev-3);
+  animation:fd-pop var(--motion-base) var(--motion-enter) both;
+}
+@keyframes fd-pop{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:none}}
+.flow-drawer[data-layout="popup"] .flow-drawer-sash{display:none}
+.flow-drawer[data-layout="popup"] .flow-drawer-width{display:none}
 
 .flow-drawer-panel{display:flex;flex-direction:column;height:100%;min-width:0;box-sizing:border-box;background:var(--drawer-bg);border-left:1px solid var(--drawer-edge);color:var(--fg)}
 .flow-drawer-panel:focus-visible,.flow-drawer-title:focus-visible,.flow-drawer-body:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
@@ -74,6 +151,7 @@ a.flow-chip:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px
 .flow-drawer[data-mode="overlay"] .flow-drawer-sash{display:none}
 .flow-drawer[data-mode="overlay"].is-open{align-items:stretch}
 @media (max-width:720px){
+  .flow-drawer:not([data-layout="popup"]){left:0;right:0;bottom:var(--safe-b)}
   .flow-drawer[data-mode="overlay"] .flow-drawer-panel{width:100%}
   .flow-drawer-body{padding-inline:max(var(--sp-4),var(--safe-l))}
 }

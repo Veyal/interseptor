@@ -10,7 +10,7 @@
 // Everything app-specific arrives through initDesktopShell, so this module
 // imports only the pure model and the desktop kit (the shared DOM helpers), and
 // stays free of the feature modules.
-import { statusBarModel, paletteShortcut } from './desktop-model.js';
+import { statusBarModel, interceptPillModel, paletteShortcut } from './desktop-model.js';
 import { el, iconNode, isDesktop, registerPopup } from './desktop-panel-kit.js';
 
 const REFRESH_MS = 1000;
@@ -172,12 +172,11 @@ export function refresh() {
   if (m.connection.dot !== 'ok') env.items.connection.dataset.tone = m.connection.dot === 'bad' ? 'bad' : 'warn';
   else delete env.items.connection.dataset.tone;
   if (env.pill) {
-    const ic = snap.intercept || {};
-    const on = !!ic.enabled, held = Number(ic.held) > 0 ? Math.floor(Number(ic.held)) : 0;
-    setAttr(env.pill, 'aria-pressed', on ? 'true' : 'false');
-    setText(env.pill.querySelector('.dsk-icpt-text'), (on ? 'Intercept on' : 'Intercept off') + (held ? ' · ' + held + ' held' : ''));
-    setAttr(env.pill, 'aria-label', 'Request intercept ' + (on ? 'on' : 'off') + (held ? ', ' + held + ' held' : '') + '. Toggle request intercept.');
-    env.pill.title = 'Request intercept is ' + (on ? 'on' : 'off') + '. Click to turn it ' + (on ? 'off' : 'on') + '.';
+    const pill = interceptPillModel(snap.intercept || {});
+    setAttr(env.pill, 'aria-pressed', pill.pressed ? 'true' : 'false');
+    setText(env.pill.querySelector('.dsk-icpt-text'), pill.text);
+    setAttr(env.pill, 'aria-label', pill.label);
+    env.pill.title = pill.title;
   }
   if (env.pop && !env.pop.hidden && m.warnings.hidden) closeWarnings();
 }

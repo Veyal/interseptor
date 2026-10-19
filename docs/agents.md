@@ -462,6 +462,29 @@ Rules:
   its flows through `flow_ids`. A target you did not test may be listed without proof; never invent a
   request for it. A `setup` or `chain` target may use `evidenceException` instead.
 
+### Score real impact, not the label
+
+Decide the impact before you pick a vector. Ask what an attacker actually gained against
+confidentiality, integrity, or availability, and what you demonstrated. Do not copy a severity from a
+scanner, a checklist, or a vulnerability class name.
+
+- Only a finding with demonstrated confidentiality, integrity, or availability impact gets a CVSS score
+  above 0.0. Everything else is `Info`, or not a finding at all.
+- Username or email enumeration on its own is `Info`. It tells an attacker which accounts exist; it
+  reads no data and changes nothing.
+- A SQL error message, stack trace, framework version, or internal path in a response is `Info`. It
+  becomes SQL injection only when you show the injected query reading or changing data; score that
+  demonstrated outcome, for example High when it reads other users' records.
+- A missing security header, a weak TLS cipher, a verbose banner, a permissive CORS policy that no page
+  abuses, or an absent hardening flag is `Info`, or left out of the report. It rises only when you
+  attach the step that uses it.
+- A reachable endpoint, a permissive response, or a readable file that holds nothing sensitive is a
+  prerequisite, not an impact.
+- When a weakness enables real impact, prove the impact and score that. Enumeration that feeds a
+  demonstrated account takeover is scored as the takeover, with the enumeration described in the steps.
+- `Info` findings use a vector with `VC:N/VI:N/VA:N/SC:N/SI:N/SA:N`, which evaluates to 0.0, and
+  `severity` `Info`.
+
 ### Severity and CVSS 4.0
 
 - Choose metrics from what you demonstrated, not from what might be possible: `AV:N` for internet
@@ -1006,7 +1029,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `vault_merge` | `id` | Download a vault project revision and merge (additive union) into the active project. |
 | `ws_send` | `url`, `message` | Open a fresh WebSocket, send one message, return the server's reply frames. |
 
-### Finding fields (96)
+### Finding fields (97)
 
 Generated from the `create_finding` input schema. `update_finding` accepts the same fields plus a required `id`. Over REST, send the same names to `POST /api/findings` and `PATCH /api/findings/{id}`.
 
@@ -1082,6 +1105,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `proofReview.evidence.result.flowId` | integer |  |
 | `proofReview.evidence.result.hash` | string |  |
 | `proofReview.execution` | string | demonstrated\|prerequisite_only\|not_executed |
+| `proofReview.ignoreReason` | string | reason why a finding is marked ignored / accepted risk (e.g. |
 | `proofReview.reason` | string | required when impact was not demonstrated |
 | `proofReview.severityOverride` | string | documented reason severity deliberately differs from the calculated CVSS rating; without it a mismatch is rejected |
 | `proofReview.visual` | boolean | true when a real browser screenshot is required to establish the visual claim |
@@ -1090,7 +1114,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `relatedFindings[].relation` | string | enables\|enabled_by\|chain\|duplicate\|escalates |
 | `retest` | string | expected secure behavior and negative verification case |
 | `severity` | string |  |
-| `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|fixed |
+| `status` | string | open\|needs_verification\|verified\|false_positive\|wont_fix\|ignored\|fixed |
 | `summary` | string | one sentence, <=140 chars; `<METHOD path>` `<what happens>` to `<role>`; do not restate the title |
 | `tags` | string | report-scope labels (comma/space-separated or array): cms, website, app, api, out-of-scope |
 | `target` | string | legacy primary target; first targets entry takes precedence |
@@ -1109,7 +1133,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (293)
+### REST routes (296)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1256,19 +1280,22 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/import/burp` | Import Burp Suite Save-items XML as flows. |
 | POST | `/api/import/collection/commit` | Store a collection file (any format the preview accepts). |
 | POST | `/api/import/collection/preview` | Parse a collection file (Postman v2.0/2.1 collection/environment/globals, OpenAPI 3/Swagger 2 JSON or YAML... |
-| POST | `/api/import/full` | Upload a project zip and restore it as a new named project (?name=, ?overwrite=1) |
+| POST | `/api/import/full` | Upload a project zip and restore it as a new named project (?name=, ?overwrite=1). |
 | POST | `/api/import/full/file` | Restore a full-project archive from a server-side path into a new named project |
 | POST | `/api/import/har` | Import a HAR file as flows. |
 | POST | `/api/import/postman` | Prepare a Postman Collection v2 JSON for Repeater. |
 | POST | `/api/import/project` | Import (merge) a project bundle. |
 | GET | `/api/intercept` | Intercept state + hold queue |
 | POST | `/api/intercept/filter` | Configure the conditional-intercept regex filter ({enabled,target,pattern}) |
-| GET | `/api/intercept/held/{id}/raw` | Raw bytes of a held intercepted request/response (?side=resp for the response side, else request) |
+| GET | `/api/intercept/held/{id}/body` | Body bytes of a held message (?side=resp); raster images are served as themselves for preview, anything else... |
+| GET | `/api/intercept/held/{id}/raw` | Raw text of a held intercepted request/response (?side=resp for the response side, else request); a binary... |
 | POST | `/api/intercept/response/toggle` | Enable/disable response interception ({enabled}) |
 | POST | `/api/intercept/response/{id}/drop` | Drop a held intercepted response |
-| POST | `/api/intercept/response/{id}/forward` | Forward a held intercepted response (optionally edited) |
+| POST | `/api/intercept/response/{id}/drop-pending` | Mark or clear a scheduled drop on a held response. |
+| POST | `/api/intercept/response/{id}/forward` | Forward a held intercepted response (optionally edited). |
 | POST | `/api/intercept/toggle` | Enable/disable intercept. |
 | POST | `/api/intercept/{id}/drop` | Drop a held request |
+| POST | `/api/intercept/{id}/drop-pending` | Mark or clear a scheduled drop on a held request. |
 | POST | `/api/intercept/{id}/forward` | Forward a held request (optionally edited). |
 | GET | `/api/interception-setup` | Interception setup record: {setup:{version, proxyAddress, caFingerprint, hosts, enablers:[{tool, scriptHash... |
 | PUT | `/api/interception-setup` | Replace the interception setup record (proxy, CA fingerprint, pinning-bypass enablers, applicable hosts). |
@@ -1363,7 +1390,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/scanner/targets` | List every distinct in-scope scanner host as {hosts:[{host,count}],truncated:false}; exhaustively paginates... |
 | GET | `/api/scope` | List target-scope rules |
 | POST | `/api/scope` | Add a scope rule. |
-| DELETE | `/api/scope/{id}` | Delete a scope rule |
+| DELETE | `/api/scope/{id}` | Delete a scope rule (404 when it does not exist) |
 | PUT | `/api/scope/{id}` | Update a scope rule. |
 | POST | `/api/selection-decode` | Preview decode for highlighted text: project message codecs (when flowId given) then smart. |
 | GET | `/api/session` | Get session/auth headers auto-applied to sends |

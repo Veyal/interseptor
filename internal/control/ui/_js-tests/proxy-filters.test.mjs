@@ -84,3 +84,9 @@ test('hiding collection flows counts as an active filter and a popover filter', 
   assert.equal(activeFilterCount(s), 0);
 });
 
+
+import { methodChoices } from '../js/proxy-filters.js';
+test('methodChoices always offers the common verbs and adds unusual ones seen', () => {
+  assert.deepEqual(methodChoices([]), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+  assert.deepEqual(methodChoices(['GET', 'PROPFIND', 'CONNECT'], 'TRACE'), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PROPFIND']);
+});

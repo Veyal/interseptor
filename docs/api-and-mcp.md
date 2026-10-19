@@ -238,7 +238,7 @@ make the claim reproducible (for example `observation → result`, or `setup →
 REST endpoints:
 
 ```text
-POST   /api/findings                         create (title required; blocks or legacy body)
+POST   /api/findings                         create (title required: trimmed, 1-300 chars; severity/status validated, 400 lists allowed values; blocks or legacy body)
 GET    /api/findings/{id}                    read canonical finding and readiness
 PATCH  /api/findings/{id}                    partial update (blocks or legacy body)
 POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof?, position?}
@@ -278,7 +278,8 @@ For example, an AI can create the narrative without embedding raw HTTP, then att
 Use `get_finding` before an AI update so it does not replace a concurrent human edit. MCP maps
 `create_finding`, `get_finding`, `update_finding`, `add_finding_poc`, `add_finding_image`,
 `render_flow_preview`, `render_evidence`, and `export_report` to these same contracts. `body` remains accepted for
-legacy clients, but must not be sent together with `blocks`; old `ready`/`missing` fields remain
+legacy clients, but must not be sent together with `blocks`. A text block's Markdown goes in `md`;
+a block that sends it as `text` is rejected with HTTP 400 instead of being stored empty. Old `ready`/`missing` fields remain
 alongside structured `readiness` for compatibility. Report export supports Markdown, self-contained
 HTML, and JSON (`format=md|html|json`); use self-contained HTML when screenshot pixels must travel
 with the report. PDF is not an API format.
@@ -304,6 +305,10 @@ DELETE /api/flow-searches/{name}
 ```
 
 POST and PUT accept JSON `{name, scope, script}`. `scope` normalizes to `anywhere`, `body`, or `id`. The script must define `match(flow)` and return bool. Saved searches are project-scoped and persist in project settings. Full fields, helpers, limits, and examples live in [History search](history-search.md).
+
+### Scope rules API
+
+`POST /api/scope` and `PUT /api/scope/{id}` take `{action, enabled?, host?, path?, scheme?, port?}`. `enabled` defaults to `false` when omitted (a disabled rule matches nothing), so send `enabled:true`; the MCP `add_scope_rule` tool defaults it to true. The host is trimmed and lowercased on both routes; a pasted URL (`https://example.com:8443/api`) is split into scheme, host, port and path, `host:port` moves the port into the port field, and a host that can never match (spaces or other characters no hostname contains) answers `400`.
 
 Auth and trust rules for both surfaces (loopback vs. key-authorized remote access, scoped keys,
 CSRF handling) are covered in [Security model](architecture.md#security-model).
@@ -370,7 +375,7 @@ What is and is not recorded:
   are a 400. At most four renders run at once (503 when busy) with a 10 s deadline. The JSON form
   (`format=json`) adds the base64 PNG with `png=1` for PNGs up to 1 MiB, otherwise `pngOmitted` and `bytes`.
 - Rate-limit wording is descriptive: tiles say `2xx responses`, `throttle statuses (429/403/423)` and
-  `5xx/other`; a missing throttle status is reported as "no throttling status observed; body-based
+  `other non-2xx`; a missing throttle status is reported as "no throttling status observed; body-based
   lockouts are not detected unless a grep pattern was set". Grep matches are counted separately.
 - The persisted run record (`GET /api/intruder/attacks/{id}`, table `intruder_runs`, last 20 runs) is raw
   like the flow store: payloads, extracted values and rate-limit headers are not redacted, and it travels in

@@ -197,6 +197,8 @@ has(h,'<dl class="find-props"');
 // Unset optional properties are omitted, never rendered as "Not set".
 const bare=readPropertiesHTML({id:2,severity:'Low',status:'open'});
 has(bare,'Severity');has(bare,'Status');for(const s of ['Confidence','CWE','Environment','CVSS','Tags','Not set'])lacks(bare,s);
+const ign=readPropertiesHTML({id:3,severity:'Low',status:'ignored',proofReview:{ignoreReason:"Low impact / Client won't care"}});
+has(ign,'Status');has(ign,'ignored');has(ign,'Ignore reason');has(ign,"Low impact / Client won&#39;t care");
 `)
 }
 

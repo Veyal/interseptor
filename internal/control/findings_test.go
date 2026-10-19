@@ -1337,3 +1337,120 @@ func TestFindingCreateAcceptsCanonicalBlocksAndRejectsBodyTogether(t *testing.T)
 		t.Fatalf("body+blocks status=%d, want 400", resp.StatusCode)
 	}
 }
+
+// QA round 2: blocks sent as {"type":"text","text":"..."} (the field is "md")
+// returned 200 and stored empty text blocks. The misplaced field is a 400 on
+// create and update, through both "blocks" and the raw "body" string; an empty
+// text block written with "md" (the editor's placeholder) is still accepted.
+func TestFindingTextBlockWithTextFieldIsRejected(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	send := func(method, path, body string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	for _, body := range []string{
+		`{"title":"t","blocks":[{"type":"text","role":"context","text":"lost"}]}`,
+		`{"title":"t","body":"[{\"type\":\"text\",\"text\":\"lost\"}]"}`,
+	} {
+		code, out := send(http.MethodPost, "/api/findings", body)
+		if code != http.StatusBadRequest || !strings.Contains(out, `goes in \"md\"`) {
+			t.Fatalf("POST %s = %d %s, want 400 naming md", body, code, out)
+		}
+	}
+	code, out := send(http.MethodPost, "/api/findings", `{"title":"ok","blocks":[{"type":"text","role":"observation","md":""}]}`)
+	if code != http.StatusOK {
+		t.Fatalf("empty md placeholder: %d %s", code, out)
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal([]byte(out), &created)
+	code, out = send(http.MethodPatch, fmt.Sprintf("/api/findings/%d", created.ID), `{"blocks":[{"type":"text","text":"lost"}]}`)
+	if code != http.StatusBadRequest || !strings.Contains(out, `goes in \"md\"`) {
+		t.Fatalf("PATCH = %d %s, want 400 naming md", code, out)
+	}
+	if fs, _ := st.ListFindings("", "", ""); len(fs) != 1 {
+		t.Fatalf("rejected writes must not create findings: %d", len(fs))
+	}
+}
+
+// QA round 3: an image block without a content hash is a validation error (400),
+// not an entity-too-large (413).
+func TestFindingImageBlockValidationIs400(t *testing.T) {
+	for _, c := range []struct{ name, body string }{
+		{"no hash", `[{"type":"image"}]`},
+		{"inline data", `[{"type":"image","hash":"abc","data":"AAAA"}]`},
+	} {
+		if got := findingBodySizeStatus(checkFindingBodySize(store.Finding{Body: c.body})); got != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", c.name, got)
+		}
+	}
+	if got := findingBodySizeStatus("finding body too large (max 1 MiB)"); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("size limit: status %d, want 413", got)
+	}
+}
+
+func TestFindingsAgentDefaultsToNeedsVerificationAndIgnoredStatus(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	// 1. AI source with omitted status should default to "needs_verification"
+	resp, err := http.Post(ts.URL+"/api/findings", "application/json",
+		strings.NewReader(`{"title":"AI discovered issue","severity":"High","source":"ai"}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	var fAI store.Finding
+	json.NewDecoder(resp.Body).Decode(&fAI)
+	resp.Body.Close()
+	if fAI.Status != "needs_verification" {
+		t.Fatalf("AI finding default status = %q, want 'needs_verification'", fAI.Status)
+	}
+
+	// 2. Human source with omitted status should default to "open"
+	resp2, err := http.Post(ts.URL+"/api/findings", "application/json",
+		strings.NewReader(`{"title":"Human finding","severity":"Medium","source":"human"}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	var fHuman store.Finding
+	json.NewDecoder(resp2.Body).Decode(&fHuman)
+	resp2.Body.Close()
+	if fHuman.Status != "open" {
+		t.Fatalf("Human finding default status = %q, want 'open'", fHuman.Status)
+	}
+
+	// 3. Triage AI finding to ignored with ignoreReason via PATCH
+	patchReq, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("%s/api/findings/%d", ts.URL, fAI.ID),
+		strings.NewReader(`{"status":"ignored","proofReview":{"ignoreReason":"Low impact / Client won't care"}}`))
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("PATCH: %v", err)
+	}
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d, want 200", patchResp.StatusCode)
+	}
+	patchResp.Body.Close()
+
+	got, err := st.GetFinding(fAI.ID)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	if got.Status != "ignored" {
+		t.Fatalf("after PATCH status = %q, want 'ignored'", got.Status)
+	}
+	if got.ProofReview.IgnoreReason != "Low impact / Client won't care" {
+		t.Fatalf("after PATCH ignoreReason = %q, want 'Low impact / Client won't care'", got.ProofReview.IgnoreReason)
+	}
+}

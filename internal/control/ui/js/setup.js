@@ -232,7 +232,9 @@ function renderStep() {
       const actionStep = step;
       setSetupActionBusy(button, true, 'Adding…');
       try {
-        await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host, enabled: true }) });
+        // 409: the identical rule already exists, which is what the step wants.
+        await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host, enabled: true }) })
+          .catch((e) => { if (!e || e.status !== 409) throw e; });
         // The wizard owns this request. Keep the success state tied to the same
         // step and DOM nodes so a future caller cannot paint a recycled panel.
         if (step !== actionStep || !button.isConnected) return;
@@ -307,7 +309,8 @@ async function saveSetupTarget() {
     await api('/api/engagement-brief', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(next) });
     const scope = await api('/api/scope');
     const covered = (scope.rules || []).some(r => r.action === 'include' && r.enabled !== false && r.host === target);
-    if (!covered) await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host: target, enabled: true }) });
+    if (!covered) await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host: target, enabled: true }) })
+      .catch((e) => { if (!e || e.status !== 409) throw e; }); // 409: already in scope
     // Persist the operator's out-of-scope-body choice so capture matches scope.
     if (dropScope !== null) {
       try { await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ captureScopeOnly: dropScope }) }); }
@@ -325,9 +328,11 @@ async function saveSetupTarget() {
   }
 }
 
-export function openSetup() {
+// openSetup({step}) opens the wizard on a given step (0 = proxy address, 1 =
+// CA trust); anything else starts at the first.
+export function openSetup(opts) {
   if (setupActionBusy) return;
-  step = 0;
+  step = opts && Number.isInteger(opts.step) && opts.step >= 0 && opts.step <= LAST ? opts.step : 0;
   openModal($('#setupModal'), { onEscape: requestCloseSetup, onDismiss: requestCloseSetup });
   renderStep();
 }

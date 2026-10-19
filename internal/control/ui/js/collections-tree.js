@@ -140,6 +140,7 @@ export function treeRow(r, first) {
   const quarantined = !r.folder && itemHasUntrustedScript(it);
   if (r.folder) {
     row.append(name, el('span', 'coll-count', String(r.count)));
+    row.setAttribute('aria-label', M.folderLabel(it, r.count));
   } else {
     const raw = M.itemUrlRaw(it);
     const names = raw.includes('{{') ? V.unresolvedIn(raw, S.scope) : NONE;

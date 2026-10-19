@@ -234,6 +234,9 @@ export function initDesktop({ actions = {}, readStatus = () => ({}), activePanel
   if (desktop) {
     document.documentElement.classList.add(...desktop.classes);
     installGuards();
+    // The skin's tokens set 28px rows; History and other virtual lists measured the
+    // web --row-h at load, so their row math drifted 2px a row from the real rows.
+    if (typeof w.dispatchEvent === 'function' && typeof CustomEvent === 'function') w.dispatchEvent(new CustomEvent('densitychange'));
     if (desktop.bridge) {
       env.reporter = createStatusReporter({ read: readStatus, post });
       try { w.interseptorDesktop.run = runCommand; } catch { /* a frozen host object keeps its own run */ }

@@ -284,6 +284,11 @@ func renderFindingCard(cur []string, groupSev string) []string {
 		}
 	}
 	if sev == "" {
+		// No group heading and no CVSS (the false-positive appendix): the card's
+		// own "Severity:" item is the truth, not a default of info.
+		sev = scanSeverityItem(items)
+	}
+	if sev == "" {
 		sev = "info"
 	}
 
@@ -404,6 +409,16 @@ func scanCalculatedCVSS(items []string) (sev, score string) {
 		return sev, score
 	}
 	return "", ""
+}
+
+// scanSeverityItem returns the slug of a "Severity:" metadata item, or "".
+func scanSeverityItem(items []string) string {
+	for _, li := range items {
+		if label, value := parseMetaItem(li); label == "Severity" {
+			return sevSlug(value)
+		}
+	}
+	return ""
 }
 
 // parseMetaItem splits a "<li><strong>Label:</strong> value</li>" item into the

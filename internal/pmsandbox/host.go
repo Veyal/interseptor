@@ -451,7 +451,7 @@ func (h *host) fnSend(a []any) (any, error) {
 		return reply(r)
 	}
 	if !h.in.Caps.NetSend {
-		return finish(sendReply{Error: "capability denied: pm.sendRequest requires netSend"})
+		return finish(sendReply{Error: "capability denied: pm.sendRequest requires net.send. Grant it under Scripts > Capabilities and approve the scripts."})
 	}
 	h.mu.Lock()
 	h.nsend++

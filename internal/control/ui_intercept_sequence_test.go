@@ -53,10 +53,11 @@ func TestUIInterceptFailedFilterRestoresAcknowledgedControls(t *testing.T) {
 	requireUIContains(t, intercept,
 		"let acknowledgedFilterConfig=null",
 		"function filterControlsMatch(input)",
-		"function syncFilterControls(config)",
 		"acknowledgedFilterConfig={...config}",
 		"else if(latest)commitFilterConfig(config)",
-		"if(filterControlsMatch(input))syncFilterControls(fallback)",
+		"commitFilterConfig(fallback)",
+		// The rejected text stays in the field, marked invalid, with what the server still enforces.
+		"if(filterControlsMatch(input))setFilterError(filterErrorText(error?.message,fallback))",
 	)
 }
 

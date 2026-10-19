@@ -49,3 +49,17 @@ export function deleteWarning(env) {
   const vars = n === 1 ? 'its 1 variable' : n ? 'its ' + n + ' variables' : 'any variables it holds';
   return { name: String((env && env.name) || 'this environment'), tail: ' will be deleted together with ' + vars + ', including current values kept on this machine. This cannot be undone.' };
 }
+
+// currentInputType masks a secret variable's current value while it is typed.
+export function currentInputType(row) { return row && row.secret ? 'password' : 'text'; }
+
+// applySavedCurrents folds the values the Variables sheet just stored back into
+// its rows. A secret's value is never kept in the row (it only becomes "set
+// (hidden)"), so the sheet can be repainted without showing it again; a plain
+// value becomes the row's current value.
+export function applySavedCurrents(currents, rows) {
+  for (const [row, c] of currents) {
+    if (!rows.includes(row) || !String(row.key || '').trim()) continue;
+    if (c.secret) { if (c.value !== '') row.hasCurrent = true; } else { row.current = c.value; row.hasCurrent = c.value !== ''; }
+  }
+}

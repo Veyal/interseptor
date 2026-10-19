@@ -48,12 +48,14 @@
 #ctxmenu .ctx-item,
 .ctx-submenu .ctx-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 34px; align-items: center; }
 #ctxmenu .ctx-has-value,
-.ctx-submenu .ctx-has-value { grid-template-columns: minmax(0, 1fr) minmax(0, 42%); }
+.ctx-submenu .ctx-has-value { grid-template-columns: minmax(0, 1fr) fit-content(42%); }
+/* The value column (a shortcut key, a current setting) takes its own width up to a
+   cap, never a fixed share: a 42% column squeezed short labels onto two lines. */
 /* The chevron column is intrinsic: a parent row must never give up label width. */
 #ctxmenu .ctx-has-sub,
 .ctx-submenu .ctx-has-sub { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 #ctxmenu .ctx-has-value.ctx-has-sub,
-.ctx-submenu .ctx-has-value.ctx-has-sub { grid-template-columns: minmax(0, 1fr) minmax(0, 38%) auto; }
+.ctx-submenu .ctx-has-value.ctx-has-sub { grid-template-columns: minmax(0, 1fr) fit-content(38%) auto; }
 #ctxmenu .lbl,
 .ctx-submenu .lbl { min-width: 0; white-space: normal; }
 #ctxmenu .ctx-label-text,
@@ -122,13 +124,24 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 
 #toast {
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  width: min(560px, calc(100% - 24px));
+  /* Hug the text (capped) instead of a fixed 560px bar: a short "Saved" toast
+     used to cover the editor footer's Save buttons. */
+  width: max-content;
+  max-width: min(420px, calc(100dvw - 24px));
   max-height: min(35vh, 260px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  align-items: stretch;
+  /* The newest toast sits at the bottom edge. Anchoring the stack there means an
+     overflowing stack clips its oldest items at the top instead of scrolling
+     the newest below the fold (the container is click-through, so a scrollbar
+     here could never be used). */
+  overflow: hidden;
+  justify-content: flex-end;
+  align-items: center;
 }
 #toast .toast-item{pointer-events:auto}
+/* A plain confirmation lets clicks through, so it never sits between the user
+   and the button under it (and hover no longer pins it on screen). Errors and
+   toasts that carry a button stay interactive. */
+#toast .toast-item:not(.error):not(.warn):not(:has(button)){pointer-events:none}
 #toast .toast-item {
   max-width: none;
   overflow-wrap: anywhere;
@@ -195,7 +208,7 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 
 @media (max-width: 600px) {
   #ctxmenu, .ctx-submenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
-  #toast { width: calc(100% - 24px); max-height: 30dvh; }
+  #toast { width: calc(100% - 24px); max-width: none; max-height: 30dvh; align-items: stretch; }
   .act-detail { margin-left: 0; }
   .flow-inspector{width:100vw;height:100dvh;border:0;border-radius:0;max-height:none!important}
   .flow-inspector-toolbar{padding:12px;gap:8px}

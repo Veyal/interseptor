@@ -6,22 +6,24 @@
 //             Status pills, Filters, then Pause, Views and the overflow menu (Columns,
 //             Clear filters). In scope only + Edit scope live in Filters. When
 //             the panel is narrow the tokens collapse to one count chip and the
-//             pills drop their chrome (panel-proxy.css, container queries).
+//             pills drop their chrome (panel-proxy.css, data-tb-* tiers set by
+//             watchToolbarWidth; no size container may wrap #rows).
 //   inspector one header row per side: Request/Response, Pretty/Raw/Hex plus a
 //             More menu for the other views, and Repeater, Intruder and the overflow
 //             menu (Attach as evidence, Copy as, Copy as PNG, More flow actions).
 //   note      a compact "Add note" field that opens on focus or when a note exists.
 // Menus are the kit's overflow menus (desktop-panel-kit.js), like every panel's.
 import { whenDesktop, el, iconNode, createOverflow, menuSeparator, move } from './desktop-panel-kit.js';
-import { splitViews, moreLabel, notePlaceholder, sentenceCase, activeTokenCount, isViewHidden } from './desktop-panel-proxy-model.js';
+import { splitViews, moreLabel, notePlaceholder, sentenceCase, activeTokenCount, isViewHidden, pressBubbles, toolbarWidthTier } from './desktop-panel-proxy-model.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
 // press fires a source button's own click handler. The event does not bubble:
 // History's app-wide click-away listener would otherwise close a menu the
-// handler just opened (the web's Copy as button has that problem).
+// handler just opened (the web's Copy as button has that problem). Copy-image
+// buttons are handled by a delegated document listener, so theirs must bubble.
 function press(node) {
-  if (node && !node.disabled) node.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true, view: window }));
+  if (node && !node.disabled) node.dispatchEvent(new MouseEvent('click', { bubbles: pressBubbles(node), cancelable: true, view: window }));
 }
 
 // park takes a source button out of the keyboard order and the accessibility tree
@@ -239,6 +241,26 @@ function buildInspector() {
   src.addEventListener('focusin', () => more.button.focus({ preventScroll: true }));
 }
 
+// watchToolbarWidth stamps the toolbar tier on the panel. A container query would
+// do this in CSS, but a size container around #rows makes desktop WebKit reset the
+// list's scroll offset whenever renderRows rebuilds it (History jumped to the top
+// after a panel round trip).
+function watchToolbarWidth(panel) {
+  const apply = (width) => {
+    if (!(width > 0)) return; // parked: keep the last tier
+    const tier = toolbarWidthTier(width);
+    panel.toggleAttribute('data-tb-narrow', tier.narrow);
+    panel.toggleAttribute('data-tb-compact', tier.compact);
+  };
+  // The observer's first callback reports the current content box (what a
+  // container query would measure).
+  if (typeof ResizeObserver !== 'function') { apply(panel.clientWidth); return; }
+  new ResizeObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    if (entry) apply(entry.contentRect.width);
+  }).observe(panel);
+}
+
 // ---- note bar ----
 function buildNote() {
   const bar = $('#noteBar');
@@ -262,6 +284,7 @@ whenDesktop(
     if (!panel || panel.dataset.dskProxy) return;
     panel.dataset.dskProxy = '1';
     buildToolbar(panel);
+    watchToolbarWidth(panel);
     buildInspector();
     buildNote();
   },

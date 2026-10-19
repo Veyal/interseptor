@@ -111,6 +111,9 @@ html.desktop-app .find-workspace .find-header .sev{color:var(--text-primary)}
 html.desktop-app .find-workspace .find-status-badge{padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);font-family:var(--ui);font-size:var(--text-caption);line-height:20px;font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text-secondary)}
 html.desktop-app .find-workspace .find-header .find-status-badge.find-st-needs_verification{color:var(--warning)}
 html.desktop-app .find-workspace .find-header .find-status-badge:is(.find-st-verified,.find-st-fixed){color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-header .find-status-badge:is(.find-st-false_positive,.find-st-wont_fix,.find-st-ignored){color:var(--text-muted)}
+html.desktop-app .find-triage-bar .find-triage-btn{border-radius:var(--radius-sm)}
+html.desktop-app .find-ignored-banner{background:var(--surface-sunken);border-color:var(--border-subtle);color:var(--text-secondary)}
 html.desktop-app .find-workspace .find-header-top .find-mode-chip{min-height:var(--control-h-sm);padding:0 6px;border-color:transparent;background:transparent;color:var(--text-muted);font-size:var(--text-caption);font-weight:500}
 html.desktop-app .find-workspace .find-header-top .find-mode-chip:hover{background:var(--surface-hover);color:var(--text-primary)}
 html.desktop-app .find-workspace .find-more-btn{min-width:var(--control-h);padding:0;background:transparent;border-color:transparent;color:var(--text-secondary)}
@@ -291,3 +294,7 @@ html.desktop-app .rp-head #reportBack:hover{background:var(--surface-hover);colo
    report. Edit and Screenshot are secondary. */
 html.desktop-app :is(#findToggleEdit,#findAddImage){background:var(--surface-2);border-color:var(--border-subtle);color:var(--text-primary)}
 html.desktop-app :is(#findToggleEdit,#findAddImage):hover{background:color-mix(in srgb,var(--surface-2),var(--text-primary) 6%);border-color:var(--border-strong);color:var(--text-primary)}
+/* The inline row's error must read as an error (the muted caption rule above
+   would otherwise win over data-kind) and the field itself is marked. */
+html.desktop-app .find-inline-foot .statusline[data-kind="error"]{color:var(--danger)}
+html.desktop-app .find-inline-new input[aria-invalid="true"]{border-color:var(--danger)}

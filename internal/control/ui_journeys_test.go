@@ -365,7 +365,8 @@ func TestUIJourneyIntruderValidatesNumericLimitsBeforeStart(t *testing.T) {
 	}
 	section := tools[start:]
 	if !strings.Contains(section, "threads must be between 1 and 64") ||
-		!strings.Contains(section, "repeat must be between 1 and 2000") {
+		!strings.Contains(section, "intrRepeatError(") ||
+		!strings.Contains(readUIAsset(t, "js/intruder.js"), "repeat must be between 1 and 2000") {
 		t.Fatal("Intruder must reject out-of-range numeric inputs before starting an attack")
 	}
 }

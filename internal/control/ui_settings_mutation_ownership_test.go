@@ -55,7 +55,7 @@ func TestUIAcknowledgedSettingsWritesInvalidateOlderRefreshes(t *testing.T) {
 		"if(invalidate)invalidateSettingsLoads({reconcile})",
 		"saveSettingsPatch({tlsBypassHosts:next})",
 		"saveSettingsPatch({originTLSVerifyBypassHosts:next})",
-		"saveSettingsPatch({upstreamProxy,upstreamProxyCA})",
+		"saveSettingsPatch({upstreamProxy,upstreamProxyCA,...(keep?{upstreamProxyKeepPassword:true}:{})})",
 		"saveSettingsPatch({proxyAddrs:addrs})",
 		"saveSettingsPatch({controlAddr},{reconcile:false})",
 		"let deviceProxyLoadEpoch=0",

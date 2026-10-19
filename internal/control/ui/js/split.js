@@ -22,6 +22,7 @@ function prefersReducedMotion() {
 export function createSplitPane(options) {
   const { root, key, orientation = 'right', collapsible = false, stackBelow = 720, scopeKey, storage } = options;
   const mins = options.min || [240, 320];
+  const maxList = options.maxList || Infinity;
   const defaultPct = options.default || 40;
   const doc = root.ownerDocument;
   const win = doc.defaultView || window;
@@ -60,13 +61,13 @@ export function createSplitPane(options) {
   // ---- geometry ----
   const total = () => (st.mode === 'bottom' ? root.clientHeight : root.clientWidth) || 0;
   const gutter = () => 8;
-  function currentSize() { return clampSplitSize(fromPercent(st.pct, total()), total(), mins, gutter()); }
+  function currentSize() { return clampSplitSize(fromPercent(st.pct, total()), total(), mins, gutter(), maxList); }
   function paint() {
     if (st.mode === 'stack') { root.style.removeProperty('--split-size'); return; }
     const t = total();
     const size = currentSize();
     root.style.setProperty('--split-size', size + 'px');
-    const b = splitBounds(t, mins, gutter());
+    const b = splitBounds(t, mins, gutter(), maxList);
     sash.setAttribute('aria-valuenow', String(Math.round(toPercent(size, t))));
     sash.setAttribute('aria-valuemin', String(Math.round(toPercent(b.min, t))));
     sash.setAttribute('aria-valuemax', String(Math.round(toPercent(b.max, t))));
@@ -74,7 +75,7 @@ export function createSplitPane(options) {
   function setSize(px, { persist = true } = {}) {
     const t = total();
     if (!t) return;
-    st.pct = toPercent(clampSplitSize(px, t, mins, gutter()), t);
+    st.pct = toPercent(clampSplitSize(px, t, mins, gutter(), maxList), t);
     paint();
     if (persist) save();
   }
@@ -207,7 +208,7 @@ export function createSplitPane(options) {
     if (act.toggle) { if (collapsible) toggle(); return; }
     if (st.collapsed) expand();
     const t = total();
-    const b = splitBounds(t, mins, gutter());
+    const b = splitBounds(t, mins, gutter(), maxList);
     if (act.to) setSize(act.to === 'min' ? b.min : b.max);
     else setSize(currentSize() + act.delta);
   });

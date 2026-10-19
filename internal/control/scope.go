@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/store"
@@ -42,6 +43,14 @@ func validScope(w http.ResponseWriter, r store.ScopeRule) bool {
 		httpErr(w, http.StatusBadRequest, "a scope rule needs at least one of host/path/scheme/port")
 		return false
 	}
+	if r.Port < 0 || r.Port > 65535 {
+		httpErr(w, http.StatusBadRequest, "port must be between 1 and 65535 (0 or omitted matches any port)")
+		return false
+	}
+	if s := strings.ToLower(r.Scheme); s != "" && s != "http" && s != "https" {
+		httpErr(w, http.StatusBadRequest, "scheme must be http or https (empty matches any scheme)")
+		return false
+	}
 	if err := scope.ValidateRule(r); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return false
@@ -54,8 +63,25 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxScopeRequestBytes, &in) {
 		return
 	}
+	if err := scope.NormalizeRule(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if !validScope(w, in) {
 		return
+	}
+	existing, err := h.st.ListScopeRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	for _, ex := range existing {
+		if scopeRuleIdentity(ex) == scopeRuleIdentity(in) {
+			// An exact duplicate adds nothing; the existing rule is returned so
+			// "make sure this host is in scope" callers can treat it as done.
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "an identical scope rule already exists", "rule": ex})
+			return
+		}
 	}
 	if _, err := h.st.CreateScopeRule(&in); err != nil {
 		httpInternalErr(w, err)
@@ -76,8 +102,23 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.ID = id
+	if err := scope.NormalizeRule(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if !validScope(w, in) {
 		return
+	}
+	existing, err := h.st.ListScopeRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	for _, ex := range existing {
+		if ex.ID != id && scopeRuleIdentity(ex) == scopeRuleIdentity(in) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "an identical scope rule already exists", "rule": ex})
+			return
+		}
 	}
 	if err := h.st.UpdateScopeRule(&in); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -98,6 +139,10 @@ func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.DeleteScopeRule(id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "scope rule not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}

@@ -74,7 +74,7 @@ function iconNode(doc, name) {
 function button(doc, { id, label, text, icon, cls = 'btn xs' }) {
   const b = doc.createElement('button');
   b.type = 'button';
-  b.id = id;
+  if (id) b.id = id;
   b.className = cls;
   if (label) b.title = label;
   if (icon) b.appendChild(iconNode(doc, icon));
@@ -93,11 +93,11 @@ export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast
   panel.hidden = true;
   panel.setAttribute('aria-label', title);
   const head = mk('div', 'rep-diff-head');
-  const ignoreLabel = mk('label', 'hint');
+  const ignoreLabel = mk('label', 'hint rep-diff-ignore');
   const ignore = doc.createElement('input');
   ignore.type = 'checkbox';
   ignore.id = prefix + 'Ignore';
-  ignoreLabel.append(ignore, doc.createTextNode(' Ignore dates, cookies, tokens'));
+  ignoreLabel.append(ignore, doc.createTextNode('Ignore dates, cookies, tokens'));
   const mode = btn('Mode', 'Side by side');
   mode.setAttribute('aria-pressed', 'false');
   const prev = btn('Prev', 'Prev change');
@@ -155,6 +155,7 @@ export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast
   panel.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePanel(); return; }
     if (e.target && e.target.closest && e.target.closest('input,textarea,select')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'n') { e.preventDefault(); view.next(); } else if (e.key === 'N') { e.preventDefault(); view.prev(); }
   });
   return { open, close: closePanel, isOpen: () => !panel.hidden };
@@ -326,6 +327,8 @@ export function wireRepeaterExtras(deps) {
   return {
     sync,
     afterSend() { setPhoneView(phoneViewAfterSend()); closeDiff({ focus: false }); sync(); },
+    diffOpen: () => diffPanel.isOpen(),
+    closeDiff: () => closeDiff(),
     setPhoneView,
   };
 }

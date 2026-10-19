@@ -1,10 +1,13 @@
-import { $, esc, escAttr, toast, toastError, copyText, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
+import { wireOverlayGutter } from './overlay-gutter.js';
+import { renamedTabLabel, placeAfter, repeaterEscapeAction } from './repeater-tab-model.js';
+import { $, hasOpenModal, ctxMenuOpen, revealActiveTab, esc, escAttr, toast, toastError, copyText, api, apiBytes, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
+import { binaryHandoff, repeaterLoadedText } from './intercept-model.js';
 import { wireListbox, focusOption } from './listbox.js';
 import { wireRepeaterExtras } from './repeater.js';
 import { wireIntruderPreview } from './evidence-render.js';
-import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm } from './intruder.js';
-import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
+import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm, intrRowTitle, intrRequestCount, intrRepeatError, intrCountLabel, intrNumbersError, intrProgressLabel, intrValidateRegex, intrValidateTarget, intrSortRows, INTR_MAX_DELAY_MS } from './intruder.js';
+import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, mountHexDump } from './core.js';
 import { flowPngMenuItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
 import { createListView, openFlow } from './core.js';
 
@@ -645,6 +648,9 @@ function repCodecBadge(t){
     b.textContent=(t.applyOnSend?'re-encode on send · ':'display · ')+(t.codecId);
   }else{b.style.display='none';b.textContent='';}
 }
+// openNewRepeaterTab switches to Repeater and adds a blank tab through the tab
+// bar's + button (the same path as a click, so the tab limit applies).
+export function openNewRepeaterTab(){document.querySelector('.tab[data-tab="repeater"]')?.click();document.querySelector('#repTabs .rep-tab-add')?.click();}
 export function repNewTab(){repSaveEditor();const t=repTabs.create();if(!t)return null;repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
@@ -667,6 +673,12 @@ export function repLoadEditor(){
   refreshRepHistory(t);
   syncRepActions();
 }
+// repEncodeWire asks the message codec to re-encode the edited plaintext into the
+// wire body (the same transform Send applies with bodyMode=decoded).
+async function repEncodeWire(t){
+  const d=await api('/api/codecs/encode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:t.codecId,flowId:t.sourceFlowId||0,side:'req',plaintext:t.decodedPlain||'',rawBody:t.rawBody||t.body||''})});
+  return typeof d.body==='string'?d.body:null;
+}
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
   const wire=t.body||'';
@@ -688,7 +700,7 @@ async function repEnterDecoded(t){
       if(repCur()===t)toast(d.error||'no message codec matched');
       return false;
     }
-    t.reqView='decoded';t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
+    t.reqView='decoded';t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';t.decodedBase=t.decodedPlain;
     if(repCur()!==t)return true;
     $('#repBody').value=t.decodedPlain;repCodecBadge(t);repRefreshHL();return true;
   }catch(e){
@@ -737,6 +749,12 @@ export async function repSend(){
     await repRecordHistory(t,flow);
     if(!current())return;
     t.sendPending=false;repPersist();
+    // The send transmitted the re-encoded Decoded edit; bring the wire body (what
+    // Raw/Pretty show) up to date so it no longer holds the pre-edit bytes.
+    if((t.reqView||'raw')==='decoded'&&t.applyOnSend&&t.codecId&&t.decodedBase!==t.decodedPlain){
+      try{const wire=await repEncodeWire(t);if(wire!==null){t.body=wire;t.rawBody=wire;t.decodedBase=t.decodedPlain;repPersist();}}catch(e){/* Raw stays on the previous wire body */}
+      if(!current())return;
+    }
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
@@ -822,9 +840,9 @@ export async function renderRepResponse(){
       return;
     }
     if(resView==='hex'){
-      const raw=await api('/api/flows/'+resId+'/raw?side=res');
+      const bytes=await apiBytes('/api/flows/'+resId+'/raw?side=res');
       if(!current())return;
-      $('#repResView').innerHTML='<pre class="hex-dump">'+esc(formatHexDump(raw))+'</pre>';
+      mountHexDump($('#repResView'),bytes);
       return;
     }
     const raw=await api('/api/flows/'+resId+'/raw?side=res');
@@ -913,6 +931,20 @@ $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
   const show=h.style.display==='none';h.style.display=show?'':'none';
   $('#repHistToggle').setAttribute('aria-expanded',show?'true':'false');
   if(show)loadRepHistory();
+});
+// A History row has its own menu so the generic workspace menu never covers it.
+$('#repHistory')&&$('#repHistory').addEventListener('contextmenu',e=>{
+  const row=e.target instanceof Element?e.target.closest('.h[data-id]'):null;
+  if(!row)return;
+  e.preventDefault();
+  const id=Number(row.dataset.id),t=repCur();
+  const f=t&&normalizeRepHistory(t.history).find(x=>x.id===id);
+  const png=flowPngMenuItems(id);
+  openCtxMenu(e.clientX,e.clientY,[{head:'SEND · '+(f?((f.method||'')+' '+(f.status||'')).trim():'#'+id),items:[
+    {label:'Load this send',icon:'repeater',act:()=>repLoadSend(id)},
+    {label:'Copy host and path',icon:'copy',disabled:!f,act:()=>copyText((f.host||'')+(f.path||''))},
+    png.length?{label:'Copy exchange as PNG',icon:'image',children:png}:{label:'Copy exchange as PNG',icon:'image',disabled:true},
+  ]}]);
 });
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
@@ -1077,7 +1109,9 @@ export function parseRawRequest(raw){
 }
 // sendRawToRepeater opens an edited raw request (for example a held Intercept
 // message) in a new Repeater tab. It never reuses a tab, so no work is lost.
-export async function sendRawToRepeater({scheme,host,raw,label}){
+export async function sendRawToRepeater({scheme,host,raw,label,heldState='held',binaryBodyLen=0}){
+  let notice='';
+  if(binaryBodyLen>0){const h=binaryHandoff(raw,binaryBodyLen);raw=h.raw;notice=h.notice;}
   const req=parseRawRequest(raw);
   if(!req){toast('Held message is not an editable HTTP request','warn');return false;}
   if(!await waitForWorkstationReady())return false;
@@ -1088,11 +1122,13 @@ export async function sendRawToRepeater({scheme,host,raw,label}){
   t.method=req.method;t.url=url;t.headers=req.headers;t.body=req.body;
   t.reqView='pretty';t.sourceFlowId=null;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
   t.label=label||'';t.requestAdoptionPristine=false;t.resId=null;t.status='';t.color='';t.sendError='';
+  t.warnings=notice?['binary body not carried']:[];
   t.reqEditEpoch=(t.reqEditEpoch||0)+1;t.title=repTitle(t);
   renderRepTabs();repPersist();
   document.querySelector('.tab[data-tab="repeater"]').click();
   repLoadEditor();
-  toast('loaded held request into Repeater · it is still held');
+  toast(repeaterLoadedText(heldState));
+  if(notice)toast(notice,'warn');
   return true;
 }
 export async function repInit(){
@@ -1114,6 +1150,7 @@ export async function repInit(){
       const lbl=document.querySelector('#repTabs .rep-tab.on .rt-label');
       if(lbl){lbl.textContent=t.title||'new tab'; lbl.style.color=t.tid===repTabs.active?methodColor(t.method):'inherit';}
       const tab=document.querySelector('#repTabs .rep-tab.on'); if(tab)tab.title=t.title||'new tab';
+      revealActiveTab($('#repTabs')); // a longer title must not push the tab off the strip
     }
     repPersistDebounced();
   });});
@@ -1121,6 +1158,7 @@ export async function repInit(){
   // Keep each colored overlay scrolled in lockstep with its textarea.
   [['#repHeaders','#repHeadersHL'],['#repBody','#repBodyHL']].forEach(([ta,hl])=>{
     const t=$(ta),p=$(hl);if(t&&p)t.addEventListener('scroll',()=>{p.scrollTop=t.scrollTop;p.scrollLeft=t.scrollLeft;});
+    wireOverlayGutter(t,p); // same wrap width when only the textarea shows a scrollbar
   });
   repRefreshHL();
   repWireEncodeCtx();
@@ -1187,7 +1225,7 @@ function repWireEncodeCtx(){
       {label:'Rename tab…',icon:'edit',act:()=>repRenameTab(t)},
       {label:'Duplicate tab',icon:'copy',act:()=>repDuplicateTab(t)},
       png.length?{label:'Copy exchange as PNG',icon:'image',children:png}:{label:'Copy exchange as PNG',icon:'image',disabled:true},
-      others.length?{label:'Diff against tab',icon:'diff',children:others.map(o=>({label:o.title||('tab '+o.tid),disabled:!o.resId||!t.resId,act:()=>repDiffTabs(t,o)}))}:null,
+      others.length?{label:'Diff against tab',icon:'diff',children:others.map(o=>({label:repTitle(o),disabled:!o.resId||!t.resId,act:()=>repDiffTabs(t,o)}))}:null,
       {sep:true},
       {label:'Close other tabs',icon:'close',disabled:!others.length,danger:true,act:()=>{others.forEach(o=>repTabs.close(o.tid));}},
       {label:'Close tab',icon:'close',danger:true,act:()=>repTabs.close(tid)},
@@ -1197,7 +1235,8 @@ function repWireEncodeCtx(){
 // repRenameTab sets the tab's own label, which repTitle prefers over the URL.
 async function repRenameTab(t){
   const name=await uiPrompt({title:'Rename Repeater tab',placeholder:'Tab name',value:t.label||''});
-  t.label=name==null?'':String(name).slice(0,60);
+  if(name==null)return; // Cancel or Esc keeps the current name
+  t.label=renamedTabLabel(t.label,name);
   t.title=repTitle(t);
   renderRepTabs();repPersist();
 }
@@ -1208,6 +1247,7 @@ function repDuplicateTab(t){
   copy.method=t.method;copy.url=t.url;copy.headers=t.headers;copy.body=t.body;
   copy.label=t.label||'';
   copy.title=repTitle(copy);
+  placeAfter(repTabs.tabs,copy,t);
   repTabs.active=copy.tid;renderRepTabs();repLoadEditor();repPersist();
 }
 async function repDiffTabs(a,b){
@@ -1219,11 +1259,28 @@ async function repDiffTabs(a,b){
 }
 $('#repSend').onclick=repSend;
 $('#repCancel')&&($('#repCancel').onclick=()=>{repCancelSend();$('#repSend')?.focus();});
-// Escape cancels an in-flight send while focus is inside the Repeater. The
-// diff panel and the response finder consume their own Escape first.
-$('#panel-repeater')?.addEventListener('keydown',e=>{
-  if(e.key!=='Escape'||e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
-  if(repCancelSend())e.preventDefault();
+// Escape in the active Repeater closes the diff panel, else cancels an
+// in-flight send — wherever focus is: WebKit leaves it on <main> after a mouse
+// click on Send. The response finder consumes its own Escape first.
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+  const t=repCur();
+  const action=repeaterEscapeAction({
+    panelActive:!!$('#panel-repeater')?.classList.contains('active'),
+    modalOpen:hasOpenModal()||ctxMenuOpen(),
+    defaultPrevented:e.defaultPrevented,
+    diffOpen:!!repExtras?.diffOpen?.(),
+    sendPending:!!(t&&t.sendPending),
+    historyOpen:repHistoryVisible(),
+  });
+  if(action==='diff'){e.preventDefault();repExtras.closeDiff();}
+  else if(action==='cancel'&&repCancelSend())e.preventDefault();
+  else if(action==='history'){
+    e.preventDefault();
+    const hadFocus=!!document.activeElement?.closest?.('#repHistory');
+    $('#repHistToggle')?.click();
+    if(hadFocus)$('#repHistToggle')?.focus();
+  }
 });
 $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
   const t=repCur();if(!t)return;
@@ -1244,8 +1301,19 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   }
   if((t.reqView||'raw')==='pretty'&&next==='raw')t.body=compactBody(t.body);
   if((t.reqView||'raw')==='decoded'&&next!=='decoded'){
-    // leave decoded — wire body stays in t.body/rawBody
-    if(t.rawBody)t.body=t.rawBody;
+    // Leaving Decoded: a re-encode-on-send codec turns the edit back into the
+    // wire body, so Raw/Pretty show what Send would transmit and returning to
+    // Decoded decodes that same body (the edit survives the round trip).
+    if(t.reqDecodePending)return;
+    if(t.applyOnSend&&t.codecId&&t.decodedBase!==t.decodedPlain){
+      b.disabled=true;b.setAttribute('aria-busy','true');
+      let wire=null;
+      try{wire=await repEncodeWire(t);}catch(e){if(repCur()===t)toast(e.message);}
+      b.disabled=false;b.setAttribute('aria-busy','false');
+      if(repCur()!==t)return;
+      if(wire===null)return; // keep the Decoded edit rather than lose it
+      t.body=wire;t.rawBody=wire;t.decodedBase=t.decodedPlain;
+    }else if(t.rawBody)t.body=t.rawBody;
   }
   t.reqView=next;
   repSyncReqSeg(next);
@@ -1427,8 +1495,15 @@ function intrPayloadTruncated(slot){
 function intrPayloadNote(slot){
   if(!intrPayloadTruncated(slot)) return '';
   const n=intrGetPayloadLines(slot).length;
-  const f=slot==='s'?intrState.sniperFile:intrState.posFiles?.[Number(slot)];
-  return `Showing first ${LIST_PREVIEW_LINES} of ${n.toLocaleString()} payloads${f?' from '+f:''} — full list is kept for the attack but not rendered here.`;
+  return `${LIST_PREVIEW_LINES} of ${n.toLocaleString()} (preview)`;
+}
+function intrPayloadNoteFile(slot){
+  return slot==='s'?intrState.sniperFile:intrState.posFiles?.[Number(slot)];
+}
+function intrSetNote(note,slot){
+  note.textContent=intrPayloadNote(slot);
+  const file=intrPayloadNoteFile(slot);
+  note.title=note.textContent?`${file?file+': ':''}Only the first ${LIST_PREVIEW_LINES} payloads are shown. The full list is kept for the attack, so the editor is a read-only preview. Use Clear (trash) to empty it, or Load to replace it.`:'';
 }
 function intrSetPayloadLines(slot, arr, fileName){
   const prev=previewListLines(arr, LIST_PREVIEW_LINES);
@@ -1452,7 +1527,8 @@ function intrClearPayloadLines(slot){
   if(intrState.posLines) intrState.posLines[i]=null;
   if(intrState.posFiles) intrState.posFiles[i]=null;
 }
-function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]*§/g)||[]).map(s=>s.slice(1,-1));}
+// Empty §§ pairs are not injection points, so they are never counted.
+function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]+§/g)||[]).map(s=>s.slice(1,-1));}
 
 /* ---- intruder tabs: each is a full saved attack config (mirrors Repeater) ---- */
 function intrBlank(seq){return {tid:seq,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],sniperSource:'list',sniperNums:INTR_NUM_DEFAULT(),posSources:[],posNums:[],grep:'',extract:'',proc:'',barrier:false};}
@@ -1623,6 +1699,16 @@ $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{
   const show=h.style.display==='none';h.style.display=show?'':'none';
   $('#intrHistToggle').setAttribute('aria-expanded',show?'true':'false');
 });
+// Esc closes the run history, like Repeater's.
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+  if(!$('#panel-intruder')?.classList.contains('active')||hasOpenModal()||ctxMenuOpen())return;
+  const h=$('#intrHistory');if(!h||h.style.display==='none'||h.hidden||!$('#intrHistToggle')||$('#intrHistToggle').getAttribute('aria-expanded')!=='true')return;
+  e.preventDefault();
+  const hadFocus=!!document.activeElement?.closest?.('#intrHistory');
+  $('#intrHistToggle').click();
+  if(hadFocus)$('#intrHistToggle').focus();
+});
 
 function intrModeText(){
   if(intrState.type==='repeat')
@@ -1725,7 +1811,7 @@ const INTR_PRESETS={
     "-1"
   ]
 };
-const INTR_FILE_BTNS=`<div class="spacer"></div><select class="btn btn-field intr-preset-select" title="Insert built-in attack payloads" aria-label="Insert built-in attack payloads"><option value="" disabled selected>Presets</option><option value="sqli_auth">SQLi Auth Bypass</option><option value="sqli_probe">SQLi Error/Probe</option><option value="xss">Cross-Site Scripting</option><option value="traversal">Path Traversal / LFI</option><option value="ssrf">SSRF Localhost</option><option value="cmdi">Command Injection</option><option value="auth_bypass">Auth / Role Tokens</option></select><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file" aria-label="Append payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></button>`;
+const INTR_FILE_BTNS=`<div class="spacer"></div><select class="btn btn-field intr-preset-select" title="Insert built-in attack payloads" aria-label="Insert built-in attack payloads"><option value="" disabled selected>Presets</option><option value="sqli_auth">SQLi Auth Bypass</option><option value="sqli_probe">SQLi Error/Probe</option><option value="xss">Cross-Site Scripting</option><option value="traversal">Path Traversal / LFI</option><option value="ssrf">SSRF Localhost</option><option value="cmdi">Command Injection</option><option value="auth_bypass">Auth / Role Tokens</option></select><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file" aria-label="Append payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></button><button type="button" class="btn intr-file-clear" title="Clear this payload list" aria-label="Clear this payload list"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg></button>`;
 async function intrLoadPayloadFile(ta, append){
   const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
   try{
@@ -1739,7 +1825,7 @@ async function intrLoadPayloadFile(ta, append){
     ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
     ta.readOnly=intrPayloadTruncated(p);
     const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
-    if(note) note.textContent=intrPayloadNote(p);
+    if(note) intrSetNote(note,p);
     updateIntrCount();
     intrTouch();
     toast((append?'appended ':'loaded ')+merged.length.toLocaleString()+' payload'+(merged.length===1?'':'s')+' from '+got.name+(merged.length>LIST_PREVIEW_LINES?' (preview only in editor)':''));
@@ -1751,6 +1837,20 @@ function wireIntrPayloadFileButtons(wrap){
     e.stopPropagation();
     const ta=btn.closest('.intr-pl')?.querySelector('textarea');
     if(ta) intrLoadPayloadFile(ta, btn.dataset.mode==='append');
+  });
+  wrap.querySelectorAll('.intr-file-clear').forEach(btn=>btn.onclick=e=>{
+    e.stopPropagation();
+    const ta=btn.closest('.intr-pl')?.querySelector('textarea');
+    if(!ta) return;
+    const p=ta.dataset.pos;
+    intrSetPayloadLines(p, [], null);
+    ta.value='';
+    ta.readOnly=false;
+    const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
+    if(note) note.textContent='';
+    updateIntrCount();
+    intrTouch();
+    ta.focus();
   });
   wrap.querySelectorAll('.intr-preset-select').forEach(sel=>{
     sel.onchange=e=>{
@@ -1765,7 +1865,7 @@ function wireIntrPayloadFileButtons(wrap){
         ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
         ta.readOnly=intrPayloadTruncated(p);
         const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
-        if(note) note.textContent=intrPayloadNote(p);
+        if(note) intrSetNote(note,p);
         updateIntrCount();
         intrTouch();
         toast('loaded '+list.length+' '+sel.options[sel.selectedIndex].text+' payloads');
@@ -1812,7 +1912,11 @@ function wireIntrNumbers(wrap){
     const refresh=()=>{
       const prev=box.querySelector('.intr-num-preview');
       const arr=expandNumbers(intrNumsFor(slot));
-      if(prev) prev.textContent=arr.length?`will send ${arr.length.toLocaleString()} payload${arr.length===1?'':'s'}`:'no values';
+      const bad=intrNumbersError(intrNumsFor(slot));
+      if(prev){
+        prev.textContent=bad||(arr.length?`will send ${arr.length.toLocaleString()} payload${arr.length===1?'':'s'}`:'no values');
+        prev.classList.toggle('intr-invalid',!!bad);
+      }
       const rand=intrNumsFor(slot).mode==='random';
       const countEl=box.querySelector('.intr-num-count');
       const uniqEl=box.querySelector('.intr-num-unique');
@@ -1847,7 +1951,7 @@ function wireIntrNumbers(wrap){
 function renderPayloadInputs(){
   const wrap=$('#intrPayloadsWrap');if(!wrap)return;
   if(intrState.type==='repeat'){
-    wrap.innerHTML='<div class="hint">Race / repeat — no payload lists. The request above is sent verbatim <b>×'+(parseInt($('#intrRepeat').value,10)||0)+'</b> times across <b>'+(parseInt($('#intrThreads').value,10)||1)+'</b> threads.</div>';
+    wrap.innerHTML='<div class="hint">Race / repeat — no payload lists. The request above is sent verbatim <b>'+(intrRepeatError($('#intrRepeat').value)?'invalid repeat (1–2000)':'×'+Number($('#intrRepeat').value))+'</b> times across <b>'+(parseInt($('#intrThreads').value,10)||1)+'</b> threads.</div>';
     updateIntrCount();return;
   }
   if(intrState.type!=='pitchfork'&&intrState.type!=='cluster'){
@@ -1869,7 +1973,7 @@ function renderPayloadInputs(){
     ta.readOnly=intrPayloadTruncated(p);
     const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
     if(note){
-      note.textContent=intrPayloadNote(p);
+      intrSetNote(note,p);
       const tab=intrTabs.cur();
       if(p==='s'&&tab?.sniperLarge&&!intrState.sniperLines){
         note.textContent=(tab.sniperCount?tab.sniperCount.toLocaleString()+' payloads were':'Large payload list was')+' not restored after reload — load the file again with the Load button.';
@@ -1877,18 +1981,30 @@ function renderPayloadInputs(){
         note.textContent=`${tab.posCounts[Number(p)].toLocaleString()} payloads were not restored after reload — load the file again with the Load button.`;
       }
     }
-    ta.addEventListener('input',()=>{
+    // Switch a long list to the read-only preview (the full list is kept for
+    // the attack). Never mid-typing: that flips the textarea read-only and
+    // drops keystrokes, so typed text stays editable until the field is left.
+    const collapseLarge=()=>{
+      if(ta.readOnly) return false;
+      const arr=parseListLines(ta.value);
+      if(arr.length<=LIST_PREVIEW_LINES) return false;
+      intrSetPayloadLines(p, arr, null);
+      ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
+      ta.readOnly=true;
+      if(note) intrSetNote(note,p);
+      return true;
+    };
+    ta.addEventListener('blur',()=>{if(collapseLarge()){updateIntrCount();intrTouch();}});
+    ta.addEventListener('input',e=>{
       if(ta.readOnly) return;
       const arr=parseListLines(ta.value);
-      if(arr.length>LIST_PREVIEW_LINES){
-        intrSetPayloadLines(p, arr, null);
-        ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
-        ta.readOnly=true;
-        if(note) note.textContent=intrPayloadNote(p);
+      const bulk=/^insertFrom(Paste|Drop)|^insertReplacementText$/.test(e?.inputType||'');
+      if(arr.length>LIST_PREVIEW_LINES&&bulk){
+        collapseLarge();
       }else{
         intrClearPayloadLines(p);
         if(p==='s') intrState.sniper=ta.value; else intrState.pos[Number(p)]=ta.value;
-        if(note) note.textContent='';
+        if(note){note.title='';note.textContent=arr.length>LIST_PREVIEW_LINES?`${arr.length.toLocaleString()} payloads (preview on leave)`:'';}
       }
       updateIntrCount();intrTouch();
     });
@@ -1914,26 +2030,42 @@ if($('#intrTplLoad'))$('#intrTplLoad').onclick=intrLoadTemplateFile;
 function ordinal(n){return n+({1:'st',2:'nd',3:'rd'}[n%10>3||(n%100>=11&&n%100<=13)?0:n%10]||'th');}
 // Live payload/request count on the PAYLOADS header + attack bar.
 function updateIntrCount(){
+  updateIntrCountInner();
+  // A Numbers range that cannot produce values is a validation state, not a count.
+  const cnt=$('#intrCount');
+  if(!cnt||intrState.type==='repeat')return;
+  const slots=intrState.type==='sniper'||intrState.type==='battering'?['s']:intrMarkers().map((_,i)=>i);
+  const bad=slots.map(slot=>intrSourceFor(slot)==='numbers'?intrNumbersError(intrNumsFor(slot)):'').find(Boolean);
+  if(bad){
+    cnt.textContent='invalid Numbers range';
+    const hint=$('#intrPayHint');
+    if(hint)hint.textContent='fix the Numbers range';
+  }
+  cnt.title=bad||'';
+}
+function updateIntrCountInner(){
   const hint=$('#intrPayHint'),cnt=$('#intrCount'),mk=intrMarkers();
   if(intrState.type==='repeat'){
-    const n=parseInt($('#intrRepeat').value,10)||0;
+    const repeatEl=$('#intrRepeat'),repeatBad=intrRepeatError(repeatEl.value);
     if(hint)hint.textContent='no payloads — verbatim resend';
-    if(cnt)cnt.textContent=`${n} send${n===1?'':'s'}`;
+    if(cnt)cnt.textContent=intrCountLabel('repeat',{repeat:repeatEl.value});
+    repeatEl.setAttribute('aria-invalid',repeatBad?'true':'false');
+    repeatEl.title=repeatBad||'';
     return;
   }
   if(intrState.type==='pitchfork'){
     const counts=mk.map((_,i)=>intrGetPayloadLines(i).length);
-    const reqs=counts.length?Math.min(...counts):0;
+    const reqs=intrRequestCount('pitchfork',counts,mk.length);
     if(hint)hint.textContent=counts.length?counts.map((n,i)=>`§${i+1}:${n.toLocaleString()}`).join(' · '):'no § markers yet';
     if(cnt)cnt.textContent=mk.length?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:'mark § first';
   }else if(intrState.type==='cluster'){
     const counts=mk.map((_,i)=>intrGetPayloadLines(i).length);
-    const reqs=counts.length?counts.reduce((a,b)=>a*b,1):0;
+    const reqs=intrRequestCount('cluster',counts,mk.length);
     if(hint)hint.textContent=counts.length?counts.map((n,i)=>`§${i+1}:${n.toLocaleString()}`).join(' · '):'no § markers yet';
     if(cnt)cnt.textContent=mk.length?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:'mark § first';
   }else{
-    const n=intrGetPayloadLines('s').length,P=mk.length,reqs=n*Math.max(P,1);
-    if(hint)hint.textContent=`${n.toLocaleString()} payload${n===1?'':'s'}`+(P>1?` × ${P} § positions`:'');
+    const n=intrGetPayloadLines('s').length,P=mk.length,reqs=intrRequestCount(intrState.type,[n],P);
+    if(hint)hint.textContent=`${n.toLocaleString()} payload${n===1?'':'s'}`+(P>1&&intrState.type!=='battering'?` × ${P} § positions`:'');
     if(cnt)cnt.textContent=P?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:`${n.toLocaleString()} payloads · mark § first`;
   }
 }
@@ -1989,7 +2121,10 @@ function wireButtonGroupKeys(group){
 wireButtonGroupKeys($('#intrType'));
 const _intrListMode=document.getElementById('intrListMode');
 if(_intrListMode)_intrListMode.onchange=()=>{intrState.type=_intrListMode.value;updateIntrMode();intrTouch();};
-function intrWrapSelection(){const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();}
+function intrWrapSelection(){const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;
+  // Nothing selected: inserting an empty §§ would only add a bogus position.
+  if(a===b){toast('select the text to mark first');ta.focus();return;}
+  ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();}
 $('#intrWrap').onclick=intrWrapSelection;
 // Alt+M wraps the selection in § markers from the keyboard (Race mode has no
 // markers, so the shortcut follows the disabled button). e.code is used because
@@ -2006,6 +2141,19 @@ function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 const INTR_MAX_REQUESTS=2000;
+// Focus a runtime option, opening the collapsed Options disclosure first so the
+// field is actually reachable (it is hidden inside <details> at narrow heights).
+function focusIntrOption(sel){
+  const el=$(sel);if(!el)return;
+  const d=el.closest('details');if(d&&!d.open)d.open=true;
+  el.focus();
+}
+// Focus the payload editor for a position ('s' = sniper/all positions).
+function focusIntrPayloads(pos){
+  const wrap=$('#intrPayloadsWrap');if(!wrap)return;
+  const el=wrap.querySelector(`[data-pos="${pos}"]`)||wrap.querySelectorAll('.intr-pl')[pos==='s'?0:Number(pos)]?.querySelector('textarea,input')||wrap.querySelector('textarea,input');
+  if(el)el.focus();
+}
 function setIntrStartState(stateName,label){
   const button=$('#intrStart');if(!button)return;
   button.classList.remove('is-pending','is-success','is-error');
@@ -2024,41 +2172,45 @@ export async function intrStart(){
   if(intrStartPending)return;
   const confirmed=intrLargeRunConfirmed;intrLargeRunConfirmed=false;
   const target=$('#intrTarget').value.trim();
-  if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
+  const targetErr=intrValidateTarget(target);
+  if(targetErr){toast(targetErr,'error');$('#intrTarget').focus();return;}
   const threadsValue=Number($('#intrThreads').value),delayValue=Number($('#intrDelay').value);
-  if(!Number.isInteger(threadsValue)||threadsValue<1||threadsValue>64){toast('threads must be between 1 and 64','error');$('#intrThreads').focus();return;}
-  if(!Number.isInteger(delayValue)||delayValue<0){toast('delay must be zero or greater','error');$('#intrDelay').focus();return;}
+  if(!Number.isInteger(threadsValue)||threadsValue<1||threadsValue>64){toast('threads must be between 1 and 64','error');focusIntrOption('#intrThreads');return;}
+  if(!Number.isInteger(delayValue)||delayValue<0||delayValue>INTR_MAX_DELAY_MS){toast(`delay must be between 0 and ${INTR_MAX_DELAY_MS.toLocaleString()} ms`,'error');focusIntrOption('#intrDelay');return;}
+  // Flag falls back to a literal substring match when it is not a valid regex
+  // (documented server behaviour), so only Extract — which needs a capture
+  // group and is silently skipped when invalid — is validated here.
+  const extractErr=intrValidateRegex('Extract',$('#intrExtract').value);
+  if(extractErr){toast(extractErr,'error');focusIntrOption('#intrExtract');return;}
   const threads=threadsValue,delayMs=delayValue;
   const body={target,template:$('#intrTemplate').value,attackType:intrState.type,threads,delayMs,
     grepMatch:$('#intrGrep').value.trim(),grepExtract:$('#intrExtract').value.trim(),
     processRules:lines($('#intrProc').value.replace(/,/g,'\n')).map(s=>s.trim()).filter(Boolean)};
   if(intrState.type==='repeat'){
     const repeatValue=Number($('#intrRepeat').value);
-    if(!Number.isInteger(repeatValue)||repeatValue<1||repeatValue>2000){toast('repeat must be between 1 and 2000','error');$('#intrRepeat').focus();return;}
+    if(intrRepeatError($('#intrRepeat').value)){toast(intrRepeatError($('#intrRepeat').value),'error');focusIntrOption('#intrRepeat');return;}
     body.repeat=repeatValue;
     body.barrier=!!($('#intrBarrier')&&$('#intrBarrier').checked);
     if(!confirmed&&intrExtras&&needsLargeRunConfirm(repeatValue)){intrExtras.confirmLarge(repeatValue,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }else{
     const mk=intrMarkers();
-    if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends');$('#intrTemplate').focus();return;}
+    if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends','error');$('#intrTemplate').focus();return;}
     if(intrState.type==='pitchfork'||intrState.type==='cluster'){
       body.payloads=mk.map((_,i)=>intrGetPayloadLines(i));
-      if(body.payloads.some(l=>!l.length)){toast('add payloads for every § position');return;}
+      const empty=body.payloads.findIndex(l=>!l.length);
+      if(empty>=0){toast('add payloads for every § position','error');focusIntrPayloads(empty);return;}
     }else{
       body.payloads=[intrGetPayloadLines('s')];
-      if(!body.payloads[0].length){toast('add at least one payload');return;}
+      if(!body.payloads[0].length){toast('add at least one payload','error');focusIntrPayloads('s');return;}
     }
     // Refuse oversize Numbers/list combinations before the server caps them.
-    let reqs=0;
-    if(intrState.type==='pitchfork') reqs=Math.min(...body.payloads.map(l=>l.length));
-    else if(intrState.type==='cluster') reqs=body.payloads.reduce((a,l)=>a*l.length,1);
-    else reqs=body.payloads[0].length*Math.max(mk.length,1);
+    const reqs=intrRequestCount(intrState.type,body.payloads.map(l=>l.length),mk.length);
     if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
     if(!confirmed&&intrExtras&&needsLargeRunConfirm(reqs)){intrExtras.confirmLarge(reqs,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
-  intrLastResults=[];intrDisplayedResults=[];
+  intrLastResults=[];intrDisplayedResults=[];intrSelectedId=null;
   intrLastRunning=false;intrLastTotal=0;intrLastDone=0;intrLastRunId='';
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
@@ -2144,7 +2296,7 @@ function loadIntrPresets(fallback=null){
   let list=normalizeIntruderPresets(fallback);
   if(list===null)list=browserList;
   list=normalizeIntruderPresets(list)||[];
-  sel.innerHTML='<option value="">presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
+  sel.innerHTML='<option value="">Saved presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
   sel.onchange=()=>{
     const i=parseInt(sel.value,10);if(isNaN(i)||!list[i])return;
     const p=list[i];
@@ -2178,10 +2330,14 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
     :(serverSyncQueued?'preset kept in this session · server sync queued':'preset kept in this session · storage unavailable');
   toast(message,storedLocally&&serverSyncQueued?'success':'warn');
 };
-export let intrTimer=null;
 let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;
 let intrPollEpoch=0;
 let intrPollInFlight=false,intrPollQueued=false;
+export let intrTimer=null;
+const INTR_POLL_MS=400;
+// One poll timer: a burst of intruder.update events must not keep re-arming it,
+// or the 400 ms delay never elapses while results arrive faster than that.
+let intrTimerArmed=false;
 function showIntrLiveResults(){
   const activeId=intrTabs.cur()?.tid??null;
   const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===activeId;
@@ -2202,7 +2358,7 @@ function intrLoadTab(t){
   renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
 }
 function invalidateIntrPoll(){
-  clearTimeout(intrTimer);
+  clearTimeout(intrTimer);intrTimerArmed=false;
   intrPollQueued=false;
   return ++intrPollEpoch;
 }
@@ -2240,16 +2396,7 @@ function wireIntrSortHeaders(){
   updateIntrSortHeaders();
 }
 function intrApplySort(rows){
-  if(!intrSort.col||(intrSort.col==='id'&&intrSort.dir==='asc'))return rows;
-  const col=intrSort.col, dir=intrSort.dir==='desc'?-1:1;
-  return rows.slice().sort((a,b)=>{
-    let va=a[col], vb=b[col];
-    if(col==='payload'){
-      va=String(va||'');vb=String(vb||'');
-      return va.localeCompare(vb)*dir;
-    }
-    return ((va||0)-(vb||0))*dir;
-  });
+  return intrSortRows(rows,intrSort);
 }
 function intrApplyFilter(res){
   let out=res;
@@ -2257,7 +2404,6 @@ function intrApplyFilter(res){
   else if(intrFilter==='error') out=out.filter(r=>r.error);
   return intrApplySort(out);
 }
-const INTR_POLL_MS=400;
 // A running attack that has made no progress since the last poll needs neither
 // a re-render nor a results copy; just keep polling.
 function intrPollUnchanged(st){
@@ -2266,10 +2412,12 @@ function intrPollUnchanged(st){
   return (st.done||0)===intrLastDone&&(st.total||0)===intrLastTotal&&res.length===intrLastResults.length;
 }
 export function scheduleIntr(){
-  clearTimeout(intrTimer);
   if(intrPollInFlight){intrPollQueued=true;return;}
+  if(intrTimerArmed)return;
   const epoch=++intrPollEpoch;
+  intrTimerArmed=true;
   intrTimer=setTimeout(async()=>{
+    intrTimerArmed=false;
     intrPollInFlight=true;
     try{
       const st=await api('/api/intruder/state');
@@ -2321,7 +2469,7 @@ export function renderIntr(st,{authoritative=true}={}){
     ?{running:false,total:intrDisplayedHistory.total||0,done:intrDisplayedHistory.total||0,capped:!!intrDisplayedHistory.capped}
     :(liveBelongsHere?{running,total,done,capped:!!st.capped}:{running:false,total:0,done:0,capped:false});
   syncIntrTabLock(intrLastRunning||intrStartPending);
-  $('#intrProgress').textContent=displayState.running?`running ${displayState.done}/${displayState.total}`:(displayState.total?`done ${displayState.done}/${displayState.total}${displayState.capped?' (capped)':''}`:'');
+  $('#intrProgress').textContent=intrProgressLabel(displayState);
   const pollStatus=$('#intrPollStatus');
   if(pollStatus){
     if(intrPollError){
@@ -2415,15 +2563,22 @@ if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;
 const INTR_ROW_H=25, INTR_VIRT_MIN=200;
 function intrRowHTML(r){
   const fid=r.flowId||r.flowID||0;
-  const title=r.error?(r.error):(fid?('open attempt #'+r.id+' · flow #'+fid):('attempt #'+r.id+(r.error?' · '+r.error:'')));
-  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}"${fid?` data-evidence-flow="${fid}"`:''} data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
+  const title=intrRowTitle(r);
+  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}${intrSelectedId!=null&&r.id===intrSelectedId?' sel':''}" aria-selected="${intrSelectedId!=null&&r.id===intrSelectedId?'true':'false'}" data-attempt="${r.id}" data-flow="${fid||''}"${fid?` data-evidence-flow="${fid}"`:''} data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
     <div class="intr-id">${r.id}</div>
     <div class="pl"><span class="pl-text">${esc(r.payload)}</span>${chipsHTML(r,intrBaseline,esc)}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
     <div class="intr-st" style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
     <div class="intr-len" style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
     <div class="intr-ms" style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
 }
+let intrSelectedId=null;
+function markIntrSelected(el){
+  intrSelectedId=Number(el.dataset.attempt);
+  el.parentElement?.querySelectorAll('.intr-row.sel').forEach(x=>{x.classList.remove('sel');x.setAttribute('aria-selected','false');});
+  el.classList.add('sel');el.setAttribute('aria-selected','true');
+}
 function openIntrResult(el){
+  markIntrSelected(el);
   const fid=Number(el.dataset.flow||0);
   const err=el.dataset.err||'';
   if(fid>0){

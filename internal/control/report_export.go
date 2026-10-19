@@ -56,7 +56,7 @@ var newReportPDFRenderer = func() reportPDFRenderer { return pdfexport.New() }
 // partially written body: the status and message name the missing browser or
 // quote what the browser said, because a report that silently arrives in the
 // wrong format — or arrives truncated — is worse than one that did not arrive.
-func (h *findingsAPI) writeReportPDF(w http.ResponseWriter, r *http.Request, html string) {
+func (h *findingsAPI) writeReportPDF(w http.ResponseWriter, r *http.Request, html, mode string) {
 	pdf, err := newReportPDFRenderer().Render(r.Context(), []byte(html))
 	if err != nil {
 		code := http.StatusInternalServerError
@@ -68,6 +68,6 @@ func (h *findingsAPI) writeReportPDF(w http.ResponseWriter, r *http.Request, htm
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.pdf"`)
+	w.Header().Set("Content-Disposition", reportDisposition("pdf", mode))
 	w.Write(pdf)
 }

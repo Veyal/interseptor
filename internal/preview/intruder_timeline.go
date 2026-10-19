@@ -193,7 +193,7 @@ func pctl(sorted []int64, p int) int64 {
 }
 
 func (st tlStats) summary(capped bool) string {
-	s := fmt.Sprintf("%d of %d returned 2xx, %d throttle statuses (429/403/423), %d 5xx/other, %d errors", st.ok, st.sent, st.blocked, st.other, st.errs)
+	s := fmt.Sprintf("%d of %d returned 2xx, %d throttle statuses (429/403/423), %d other non-2xx, %d errors", st.ok, st.sent, st.blocked, st.other, st.errs)
 	if st.matched > 0 {
 		s += fmt.Sprintf(", %d matched the grep pattern", st.matched)
 	}
@@ -546,7 +546,7 @@ func drawTimeline(c *canvas, top int, g tlGeom, in TimelineInput, bySeq []tlRow,
 		{"Requests sent", fmt.Sprint(st.sent), p.accent},
 		{"2xx responses", fmt.Sprint(st.ok), p.success},
 		{"Throttle 429/403/423", fmt.Sprint(st.blocked), p.blocked},
-		{"5xx / other", fmt.Sprint(st.other), p.server},
+		{"Other non-2xx", fmt.Sprint(st.other), p.server},
 		{"Errors", fmt.Sprint(st.errs), p.errc},
 	}
 	if st.matched > 0 {

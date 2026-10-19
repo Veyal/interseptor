@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DROP_DELAY_MS, createDropScheduler, forwardAllPlan, forwardPath, dropPath,
+  DROP_DELAY_MS, createDropScheduler, forwardAllPlan, forwardPath, dropPath, dropPendingPath,
   scopeNote, scopeBadgeText, identityText, rulesSummary, heldCountText, dropToastText, forwardAllProgress, heldKey,
 } from '../js/intercept-model.js';
 
@@ -74,6 +74,30 @@ test('endpoints use the existing intercept API paths only', () => {
   assert.equal(forwardPath('resp', 4), '/api/intercept/response/4/forward');
   assert.equal(dropPath('req', 4), '/api/intercept/4/drop');
   assert.equal(dropPath('resp', 4), '/api/intercept/response/4/drop');
+  assert.equal(dropPendingPath('req', 4), '/api/intercept/4/drop-pending');
+  assert.equal(dropPendingPath('resp', 4), '/api/intercept/response/4/drop-pending');
+});
+
+// A bulk release (intercept off, closing the window) must not outlive a pending
+// drop: takeAll hands the pending drops of one side to the caller to commit now,
+// cancels their timers, and leaves the other side's Undo windows running.
+test('takeAll commits pending drops of one side immediately and cancels their timers', () => {
+  const t = fakeTimers();
+  const committed = [];
+  const events = [];
+  const s = createDropScheduler({ setTimeout: t.setTimeout, clearTimeout: t.clearTimeout, now: t.now, commit: (e) => committed.push(e), onChange: (k, w) => events.push(k + ':' + w) });
+  s.schedule('req:1', { side: 'req', id: 1 });
+  s.schedule('req:2', { side: 'req', id: 2 });
+  s.pause('req:2');
+  s.schedule('resp:3', { side: 'resp', id: 3 });
+  assert.deepEqual(s.takeAll((e) => e.side === 'req'), [{ side: 'req', id: 1 }, { side: 'req', id: 2 }]);
+  assert.equal(s.has('req:1'), false);
+  assert.equal(s.has('resp:3'), true);
+  assert.equal(s.undo('req:1'), false, 'a taken drop can no longer be undone');
+  assert.ok(events.includes('req:1:committed') && events.includes('req:2:committed'));
+  t.advance(60000);
+  assert.deepEqual(committed, [{ side: 'resp', id: 3 }], 'taken drops never fire again from the timer');
+  assert.deepEqual(s.takeAll(), []);
 });
 
 test('scope note states real server behaviour and invents no counter', () => {

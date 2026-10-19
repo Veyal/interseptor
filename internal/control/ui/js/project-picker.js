@@ -12,6 +12,7 @@
 // single match, otherwise moves to the first match, or offers Create on none.
 
 import { $, esc, escAttr, api, toast, openModal, closeModal, renderLoadError, copyText } from './core.js';
+import { platformHints } from './shortcuts-table.js';
 import {
   buildPickerModel, folderOptions, highlightHTML, nextIndex, pickerSummary, projectPathFlavorFor,
   validateNewProject, folderError, normalizeFolder,
@@ -477,6 +478,8 @@ function onFilterKey(e) {
 function wire() {
   const el = list();
   if (!el) return;
+  const keysHint = $('#pmKeys');
+  if (keysHint) keysHint.textContent = platformHints(/Mac|iPhone|iPad/.test(navigator.platform || '') || /Mac OS X/.test(navigator.userAgent || '')).pickerKeys;
   el.addEventListener('keydown', onListKey);
   el.addEventListener('click', onListClick);
   el.addEventListener('contextmenu', (e) => {

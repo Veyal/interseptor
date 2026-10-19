@@ -98,6 +98,43 @@ func (h *projectAPI) insertImportedFlow(flow *store.Flow, reqBody, resBody []byt
 	return nil
 }
 
+// insertImportedFlowOnce is insertImportedFlow that skips a flow whose content
+// signature (store.FlowImportSignature: request identity, timestamp and status,
+// the fields that survive a HAR round trip) is already in seen, so re-importing the same export adds
+// nothing. It reports whether the flow was inserted and records new ones.
+func (h *projectAPI) insertImportedFlowOnce(flow *store.Flow, reqBody, resBody []byte, seen map[string]int64) (bool, error) {
+	reqWriter, reqHash, reqLen, err := stageImportedBody(h.st, reqBody)
+	if err != nil {
+		return false, fmt.Errorf("store imported request body: %w", err)
+	}
+	flow.ReqBodyHash, flow.ReqLen = reqHash, reqLen
+	resWriter, resHash, resLen, err := stageImportedBody(h.st, resBody)
+	if err != nil {
+		if reqWriter != nil {
+			reqWriter.Abort()
+		}
+		return false, fmt.Errorf("store imported response body: %w", err)
+	}
+	flow.ResBodyHash, flow.ResLen = resHash, resLen
+	sig := store.FlowImportSignature(*flow)
+	if _, dup := seen[sig]; dup {
+		// The bodies are content-addressed and already referenced by the
+		// existing flow; Abort only releases their pending-publication claim.
+		for _, bw := range []*store.BodyWriter{reqWriter, resWriter} {
+			if bw != nil {
+				bw.Abort()
+			}
+		}
+		return false, nil
+	}
+	id, err := h.st.InsertFlow(flow)
+	if err != nil {
+		return false, fmt.Errorf("insert imported flow: %w", err)
+	}
+	seen[sig] = id
+	return true, nil
+}
+
 func (h *projectAPI) storeBody(b []byte) (string, int64) {
 	if len(b) == 0 {
 		return "", 0

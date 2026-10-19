@@ -157,6 +157,10 @@ type Hub struct {
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
+	// streamStop ends every long-lived event stream (CloseStreams) so a
+	// graceful server shutdown is not held open by the UI's /api/events.
+	streamStop     chan struct{}
+	streamStopOnce sync.Once
 
 	epsCache endpointsCache
 
@@ -189,6 +193,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		snd:                  sender.New(st, capture.New(st)),
 		mux:                  http.NewServeMux(),
 		clients:              map[chan string]struct{}{},
+		streamStop:           make(chan struct{}),
 		iosTCPReachable:      ios.TCPReachable,
 		setSetting:           st.SetSetting,
 		setSettings:          st.SetSettings,
@@ -343,6 +348,13 @@ type heldJSON struct {
 	Path   string `json:"path"`
 	Raw    string `json:"raw,omitempty"`
 	Len    int    `json:"len,omitempty"`
+	// Binary: Raw carries the head only; the body stays on the server (see
+	// intercept_binary.go). BodyLen is that body's size.
+	Binary  bool `json:"binary,omitempty"`
+	BodyLen int  `json:"bodyLen,omitempty"`
+	// DropPending: an operator scheduled a drop (Undo window); it cannot be
+	// forwarded and turning intercept off drops it.
+	DropPending bool `json:"dropPending,omitempty"`
 }
 
 type interceptJSON struct {
@@ -365,7 +377,8 @@ type settingsJSON struct {
 	ProxyAddrs                 []string `json:"proxyAddrs,omitempty"`
 	ControlAddr                string   `json:"controlAddr"`
 	InterceptEnabled           bool     `json:"interceptEnabled"`
-	UpstreamProxy              string   `json:"upstreamProxy"`
+	UpstreamProxy              string   `json:"upstreamProxy"` // password removed; see UpstreamProxyPasswordSet
+	UpstreamProxyPasswordSet   bool     `json:"upstreamProxyPasswordSet"`
 	UpstreamProxyCA            string   `json:"upstreamProxyCA"`
 	OobEnabled                 bool     `json:"oobEnabled"`
 	CaptureScopeOnly           bool     `json:"captureScopeOnly"`
@@ -379,9 +392,16 @@ type settingsJSON struct {
 	AutoBypassOnPinFailure     bool     `json:"autoBypassOnPinFailure"`
 	ProxyAuthEnabled           bool     `json:"proxyAuthEnabled"`
 	ProxyAuthUser              string   `json:"proxyAuthUser"`
-	ProxyAuthPassword          string   `json:"proxyAuthPassword"`
-	DeviceProxy                string   `json:"deviceProxy,omitempty"`
-	DeviceProxyMode            string   `json:"deviceProxyMode,omitempty"`
+	ProxyAuthPassword          string   `json:"proxyAuthPassword"` // always "": write-only
+	ProxyAuthPasswordSet       bool     `json:"proxyAuthPasswordSet"`
+	// ProxyAuthPasswordMissing: auth is on but no password is saved (a restored
+	// backup never carries it), so the listener answers every client with 407.
+	ProxyAuthPasswordMissing bool `json:"proxyAuthPasswordMissing"`
+	// UpstreamProxyPasswordMissing: the upstream proxy came from a backup that
+	// dropped its saved password; it must be re-entered.
+	UpstreamProxyPasswordMissing bool   `json:"upstreamProxyPasswordMissing"`
+	DeviceProxy                  string `json:"deviceProxy,omitempty"`
+	DeviceProxyMode              string `json:"deviceProxyMode,omitempty"`
 }
 
 // tlsBypassSettingKey stores the newline-separated host patterns that bypass MITM.
@@ -395,6 +415,8 @@ const (
 	proxyAuthEnabledKey  = "proxy.authEnabled"
 	proxyAuthUserKey     = "proxy.authUser"
 	proxyAuthPasswordKey = "proxy.authPassword"
+
+	upstreamPasswordRemovedKey = store.UpstreamPasswordRemovedKey
 )
 
 // parseHostList splits a stored/edited host-list blob (newline- or comma-
@@ -1191,23 +1213,25 @@ func (h *Hub) refreshRules() {
 // ---- Intercept ----
 
 func heldFromRequest(held intercept.Held, includeRaw bool) heldJSON {
-	hj := heldJSON{ID: held.ID, Len: len(held.Raw)}
+	hj := heldJSON{ID: held.ID, Len: len(held.Raw), DropPending: held.DropPending}
 	if held.Flow != nil {
 		hj.Method, hj.Scheme, hj.Host, hj.Path = held.Flow.Method, held.Flow.Scheme, held.Flow.Host, held.Flow.Path
 	}
 	if includeRaw {
-		hj.Raw = string(held.Raw)
+		v := heldViewOf(held.Raw)
+		hj.Raw, hj.Binary, hj.BodyLen = v.Raw, v.Binary, v.BodyLen
 	}
 	return hj
 }
 
 func heldFromResponse(held intercept.HeldResponse, includeRaw bool) heldJSON {
-	hj := heldJSON{ID: held.ID, Len: len(held.Raw)}
+	hj := heldJSON{ID: held.ID, Len: len(held.Raw), DropPending: held.DropPending}
 	if held.Flow != nil {
 		hj.Method, hj.Scheme, hj.Host, hj.Path = held.Flow.Method, held.Flow.Scheme, held.Flow.Host, held.Flow.Path
 	}
 	if includeRaw {
-		hj.Raw = string(held.Raw)
+		v := heldViewOf(held.Raw)
+		hj.Raw, hj.Binary, hj.BodyLen = v.Raw, v.Binary, v.BodyLen
 	}
 	return hj
 }
@@ -1251,23 +1275,12 @@ func (h *interceptAPI) getInterceptHeldRaw(w http.ResponseWriter, r *http.Reques
 		httpErr(w, http.StatusBadRequest, "bad id")
 		return
 	}
-	side := r.URL.Query().Get("side")
-	if side == "resp" {
-		for _, held := range h.eng.ResponseQueue() {
-			if held.ID == id {
-				writeJSON(w, http.StatusOK, map[string]any{"raw": string(held.Raw)})
-				return
-			}
-		}
-	} else {
-		for _, held := range h.eng.Queue() {
-			if held.ID == id {
-				writeJSON(w, http.StatusOK, map[string]any{"raw": string(held.Raw)})
-				return
-			}
-		}
+	raw, ok := h.heldRawByID(id, r.URL.Query().Get("side") == "resp")
+	if !ok {
+		httpErr(w, http.StatusNotFound, "not held")
+		return
 	}
-	httpErr(w, http.StatusNotFound, "not held")
+	writeJSON(w, http.StatusOK, heldViewOf(raw))
 }
 
 func (h *interceptAPI) getIntercept(w http.ResponseWriter, r *http.Request) {
@@ -1347,13 +1360,14 @@ func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		Raw string `json:"raw"`
+		Raw      string `json:"raw"`
+		KeepBody bool   `json:"keepBody"`
 	}
 	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
-	if err := h.eng.Forward(id, []byte(in.Raw)); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	if err := h.eng.Forward(id, h.forwardRaw(id, false, in.Raw, in.KeepBody)); err != nil {
+		httpErr(w, forwardErrStatus(err), err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1371,6 +1385,50 @@ func (h *interceptAPI) dropIntercept(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.eng.Drop(id); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// forwardErrStatus maps a Forward failure to its HTTP status: a drop-pending
+// item is a 409 (undo the drop first), anything else stays a 400.
+func forwardErrStatus(err error) int {
+	if errors.Is(err, intercept.ErrDropPending) {
+		return http.StatusConflict
+	}
+	return http.StatusBadRequest
+}
+
+// setDropPending marks or clears a scheduled drop on a held request
+// Body: {pending}. The UI marks an item when
+// its Drop Undo window opens and clears it on Undo, so a bulk release from any
+// client drops the item instead of sending it.
+func (h *interceptAPI) setDropPending(w http.ResponseWriter, r *http.Request) {
+	h.markDropPending(w, r, h.eng.SetDropPending)
+}
+
+func (h *interceptAPI) setResponseDropPending(w http.ResponseWriter, r *http.Request) {
+	h.markDropPending(w, r, h.eng.SetResponseDropPending)
+}
+
+func (h *interceptAPI) markDropPending(w http.ResponseWriter, r *http.Request, mark func(int64, bool) error) {
+	if h.eng == nil {
+		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	var in struct {
+		Pending bool `json:"pending"`
+	}
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
+		return
+	}
+	if err := mark(id, in.Pending); err != nil {
+		httpErr(w, http.StatusNotFound, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1402,13 +1460,14 @@ func (h *interceptAPI) forwardResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Raw string `json:"raw"`
+		Raw      string `json:"raw"`
+		KeepBody bool   `json:"keepBody"`
 	}
 	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
-	if err := h.eng.ForwardResponse(id, []byte(in.Raw)); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	if err := h.eng.ForwardResponse(id, h.forwardRaw(id, true, in.Raw, in.KeepBody)); err != nil {
+		httpErr(w, forwardErrStatus(err), err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1520,19 +1579,23 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	proxyAuthEnabled, _, _ := h.st.GetSetting(proxyAuthEnabledKey)
 	proxyAuthUser, _, _ := h.st.GetSetting(proxyAuthUserKey)
 	proxyAuthPassword, _, _ := h.st.GetSetting(proxyAuthPasswordKey)
+	upPasswordRemoved, _, _ := h.st.GetSetting(upstreamPasswordRemovedKey)
+	up, upPasswordSet := redactUpstreamPassword(up)
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
 		ProxyAddr: displayProxyAddrs(proxyAddrs), ProxyAddrs: proxyAddrs,
 		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
 		ControlAddr: h.currentControlAddr(), InterceptEnabled: h.eng != nil && h.eng.Enabled(),
-		UpstreamProxy: up, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
+		UpstreamProxy: up, UpstreamProxyPasswordSet: upPasswordSet, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
 		CaptureScopeOnly: ResolveCaptureScopeOnly(scopeOnly, scopeOnlySet, h.sc.HasIncludes()), SuppressBrowserTelemetry: suppressTelemetryOn,
 		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
 		FindingsUIEditing: findingsUIEditing == "1",
 		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
-		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPassword: proxyAuthPassword,
+		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPasswordSet: proxyAuthPassword != "",
+		ProxyAuthPasswordMissing:     proxyAuthEnabled == "1" && proxyAuthPassword == "",
+		UpstreamProxyPasswordMissing: upPasswordRemoved == "1" && up != "" && !upPasswordSet,
 	})
 }
 
@@ -1575,10 +1638,14 @@ func validateProxyBasicAuth(enabled bool, user, password string) error {
 // settingsPut is the PUT /api/settings body. Pointer fields distinguish "absent"
 // from the zero value so a partial body changes only what it names.
 type settingsPut struct {
-	ProxyAddr                  string    `json:"proxyAddr"`
-	ProxyAddrs                 []string  `json:"proxyAddrs"`
-	ControlAddr                string    `json:"controlAddr"`
-	UpstreamProxy              *string   `json:"upstreamProxy"` // pointer so "" can clear it
+	ProxyAddr     string   `json:"proxyAddr"`
+	ProxyAddrs    []string `json:"proxyAddrs"`
+	ControlAddr   string   `json:"controlAddr"`
+	UpstreamProxy *string  `json:"upstreamProxy"` // pointer so "" can clear it
+	// UpstreamProxyKeepPassword re-uses the saved password when upstreamProxy
+	// names a user without a password on the same proxy host (the masked URL
+	// GET returned, possibly with the username edited).
+	UpstreamProxyKeepPassword  bool      `json:"upstreamProxyKeepPassword"`
 	UpstreamProxyCA            *string   `json:"upstreamProxyCA"`
 	OobEnabled                 *bool     `json:"oobEnabled"`
 	CaptureScopeOnly           *bool     `json:"captureScopeOnly"`
@@ -1671,7 +1738,7 @@ func (h *settingsAPI) planSettingsUpdate(in *settingsPut) (*settingsUpdate, erro
 	if err := h.planUpstreamProxyCA(u, in.UpstreamProxyCA); err != nil {
 		return nil, err
 	}
-	if err := h.planUpstreamProxy(u, in.UpstreamProxy); err != nil {
+	if err := h.planUpstreamProxy(u, in.UpstreamProxy, in.UpstreamProxyKeepPassword); err != nil {
 		return nil, err
 	}
 	if err := h.planProxyAddrs(u, in.ProxyAddrs, in.ProxyAddr); err != nil {
@@ -1754,7 +1821,7 @@ func (h *settingsAPI) planUpstreamProxyCA(u *settingsUpdate, raw *string) error 
 	return nil
 }
 
-func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string) error {
+func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string, keepPassword bool) error {
 	if raw == nil {
 		return nil
 	}
@@ -1763,7 +1830,11 @@ func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string) error {
 	if err != nil {
 		return err
 	}
+	if keepPassword {
+		value = keepUpstreamPassword(value, previous)
+	}
 	u.values["upstream.proxy"] = value
+	u.values[upstreamPasswordRemovedKey] = "" // an explicit save settles the backup gap
 	u.runtime = append(u.runtime, settingsRuntimeStep{
 		do: func() error {
 			if err := h.snd.SetUpstreamProxy(value); err != nil {

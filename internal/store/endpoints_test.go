@@ -255,6 +255,22 @@ func TestEndpointsLastStatusFromLatestFlow(t *testing.T) {
 	}
 }
 
+func TestEndpointsCarryLatestPort(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.InsertFlow(&Flow{TS: time.UnixMilli(1), Method: "GET", Host: "app.test", Port: 18906, Path: "/p", Status: 200, Scheme: "http"})
+	eps, _, err := s.Endpoints(EndpointFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 1 || eps[0].Port != 18906 {
+		t.Fatalf("endpoints = %+v, want one with port 18906", eps)
+	}
+}
+
 func TestEndpointsSoft404(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

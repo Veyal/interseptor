@@ -31,7 +31,21 @@ export function isTypingTarget(el) {
   return role === 'textbox' || role === 'searchbox' || role === 'combobox';
 }
 
-const KEY_ALIASES = { esc: 'Escape', escape: 'Escape', return: 'Enter', enter: 'Enter', space: ' ', spacebar: ' ', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+// Listboxes without typeahead: their rows take the plain-letter workflow
+// shortcuts (History's flow keys, Intercept's F and D) instead of swallowing them.
+const SHORTCUT_LISTBOXES = '#rows,#heldList';
+// isShortcutTypingTarget is the app-wide guard for plain-letter shortcuts: true
+// for anything a letter key edits or searches (fields, comboboxes, listboxes
+// with typeahead).
+export function isShortcutTypingTarget(t) {
+  const tag = String(t?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable) return true;
+  if (typeof t?.closest !== 'function') return false;
+  if (t.closest('[role="combobox"]')) return true;
+  return !!t.closest('[role="listbox"]') && !t.closest(SHORTCUT_LISTBOXES);
+}
+
+const KEY_ALIASES ={ esc: 'Escape', escape: 'Escape', return: 'Enter', enter: 'Enter', space: ' ', spacebar: ' ', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 
 function canonicalStep(mods, key) {
   const parts = [];

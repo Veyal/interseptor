@@ -17,6 +17,7 @@ function installDom({ standalone = false, host = undefined, finePointer = true }
   const listeners = [];
   const handlers = {};
   const observers = [];
+  const dispatched = [];
   const meta = new FakeElement('meta', { name: 'theme-color', content: '#171a20' });
   const bar = new FakeElement('header'); bar.bg = 'rgb(23, 26, 32)';
   const search = new FakeElement('input');
@@ -32,13 +33,14 @@ function installDom({ standalone = false, host = undefined, finePointer = true }
     interseptorDesktop: host,
     matchMedia: (q) => ({ matches: (standalone && q === '(display-mode: standalone)') || (finePointer && q === '(pointer: fine)') }),
     addEventListener: (type, fn) => { listeners.push(type); (handlers[type] ||= []).push(fn); },
+    dispatchEvent: (e) => { dispatched.push(e.type); return true; },
   };
   Object.assign(globalThis, {
     window, document, Element: FakeElement,
     getComputedStyle: (el) => ({ backgroundColor: el.bg || 'rgba(0, 0, 0, 0)' }),
     MutationObserver: class { constructor(fn) { this.fn = fn; observers.push(this); } observe() {} },
   });
-  return { classes, listeners, handlers, meta, bar, search, observers, fire: () => observers.forEach((o) => o.fn([])) };
+  return { classes, listeners, handlers, dispatched, meta, bar, search, observers, fire: () => observers.forEach((o) => o.fn([])) };
 }
 
 test('plain browser tab: no classes, no guards, no bridge; theme-color still syncs', async () => {
@@ -215,4 +217,16 @@ test('a native host without a unified title bar reports no drag regions', async 
   m.initDesktop();
   assert.equal(dom.bar.getAttribute('data-window-drag'), null);
   assert.ok(!posted.some((p) => p.type === 'drag-regions'));
+});
+
+test('the desktop skin re-announces density: its 28px --row-h must reach lists that measured the web 30px', async () => {
+  const tab = installDom();
+  const t = await import('../js/desktop.js?case=density-tab');
+  t.initDesktop();
+  assert.deepEqual(tab.dispatched, [], 'a browser tab keeps its tokens');
+  const dom = installDom({ host: { platform: 'macos', version: '0', post: () => {} } });
+  const m = await import('../js/desktop.js?case=density');
+  m.initDesktop();
+  assert.ok(dom.classes.has('desktop-app'));
+  assert.deepEqual(dom.dispatched, ['densitychange']);
 });

@@ -159,7 +159,7 @@
   .ctx-scope .ctx-text{max-width:14ch}
   .conn-chip[data-state="connected"] #connText,#cmdkBtn kbd,.ctx-avatar{display:none}
   #cmdkBtn{min-width:6rem}
-  .ctx-identity .ui-select-trigger{max-width:10ch}
+  .ctx-identity .ui-select-trigger{max-width:16ch}
   #icptStat{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .icpt-compact{display:inline}
 }

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
   highlightRanges, matchSections, searchSummary, saveStatusText, validateTargetLines, sectionHealth, typedConfirmMatches,
-  THEME_CHOICES, DENSITY_CHOICES,
+  projectImportSummary, restoreNoticeText, upstreamPasswordDropWarning,
+  readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref, normalizeFlowDrawerLayoutChoice,
+  THEME_CHOICES, DENSITY_CHOICES, FLOW_DRAWER_LAYOUT_CHOICES,
 } from '../js/settings-model.js';
 
 const memory = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m }; };
@@ -110,4 +112,91 @@ test('typed confirm needs the phrase', () => {
   assert.equal(typedConfirmMatches('del'), false);
   assert.equal(typedConfirmMatches('', 'wipe'), false);
   assert.equal(typedConfirmMatches('wipe', 'WIPE'), true);
+});
+
+test('system proxy switch says what it is doing while the OS call is in flight', async () => {
+  const { systemProxyView } = await import('../js/settings-model.js');
+  const off = { supported: true, enabled: false, proxy: '127.0.0.1:8080' };
+  const on = { ...off, enabled: true };
+  assert.deepEqual(systemProxyView(off, null), { label: 'System proxy is off', pressed: false, hint: '' });
+  assert.deepEqual(systemProxyView(on, null), { label: 'System proxy is on', pressed: true, hint: 'Traffic routes through 127.0.0.1:8080' });
+  // A click must not leave the old "off" label up while networksetup runs.
+  const turningOn = systemProxyView(off, true);
+  assert.equal(turningOn.label, 'Turning system proxy on…');
+  assert.equal(turningOn.pressed, false, 'aria-pressed keeps the confirmed state until the OS answers');
+  assert.equal(systemProxyView(on, false).label, 'Turning system proxy off…');
+  // Re-requesting the current state is not a transition.
+  assert.equal(systemProxyView(on, true).label, 'System proxy is on');
+});
+
+test('the upstream summary describes the saved proxy, not unsaved edits', async () => {
+  const { upstreamSummaryText } = await import('../js/settings-model.js');
+  const saved = { scheme: 'http', host: 'proxy.example.com', port: '8080' };
+  assert.equal(upstreamSummaryText(saved, saved), 'HTTP · proxy.example.com:8080');
+  assert.equal(upstreamSummaryText({ scheme: 'direct' }, { scheme: 'direct' }), 'Direct connection · no upstream proxy');
+  assert.equal(upstreamSummaryText({ scheme: 'socks5h', host: 'h', port: '' }, { scheme: 'socks5h', host: 'h', port: '' }), 'SOCKS5H · h:1080 · remote DNS');
+  // QA: typing an invalid port updated the summary before Save.
+  const draft = { scheme: 'http', host: '127.0.0.1', port: '99999' };
+  assert.equal(upstreamSummaryText(saved, draft), 'Unsaved changes · saved: HTTP · proxy.example.com:8080');
+  assert.equal(upstreamSummaryText({ scheme: 'direct' }, draft), 'Unsaved changes · saved: Direct connection · no upstream proxy');
+});
+
+// QA round 3: a restored backup leaves proxy auth on with no password (every
+// client gets 407). The proxy chip must not read as a healthy green.
+test('proxy health warns when proxy authentication has no password', () => {
+  const readiness = { checks: [
+    { id: 'proxy', ok: true, detail: 'listening 127.0.0.1:8080' },
+    { id: 'proxy_auth', ok: false, detail: 'proxy authentication is on but has no password', fix: 're-enter the password' },
+  ] };
+  const h = sectionHealth('proxy', { readiness });
+  assert.equal(h.state, 'warn');
+  assert.equal(h.text, 'Proxy: auth password missing');
+  assert.match(h.detail, /re-enter/);
+});
+
+test('portable import summary names skipped duplicates and settings kept local', () => {
+  assert.deepEqual(projectImportSummary({ importedFlows: 3, importedRules: 1, importedScope: 2 }),
+    { text: 'Imported 3 flows · 1 rule · 2 scope rules', tone: '' });
+  const again = projectImportSummary({ importedFlows: 0, importedRules: 0, importedScope: 0, skippedFlows: 169, skippedRules: 0, skippedScope: 2,
+    keptLocalSettings: ['upstream.proxy', 'upstream.proxyCA'] });
+  assert.match(again.text, /^Imported 0 flows · 0 rules · 0 scope rules · 171 duplicates skipped/);
+  assert.match(again.text, /Kept this machine's upstream proxy and upstream proxy CA/);
+  assert.equal(again.tone, 'warn');
+});
+
+test('portable import summary reports what happened to the notes', () => {
+  assert.match(projectImportSummary({ notes: 'merged' }).text, /notes merged/);
+  assert.match(projectImportSummary({ notes: 'kept' }).text, /notes kept/);
+  assert.match(projectImportSummary({ notes: 'imported' }).text, /notes imported/);
+  assert.doesNotMatch(projectImportSummary({}).text, /notes/);
+});
+
+test('restore notice is the server notice, or empty', () => {
+  assert.equal(restoreNoticeText({ name: 'x' }), '');
+  assert.equal(restoreNoticeText({ credentialsNotRestored: ['proxyAuthPassword'], notice: 'Saved passwords were not included in the backup' }),
+    'Saved passwords were not included in the backup');
+  assert.match(restoreNoticeText({ credentialsNotRestored: ['proxyAuthPassword'] }), /not included in the backup/);
+});
+
+test('saving the upstream proxy warns whenever the saved password was dropped', () => {
+  assert.equal(upstreamPasswordDropWarning({ keep: false, url: 'http://bob@p.example:8080', passwordSaved: false }), '');
+  assert.equal(upstreamPasswordDropWarning({ keep: true, url: 'http://bob@p.example:8080', passwordSaved: true }), '');
+  assert.equal(upstreamPasswordDropWarning({ keep: true, url: '', passwordSaved: false }), '');
+  assert.match(upstreamPasswordDropWarning({ keep: true, url: 'http://bob@q.example:8080', passwordSaved: false }), /proxy host changed/);
+  assert.match(upstreamPasswordDropWarning({ keep: true, url: 'http://p.example:8080/', passwordSaved: false }), /username was cleared/);
+});
+
+test('flow drawer layout preference defaults to bottom and persists valid choices', () => {
+  assert.deepEqual(FLOW_DRAWER_LAYOUT_CHOICES.map((c) => c.id), ['bottom', 'popup', 'side']);
+  assert.equal(normalizeFlowDrawerLayoutChoice(null), 'bottom');
+  assert.equal(normalizeFlowDrawerLayoutChoice('other'), 'bottom');
+  assert.equal(normalizeFlowDrawerLayoutChoice('popup'), 'popup');
+  assert.equal(normalizeFlowDrawerLayoutChoice('side'), 'side');
+
+  const mem = memory();
+  assert.equal(readFlowDrawerLayoutPref(mem), 'bottom');
+  writeFlowDrawerLayoutPref('popup', mem);
+  assert.equal(readFlowDrawerLayoutPref(mem), 'popup');
+  writeFlowDrawerLayoutPref('invalid', mem);
+  assert.equal(readFlowDrawerLayoutPref(mem), 'bottom');
 });

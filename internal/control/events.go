@@ -105,6 +105,18 @@ func (h *Hub) broadcast(v any) {
 	}
 }
 
+// CloseStreams ends every open event stream (UI /api/events and collection run
+// streams). Call it before shutting the control server down: Shutdown waits
+// for active connections, and a stream only ends when its handler returns.
+// Idempotent; Close calls it too.
+func (h *Hub) CloseStreams() {
+	h.streamStopOnce.Do(func() {
+		if h.streamStop != nil { // nil only for a Hub literal built without New
+			close(h.streamStop)
+		}
+	})
+}
+
 // handleEvents serves the Server-Sent Events stream.
 func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
@@ -143,6 +155,8 @@ func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-h.streamStop:
 			return
 		case msg := <-ch:
 			fmt.Fprintf(w, "data: %s\n\n", msg)

@@ -1,6 +1,6 @@
 import { configureProjectPicker, openProjectPicker, setProjectSwitchModalBusy, showProjectSwitchError } from './project-picker.js';
 import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './project-picker-model.js';
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, getHook } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, onHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { emit as busEmit, on as busOn, EVENTS } from './bus.js';
 // Cross-panel reloads go over the bus instead of a static import of proxy.js /
@@ -12,7 +12,7 @@ const loadScope = () => busEmit(EVENTS.PROXY_RELOAD_SCOPE);
 const loadRules = () => busEmit(EVENTS.INTERCEPT_RELOAD_RULES);
 import { prefersReducedMotion } from './motion.js';
 import { createSplitPane } from './split.js';
-import { matchSections, searchSummary, highlightRanges } from './settings-model.js';
+import { matchSections, searchSummary, highlightRanges, systemProxyView, upstreamSummaryText, projectImportSummary, restoreNoticeText, upstreamPasswordDropWarning } from './settings-model.js';
 import { confirmTyped } from './settings-confirm.js';
 import './settings-appearance.js';
 import './settings-health.js';
@@ -573,7 +573,7 @@ function syncSettingsNavA11y(active) {
 let settingsSplit=null,settingsNavSilent=false;
 try{
   const wrap=document.querySelector('.settings-wrap');
-  if(wrap)settingsSplit=createSplitPane({root:wrap,list:$('#setNav'),detail:document.querySelector('.settings-body'),key:'settingsSplit',scopeKey:projectStorageKey,min:[200,360],default:22,stackBelow:720,label:'Resize settings navigation',backLabel:'Sections'});
+  if(wrap)settingsSplit=createSplitPane({root:wrap,list:$('#setNav'),detail:document.querySelector('.settings-body'),key:'settingsSplit',scopeKey:projectStorageKey,min:[200,360],maxList:320,default:22,stackBelow:720,label:'Resize settings navigation',backLabel:'Sections'});
 }catch(e){settingsSplit=null;}
 
 $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
@@ -640,7 +640,7 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||docum
 })();
 
 /* ---- first-run checklist (Project & data) ---- */
-{const checklistHost=$('#settingsChecklistMount');if(checklistHost)getHook('mountChecklist')?.(checklistHost,{persistent:true});}
+{const checklistHost=$('#settingsChecklistMount');if(checklistHost)onHook('mountChecklist',mount=>mount(checklistHost,{persistent:true}));}
 
 /* ---- settings ---- */
 let apiLoaded=false;
@@ -727,7 +727,7 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#setControlAddr'))$('#setControlAddr').value=state.controlAddr;
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
    if($('#setUpstreamCA')&&document.activeElement!==$('#setUpstreamCA'))$('#setUpstreamCA').value=s.upstreamProxyCA||'';
-   parseUpstreamProxyURL(s.upstreamProxy||'');
+   parseUpstreamProxyURL(s.upstreamProxy||'',!!s.upstreamProxyPasswordSet);
   state.oobEnabled=settingsMutationValue('oobEnabled',!!s.oobEnabled,settingsRevision);
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
   if($('#capScopeToggle'))setCapScope(settingsMutationValue('captureScopeOnly',!!s.captureScopeOnly,settingsRevision));
@@ -738,7 +738,11 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#findingsUIEditingToggle'))setFindingsUIEditing(settingsMutationValue('findingsUIEditing',!!s.findingsUIEditing,settingsRevision));
   if($('#proxyAuthToggle')?.dataset.settingsDirty!=='1')setProxyAuth(!!s.proxyAuthEnabled);
   if($('#proxyAuthUser')&&document.activeElement!==$('#proxyAuthUser')&&$('#proxyAuthUser').dataset.settingsDirty!=='1')$('#proxyAuthUser').value=s.proxyAuthUser||'';
-  if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value=s.proxyAuthPassword||'';
+  // Saved passwords are write-only: the server reports only that one exists.
+  proxyAuthPasswordSaved=!!s.proxyAuthPasswordSet;
+  markSavedSecret($('#proxyAuthPassword'),proxyAuthPasswordSaved);
+  renderPasswordGaps(s);
+  if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value='';
   if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
@@ -821,16 +825,36 @@ $('#proxyAuthToggle')&&($('#proxyAuthToggle').onclick=()=>{
   setProxyAuth($('#proxyAuthToggle').getAttribute('aria-pressed')!=='true');
   markSettingsDirty($('#proxyAuthEnabled'));
 });
+let proxyAuthPasswordSaved=false;
+// renderPasswordGaps shows the "password not included in the backup" notices: a
+// restored project keeps proxy auth on (fail closed) but has no password, and an
+// upstream proxy whose saved password the backup dropped. The status bar reads
+// state.proxyAuthPasswordMissing so the proxy never looks healthy meanwhile.
+function renderPasswordGaps(s){
+  if(!s)return;
+  state.proxyAuthPasswordMissing=!!s.proxyAuthPasswordMissing;
+  $('#proxyAuthPasswordMissing')?.classList.toggle('u-hidden',!s.proxyAuthPasswordMissing);
+  $('#upstreamPasswordMissing')?.classList.toggle('u-hidden',!s.upstreamProxyPasswordMissing);
+}
+// markSavedSecret tells the operator a write-only password is stored: leaving
+// the field blank keeps it.
+function markSavedSecret(el,saved){if(el)el.placeholder=saved?'Saved — leave blank to keep':'';}
 $('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($('#saveProxyAuthBtn'),async()=>{
   const enabled=$('#proxyAuthEnabled')?.value==='1';
   const user=($('#proxyAuthUser')?.value||'').trim();
   const password=$('#proxyAuthPassword')?.value||'';
-  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password','error');return;}
+  if(enabled&&(!user||(!password&&!proxyAuthPasswordSaved))){toast('Proxy authentication needs a username and password','error');return;}
   const userEl=$('#proxyAuthUser'),passEl=$('#proxyAuthPassword'),enabledEl=$('#proxyAuthEnabled');
   const generation=settingsEditGeneration(enabledEl);
   try{
-    await saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password});
+    const patch={proxyAuthEnabled:enabled,proxyAuthUser:user};
+    if(password)patch.proxyAuthPassword=password; // blank keeps the saved password
+    const acknowledged=await saveSettingsPatch(patch);
+    proxyAuthPasswordSaved=!!acknowledged?.proxyAuthPasswordSet||!!password;
+    markSavedSecret(passEl,proxyAuthPasswordSaved);
+    renderPasswordGaps(acknowledged);
     if(settingsEditOwned(enabledEl,generation)&&userEl?.value.trim()===user&&passEl?.value===password){
+      if(passEl)passEl.value='';
       clearSettingsDirty(['proxyAuthEnabled','proxyAuthUser','proxyAuthPassword']);
     }
     toast(enabled?'Proxy authentication enabled':'Proxy authentication disabled');
@@ -948,6 +972,10 @@ $('#originTLSVerifyBypassSelected')&&($('#originTLSVerifyBypassSelected').onclic
 $('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>runSettingsAction($('#originTLSVerifyBypassSave'),()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText())));
 
 const upstreamDefaultPorts={http:'80',https:'443',socks5:'1080',socks5h:'1080'};
+// upstreamSaved is the connection the server holds; the summary describes it.
+let upstreamSaved={scheme:'direct'};
+let upstreamPasswordSaved=false;
+const savedUpstreamOf=v=>({scheme:v.setUpstreamScheme,host:v.setUpstreamHost,port:v.setUpstreamPort});
 const upstreamProxyFieldIds=['setUpstreamScheme','setUpstreamHost','setUpstreamPort','setUpstreamUser','setUpstreamPassword','setUpstreamCA'];
 function upstreamProxyFieldSnapshot(){
   const snapshot={};
@@ -967,15 +995,7 @@ function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   const port=$('#setUpstreamPort');
   if(port){port.placeholder=upstreamDefaultPorts[scheme]||'';if(fillDefaultPort&&scheme!=='direct'&&!port.value)port.value=upstreamDefaultPorts[scheme]||'';}
   const summary=$('#upstreamProxySummary');
-  if(summary){
-    if(scheme==='direct')summary.textContent='Direct connection · no upstream proxy';
-    else{
-      const host=$('#setUpstreamHost')?.value.trim()||'host required';
-      const p=port?.value.trim()||upstreamDefaultPorts[scheme]||'port required';
-      const dns=scheme==='socks5h'?' · remote DNS':scheme==='socks5'?' · local DNS':'';
-      summary.textContent=scheme.toUpperCase()+' · '+host+':'+p+dns;
-    }
-  }
+  if(summary)summary.textContent=upstreamSummaryText(upstreamSaved,{scheme,host:$('#setUpstreamHost')?.value||'',port:port?.value||''});
 }
 function decodeURLCredential(value){try{return decodeURIComponent(value);}catch(_){return value;}}
 function upstreamProxyValues(raw){
@@ -992,8 +1012,11 @@ function upstreamProxyValues(raw){
   }catch(_){values.invalid=true;}
   return values;
 }
-function parseUpstreamProxyURL(raw){
+function parseUpstreamProxyURL(raw,passwordSaved=false){
   const values=upstreamProxyValues(raw);
+  upstreamSaved=savedUpstreamOf(values);
+  upstreamPasswordSaved=passwordSaved;
+  markSavedSecret($('#setUpstreamPassword'),passwordSaved);
   upstreamProxyFieldIds.slice(0,5).forEach(id=>{const el=$('#'+id);if(el)el.value=values[id]||'';});
   renderUpstreamProxyFields(values.setUpstreamScheme);
   if(values.invalid){const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
@@ -1018,9 +1041,16 @@ $('#setUpstreamScheme')&&($('#setUpstreamScheme').onchange=e=>renderUpstreamProx
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#saveUpstreamBtn'),async()=>{
   const submitted=upstreamProxyFieldSnapshot();
   const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
-  try{const upstreamProxy=buildUpstreamProxyURL();const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA});
+  try{const upstreamProxy=buildUpstreamProxyURL();
+    // A blank password with a saved one keeps it (the server never sends it back).
+    const keep=upstreamPasswordSaved&&!$('#setUpstreamPassword')?.value;
+    const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA,...(keep?{upstreamProxyKeepPassword:true}:{})});
+    upstreamPasswordSaved=!!acknowledged?.upstreamProxyPasswordSet;
+    markSavedSecret($('#setUpstreamPassword'),upstreamPasswordSaved);
+    renderPasswordGaps(acknowledged);
     const saved=upstreamProxyValues(typeof acknowledged?.upstreamProxy==='string'?acknowledged.upstreamProxy:upstreamProxy);
     const savedCA=typeof acknowledged?.upstreamProxyCA==='string'?acknowledged.upstreamProxyCA:upstreamProxyCA;
+    upstreamSaved=savedUpstreamOf(saved);
     upstreamProxyFieldIds.forEach(id=>{
       const el=$('#'+id),snapshot=submitted[id];
       if(!el||!snapshot)return;
@@ -1030,7 +1060,9 @@ $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#
       }
     });
     renderUpstreamProxyFields($('#setUpstreamScheme')?.value||'direct');
-    toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
+    const dropped=upstreamPasswordDropWarning({keep,url:upstreamProxy,passwordSaved:upstreamPasswordSaved});
+    if(dropped)toast(dropped,'warn');
+    else toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
 }));
 
 let sessionLoaded=false;
@@ -1391,7 +1423,8 @@ if(importFullFile)importFullFile.onchange=async e=>{
   if(name){
     try{
       const r=await api('/api/import/full?name='+encodeURIComponent(name.trim()),{method:'POST',body:f});
-      toast('Imported project "'+r.name+'" — open it from the project switcher below');
+      const notice=restoreNoticeText(r);
+      toast('Imported project "'+r.name+'" — open it from the project switcher below'+(notice?'. '+notice:''),notice?'warn':undefined);
       loadProject();
     }catch(err){toast('import: '+err.message,'error');}
   }
@@ -1404,7 +1437,7 @@ $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
 $('#importProjectFile').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const text=await f.text();const r=await api('/api/import/project',{method:'POST',headers:{'content-type':'application/json'},body:text});
-    toast(`imported ${r.importedFlows} flows · ${r.importedRules} rules · ${r.importedScope} scope`);
+    const summary=projectImportSummary(r);toast(summary.text,summary.tone||undefined);
     loadFlows();loadRules();loadScope();loadSettings();}catch(err){toast('import: '+err.message,'error');}
   e.target.value='';
 };
@@ -1597,13 +1630,20 @@ function renderSystemProxyState(s){
     return;
   }
   if(sec)sec.style.display='';
+  const view=systemProxyView(s,pendingSystemProxyState());
   if(button){
     button.disabled=!!sysProxyMutationPromise;
     button.classList.toggle('on',!!s.enabled);
-    button.setAttribute('aria-pressed',s.enabled?'true':'false');
-    button.textContent=s.enabled?'System proxy is on':'System proxy is off';
+    button.setAttribute('aria-pressed',view.pressed?'true':'false');
+    button.textContent=view.label;
   }
-  if(hint)hint.textContent=s.enabled?'Traffic routes through '+s.proxy:'';
+  if(hint)hint.textContent=view.hint;
+}
+
+// pendingSystemProxyState is the state the user asked for while the OS call runs.
+function pendingSystemProxyState(){
+  if(!sysProxyMutationPromise&&sysProxyDesired===null)return null;
+  return sysProxyDesired!==null?sysProxyDesired:sysProxyActiveDesired;
 }
 
 function setSystemProxyBusy(busy){
@@ -1612,6 +1652,7 @@ function setSystemProxyBusy(busy){
   button.disabled=busy||sysProxyLoadFailed;
   if(busy)button.setAttribute('aria-busy','true');
   else button.removeAttribute('aria-busy');
+  if(busy&&sysProxyState&&!sysProxyLoadFailed)button.textContent=systemProxyView(sysProxyState,pendingSystemProxyState()).label;
 }
 
 async function readSystemProxyStatus({render=true,throwOnError=false}={}){const epoch=++sysProxyLoadEpoch;
@@ -1671,6 +1712,7 @@ async function runSystemProxyMutations(){
     sysProxyMutationPromise=null;
     sysProxyLoadEpoch++;
     setSystemProxyBusy(false);
+    if(!sysProxyLoadFailed)renderSystemProxyState(sysProxyState);
   }
 }
 

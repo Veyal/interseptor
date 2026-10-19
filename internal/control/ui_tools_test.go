@@ -116,7 +116,7 @@ func TestUIToolsIntruderContracts(t *testing.T) {
 	requireUIContains(t, tools,
 		"wireIntruderExtras({", "intrExtras.onRender(", "chipsHTML(r,intrBaseline,esc)",
 		"needsLargeRunConfirm(reqs)", "needsLargeRunConfirm(repeatValue)",
-		"export async function intrStart()", "threads must be between 1 and 64", "repeat must be between 1 and 2000",
+		"export async function intrStart()", "threads must be between 1 and 64", "intrRepeatError(",
 		"mark at least one § injection point", "too many requests",
 		`data-evidence-flow="${fid}"`,
 	)

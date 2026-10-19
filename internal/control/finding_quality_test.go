@@ -290,3 +290,30 @@ func TestFinalGateSkipsFalsePositiveStubs(t *testing.T) {
 		t.Fatalf("incomplete open finding passed the gate: %d %s", resp.StatusCode, body)
 	}
 }
+
+func TestFindingEndpointsAgreeOnMissingAndBadIDs(t *testing.T) {
+	h, _, _ := newHub(t)
+	do := func(method, path string) int {
+		r := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(`{}`))
+		req.Host = "localhost"
+		req.RemoteAddr = "127.0.0.1:12345"
+		h.Handler().ServeHTTP(r, req)
+		return r.Code
+	}
+	for path, want := range map[string]int{
+		"/api/findings/abc":            404 + 0,
+		"/api/finding-revisions/99999": 404,
+		"/api/finding-revisions/abc":   400,
+	} {
+		if path == "/api/findings/abc" {
+			want = 400
+		}
+		if got := do("GET", path); got != want {
+			t.Errorf("GET %s = %d, want %d", path, got, want)
+		}
+	}
+	if got := do("GET", "/api/findings/99999"); got != 404 {
+		t.Errorf("GET missing finding = %d", got)
+	}
+}

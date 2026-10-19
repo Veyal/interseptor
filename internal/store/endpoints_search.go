@@ -99,7 +99,7 @@ func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string) ([
 	      GROUP BY host, method, path` + having + `
 	      )
 	      SELECT a.host, a.method, a.path,
-	             f.scheme, f.status, f.res_body_hash, f.res_len,
+	             f.scheme, f.port, f.status, f.res_body_hash, f.res_len,
 	             a.last_id, a.hits, a.statuses
 	      FROM agg a
 	      JOIN flows f ON f.id = a.last_id
@@ -114,7 +114,7 @@ func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string) ([
 	for rows.Next() {
 		var e Endpoint
 		var statusCSV string
-		if err := rows.Scan(&e.Host, &e.Method, &e.Path, &e.Scheme, &e.LastStatus, &e.ResBodyHash, &e.ResLen, &e.LastFlowID, &e.Hits, &statusCSV); err != nil {
+		if err := rows.Scan(&e.Host, &e.Method, &e.Path, &e.Scheme, &e.Port, &e.LastStatus, &e.ResBodyHash, &e.ResLen, &e.LastFlowID, &e.Hits, &statusCSV); err != nil {
 			return nil, err
 		}
 		e.Statuses = parseStatusCSV(statusCSV)

@@ -240,6 +240,11 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 			return rep, err
 		}
 	}
+	if has("settings") {
+		if err := scrubProxyPasswords(db, &rep); err != nil {
+			return rep, err
+		}
+	}
 	if has("ix_variables") {
 		res, err := db.Exec(`UPDATE ix_variables SET initial_value='' WHERE type='secret' AND initial_value<>''`)
 		if err != nil {
@@ -301,6 +306,46 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 		}
 	}
 	return rep, nil
+}
+
+// UpstreamPasswordRemovedKey is set to "1" in a scrubbed snapshot whose
+// upstream proxy URL lost its saved password, so a restore can tell the
+// operator to re-enter it. Saving the upstream proxy clears it.
+const UpstreamPasswordRemovedKey = "upstream.proxyPasswordRemoved"
+
+// scrubProxyPasswords drops the saved upstream proxy password (the URL and
+// user name stay) and the proxy-listener password from a snapshot's settings.
+// A restored listener with auth enabled and no password fails closed until the
+// password is entered again, exactly like any other secret that must be
+// re-entered on the receiving machine.
+func scrubProxyPasswords(db *sql.DB, rep *ScrubReport) error {
+	var up string
+	err := db.QueryRow(`SELECT value FROM settings WHERE key='upstream.proxy'`).Scan(&up)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if u, perr := url.Parse(up); err == nil && perr == nil && u.User != nil {
+		if _, ok := u.User.Password(); ok {
+			u.User = url.User(u.User.Username())
+			if _, err := db.Exec(`UPDATE settings SET value=? WHERE key='upstream.proxy'`, u.String()); err != nil {
+				return err
+			}
+			// Mark the gap so the restoring instance can say the password was
+			// not in the backup instead of silently proxying without it.
+			if _, err := db.Exec(`INSERT INTO settings(key, value) VALUES(?, '1')
+				ON CONFLICT(key) DO UPDATE SET value = excluded.value`, UpstreamPasswordRemovedKey); err != nil {
+				return err
+			}
+			rep.SecretsBlanked++
+		}
+	}
+	res, err := db.Exec(`UPDATE settings SET value='' WHERE key='proxy.authPassword' AND value<>''`)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	rep.SecretsBlanked += int(n)
+	return nil
 }
 
 func scrubRevisions(db *sql.DB, rep *ScrubReport) error {

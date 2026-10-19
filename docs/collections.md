@@ -112,7 +112,9 @@ per-item settings (redirects, timeout, TLS verification, unresolved policy, code
 - **Auth types:** basic, bearer, API key, JWT signing (HS/RS/ES), digest, AWS SigV4 (header signing),
   OAuth 2.0 (client credentials, password, refresh with auto-refresh, authorization code with PKCE)
   and mTLS client configuration. Auth is applied after scripts and variable resolution; an explicit
-  `Authorization` header always wins.
+  `Authorization` header always wins. The request editor's Auth tab authors inherit, none, bearer,
+  basic and API key; the other types are set by import, the API or MCP, run as stored, and show
+  in the editor as "(imported, read-only)".
 - **OAuth tokens** are cached per collection, environment and identity, stored locally and never
   returned by an API. Token endpoints go through the same scope guard as ordinary sends. The
   authorization-code callback is served on the control port and shows no token data.

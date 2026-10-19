@@ -372,6 +372,8 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 body.col-resizing,body.col-resizing *{cursor:col-resize!important}
 body.col-resizing{user-select:none;-webkit-user-select:none}
 #rows{flex:1;overflow:auto;min-height:0;background:var(--bg1)}
+/* History's paging status ends the list, after the last loaded row, instead of a bar over it. */
+#rows[data-list-end]::after{content:attr(data-list-end);position:sticky;left:0;display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:var(--row-h,30px);padding:6px 10px;border-top:1px solid var(--line);color:var(--fg2);font-size:var(--fs-xs)}
 .trow{height:var(--row-h,30px);border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:var(--fs-xs);padding:0 6px;cursor:pointer;user-select:none;-webkit-user-select:none;transition:background var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard)}
 .trow:hover{background:var(--bg3)}
 .trow.msel{background:var(--accentDim)}
@@ -496,7 +498,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rules-tbl select{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 6px;color:var(--fg2)}
 .field{display:flex;flex-direction:column;gap:6px;max-width:420px;margin-bottom:16px}
 .field label{font-family:var(--ui);font-size:var(--fs-sm);color:var(--fg2)}
-.field input{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;font-size:var(--fs-md)}
+.field input:where(:not([type=checkbox],[type=radio])){background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;font-size:var(--fs-md)}
 .hint{font-family:var(--ui);font-size:var(--fs-sm);color:var(--fg3);line-height:1.6}
 .scroll{overflow:auto;min-height:0;flex:1}
 
@@ -740,7 +742,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* .notes-edit — the Notes panel editor (#notesEdit textarea). Captures its former
    inline recipe (flex:1 + full-bleed mono editor on --bg1). */
 .notes-edit{flex:1;border:none;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:var(--fs-md);line-height:1.8;padding:24px}
-.rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;background:var(--bg1);border-bottom:1px solid var(--line)}
+.rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;scroll-padding-inline-end:48px;background:var(--bg1);border-bottom:1px solid var(--line)}
 .rep-tab{display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:none;border-radius:var(--r-md) var(--r-md) 0 0;background:transparent;color:var(--fg2);white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
 .rep-tab:hover{background:var(--bg3);color:var(--fg)}
 .rep-tab.on{background:var(--bg);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
@@ -749,7 +751,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
 .rep-tab .rt-close{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;opacity:1;color:var(--fg3);font-size:var(--fs-xs);border-radius:var(--r-sm);padding:0 3px}
 .rep-tab .rt-close:hover,.rep-tab .rt-close:focus-visible{color:var(--red);background:var(--sel)}
-.rep-tab-add{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:var(--r-md);cursor:pointer;padding:5px 10px;font-size:var(--fs-md);line-height:1;align-self:center;margin-bottom:4px}
+.rep-tab-add{position:sticky;right:0;z-index:1;flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:var(--r-md);cursor:pointer;padding:5px 10px;font-size:var(--fs-md);line-height:1;align-self:center;margin-bottom:4px}
 .rep-tab-add:hover{color:var(--fg);background:var(--bg2)}
 .rep-tab-add[aria-disabled="true"]{cursor:not-allowed;color:var(--fg3);background:var(--bg3);opacity:.72}
 /* repeater request line + workspace */
@@ -777,7 +779,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-field>pre.rep-hl{overflow:hidden;pointer-events:none;background:var(--bg);color:var(--fg);z-index:0}
 .rep-field>textarea.rep-edit{overflow:auto;resize:none;background:transparent;color:transparent;caret-color:var(--fg);z-index:1}
 .rep-field>textarea.rep-edit::placeholder{color:var(--fg3)}
-.rep-field>textarea.rep-edit::selection{background:var(--accentDim);color:transparent}
+.rep-field>textarea.rep-edit::selection{background:color-mix(in srgb,var(--accent) 28%,transparent);color:transparent}
 /* Intercept Pretty view: the same overlay editor, but it is the .icpt-raw flex
    child (flex:1 1 0; min-height:0) so only the editor scrolls and the action bar
    stays pinned. The textarea scrolls itself; the wrapper must not. */
@@ -797,15 +799,17 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-opts-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:2px 12px 10px}
 .intr-opts-row .hint{font-weight:700;color:var(--fg3);font-size:var(--fs-xs);letter-spacing:.4px}
 .intr-row.match{background:var(--sel)}
+.intr-row.sel{background:var(--sel);box-shadow:inset 3px 0 0 var(--accent)}
 .intr-row .ext{color:var(--accent)}
 .intr-work{flex:1;display:flex;min-height:0;background:var(--bg)}
 .intr-config{flex:1.2}
 .intr-results{flex:1.1}
+.intr-config>.pane-head,.intr-payload-pane>.pane-head{height:auto;min-height:38px;flex-wrap:wrap;row-gap:4px;padding-block:4px}
 .intr-results .pane-head{height:auto;min-height:38px;flex-wrap:wrap;row-gap:4px;padding-block:4px;overflow:visible}
 .intr-payloads{flex:none;display:flex;height:180px;min-height:130px;overflow-x:auto}
 .intr-pl{flex:1;min-width:130px;display:flex;flex-direction:column;border-left:1px solid var(--line)}
 .intr-pl:first-child{border-left:none}
-.intr-pl-h{flex:none;display:flex;align-items:center;gap:6px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;color:var(--fg2);border-bottom:1px solid var(--line);background:var(--bg1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.intr-pl-h{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;color:var(--fg2);border-bottom:1px solid var(--line);background:var(--bg1);white-space:normal}
 .intr-pl-h .sw{width:9px;height:9px;border-radius:var(--r-sm);flex:none}
 .intr-pl-h .btn{padding:1px 7px;font-size:var(--fs-xs);flex:none}
 .intr-pl-h .intr-preset-select{height:22px;font-size:var(--fs-xs);padding:0 6px;border:1px solid var(--line2);background:var(--bg2);color:var(--fg2);border-radius:var(--r-sm);cursor:pointer}
@@ -977,7 +981,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .scan-item .t{margin-top:5px;color:var(--fg);font-size:var(--fs-sm)}
 .scan-item .tg{font-size:var(--fs-xs);color:var(--accent);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scan-target{max-width:230px}
-.scan-filter{width:150px}
+.scan-filter{width:150px;min-width:96px}
 .scan-passive-view{flex:1;display:flex;min-height:0}
 .scan-detail-pane{flex:1}
 /* .scan-tool-btn gives secondary scanner actions such as OOB an amber outline. */
@@ -1159,6 +1163,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .map-virt-scroll>table{table-layout:fixed;min-width:640px}
 .map-virt-body th{background:var(--bg2)}
 .map-virt-body td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The action cell holds a (possibly invisible) button wider than a text cell: clip silently, never paint an ellipsis glyph for it. */
+.map-virt-body td.map-tbl-act{text-overflow:clip}
 .map-virt-pad td{padding:0;border:0;line-height:0;font-size:0}
 #mapTable .map-virt-scroll:focus-visible,#mapTable .map-virt-body tr[data-i]:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px;box-shadow:none}
 .map-warn{padding:6px 12px;font-size:var(--fs-xs);color:var(--amber);background:var(--noteDim);border-bottom:1px solid var(--line);flex:none}
@@ -1761,16 +1767,18 @@ summary::-webkit-details-marker{display:none}
    reach them. */
 #intrTarget{flex:1 1 240px;min-width:200px;max-width:420px}
 #intrGrep,#intrExtract,#intrProc{flex:1;min-width:140px}
-#peerUrl,#vaultUrl{flex:1;min-width:280px}
+#peerUrl{flex:1;min-width:min(100%,calc(34ch + 28px))}
+#vaultUrl{flex:1;min-width:min(100%,calc(37ch + 28px))}
 #oobBase,#oobUrl{flex:1;min-width:240px}
 #oobModalTunnelCmd{flex:1;min-width:200px}
 #macroTarget,#macroExtract,#macroName,#loginMacroTarget{min-width:200px}
 #retPatternInput{min-width:200px;max-width:340px;border:1px solid var(--line)}
 #keyLabel,#allowCIDR,#vaultKey{max-width:220px}
-#peerKey{max-width:200px}
-#allowLabel,#vaultBackupId{max-width:160px}
-#vaultBackupLabel{max-width:140px}
-#keyScope,#keyExpiry,#peerLabel,#authzMax,#newScopePath{max-width:132px;width:132px}
+#peerKey{flex:none;width:calc(24ch + 28px);max-width:100%}
+#vaultBackupId{max-width:160px}
+/* Mono placeholders: size by characters so "label (optional)" is never clipped. */
+#allowLabel,#peerLabel,#vaultBackupLabel{flex:none;width:calc(17ch + 28px);max-width:100%}
+#keyScope,#keyExpiry,#authzMax,#newScopePath{max-width:132px;width:132px}
 #retMaxAge,#retMaxFlows{width:110px}
 #loginMacroRefresh{width:72px}
 #setControlHost{width:100%;text-align:left}

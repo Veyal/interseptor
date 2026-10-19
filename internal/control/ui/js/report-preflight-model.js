@@ -36,7 +36,7 @@ export const TRACKER_CHOICES = [
   { value: 'bugcrowd', label: 'Bugcrowd' },
   { value: 'jira', label: 'Jira' },
 ];
-const STATUS_WORDS = { open: 'open', needs_verification: 'needs verification', verified: 'verified', fixed: 'fixed', wont_fix: 'accepted risk', false_positive: 'false positive' };
+const STATUS_WORDS = { open: 'open', needs_verification: 'needs verification', verified: 'verified', fixed: 'fixed', wont_fix: 'accepted risk', ignored: 'ignored', false_positive: 'false positive' };
 
 const list = (a) => (Array.isArray(a) ? a : []);
 const text = (s) => (typeof s === 'string' ? s : '');
@@ -170,8 +170,9 @@ export function readinessURL(statuses) {
   return '/api/findings/readiness?statuses=' + encodeURIComponent(sanitizeOptions({ statuses }).statuses);
 }
 
-export function exportFilename(format) {
-  return 'interseptor-findings.' + sanitizeOptions({ format }).format;
+// Same name the server sends in Content-Disposition (interseptor-report[-draft].ext).
+export function exportFilename(format, mode) {
+  return 'interseptor-report' + (mode === 'draft' ? '-draft' : '') + '.' + sanitizeOptions({ format }).format;
 }
 
 // A single finding (or a chosen few) exported in report form, reusing the
@@ -204,7 +205,7 @@ export function previewRows(quality) {
   for (const r of list(quality && quality.board)) {
     const id = posInt(r && r.id);
     if (!id) continue;
-    out.push({ id, title: text(r.title) || 'Untitled', severity: text(r.severity), ready: r.ready === true, status: r.ready === true ? 'Ready' : 'Blocked' });
+    out.push({ id, title: text(r.title) || 'Untitled', severity: text(r.severity), ready: r.ready === true, status: r.status === 'false_positive' ? 'Excluded' : r.ready === true ? 'Ready' : 'Blocked' });
   }
   return out;
 }

@@ -8,12 +8,12 @@ import (
 )
 
 func TestCVSSApplyDoesNotOverwriteNewerPreviewState(t *testing.T) {
-	source := regexp.MustCompile(`(?m)^import .*;\n`).ReplaceAllString(readUIAsset(t, "js/cvss.js"), "")
+	source := cvssSource(t)
 	script := `const esc=x=>x,escAttr=x=>x;let evaluations=0;
  const api=async()=>{evaluations++;return {canonicalVector:'CVSS:4.0/example',score:8.7,rating:'HIGH',nomenclature:'CVSS-B'};};
  ` + strings.ReplaceAll(source, "export ", "") + `
  const control=value=>({value,disabled:false,textContent:'',handlers:{},classList:{toggle(){}},addEventListener(k,fn){this.handlers[k]=fn;}});
- const input=control('CVSS:4.0/example'),status=control(''),preview=control(''),apply=control('');
+ const input=control('CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N'),status=control(''),preview=control(''),apply=control('');
  const root={isConnected:true,querySelector:s=>({'#findCvss':input,'[data-cvss-status]':status,'[data-cvss-preview]':preview,'[data-cvss-apply]':apply}[s]),querySelectorAll:()=>[]};
  let complete;const saved=[];bindCvssEditor(root, fields=>{saved.push(fields);return new Promise(resolve=>complete=resolve);});
  preview.handlers.click();await new Promise(r=>setTimeout(r,0));
@@ -30,7 +30,7 @@ func TestCVSSApplyDoesNotOverwriteNewerPreviewState(t *testing.T) {
 }
 
 func TestCVSSPreviewDraftSurvivesRemountAndRetry(t *testing.T) {
-	source := regexp.MustCompile(`(?m)^import .*;\n`).ReplaceAllString(readUIAsset(t, "js/cvss.js"), "")
+	source := cvssSource(t)
 	workspace := readUIAsset(t, "js/finding-workspace.js")
 	workspace = workspace[strings.Index(workspace, "export function createFindingDraftStore"):]
 	script := `const esc=x=>x,escAttr=x=>x;const api=async()=>({canonicalVector:'A',score:8.7,rating:'HIGH',nomenclature:'CVSS-B'});` + strings.ReplaceAll(workspace, "export ", "") + strings.ReplaceAll(source, "export ", "") + `
@@ -52,7 +52,7 @@ func TestCVSSPreviewDraftSurvivesRemountAndRetry(t *testing.T) {
 }
 
 func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
-	source := regexp.MustCompile(`(?m)^import .*;\n`).ReplaceAllString(readUIAsset(t, "js/cvss.js"), "")
+	source := cvssSource(t)
 	workspace := readUIAsset(t, "js/finding-workspace.js")
 	workspace = workspace[strings.Index(workspace, "export function createFindingDraftStore"):]
 	findingsSource := readUIAsset(t, "js/findings.js")
@@ -166,4 +166,12 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
 	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("CVSS shared draft recovery: %v\n%s", err, out)
 	}
+}
+
+// cvssSource is the CVSS editor module with its pure helpers (cvss-model.js)
+// inlined, for tests that evaluate the editor without a module loader.
+func cvssSource(t *testing.T) string {
+	t.Helper()
+	editor := regexp.MustCompile(`(?m)^import .*;\n`).ReplaceAllString(readUIAsset(t, "js/cvss.js"), "")
+	return readUIAsset(t, "js/cvss-model.js") + "\n" + editor
 }

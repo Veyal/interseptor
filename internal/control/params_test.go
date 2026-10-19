@@ -88,6 +88,34 @@ func TestListParamsAggregatesQueryAndForm(t *testing.T) {
 	}
 }
 
+func TestListParamsReportsWhenSampleIsCapped(t *testing.T) {
+	h, s, _ := newHub(t)
+	for i := 1; i <= 3; i++ {
+		s.InsertFlow(&store.Flow{
+			TS: time.UnixMilli(int64(i)), Method: "GET", Scheme: "https", Host: "app.test", Port: 443,
+			Path: "/api?id=1", Status: 200,
+		})
+	}
+	get := func(q string) (scanned int, capped bool) {
+		rec := httptest.NewRecorder()
+		(&flowAPI{h}).listParams(rec, httptest.NewRequest(http.MethodGet, "/api/params?"+q, nil))
+		var out struct {
+			FlowsScanned int  `json:"flowsScanned"`
+			Capped       bool `json:"capped"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out.FlowsScanned, out.Capped
+	}
+	if n, capped := get("host=app.test&limit=2"); n != 2 || !capped {
+		t.Fatalf("limit=2: scanned=%d capped=%v, want 2 true", n, capped)
+	}
+	if n, capped := get("host=app.test&limit=10"); n != 3 || capped {
+		t.Fatalf("limit=10: scanned=%d capped=%v, want 3 false", n, capped)
+	}
+}
+
 func TestJsonTopKeys(t *testing.T) {
 	keys := jsonTopKeys([]byte(`{"a":1,"nested":{"b":2}}`))
 	if len(keys) != 2 {

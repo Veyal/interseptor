@@ -162,3 +162,13 @@ test('a desktop host gets the status bar, the pill and the macOS chord', async (
     globalThis.setInterval = realSetInterval;
   }
 });
+
+// QA round 3: proxy auth on without a password (restored backup) rejects every
+// client; the status bar must not show the proxy as a healthy green.
+test('statusBarModel: proxy warns when proxy authentication has no password', () => {
+  const m = statusBarModel({ proxyAddr: '127.0.0.1:8080', proxyAuthPasswordMissing: true, intercept: {}, scope: {} });
+  assert.equal(m.proxy.tone, 'warn');
+  assert.match(m.proxy.label, /no password/);
+  assert.ok(m.warnings.items.some((w) => /Proxy authentication has no password/.test(w.title)));
+  assert.equal(statusBarModel({ proxyAddr: '127.0.0.1:8080', intercept: {}, scope: {} }).proxy.tone, 'ok');
+});

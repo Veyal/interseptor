@@ -293,8 +293,9 @@ func TestUIInterceptHeldMessageHasAnEditablePrettyView(t *testing.T) {
 		// Only typing in Pretty writes back to the raw editor, through the
 		// shared #heldRaw input handler (cache + MODIFIED + decode epoch).
 		"ta.value=prettyBridge.edit(ed.value);",
-		// Forward omits raw for an unedited message so the original bytes go out.
-		"heldForwardRaw(",
+		// Forward omits raw for an unedited message so the original bytes go out
+		// (and a binary message's edit keeps the held body).
+		"heldForwardBody(",
 		// The textarea is LF-normalized, the held original CRLF: MODIFIED must
 		// compare line-ending-insensitively or every view would flag it.
 		"const modified=heldIsModified(raw,original);",

@@ -553,6 +553,9 @@ func TestNormalizeFindingStatusNeedsVerification(t *testing.T) {
 		{"NEEDS_VERIFICATION", "needs_verification"},
 		{"open", "open"},
 		{"verified", "verified"},
+		{"ignored", "ignored"},
+		{"ignore", "ignored"},
+		{"IGNORED", "ignored"},
 		{"", "open"},
 		{"bogus", "open"},
 	}
@@ -560,6 +563,55 @@ func TestNormalizeFindingStatusNeedsVerification(t *testing.T) {
 		if got := normalizeFindingStatus(c.in); got != c.want {
 			t.Fatalf("normalizeFindingStatus(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestFindingIgnoredStatusAndReason(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	if !ValidFindingStatus("ignored") {
+		t.Fatal("ValidFindingStatus(ignored) want true, got false")
+	}
+
+	id, err := s.CreateFinding(&Finding{
+		Title:       "Low Impact Header Missing",
+		Severity:    "Low",
+		Status:      "ignored",
+		Source:      "human",
+		ProofReview: FindingProofReview{IgnoreReason: "Low impact / Client won't care"},
+	})
+	if err != nil {
+		t.Fatalf("CreateFinding with ignored status: %v", err)
+	}
+
+	got, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	if got.Status != "ignored" {
+		t.Fatalf("status = %q, want ignored", got.Status)
+	}
+	if got.ProofReview.IgnoreReason != "Low impact / Client won't care" {
+		t.Fatalf("ignoreReason = %q, want 'Low impact / Client won't care'", got.ProofReview.IgnoreReason)
+	}
+
+	// Update ignore reason
+	review := got.ProofReview
+	review.IgnoreReason = "Accepted risk"
+	if err := s.UpdateFindingCanonical(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, FindingMetadataPatch{ProofReview: &review}); err != nil {
+		t.Fatalf("UpdateFindingCanonical: %v", err)
+	}
+
+	got2, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatalf("GetFinding after update: %v", err)
+	}
+	if got2.ProofReview.IgnoreReason != "Accepted risk" {
+		t.Fatalf("updated ignoreReason = %q, want 'Accepted risk'", got2.ProofReview.IgnoreReason)
 	}
 }
 

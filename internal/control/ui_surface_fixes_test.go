@@ -18,7 +18,12 @@ if(narrow.width!==304||narrow.maxHeight>184||narrow.left!==8)throw new Error('na
 for(const top of [-200,900]){
   const offset=placeFloatingSurface({left:0,top,bottom:top+32},400,300,{left:20,top:50,width:250,height:220});
   if(offset.left<28||offset.left+offset.width>262||offset.top<58||offset.top+offset.maxHeight>262)throw new Error('scrolled or zoomed anchor escaped visual viewport');
-}`
+}
+// A menu taller than the room on either side of its button (desktop History's
+// Copy as at the inspector's "...") opens at the button and shifts up just enough
+// to fit whole, instead of flipping to the window top and clipping its last rows.
+const tall=placeFloatingSurface({left:700,top:412,bottom:430},200,380,{left:0,top:38,width:1280,height:762});
+if(tall.maxHeight!==380||tall.top+380>792||tall.top<412-6||tall.side!=='below')throw new Error('tall menu was clipped or left its button: '+JSON.stringify(tall));`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("surface placement: %v\n%s", err, out)
 	}

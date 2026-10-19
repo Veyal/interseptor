@@ -63,3 +63,10 @@ test('mergeNotes keeps both copies when the remote rewrote the notebook', () => 
   assert.equal(m.conflict, true);
   assert.equal(m.text, '# base\nlocal\n\n' + CONFLICT_HEADING + '\n\nrewritten');
 });
+
+test('a reload that only echoes our own save keeps the "Saved" status', async () => {
+  const { reloadClearsSaveStatus } = await import('../js/notes-model.js');
+  assert.equal(reloadClearsSaveStatus('draft text', 'draft text'), false, 'own save echoing back over SSE');
+  assert.equal(reloadClearsSaveStatus('draft text', 'agent appended\ndraft text'), true, 'a remote change replaces the text');
+  assert.equal(reloadClearsSaveStatus('', 'first load'), true);
+});

@@ -9,7 +9,7 @@
 html.desktop-app #panel-map>.toolbar{overflow:visible;flex-wrap:nowrap}
 html.desktop-app #panel-map>.toolbar-secondary[hidden]{display:none}
 html.desktop-app #mapSearch{flex:0 1 260px;width:auto;min-width:120px}
-html.desktop-app #mapCount{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
+html.desktop-app #mapCount{flex:0 1 auto;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;white-space:normal;overflow-wrap:anywhere;line-height:14px;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
 html.desktop-app #panel-map>.toolbar .spacer{flex:1 1 0}
 html.desktop-app .map-pop-wrap{position:relative;flex:none}
 html.desktop-app .map-filters-btn{gap:6px}

@@ -39,7 +39,14 @@ function iconNode(name) {
 
 export function runChecklistAction(action) {
   const shell = getShellApi();
-  if (action === 'setup') { import('./setup.js').then(m => m.openSetup()); return; }
+  if (action === 'setup-ca') { import('./setup.js').then(m => m.openSetup({ step: 1 })); return; }
+  // A first flow needs a client pointed at the proxy: show History, then the
+  // wizard step that names the address and launches the test browser.
+  if (action === 'capture') {
+    if (shell.activateTab) shell.activateTab('proxy');
+    import('./setup.js').then(m => m.openSetup({ step: 0 }));
+    return;
+  }
   if (action === 'scope') {
     const open = getHook('openEngagementSheet');
     if (open) open(); else if (shell.openSettings) shell.openSettings('scope');

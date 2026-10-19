@@ -13,8 +13,8 @@
           "level": "needs-review",
           "path": "inventory.example.com:8080",
           "feature": "target-host",
-          "message": "3 request(s) target inventory.example.com:8080; sends are blocked until the host is in scope",
-          "suggestion": "Add the host to the engagement scope"
+          "message": "3 request(s) target inventory.example.com:8080",
+          "suggestion": "Check the host is in the engagement scope"
         },
         {
           "level": "degraded",
@@ -263,8 +263,8 @@
         "level": "needs-review",
         "path": "inventory.example.com:8080",
         "feature": "target-host",
-        "message": "3 request(s) target inventory.example.com:8080; sends are blocked until the host is in scope",
-        "suggestion": "Add the host to the engagement scope"
+        "message": "3 request(s) target inventory.example.com:8080",
+        "suggestion": "Check the host is in the engagement scope"
       },
       {
         "level": "degraded",

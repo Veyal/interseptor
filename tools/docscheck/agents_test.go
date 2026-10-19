@@ -168,7 +168,7 @@ func TestGuideEnumValuesExistInCode(t *testing.T) {
 		"enables", "enabled_by", "chain", "duplicate", "escalates",
 		"tentative", "firm", "certain",
 		"production", "staging", "development", "testing", "local",
-		"needs_verification", "false_positive", "wont_fix",
+		"needs_verification", "false_positive", "wont_fix", "ignored",
 		"captured_flow", "browser_screenshot", "device_screenshot", "flow_preview", "evidence_render", "generated_image", "operator_upload", "tool_output",
 		"timeline", "distribution", "race", "strip", "authz_matrix", "flow_diff", "flow_waterfall", "finding_chain",
 	} {
@@ -240,7 +240,7 @@ func TestLLMSFullIsSelfContainedPlainText(t *testing.T) {
 			t.Errorf("llms-full.txt contains %q", bad)
 		}
 	}
-	for _, want := range []string{"## Hard rules", "### Rejections and how to fix them", "### MCP tools (", "### REST routes (", "Recipe 4", "## Canonical finding envelope", "## Connect an external agent with MCP", "](" + version.DocsSite + "/collections/)"} {
+	for _, want := range []string{"## Hard rules", "### Rejections and how to fix them", "### MCP tools (", "### REST routes (", "Recipe 4", "## Canonical finding envelope", "### Score real impact, not the label", "# Getting started", "# Workspace guide", "# Collections", "# Troubleshooting", "## Connect an external agent with MCP", "](" + version.DocsSite + "/collections/)"} {
 		if !strings.Contains(full, want) {
 			t.Errorf("llms-full.txt lacks %q", want)
 		}
@@ -338,6 +338,15 @@ func TestLLMSTextExplainsProjectNotesPurpose(t *testing.T) {
 	for _, want := range []string{"## Project notes", "credentials", "wipe", "access matrix", "menu", "not a testing log", "Findings", "Activity"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("llms.txt project notes guidance lacks %q", want)
+		}
+	}
+}
+
+func TestLLMSTextScoresFindingsByRealImpact(t *testing.T) {
+	text := llmsText()
+	for _, want := range []string{"## Scoring findings", "confidentiality, integrity or availability", "enumeration on its own is Info", "SQL error message", "not a finding at all"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("llms.txt scoring guidance lacks %q", want)
 		}
 	}
 }

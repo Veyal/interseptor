@@ -25,12 +25,31 @@ const (
 )
 
 // llmsFullSources are concatenated, in order, into llms-full.txt so an agent that
-// fetches one URL gets the guide, the finding contract, and the API/MCP reference.
+// fetches one URL gets the guide, the finding contract, the API/MCP reference and
+// every guide to using the app and its features.
 var llmsFullSources = []string{
 	"docs/agents.md",
 	"docs/findings-and-reporting.md",
 	"docs/api-and-mcp.md",
 	"docs/product/mcp-cookbook.md",
+	"docs/getting-started.md",
+	"docs/workspace.md",
+	"docs/proxy-and-tls.md",
+	"docs/history-search.md",
+	"docs/collections.md",
+	"docs/projects-and-data.md",
+	"docs/settings.md",
+	"docs/engagement-closeout.md",
+	"docs/mobile-testing.md",
+	"docs/content-discovery.md",
+	"docs/message-codecs.md",
+	"docs/custom-checks.md",
+	"docs/rule-packs.md",
+	"docs/vault.md",
+	"docs/extensions.md",
+	"docs/http2.md",
+	"docs/cli-reference.md",
+	"docs/troubleshooting.md",
 }
 
 // llmsDescriptions is the one-line description of each public page in llms.txt.
@@ -261,7 +280,7 @@ func plainText(body, source string) string {
 func llmsFullText(root string) (string, error) {
 	var b strings.Builder
 	b.WriteString("# Interseptor: complete agent documentation\n\n")
-	b.WriteString("> One file for AI agents: the agent guide, the finding-writing contract, and the API and MCP references. Generated from the project documentation by `go run ./tools/docscheck generate`; do not edit. Index: " + version.LLMSURL + "\n\n")
+	b.WriteString("> One file for AI agents: the agent guide, the finding-writing contract, the API and MCP references, and every guide to using the app and its features. Generated from the project documentation by `go run ./tools/docscheck generate`; do not edit. Index: " + version.LLMSURL + "\n\n")
 	b.WriteString("Parts, in order:\n\n")
 	for _, source := range llmsFullSources {
 		meta, ok := publicDocs[source]
@@ -298,7 +317,8 @@ func llmsText() string {
 	var b strings.Builder
 	b.WriteString("# Interseptor\n\n")
 	b.WriteString("> Interseptor is a single-binary HTTP/HTTPS intercepting proxy and security-testing toolkit. AI agents drive the same engine as the web UI through an MCP server (stdio and Streamable HTTP) and a REST/SSE API. These pages explain how to install it, connect, follow the rules, and file findings in one consistent format.\n\n")
-	b.WriteString("Fetch [llms-full.txt](" + version.LLMSFullURL + ") first: it is a single file containing the agent guide, the finding-writing contract, and the API and MCP references. Authorized testing only; read the hard rules before sending any request.\n\n")
+	b.WriteString("Fetch [llms-full.txt](" + version.LLMSFullURL + ") first: it is a single file containing the agent guide, the finding-writing contract, the API and MCP references, and every guide to using the app and its features. Authorized testing only; read the hard rules before sending any request.\n\n")
+	b.WriteString(findingScoringGuidance)
 	b.WriteString(projectNotesGuidance)
 	listed := map[string]bool{}
 	line := func(slug string) {
@@ -309,7 +329,7 @@ func llmsText() string {
 	for _, sec := range llmsSections {
 		fmt.Fprintf(&b, "## %s\n\n", sec.Title)
 		if sec.Title == "Agent guide" {
-			fmt.Fprintf(&b, "- [Complete guide as one text file](%s): agent guide, finding contract, API and MCP reference\n", version.LLMSFullURL)
+			fmt.Fprintf(&b, "- [Complete guide as one text file](%s): agent guide, finding contract, API and MCP reference, and every feature guide\n", version.LLMSFullURL)
 		}
 		for _, slug := range sec.Slugs {
 			line(slug)
@@ -405,6 +425,14 @@ func validateBuiltLLMS(site, root string) error {
 	}
 	return nil
 }
+
+// findingScoringGuidance tells agents to score a finding by the confidentiality,
+// integrity or availability impact they demonstrated, not by its class name.
+const findingScoringGuidance = `## Scoring findings
+
+Think about the real impact before you score a finding, and do not copy a severity from a scanner, a checklist or the vulnerability class name. Only a finding with demonstrated confidentiality, integrity or availability impact gets a CVSS score above 0.0; everything else is Info, or not a finding at all. Username or email enumeration on its own is Info. A SQL error message, stack trace, version banner or internal path is Info; it becomes SQL injection only when you show the injected query reading or changing data, and then you score that outcome, for example High when it reads other users' records. A missing header, weak cipher or absent hardening flag is Info or left out. When a weakness enables real impact, prove the impact and score that. See "Score real impact, not the label" in llms-full.txt.
+
+`
 
 // projectNotesGuidance tells agents what the project notebook (Report → Notes,
 // get_notes/set_notes/append_notes) is for, so it stays a reference sheet the
