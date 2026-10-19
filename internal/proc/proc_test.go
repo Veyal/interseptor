@@ -18,6 +18,13 @@ func TestClassifyRole(t *testing.T) {
 		{[]string{"interseptor", "vault"}, proc.RoleVault},
 		{[]string{"interseptor", "launcher"}, proc.RoleLauncher},
 		{[]string{"interseptor", "--project", "example"}, proc.RoleServer},
+		{[]string{"/usr/local/bin/interseptor"}, proc.RoleServer},
+		{[]string{"interseptor", "mcp"}, proc.RoleMCP},
+		{[]string{"interseptor", "check", "run"}, proc.RoleTool},
+		{[]string{"interseptor", "stop", "--all"}, proc.RoleTool},
+		// A project named like a subcommand is still a server.
+		{[]string{"interseptor", "--project", "vault"}, proc.RoleServer},
+		{[]string{"interseptor", "--project=mcp"}, proc.RoleServer},
 	} {
 		if got := proc.ClassifyRole(test.args); got != test.want {
 			t.Fatalf("ClassifyRole(%q) = %q, want %q", test.args, got, test.want)

@@ -26,24 +26,33 @@ const (
 	RoleServer   Role = "server"
 	RoleVault    Role = "vault"
 	RoleLauncher Role = "launcher"
-	RoleUnknown  Role = "unknown"
+	// RoleMCP is an `interseptor mcp` stdio bridge owned by an AI agent session.
+	RoleMCP Role = "mcp"
+	// RoleTool is a short-lived CLI command (check, rules, update, stop, ...).
+	RoleTool    Role = "tool"
+	RoleUnknown Role = "unknown"
 )
 
-// ClassifyRole identifies non-server modes from executable arguments.
+// ClassifyRole identifies the process mode from executable arguments. A
+// subcommand is only ever the first argument; anything else (no arguments, or
+// flags such as --project) is the proxy server.
 func ClassifyRole(args []string) Role {
-	for _, arg := range args[1:] {
-		switch strings.TrimSpace(arg) {
-		case "vault":
-			return RoleVault
-		case "launcher", "macapp":
-			return RoleLauncher
-		}
+	if len(args) < 2 {
+		return RoleServer
 	}
-	return RoleServer
+	switch first := strings.TrimSpace(args[1]); {
+	case first == "vault":
+		return RoleVault
+	case first == "launcher" || first == "macapp":
+		return RoleLauncher
+	case first == "mcp":
+		return RoleMCP
+	case first == "" || strings.HasPrefix(first, "-"):
+		return RoleServer
+	default:
+		return RoleTool
+	}
 }
-
-// Stoppable reports whether default stop may target p.
-func (p Proc) Stoppable() bool { return p.Role == RoleServer || p.Role == RoleUnknown }
 
 func IsServerArgs(args []string) bool {
 	if len(args) == 0 || !matchesInterseptor(baseFromPath(args[0])) {
