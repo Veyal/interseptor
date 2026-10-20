@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.17.3] - 2026-10-20
+
+> Patch release: automatic CVSS 4.0 severity calculation without manual input fields,
+> distinct High (red) vs Critical (purple) findings colors, findings status sorting
+> with ignored findings at the bottom, green 2xx status codes in desktop skin, and
+> clean bottom-left desktop project selector.
+
 ### Changed
 
 - **Findings severity automatically follows CVSS 4.0 score.** Severity is no longer an arbitrary input field; the CVSS vector calculates the numeric score, and the score automatically determines the qualitative severity (`0.0` → Info, `0.1–3.9` → Low, `4.0–6.9` → Medium, `7.0–8.9` → High, `9.0–10.0` → Critical) adhering strictly to CVSS 4.0 specifications. In the finding document header, severity renders as an informative badge rather than an editable `<select>` input, and existing findings with CVSS vectors automatically align their severity to match their score upon store startup and enrichment. (`internal/store/finding_assessment.go`, `internal/store/store.go`, `internal/control/ui/js/findings.js`, `internal/control/ui/js/cvss.js`.)
@@ -16,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Findings severity colors distinguish High (Red) and Critical (Purple).** High severity findings now use a bold red hue (`--red` / `#b42318`), while Critical severity findings use a distinct purple/violet hue (`--purple` / `#7e22ce` / `#b657ff`). This eliminates visual ambiguity between Critical and High findings across the web UI, desktop UI tokens, and exported HTML reports. (`internal/control/ui/app.css`, `internal/control/ui/css/desktop/tokens.css`, `internal/control/ui/findings.css`, `internal/report/html.go`.)
 - **Findings sorted by status with ignored findings placed at the bottom.** Added a Sort By control to findings filters (`status`, `severity`, `id`). Default sorting follows triage order (`needs_verification` → `open` → `verified` → `fixed` → `wont_fix` → `false_positive` → `ignored`), and `ignored` findings are always partitioned to the very bottom across all sort modes with a subtly dimmed row presentation. (`internal/control/ui/js/findings.js`, `internal/control/ui/findings.css`, `internal/control/ui/index.html`.)
 - **Status 200/2xx codes colored green in desktop app.** Status codes in the 200-299 range now use the `--success` semantic token (green) instead of `--text-secondary` (grey) across the History flow list, Intruder results, Repeater status line, and Site Map. (`internal/control/ui/css/desktop/components.css`, `internal/control/ui/css/desktop/panel-intruder.css`, `internal/control/ui/css/desktop/panel-tools.css`, `internal/control/ui/css/desktop/panel-map.css`.)
-- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.2` release.
 
 ## [2.17.2] - 2026-10-20
 
