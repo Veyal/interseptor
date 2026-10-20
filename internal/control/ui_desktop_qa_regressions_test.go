@@ -18,6 +18,9 @@ func TestUIDesktopOverscrollDoesNotBlockWheelChaining(t *testing.T) {
 	if !strings.Contains(css, "html.desktop-app,html.desktop-app body{overscroll-behavior:none}") {
 		t.Fatal("desktop.css should still stop rubber-band overscroll on the page itself")
 	}
+	if !strings.Contains(css, "html.desktop-app #rows,html.desktop-app .trow,html.desktop-app .trow>div{overscroll-behavior:auto}") {
+		t.Fatal("desktop.css must explicitly keep overscroll-behavior:auto on flow list rows and cells")
+	}
 }
 
 // Regression: overlay editors (a transparent textarea over a highlighted pre)

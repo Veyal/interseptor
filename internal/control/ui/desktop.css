@@ -11,6 +11,7 @@
    a truncating cell is an overflow:hidden scroll container, and overscroll-
    behavior on it stops a wheel over a row from scrolling the list. */
 html.desktop-app,html.desktop-app body{overscroll-behavior:none}
+html.desktop-app #rows,html.desktop-app .trow,html.desktop-app .trow>div{overscroll-behavior:auto}
 html.desktop-app *{-webkit-tap-highlight-color:transparent}
 
 /* Arrow cursor on controls. !important because the component layer sets
