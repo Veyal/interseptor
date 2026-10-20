@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.17.2] - 2026-10-20
+
+> Patch release: fix mouse wheel scrolling in History flow list inside desktop app.
+
 ### Fixed
 
 - **Mouse wheel scrolling in History flow list inside desktop app.** In `desktop.css`, `overscroll-behavior: auto` is explicitly enforced on `#rows`, `.trow`, and `.trow > div` cells, and overscroll-behavior is restricted to `html, body`. This prevents truncating cells (`overflow: hidden`) in WebKit / WKWebView and Chromium desktop shells from swallowing mouse wheel events and blocking list scrolling. (`internal/control/ui/desktop.css`, `internal/control/ui_desktop_qa_regressions_test.go`.)
