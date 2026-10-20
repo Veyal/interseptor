@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Status 200/2xx codes colored green in desktop app.** Status codes in the 200-299 range now use the `--success` semantic token (green) instead of `--text-secondary` (grey) across the History flow list, Intruder results, Repeater status line, and Site Map. (`internal/control/ui/css/desktop/components.css`, `internal/control/ui/css/desktop/panel-intruder.css`, `internal/control/ui/css/desktop/panel-tools.css`, `internal/control/ui/css/desktop/panel-map.css`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.2` release.
 
 ## [2.17.2] - 2026-10-20

@@ -47,7 +47,7 @@ html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-res
 html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .btn:not(.btn-primary):not(.accent){background:transparent;border-color:transparent;color:var(--text-secondary)}
 html.desktop-app :is(.rep-req,.rep-res,.intr-config,.intr-payload-pane,.intr-results)>.pane-head .btn:not(.btn-primary):not(.accent):hover:not(:disabled){background:var(--surface-hover);color:var(--text-primary)}
 html.desktop-app :is(.rep-res,.intr-results) .statusline{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-ui);font-weight:500}
-html.desktop-app :is(.rep-res,.intr-results) .statusline[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app :is(.rep-res,.intr-results) .statusline[style*="--accent"]{color:var(--success)!important}
 html.desktop-app :is(.rep-res,.intr-results) .statusline[style*="--fg3"]{color:var(--text-muted)!important}
 /* Section captions inside a pane (Headers, Body). */
 html.desktop-app .rep-sub{flex:none;display:flex;align-items:center;gap:8px;min-height:28px;padding:0 var(--gutter);border-top:1px solid var(--border-subtle);font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:500;color:var(--text-secondary)}

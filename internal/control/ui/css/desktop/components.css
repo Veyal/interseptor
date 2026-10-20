@@ -132,9 +132,9 @@ html.desktop-app .tr-id{color:var(--text-muted)}
 html.desktop-app :is(.tr-len,.tr-t,.tr-mime,.when-time){color:var(--text-muted)}
 /* Methods are neutral; app code paints them inline, so the override must win. */
 html.desktop-app :is(.tr-m,.icpt-item .m,.held .m){color:var(--text-primary)!important;font-weight:500}
-/* Status is coloured by class only: 2xx is secondary text. */
+/* Status colors: 2xx uses success text. */
 html.desktop-app .tr-st{font-weight:500}
-html.desktop-app .tr-st[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app .tr-st[style*="--accent"]{color:var(--success)!important}
 html.desktop-app :is(.icpt-item,.held,.intr-row){font-family:var(--ui);font-size:var(--text-ui)}
 html.desktop-app :is(.icpt-item .u,.held .p,.held .h){font-family:var(--mono);font-size:var(--text-code)}
 html.desktop-app .icpt-item{padding:0 12px;min-height:var(--row-h);border-bottom-color:color-mix(in srgb,var(--border-subtle) 50%,transparent)}

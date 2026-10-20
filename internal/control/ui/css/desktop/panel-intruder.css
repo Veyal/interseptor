@@ -139,7 +139,7 @@ html.desktop-app #panel-intruder .intr-row .pl-text{flex:1 1 auto;font-family:va
 html.desktop-app #panel-intruder .intr-row.flag .pl{color:var(--text-primary);font-weight:500}
 html.desktop-app #panel-intruder .intr-row .ext{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)}
 html.desktop-app #panel-intruder .intr-st{font-weight:500!important}
-html.desktop-app #panel-intruder .intr-st[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app #panel-intruder .intr-st[style*="--accent"]{color:var(--success)!important}
 html.desktop-app #panel-intruder .intr-ms{color:var(--text-muted)!important}
 /* Flags are icons at the end of the payload cell, so a payload is never cut by a badge. */
 html.desktop-app #panel-intruder .intr-chip{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;gap:0;border:0;border-radius:50%;background:transparent;font-size:0;line-height:0}

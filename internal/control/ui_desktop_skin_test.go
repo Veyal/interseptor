@@ -224,3 +224,26 @@ func TestUIDesktopShellUnderNode(t *testing.T) {
 		t.Fatalf("node --test failed: %v\n%s", err, out)
 	}
 }
+
+func TestUIDesktopStatus2xxUsesSuccessColor(t *testing.T) {
+	// Status 2xx codes (rendered with statusColor() using var(--accent)) must be
+	// visibly green (var(--success)) rather than muted/secondary text.
+	checks := []struct {
+		sheet string
+		want  string
+	}{
+		{"css/desktop/components.css", "html.desktop-app .tr-st[style*=\"--accent\"]{color:var(--success)!important}"},
+		{"css/desktop/panel-intruder.css", "html.desktop-app #panel-intruder .intr-st[style*=\"--accent\"]{color:var(--success)!important}"},
+		{"css/desktop/panel-tools.css", "html.desktop-app :is(.rep-res,.intr-results) .statusline[style*=\"--accent\"]{color:var(--success)!important}"},
+		{"css/desktop/panel-map.css", "html.desktop-app .map-sts span[style*=\"--accent\"],html.desktop-app .map-tbl-sts span[style*=\"--accent\"]{color:var(--success)!important}"},
+	}
+	for _, tc := range checks {
+		css := readUIAsset(t, tc.sheet)
+		if !strings.Contains(css, tc.want) {
+			t.Errorf("%s missing expected 2xx success color rule %q", tc.sheet, tc.want)
+		}
+		if strings.Contains(css, `[style*="--accent"]{color:var(--text-secondary)`) {
+			t.Errorf("%s still overrides --accent status to var(--text-secondary)", tc.sheet)
+		}
+	}
+}

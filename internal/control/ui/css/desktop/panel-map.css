@@ -68,7 +68,7 @@ html.desktop-app .map-m{flex:none;min-width:44px;font-size:var(--text-code);font
 html.desktop-app .map-m[style]{color:var(--text-primary)!important}
 html.desktop-app .map-p{flex:0 1 460px;min-width:0;color:var(--text-primary)}
 html.desktop-app .map-sts{flex:none;min-width:32px;font-family:var(--mono);font-size:var(--text-code);font-weight:500;font-variant-numeric:tabular-nums}
-html.desktop-app .map-sts span[style*="--accent"],html.desktop-app .map-tbl-sts span[style*="--accent"]{color:var(--text-secondary)!important}
+html.desktop-app .map-sts span[style*="--accent"],html.desktop-app .map-tbl-sts span[style*="--accent"]{color:var(--success)!important}
 html.desktop-app .map-hits{flex:none;min-width:28px;text-align:left;font-size:var(--text-caption);color:var(--text-muted);font-variant-numeric:tabular-nums}
 html.desktop-app .map-ep .map-cov{margin-left:0}
 html.desktop-app .map-cov{gap:10px;font-size:var(--text-caption);color:var(--text-muted)}
