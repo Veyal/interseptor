@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.3` release.
+
 ## [2.17.3] - 2026-10-20
 
 > Patch release: automatic CVSS 4.0 severity calculation without manual input fields,
