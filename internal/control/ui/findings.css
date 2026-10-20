@@ -532,6 +532,10 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 }
 .find-inline-new input[aria-invalid="true"]{border-color:var(--rd-block)}
 
+.find-status-badge.find-status-trigger{cursor:pointer;display:inline-flex;align-items:center;gap:3px;border:1px solid transparent;background:var(--bg3);color:var(--fg);padding:1px 6px;border-radius:var(--r-sm);font-size:var(--fs-xs);font-weight:500;line-height:18px}
+.find-status-badge.find-status-trigger:hover{filter:brightness(1.1);border-color:var(--line)}
+.find-status-badge.find-status-trigger .icon-chevron-sm{width:10px;height:10px;opacity:0.6}
+
 .find-triage-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 0 2px;font-size:var(--fs-xs)}
 .find-triage-label{color:var(--fg3);font-weight:600;margin-right:2px;font-size:var(--fs-xs)}
 .find-triage-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:var(--fs-xs);border-radius:var(--r-md);line-height:1.2}

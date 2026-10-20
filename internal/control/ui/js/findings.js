@@ -845,7 +845,7 @@ function showFindingRowCtx(event, id) {
   const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }); };
   openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #' + id, items: [
     { label: 'Open', icon: 'external', act: () => { location.hash = findingHref(id, 'overview').replace(/^#/, ''); } },
-    { label: 'Set status', icon: 'status-todo', val: statusLabel(f.status), disabled: !write,
+    { label: 'Set status', icon: 'status-todo', val: statusLabel(f.status),
       children: STATUSES.map(s => ({ label: statusLabel(s), icon: findingStatusIcon(s), on: f.status === s, act: setStatus(s) })) },
     f.cvss
       ? { label: 'Severity: ' + f.severity + (f.cvssScore != null ? ' (' + Number(f.cvssScore).toFixed(1) + ')' : ''), icon: 'sev-critical', disabled: true }
@@ -1390,7 +1390,9 @@ function acknowledgedFindingValue(id, key, fallback) {
 // True while the window is closing or hidden: writes then use fetch keepalive.
 let findingClosing = false;
 function enqueueFindingPatch(id, fields, onStaged) {
-  if (!findingsEditable()) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
+  const patchKeys = Object.keys(fields || {});
+  const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'proofReview');
+  if (!findingsEditable() && !isStatusPatch) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
   if (findingMutationBlocked(id)) return Promise.reject(new Error('Finding is being deleted or is no longer available.'));
   const queue = findingWriteQueue(id);
   const tokens = findingDrafts.stage(id, fields);
@@ -1416,7 +1418,11 @@ async function drainFindingWrites(id) {
       queue.pendingFields = null;
       const waiters = queue.pendingWaiters.splice(0);
       try {
-        assertFindingsWritable(); // editing may have been switched off while this save waited
+        const patchKeys = Object.keys(fields || {});
+        const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'proofReview');
+        if (!isStatusPatch) {
+          assertFindingsWritable(); // editing may have been switched off while this save waited
+        }
         const payload = JSON.stringify(fields);
         // While the window is closing, keepalive lets the request outlive the page
         // (browsers cap keepalive bodies at 64 KiB, so larger writes go as usual).
@@ -1593,6 +1599,7 @@ function openIgnoreReasonMenu(e, trigger, f) {
         f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
         toast('finding marked as ignored');
         renderFindings();
+        if (selFinding === f.id) renderFindingDetail();
       }
     });
   };
@@ -1618,6 +1625,36 @@ function openIgnoreReasonMenu(e, trigger, f) {
   });
   const r = (trigger && trigger.getBoundingClientRect) ? trigger.getBoundingClientRect() : { left: e?.clientX || 100, bottom: (e?.clientY || 100) - 2 };
   openCtxMenu(r.left, r.bottom + 2, [{ head: 'REASON FOR IGNORING', items }], trigger);
+}
+
+function openFindingStatusMenu(e, trigger, f) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const applyStatus = async (s) => {
+    if (s === 'ignored') {
+      openIgnoreReasonMenu(e, trigger, f);
+      return;
+    }
+    if (f.status === s) return;
+    try {
+      const res = await patchFinding(f.id, { status: s });
+      if (res && res.latest) {
+        f.status = s;
+        toast('status: ' + statusLabel(s));
+        await loadFindings();
+        renderFindingDetail();
+      }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  const items = STATUSES.map(s => ({
+    label: statusLabel(s),
+    icon: findingStatusIcon(s),
+    on: f.status === s,
+    act: () => applyStatus(s),
+  }));
+  const r = (trigger && trigger.getBoundingClientRect) ? trigger.getBoundingClientRect() : { left: e?.clientX || 100, bottom: (e?.clientY || 100) - 2 };
+  openCtxMenu(r.left, r.bottom + 2, [{ head: 'SET STATUS', items }], trigger);
 }
 
 function renderTriageBar(f) {
@@ -1765,7 +1802,7 @@ function renderFindingDetail() {
         <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
         <span class="find-id-badge">#${f.id}</span>
         <span class="sev find-sev-chip ${sevClass(f.severity)}" id="findSeverityChip" data-severity="${escAttr(f.severity)}">${esc(f.severity)}${f.cvssScore != null ? `<span class="find-sev-score">${esc(Number(f.cvssScore).toFixed(1))}</span>` : ''}</span>
-        <span class="sev find-status-badge ${statusBadgeClass(f.status)}">${esc(statusLabel(f.status))}</span>
+        <button type="button" class="sev find-status-badge find-status-trigger ${statusBadgeClass(f.status)}" id="findStatusBadge" aria-haspopup="menu" aria-expanded="false" title="Change status: ${esc(statusLabel(f.status))}">${esc(statusLabel(f.status))}<svg class="icon icon-chevron-sm" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
         ${findingModeChipHTML()}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
@@ -1777,7 +1814,7 @@ function renderFindingDetail() {
         ${edit ? `<button class="btn xs" id="findRename" aria-label="Rename finding" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg></button>` : ''}
       </div>
       <div class="find-context-line">${ctx.url ? `<span class="find-target"><span class="find-ctx-method">${esc(ctx.method)}</span> ${esc(ctx.url)}</span>` : `<span class="find-target">Target not recorded</span>`}${f.environment ? `<span>${esc(f.environment)}</span>` : ''}${f.cwe ? `<span>${esc(f.cwe)}</span>` : ''}</div>
-      ${findingsEditable() ? renderTriageBar(f) : ''}
+      ${renderTriageBar(f)}
       <div id="findSaveRecovery" class="find-save-recovery" hidden><span id="findSaveRecoveryMsg">Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button><button type="button" class="btn xs" id="findSaveDiscard" hidden>Discard changes</button></div>
     </header>
     <div class="find-workspace-content find-workspace-panel" tabindex="-1" role="region" aria-label="Finding document">
@@ -1828,12 +1865,14 @@ function renderFindingDetail() {
     focusTarget?.focus({preventScroll:true});
   }));
   $('#findModeChip')?.addEventListener('click', () => busEmit(EVENTS.SETTINGS_OPEN_SECTION, 'project'));
+  const statusBadge = box.querySelector('#findStatusBadge');
+  if (statusBadge) statusBadge.onclick = e => openFindingStatusMenu(e, statusBadge, f);
   const moreBtn = $('#findMore');
   if (moreBtn) moreBtn.onclick = e => openFindingMore(e, moreBtn, f);
   const triageValid = box.querySelector('#findTriageValid');
   if (triageValid) {
     triageValid.onclick = async () => {
-      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      if (findingMutationBlocked(f.id)) return;
       try {
         const res = await patchFinding(f.id, { status: 'verified' });
         if (res && res.latest) {
@@ -1848,7 +1887,7 @@ function renderFindingDetail() {
   const triageInvalid = box.querySelector('#findTriageInvalid');
   if (triageInvalid) {
     triageInvalid.onclick = async () => {
-      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      if (findingMutationBlocked(f.id)) return;
       try {
         const res = await patchFinding(f.id, { status: 'false_positive' });
         if (res && res.latest) {
@@ -1863,7 +1902,7 @@ function renderFindingDetail() {
   const triageIgnore = box.querySelector('#findTriageIgnore');
   if (triageIgnore) {
     triageIgnore.onclick = e => {
-      if (findingMutationBlocked(f.id) || !findingsEditable()) return;
+      if (findingMutationBlocked(f.id)) return;
       openIgnoreReasonMenu(e, triageIgnore, f);
     };
   }

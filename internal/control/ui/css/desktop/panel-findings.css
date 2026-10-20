@@ -109,6 +109,9 @@ html.desktop-app .find-workspace .find-sev-chip :is(.find-sev-score){font-weight
 html.desktop-app .find-workspace .find-header .sev{color:var(--text-primary)}
 /* Status = a quiet tag. */
 html.desktop-app .find-workspace .find-status-badge{padding:0 6px;border:0;border-radius:var(--radius-xs);background:var(--dsk-tag);font-family:var(--ui);font-size:var(--text-caption);line-height:20px;font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text-secondary)}
+html.desktop-app .find-workspace .find-header .find-status-badge.find-status-trigger{cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+html.desktop-app .find-workspace .find-header .find-status-badge.find-status-trigger:hover{background:color-mix(in srgb,var(--dsk-tag),var(--text-primary) 10%)}
+html.desktop-app .find-workspace .find-header .find-status-badge.find-status-trigger .icon-chevron-sm{width:10px;height:10px;opacity:0.6}
 html.desktop-app .find-workspace .find-header .find-status-badge.find-st-needs_verification{color:var(--warning)}
 html.desktop-app .find-workspace .find-header .find-status-badge:is(.find-st-verified,.find-st-fixed){color:var(--text-secondary)}
 html.desktop-app .find-workspace .find-header .find-status-badge:is(.find-st-false_positive,.find-st-wont_fix,.find-st-ignored){color:var(--text-muted)}

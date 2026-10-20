@@ -379,3 +379,75 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 		t.Error("index.html must not use a style attribute")
 	}
 }
+
+func TestAgentMaintainedFindingsAllowStatusChangeWhileGuardingContent(t *testing.T) {
+	src := readUIAsset(t, "js/findings.js")
+	workspace := readUIAsset(t, "js/finding-workspace.js")
+	workspace = strings.ReplaceAll(workspace[strings.Index(workspace, "export function createFindingDraftStore"):], "export ", "")
+	enqueue := sliceBetween(t, src, "function enqueueFindingPatch(", "\nasync function drainFindingWrites(")
+
+	// 1. Source assertions
+	requireUIContains(t, src,
+		`id="findStatusBadge"`,
+		`find-status-trigger`,
+		`openFindingStatusMenu(e, statusBadge, f)`,
+		`openFindingStatusMenu(e, trigger, f)`,
+		`${renderTriageBar(f)}`,
+	)
+
+	// Ensure Set status in context menu is not disabled by write gate
+	ctxMenu := sliceBetween(t, src, "openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #'", "Set severity")
+	if strings.Contains(ctxMenu, "disabled: !write") {
+		t.Error("Set status in context menu must not be disabled when editing is off")
+	}
+
+	// 2. Behavioral assertion via nodeModule
+	script := workspace + `
+let gate=false, fetches=[], drainedFields=[];
+const MSG='off';
+const findingsEditable=()=>gate, FINDINGS_EDITING_OFF=MSG;
+const assertFindingsWritable=()=>{ if(!gate)throw new Error(MSG); };
+const findingDrafts=createFindingDraftStore();
+const findingWriteQueues=new Map();
+const findingMutationBlocked=()=>false;
+const findingWriteQueue=(id)=>{
+  let q=findingWriteQueues.get(id);
+  if(!q){
+    q={running:false,pendingFields:null,pendingWaiters:[],latest:{},latestValues:{}};
+    findingWriteQueues.set(id,q);
+  }
+  return q;
+};
+const drainFindingWrites=async(id)=>{
+  const q=findingWriteQueues.get(id);
+  if(!q||!q.pendingFields)return;
+  const f=q.pendingFields;
+  q.pendingFields=null;
+  drainedFields.push(f);
+  const patchKeys=Object.keys(f||{});
+  const isStatusPatch=patchKeys.length>0&&patchKeys.every(k=>k==='status'||k==='proofReview');
+  if(!isStatusPatch)assertFindingsWritable();
+  fetches.push(f);
+  for(const w of q.pendingWaiters.splice(0))w.resolve({latest:true});
+};
+` + enqueue + `
+
+// When gate=false (agent-maintained), status updates are allowed
+gate=false;
+const r1=await enqueueFindingPatch(1,{status:'verified'});
+if(!r1||!r1.latest)throw Error('status patch must succeed when agent-maintained');
+
+const r2=await enqueueFindingPatch(1,{status:'ignored',proofReview:{ignoreReason:'duplicate'}});
+if(!r2||!r2.latest)throw Error('ignored with reason must succeed when agent-maintained');
+
+// But content edits are rejected
+let errSummary=null;
+try { await enqueueFindingPatch(1,{summary:'new claim'}); } catch(e) { errSummary=e; }
+if(!errSummary||errSummary.message!==MSG)throw Error('summary edit must reject when agent-maintained: '+errSummary);
+
+let errTitle=null;
+try { await enqueueFindingPatch(1,{title:'new title'}); } catch(e) { errTitle=e; }
+if(!errTitle||errTitle.message!==MSG)throw Error('title edit must reject when agent-maintained: '+errTitle);
+`
+	nodeModule(t, script)
+}

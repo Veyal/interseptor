@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Status triage enabled for agent-maintained findings while preserving content protection.** Users can now update finding statuses (`open`, `verified`, `fixed`, `wont_fix`, `false_positive`, `ignored`, `needs_verification`) via the detail header status badge dropdown, the persistent triage bar, and row context menus even when findings editing is off (agent-maintained mode). Finding content (summary, impact, root cause, reproduction steps, evidence flows, screenshots, remediation, retest, and titles) remains strictly guarded against accidental edits until editing mode is enabled. (`internal/control/ui/js/findings.js`, `internal/control/ui/findings.css`, `internal/control/ui/css/desktop/panel-findings.css`, `internal/control/ui_findings_readonly_test.go`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.3` release.
 
 ## [2.17.3] - 2026-10-20
