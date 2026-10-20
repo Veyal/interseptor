@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.17.2` release.
+
 ## [2.17.2] - 2026-10-20
 
 > Patch release: fix mouse wheel scrolling in History flow list inside desktop app.
