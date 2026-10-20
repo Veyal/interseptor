@@ -245,6 +245,41 @@ func validateSeverityMatchesCVSS(f *Finding) error {
 	return fmt.Errorf("%w: severity %q conflicts with the calculated CVSS rating %s (score %.1f); set severity to %s or document a deliberate difference in proofReview.severityOverride", ErrInvalidFinding, f.Severity, ev.Severity, ev.Score, ev.Severity)
 }
 
+// alignFindingSeverities aligns existing findings where a CVSS 4.0 vector
+// determines severity, ensuring database rows match the calculated rating.
+func alignFindingSeverities(db *sql.DB) error {
+	rows, err := db.Query(`SELECT id, cvss, severity, proof_review FROM findings WHERE cvss LIKE 'CVSS:4.0/%'`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	type fix struct {
+		id  int64
+		sev string
+	}
+	var fixes []fix
+	for rows.Next() {
+		var id int64
+		var vector, curSev, proofReview string
+		if err := rows.Scan(&id, &vector, &curSev, &proofReview); err != nil {
+			continue
+		}
+		var pr FindingProofReview
+		_ = scanFindingJSON(proofReview, &pr)
+		if strings.TrimSpace(pr.SeverityOverride) != "" {
+			continue
+		}
+		ev, err := cvsspkg.Evaluate(vector)
+		if err == nil && !ev.Legacy && ev.Severity != "" && !strings.EqualFold(curSev, ev.Severity) {
+			fixes = append(fixes, fix{id: id, sev: ev.Severity})
+		}
+	}
+	for _, f := range fixes {
+		_, _ = db.Exec(`UPDATE findings SET severity = ? WHERE id = ?`, f.sev, f.id)
+	}
+	return nil
+}
+
 func (s *Store) UpdateFindingMetadata(id int64, patch FindingMetadataPatch) error {
 	return s.updateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, patch)
 }
@@ -274,6 +309,9 @@ func (f *Finding) enrichAssessment() {
 			f.CvssScore = &score
 			f.CvssRating = rating
 			f.CvssNomenclature = "CVSS-3.1"
+			if strings.TrimSpace(f.Severity) == "" {
+				f.Severity = cvsspkg.ProductSeverity(rating)
+			}
 		}
 	} else if v, err := cvss40.ParseVector(raw); err == nil {
 		score := v.Score()
@@ -284,6 +322,9 @@ func (f *Finding) enrichAssessment() {
 		f.CvssScore = &score
 		f.CvssRating = rating
 		f.CvssNomenclature = v.Nomenclature()
+		if strings.TrimSpace(f.Severity) == "" {
+			f.Severity = cvsspkg.ProductSeverity(rating)
+		}
 	}
 	// Old scalar targets remain lossless. Existing attachments are their evidence.
 	if len(f.Targets) == 0 && strings.TrimSpace(f.Target) != "" {

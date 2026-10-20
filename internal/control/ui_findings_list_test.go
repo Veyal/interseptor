@@ -199,3 +199,15 @@ if (sevOrdered[sevOrdered.length - 2].status !== 'ignored' || sevOrdered[sevOrde
 		t.Fatalf("node test failed: %v\n%s", err, out)
 	}
 }
+
+func TestUIFindingsSeverityFollowsScoreAndNotInputField(t *testing.T) {
+	findingsJS := readUIAsset(t, "js/findings.js")
+	// Header must render non-editable severity badge, not <select id="findSeverity">:
+	if strings.Contains(findingsJS, `<select id="findSeverity"`) {
+		t.Errorf("findings.js must not render severity as an input <select id=\"findSeverity\">")
+	}
+	requireUIContains(t, findingsJS, `id="findSeverityChip"`, `data-severity=`)
+
+	cvssJS := readUIAsset(t, "js/cvss.js")
+	requireUIContains(t, cvssJS, `Apply vector (${Number(result.score).toFixed(1)} · ${displayRating(result.rating)})`)
+}

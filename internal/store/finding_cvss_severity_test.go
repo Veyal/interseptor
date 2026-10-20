@@ -93,3 +93,56 @@ func TestUpdateFindingSeverityMismatchBlockedOnlyWhenChanged(t *testing.T) {
 		t.Fatalf("NONE not rendered as Info: %+v", got)
 	}
 }
+
+func TestFindingSeverityFollowsCVSSScore(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// Vector scoring 6.9 (Medium in CVSS 4.0):
+	v69 := "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:L/SC:N/SI:N/SA:N"
+	id, err := s.CreateFinding(&Finding{Title: "PII lead endpoint", Severity: "Low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed legacy vector directly in DB with mismatched Low severity:
+	seedLegacyCVSS(t, s, id, v69)
+
+	// Re-opening store must align database rows permanently:
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	var dbSev string
+	if err := s2.db.QueryRow(`SELECT severity FROM findings WHERE id = ?`, id).Scan(&dbSev); err != nil {
+		t.Fatal(err)
+	}
+	if dbSev != "Medium" {
+		t.Fatalf("DB severity want Medium after Open alignment, got %q", dbSev)
+	}
+
+	// Loading via GetFinding must have Severity = "Medium" from the 6.9 score:
+	got, err := s2.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CvssScore == nil || *got.CvssScore != 6.9 {
+		t.Fatalf("score want 6.9, got %v", got.CvssScore)
+	}
+	if got.Severity != "Medium" {
+		t.Fatalf("severity want Medium for score 6.9, got %q", got.Severity)
+	}
+	for _, g := range got.Readiness.Gaps {
+		if g == "severity" {
+			t.Fatalf("severity gap must be resolved when score determines severity: %+v", got.Readiness.Gaps)
+		}
+	}
+}

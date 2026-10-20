@@ -68,8 +68,8 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
         return;
       }
       applyButton.disabled = false;
-      applyButton.textContent = `Apply vector + ${displayRating(result.rating)} severity`;
-      const current = root.ownerDocument?.querySelector?.('#findSeverity')?.value;
+      applyButton.textContent = `Apply vector (${Number(result.score).toFixed(1)} · ${displayRating(result.rating)})`;
+      const current = root.ownerDocument?.querySelector?.('#findSeverityChip')?.dataset?.severity || root.ownerDocument?.querySelector?.('#findSeverity')?.value || '';
       setStatus(previewStatusText(result, current));
     } catch (error) {
       if (token !== generation) return;

@@ -451,6 +451,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	_ = alignFindingSeverities(db)
 	var maxID int64
 	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
 		db.Close()

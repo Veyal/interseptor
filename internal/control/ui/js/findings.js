@@ -847,8 +847,10 @@ function showFindingRowCtx(event, id) {
     { label: 'Open', icon: 'external', act: () => { location.hash = findingHref(id, 'overview').replace(/^#/, ''); } },
     { label: 'Set status', icon: 'status-todo', val: statusLabel(f.status), disabled: !write,
       children: STATUSES.map(s => ({ label: statusLabel(s), icon: findingStatusIcon(s), on: f.status === s, act: setStatus(s) })) },
-    { label: 'Set severity', icon: 'sev-critical', val: f.severity || '', disabled: !write,
-      children: SEVERITY_ORDER.map(s => ({ label: s, on: severityKey(f.severity) === s, act: setSeverity(s) })) },
+    f.cvss
+      ? { label: 'Severity: ' + f.severity + (f.cvssScore != null ? ' (' + Number(f.cvssScore).toFixed(1) + ')' : ''), icon: 'sev-critical', disabled: true }
+      : { label: 'Set severity', icon: 'sev-critical', val: f.severity || '', disabled: !write,
+          children: SEVERITY_ORDER.map(s => ({ label: s, on: severityKey(f.severity) === s, act: setSeverity(s) })) },
     { label: 'Re-score CVSS v4.0', icon: 'readiness', val: f.cvss || 'not scored', disabled: !write, act: () => { location.hash = findingHref(id, 'assessment').replace(/^#/, ''); } },
     { label: 'Copy', icon: 'copy', children: [
       { label: 'Title', act: () => copyText(f.title || '', 'title copied') },
@@ -1665,7 +1667,6 @@ function renderFindingDetail() {
   const ctx = findingContext(f);
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
-  const sevOpts = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(s => `<option value="${s}"${s === f.severity ? ' selected' : ''}>${s}</option>`).join('');
   const envOpts = [...new Set(['', 'production', 'staging', 'development', 'testing', 'local', 'prod', f.environment || ''])].map(e => `<option value="${escAttr(e)}"${(f.environment || '') === e ? ' selected' : ''}>${esc(e || 'Not set')}</option>`).join('');
   const missBanner = (() => {
     const missFlow = (f.blocks || []).filter(b => b.type === 'flow' && b.missing).length;
@@ -1763,9 +1764,7 @@ function renderFindingDetail() {
       <div class="find-header-top">
         <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
         <span class="find-id-badge">#${f.id}</span>
-        ${edit
-          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity">${sevOpts}</select>`
-          : `<span class="sev find-sev-chip ${sevClass(f.severity)}">${esc(f.severity)}${f.cvssScore != null ? `<span class="find-sev-score">${esc(Number(f.cvssScore).toFixed(1))}</span>` : ''}</span>`}
+        <span class="sev find-sev-chip ${sevClass(f.severity)}" id="findSeverityChip" data-severity="${escAttr(f.severity)}">${esc(f.severity)}${f.cvssScore != null ? `<span class="find-sev-score">${esc(Number(f.cvssScore).toFixed(1))}</span>` : ''}</span>
         <span class="sev find-status-badge ${statusBadgeClass(f.status)}">${esc(statusLabel(f.status))}</span>
         ${findingModeChipHTML()}
         <div class="spacer"></div>
