@@ -63,8 +63,8 @@ const reportHTMLCSS = `
   --page:#eef1f5;--sheet:#fff;--ink:#1a2230;--ink2:#49546b;--ink3:#737e8f;
   --line:#e6eaf0;--line2:#d4dae3;--soft:#f6f8fb;
   --accent:#047857;--accent2:#065f46;--accent-bg:#ecfdf3;--accent-bd:#a7e8cf;
-  --sev-critical:#b42318;--sev-critical-bg:#fef3f2;--sev-critical-bd:#fda29b;
-  --sev-high:#b93815;--sev-high-bg:#fff4ed;--sev-high-bd:#f7b27a;
+  --sev-critical:#7e22ce;--sev-critical-bg:#faf5ff;--sev-critical-bd:#d8b4fe;
+  --sev-high:#b42318;--sev-high-bg:#fef3f2;--sev-high-bd:#fda29b;
   --sev-medium:#b54708;--sev-medium-bg:#fffaeb;--sev-medium-bd:#fdb022;
   --sev-low:#175cd3;--sev-low-bg:#eff8ff;--sev-low-bd:#84caff;
   --sev-info:#475467;--sev-info-bg:#f2f4f7;--sev-info-bd:#d0d5dd;

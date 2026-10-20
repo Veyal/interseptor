@@ -23,7 +23,7 @@ html.desktop-app{
   --border-subtle:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.13);
   --text-primary:#ececee; --text-secondary:#aeafb6; --text-muted:#9899a1; --text-on-accent:#06140e;
   --accent-subtle:rgba(62,201,142,.14);
-  --success:#3fb97a; --warning:#e2a336; --danger:#ef6262; --info:#5aa2f0; --sev-high-c:#f08a3e;
+  --success:#3fb97a; --warning:#e2a336; --danger:#ef6262; --info:#5aa2f0; --sev-high-c:#f08a3e; --purple:#b657ff;
   --warning-subtle:rgba(226,163,54,.12); --warning-border:rgba(226,163,54,.32);
   --danger-subtle:rgba(239,98,98,.12); --danger-border:rgba(239,98,98,.32);
   --info-subtle:rgba(90,162,240,.12); --info-border:rgba(90,162,240,.3);
@@ -50,7 +50,7 @@ html.desktop-app{
   --elev-1:var(--hairline-shadow); --elev-2:var(--shadow-popover); --elev-3:var(--shadow-dialog);
   --rd-pass:var(--success); --rd-gap:var(--warning); --rd-block:var(--danger); --rd-na:var(--text-muted);
   --rd-pass-dim:var(--accent-subtle); --rd-gap-dim:var(--warning-subtle); --rd-block-dim:var(--danger-subtle);
-  --sev-critical:var(--danger); --sev-high:var(--sev-high-c); --sev-medium:var(--warning); --sev-low:var(--info); --sev-info:var(--text-muted);
+  --sev-critical:var(--purple); --sev-high:var(--danger); --sev-medium:var(--warning); --sev-low:var(--info); --sev-info:var(--text-muted);
 
   /* type: system UI (SF Pro on macOS) and ui-monospace (SF Mono) */
   --ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -78,7 +78,7 @@ html.desktop-app[data-theme="light"]{
   --border-subtle:rgba(0,0,0,.08); --border-strong:rgba(0,0,0,.15);
   --text-primary:#1d1d20; --text-secondary:#5c5d65; --text-muted:#6b6c74; --text-on-accent:#ffffff;
   --accent-subtle:rgba(26,154,99,.12);
-  --success:#1a7d4c; --warning:#94590a; --danger:#c93434; --info:#1f6fc8; --sev-high-c:#a84e17;
+  --success:#1a7d4c; --warning:#94590a; --danger:#c93434; --info:#1f6fc8; --sev-high-c:#a84e17; --purple:#7e22ce;
   --warning-subtle:rgba(168,101,10,.09); --warning-border:rgba(168,101,10,.3);
   --danger-subtle:rgba(201,52,52,.08); --danger-border:rgba(201,52,52,.28);
   --info-subtle:rgba(31,111,200,.08); --info-border:rgba(31,111,200,.26);
@@ -111,7 +111,7 @@ html.desktop-app[data-theme="hc"]{
   --border-subtle:#ffffff; --border-strong:#ffffff;
   --text-primary:#ffffff; --text-secondary:#ffffff; --text-muted:#e5e5e5; --text-on-accent:#000000;
   --accent-subtle:rgba(138,245,214,.2);
-  --success:#6ee7a8; --warning:#ffd166; --danger:#ff9e9e; --info:#a8cfff; --sev-high-c:#ffb86b;
+  --success:#6ee7a8; --warning:#ffd166; --danger:#ff9e9e; --info:#a8cfff; --sev-high-c:#ffb86b; --purple:#d8b4fe;
   --warning-subtle:rgba(255,209,102,.16); --warning-border:#ffd166;
   --danger-subtle:rgba(255,158,158,.16); --danger-border:#ff9e9e;
   --info-subtle:rgba(168,207,255,.16); --info-border:#a8cfff;

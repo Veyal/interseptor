@@ -136,7 +136,9 @@ test('a desktop host gets the status bar, the pill and the macOS chord', async (
     assert.equal(item('scope').textContent, 'Scope 1 in · 1 out');
     assert.equal(item('flows').textContent, '12 flows');
     assert.equal(item('warnings').hidden, true);
-    assert.equal(dom.start.contains(dom.chip), true, 'project switcher moved to the left');
+    assert.equal(dom.start.contains(dom.chip), false, 'project switcher removed from top left toolbar');
+    assert.equal(status.children[0].dataset.sb, 'project', 'project switcher kept at bottom left of status bar');
+    assert.equal(item('project').textContent, 'demo');
     const pill = dom.end.querySelector('#dskIcptPill');
     assert.ok(pill, 'intercept pill added');
     assert.equal(dom.end.children.indexOf(pill), dom.end.children.indexOf(dom.ring) - 1, 'pill sits before the readiness ring');

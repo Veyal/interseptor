@@ -54,7 +54,7 @@
   --elev-3:0 16px 48px var(--shadow);
   /* Semantic color roles — reference the themed base tokens so severity colours
      follow the theme instead of being frozen at their dark-mode values. */
-  --sev-critical:var(--red); --sev-high:var(--orange); --sev-medium:var(--amber);
+  --sev-critical:var(--violet); --sev-high:var(--red); --sev-medium:var(--amber);
   --sev-low:var(--blue); --sev-info:var(--fg3);
   --state-on:var(--accent); --state-off:var(--fg3);
   --state-pending:var(--amber); --state-danger:var(--red);

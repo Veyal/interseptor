@@ -247,3 +247,31 @@ func TestUIDesktopStatus2xxUsesSuccessColor(t *testing.T) {
 		}
 	}
 }
+
+func TestUIDesktopProjectSelectorAtBottomLeftOnly(t *testing.T) {
+	// In desktop mode, the project selector is kept at the bottom-left of the status
+	// bar rather than being duplicated in the top-left title toolbar.
+	shellCSS := readUIAsset(t, "css/desktop/shell.css")
+	if !strings.Contains(shellCSS, "#mobileProjectChip") || !strings.Contains(shellCSS, "{display:none!important}") {
+		t.Errorf("shell.css must hide #mobileProjectChip in desktop mode")
+	}
+	if strings.Contains(shellCSS, "#bar #mobileProjectChip{display:inline-flex") {
+		t.Errorf("shell.css still styles #bar #mobileProjectChip for display")
+	}
+
+	shellJS := readUIAsset(t, "js/desktop-shell.js")
+	if strings.Contains(shellJS, "start.appendChild(chip)") {
+		t.Errorf("desktop-shell.js must not move #mobileProjectChip to the top-left toolbar")
+	}
+	// The status bar must mount the project selector first (at the bottom-left).
+	sbIndex := strings.Index(shellJS, "bar.append(")
+	if sbIndex < 0 {
+		t.Fatalf("desktop-shell.js lost bar.append")
+	}
+	sbBody := shellJS[sbIndex:]
+	projIndex := strings.Index(sbBody, "item('project'")
+	proxyIndex := strings.Index(sbBody, "item('proxy'")
+	if projIndex < 0 || proxyIndex < 0 || projIndex > proxyIndex {
+		t.Errorf("desktop-shell.js must place item('project') at the start of the status bar before proxy (bottom-left)")
+	}
+}

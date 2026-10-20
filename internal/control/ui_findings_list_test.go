@@ -1,6 +1,7 @@
 package control
 
 import (
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -136,4 +137,65 @@ func TestUIFindingsListKeepsSingleTabStop(t *testing.T) {
 	src := readUIAsset(t, "js/findings.js")
 	row := jsFunc(t, src, "function findingRowHTML(")
 	requireUIContains(t, row, `tabindex="${tab ? '0' : '-1'}"`)
+}
+
+func TestUIFindingsSeverityColorsCriticalPurpleHighRed(t *testing.T) {
+	appCSS := readUIAsset(t, "app.css")
+	requireUIContains(t, appCSS, "--sev-critical:var(--violet);", "--sev-high:var(--red);")
+
+	findingsCSS := readUIAsset(t, "findings.css")
+	requireUIContains(t, findingsCSS, ".sev-critical{color:var(--sev-critical)}", ".sev-high{color:var(--sev-high)}")
+
+	tokensCSS := readUIAsset(t, "css/desktop/tokens.css")
+	requireUIContains(t, tokensCSS, "--sev-critical:var(--purple);", "--sev-high:var(--danger);")
+}
+
+func TestUIFindingsSortByStatusPutsIgnoredAtBottom(t *testing.T) {
+	src := readUIAsset(t, "js/findings.js")
+	requireUIContains(t, src,
+		"const STATUS_ORDER = ['needs_verification', 'open', 'verified', 'fixed', 'wont_fix', 'false_positive', 'ignored'];",
+		"const aIgnored = a.status === 'ignored';",
+		"const bIgnored = b.status === 'ignored';",
+		"if (aIgnored !== bIgnored) return aIgnored ? 1 : -1;",
+		"findSortBy === 'status'",
+		"find-row-ignored",
+	)
+
+	// Verify in Node that orderFindings partitions ignored findings strictly to the bottom
+	node := requireNode(t)
+	script := `
+const STATUS_ORDER = ['needs_verification', 'open', 'verified', 'fixed', 'wont_fix', 'false_positive', 'ignored'];
+const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+const severityKey = s => (s || 'info').toLowerCase();
+let findSortBy = 'status';
+let findGroupBySeverity = true;
+` + jsFunc(t, src, "function orderFindings(") + `
+const sample = [
+  { id: 1, severity: 'Critical', status: 'ignored', title: 'Ignored Critical' },
+  { id: 2, severity: 'Low', status: 'open', title: 'Open Low' },
+  { id: 3, severity: 'High', status: 'needs_verification', title: 'Needs Verif High' },
+  { id: 4, severity: 'Critical', status: 'verified', title: 'Verified Critical' },
+  { id: 5, severity: 'High', status: 'ignored', title: 'Ignored High' },
+  { id: 6, severity: 'Critical', status: 'needs_verification', title: 'Needs Verif Critical' },
+];
+
+// In status sort:
+const ordered = orderFindings(sample);
+if (ordered[0].id !== 6 || ordered[1].id !== 3) throw new Error('needs_verification must come first');
+if (ordered[ordered.length - 2].status !== 'ignored' || ordered[ordered.length - 1].status !== 'ignored') {
+  throw new Error('ignored findings must always be at the bottom');
+}
+
+// In severity sort: ignored findings still stay at the bottom!
+findSortBy = 'severity';
+const sevOrdered = orderFindings(sample);
+if (sevOrdered[0].id !== 6) throw new Error('Active critical must come first in severity sort');
+if (sevOrdered[sevOrdered.length - 2].status !== 'ignored' || sevOrdered[sevOrdered.length - 1].status !== 'ignored') {
+  throw new Error('ignored findings must remain at the bottom even in severity sort');
+}
+`
+	cmd := exec.Command(node, "--input-type=module", "-e", script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node test failed: %v\n%s", err, out)
+	}
 }

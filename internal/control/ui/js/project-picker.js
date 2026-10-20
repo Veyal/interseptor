@@ -342,7 +342,7 @@ export async function openProjectPicker(from) {
   const m = $('#projModal');
   if (!m) return;
   const candidate = from instanceof Element ? from : null;
-  opener = visible(candidate) ? candidate : [$('#mobileProjectChip'), $('#projBadge')].find(visible) || null;
+  opener = visible(candidate) ? candidate : [document.querySelector('#dskStatus [data-sb="project"]'), $('#mobileProjectChip'), $('#projBadge')].find(visible) || null;
   if (opener && document.activeElement !== opener && !m.contains(document.activeElement)) opener.focus({ preventScroll: true });
   cfg.clearFeedback();
   closeMoveEditor({ restore: false });

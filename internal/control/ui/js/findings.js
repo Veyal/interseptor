@@ -32,6 +32,7 @@ const sourceLabel = evidenceSourceLabel;
 // and flow-reference blocks (PoC request/response) interleaved freely, like a report.
 
 const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'ignored', 'fixed'];
+const STATUS_ORDER = ['needs_verification', 'open', 'verified', 'fixed', 'wont_fix', 'false_positive', 'ignored'];
 const IGNORE_REASONS = [
   "Low impact / Client won't care",
   "Accepted risk / Compensating controls",
@@ -76,12 +77,20 @@ function findingModeChipHTML(){
 let findSection = 'overview';
 let findSearch = '', findSeverityFilter = '', findStatusFilter = '';
 const FIND_GROUP_KEY = () => projectStorageKey('findings.groupBySeverity');
-let findGroupBySeverity = true, findGroupKeyLoaded = '';
+const FIND_SORT_KEY = () => projectStorageKey('findings.sortBy');
+let findGroupBySeverity = true, findGroupKeyLoaded = '', findSortKeyLoaded = '';
 function readFindGroupBySeverity() { try { return localStorage.getItem(FIND_GROUP_KEY()) !== '0'; } catch { return true; } }
 function setFindGroupBySeverity(on) {
   findGroupBySeverity = !!on;
   try { localStorage.setItem(FIND_GROUP_KEY(), findGroupBySeverity ? '1' : '0'); } catch { /* not persisted */ }
   syncFindFilterButton();
+  renderFindings();
+}
+function readFindSortBy() { try { return localStorage.getItem(FIND_SORT_KEY()) || 'status'; } catch { return 'status'; } }
+let findSortBy = readFindSortBy();
+export function setFindSortBy(s) {
+  findSortBy = s || 'status';
+  try { localStorage.setItem(FIND_SORT_KEY(), findSortBy); } catch { /* not persisted */ }
   renderFindings();
 }
 let renderedFindingKey = '';
@@ -287,7 +296,7 @@ const findingHasScreenshot = f => (f.blocks || []).some(b => b.type === 'image')
 
 function findingRowHTML(f, tab) {
   const n = findingPocCount(f);
-  return `<a href="${findingHref(f.id,'overview')}" class="find-row find-row-sev-${severityKey(f.severity)}${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}"${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}" tabindex="${tab ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
+  return `<a href="${findingHref(f.id,'overview')}" class="find-row find-row-sev-${severityKey(f.severity)}${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}${f.status === 'ignored' ? ' find-row-ignored' : ''}" data-id="${f.id}"${findingsEditable() ? ' data-evidence-drop' : ''} data-finding-id="${f.id}" tabindex="${tab ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
     <span class="find-title" title="${escAttr(f.title)}">${esc(f.title)}</span>
     <span class="find-meta">${findingRowMeta(f)}</span>
     <span class="find-ev${n ? '' : ' is-none'}" title="${n ? n + ' evidence' : 'No evidence attached'}">${icon(findingHasScreenshot(f) ? 'image' : 'attach')}${n}<span class="u-sr"> evidence</span></span>
@@ -296,13 +305,34 @@ function findingRowHTML(f, tab) {
 
 // Critical to Info, then id. A flat list keeps the server order.
 function orderFindings(list) {
-  if (!findGroupBySeverity) return list;
-  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(severityKey(a.severity)) - SEVERITY_ORDER.indexOf(severityKey(b.severity)) || a.id - b.id);
+  return [...list].sort((a, b) => {
+    const aIgnored = a.status === 'ignored';
+    const bIgnored = b.status === 'ignored';
+    if (aIgnored !== bIgnored) return aIgnored ? 1 : -1;
+
+    if (findSortBy === 'status') {
+      const sa = STATUS_ORDER.indexOf(a.status || 'open');
+      const sb = STATUS_ORDER.indexOf(b.status || 'open');
+      if (sa !== sb) return (sa < 0 ? 99 : sa) - (sb < 0 ? 99 : sb);
+      return SEVERITY_ORDER.indexOf(severityKey(a.severity)) - SEVERITY_ORDER.indexOf(severityKey(b.severity)) || a.id - b.id;
+    }
+    if (findSortBy === 'severity' || findGroupBySeverity) {
+      const d = SEVERITY_ORDER.indexOf(severityKey(a.severity)) - SEVERITY_ORDER.indexOf(severityKey(b.severity));
+      if (d !== 0) return d;
+      const sa = STATUS_ORDER.indexOf(a.status || 'open');
+      const sb = STATUS_ORDER.indexOf(b.status || 'open');
+      if (sa !== sb) return (sa < 0 ? 99 : sa) - (sb < 0 ? 99 : sb);
+      return a.id - b.id;
+    }
+    return (b.id || 0) - (a.id || 0);
+  });
 }
 
 function findingGroupHeaderHTML(severity, count) {
-  const key = severityKey(severity);
-  return `<div class="find-group find-row-sev-${key}"><span class="bar" aria-hidden="true"></span>${esc(key)}<span class="n">${count}</span></div>`;
+  const isSev = ['critical', 'high', 'medium', 'low', 'info'].includes(String(severity).toLowerCase());
+  const key = isSev ? severityKey(severity) : '';
+  const cls = key ? `find-row-sev-${key}` : (String(severity).toLowerCase() === 'ignored' ? 'find-row-st-ignored' : 'find-row-status');
+  return `<div class="find-group ${cls}"><span class="bar" aria-hidden="true"></span>${esc(severity)}<span class="n">${count}</span></div>`;
 }
 
 function parseFindTags(s) {
@@ -322,6 +352,7 @@ function resetFindingFilters() {
 $('#findSearch')?.addEventListener('input', e => { findSearch = e.target.value; renderFindings(); });
 $('#findFilterSeverity')?.addEventListener('change', e => { findSeverityFilter = e.target.value; renderFindings(); });
 $('#findFilterStatus')?.addEventListener('change', e => { findStatusFilter = e.target.value; renderFindings(); });
+$('#findSortBy')?.addEventListener('change', e => { setFindSortBy(e.target.value); });
 
 // Filters that narrow the list (the search box is visible on its own, so it is not a chip).
 function activeFindFilters() {
@@ -738,6 +769,10 @@ function renderFindings() {
   const box = $('#findList'); if (!box) return;
   const groupKey = FIND_GROUP_KEY();
   if (groupKey !== findGroupKeyLoaded) { findGroupKeyLoaded = groupKey; findGroupBySeverity = readFindGroupBySeverity(); }
+  const sortKey = FIND_SORT_KEY();
+  if (sortKey !== findSortKeyLoaded) { findSortKeyLoaded = sortKey; findSortBy = readFindSortBy(); }
+  const sortEl = $('#findSortBy');
+  if (sortEl && sortEl.value !== findSortBy) sortEl.value = findSortBy;
   syncFindFilterButton();
   renderFindFilterChips();
   const list = orderFindings(visibleFindings());
@@ -776,7 +811,7 @@ function renderFindings() {
     if (!selFinding) renderFindingDetail(); return;
   }
   if (!selFinding || (!findings.some(f => f.id === selFinding) && parseFindingRoute(location.hash)?.id !== selFinding)) selFinding = list[0].id;
-  const listKey = list.map(findingRowKey).join('\n') + '|' + selFinding + '|' + (findGroupBySeverity ? 'g' : 'f');
+  const listKey = list.map(findingRowKey).join('\n') + '|' + selFinding + '|' + (findGroupBySeverity ? 'g' : 'f') + '|' + findSortBy;
   const rowsChanged = box.dataset.listKey !== listKey;
   if (rowsChanged) {
     box.dataset.listKey = listKey;

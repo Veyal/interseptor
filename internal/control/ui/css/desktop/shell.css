@@ -27,13 +27,8 @@ html.desktop-app #bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(18
   html.desktop-app #bar{grid-template-columns:auto minmax(0,1fr) auto}
 }
 html.desktop-app .fb-start{padding-left:var(--titlebar-inset-left,0px)}
-html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptStat,#icptCompact,#offlineBanner,.nav-rail-foot){display:none!important}
+html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptStat,#icptCompact,#offlineBanner,.nav-rail-foot,#mobileProjectChip){display:none!important}
 html.desktop-app .fb-zone{gap:8px;min-width:0}
-/* The project switcher (the bar's existing project chip, moved to the left). */
-html.desktop-app #bar #mobileProjectChip{display:inline-flex;align-items:center;max-width:22ch;min-height:var(--control-h);height:var(--control-h);padding:0 8px;gap:6px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-primary);font:500 var(--text-ui)/1 var(--ui)}
-html.desktop-app #bar #mobileProjectChip:hover{background:var(--surface-hover)}
-html.desktop-app #bar #mobileProjectChip .icon{width:15px;height:15px;color:var(--text-muted)}
-html.desktop-app #bar #mobileProjectChip::after{content:"";width:5px;height:5px;margin:0 2px 3px 2px;border-right:1.5px solid var(--text-muted);border-bottom:1.5px solid var(--text-muted);transform:rotate(45deg)}
 /* The centred command field: 360px, inset. */
 html.desktop-app #cmdkBtn{width:100%;min-width:0;max-width:none;min-height:var(--control-h);height:var(--control-h);padding:0 8px 0 12px;gap:8px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);color:var(--text-muted);font-size:var(--text-ui);font-weight:400}
 html.desktop-app #cmdkBtn:hover{background:var(--surface-inset);border-color:var(--border-strong)}

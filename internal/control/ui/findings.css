@@ -487,7 +487,12 @@ a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 }
 
 /* Read-only mode: severity, status and gate colours come from classes. */
-.sev-critical,.sev-high{color:var(--red)}
+.find-browser .find-row.find-row-ignored{opacity:.55}
+.find-browser .find-row.find-row-ignored:hover{opacity:1}
+.find-group.find-row-status .bar{background:var(--accent)}
+.find-group.find-row-st-ignored .bar{background:var(--fg3)}
+.sev-critical{color:var(--sev-critical)}
+.sev-high{color:var(--sev-high)}
 .sev-medium{color:var(--amber)}
 .sev-low{color:var(--blue)}
 .sev-info,.find-st-false_positive,.find-st-wont_fix,.find-st-ignored,.find-st-other{color:var(--fg3)}

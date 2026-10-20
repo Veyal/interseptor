@@ -119,21 +119,21 @@ No 3px yellow ring and no accent-coloured thick borders anywhere on desktop. Hig
 
 ## Shell
 
-- **Title toolbar** (38px, `--surface-0`, continuous with the native title bar colour): the project
-  switcher on the left; a centred command field (`⌘K`, 360px, inset look) in the middle; on the right,
-  the intercept toggle pill (the only intercept control in the chrome; amber when on, with the held
-  count) and the readiness ring. The scope chip, split and close-pane icons, the Live chip and the
-  theme toggle leave the bar. They move to the status bar, the View menu and the palette.
+- **Title toolbar** (38px, `--surface-0`, continuous with the native title bar colour): a centred command
+  field (`⌘K`, 360px, inset look) in the middle; on the right, the intercept toggle pill (the only intercept
+  control in the chrome; amber when on, with the held count) and the readiness ring. The project switcher
+  leaves the top bar to avoid redundancy with the status bar, and lives at the bottom-left of the window.
+  The scope chip, split and close-pane icons, the Live chip and the theme toggle leave the bar. They move
+  to the status bar, the View menu and the palette.
   In the native macOS app the toolbar *is* the title bar (one row): the traffic lights sit at its
-  left, the project switcher starts after them (`--titlebar-inset-left`), the command field stays
-  centred on the window, and empty toolbar space drags the window (double-click zooms).
+  left, the command field stays centred on the window, and empty toolbar space drags the window (double-click zooms).
 - **Rail** (184px, `--surface-0`): the same items, order and groups. Items are 30px at 13px weight 500,
   with an 18px icon. Group labels are 11px muted sentence case with 12px above. The current item uses
   the current/selected state. Badges use the count style, only for Intercept (held) and Findings.
-- **Status bar** (24px, `--surface-0`, 11px): on the left, proxy dot and address, intercept state and
-  held count, scope summary ("Scope 1 in · 1 out"), and flow count. On the right, a TLS/issues warning
-  icon when relevant (opens a popover), connection dot, project and version. Every item is a button
-  that opens the relevant popover or panel.
+- **Status bar** (24px, `--surface-0`, 11px): on the left, the active project button (switch/create project),
+  proxy dot and address, intercept state and held count, scope summary ("Scope 1 in · 1 out"), and flow count.
+  On the right, a TLS/issues warning icon when relevant (opens a popover), connection dot, and version.
+  Every item is a button that opens the relevant popover or panel.
 
 ## Panels
 

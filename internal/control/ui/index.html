@@ -668,6 +668,9 @@ Content-Type: application/json
               <label class="find-filter-field" for="findFilterStatus"><span>Status</span>
                 <select id="findFilterStatus" aria-label="Filter findings by status"><option value="">All statuses</option><option value="open">Open</option><option value="needs_verification">Needs verification</option><option value="verified">Verified</option><option value="fixed">Fixed</option><option value="false_positive">False positive</option><option value="wont_fix">Won't fix</option><option value="ignored">Ignored</option></select>
               </label>
+              <label class="find-filter-field" for="findSortBy"><span>Sort by</span>
+                <select id="findSortBy" aria-label="Sort findings"><option value="status" selected>Status (ignored at bottom)</option><option value="severity">Severity</option><option value="id">Finding ID (newest)</option></select>
+              </label>
               <div class="find-filter-field" id="findTagField" hidden><span id="findTagLabel">Tags</span><div id="findTagFilter" class="find-tag-filter" role="group" aria-labelledby="findTagLabel"></div></div>
               <button type="button" class="uisw" id="findGroupToggle" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg> Group by severity</button>
             </div>

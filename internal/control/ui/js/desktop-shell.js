@@ -1,10 +1,9 @@
 // desktop-shell.js — the desktop skin's chrome (docs/desktop-design.md, Shell).
 // Runs only when js/desktop.js detected a desktop host (html.desktop-app); in a
 // browser tab app.js never calls it, so the web DOM is untouched. It:
-//   - moves the bar's project chip to the left of the title toolbar,
 //   - adds the intercept pill next to the readiness ring,
-//   - builds the 24px status bar (proxy, intercept, scope, flows, warnings,
-//     connection, project, version), each item a button to its panel/popover,
+//   - builds the 24px status bar (project at bottom-left, proxy, intercept, scope,
+//     flows, warnings, connection, version), each item a button to its panel/popover,
 //   - shows the palette chord as the platform writes it (⌘K on macOS),
 //   - registers palette entries for the controls that left the bar.
 // Everything app-specific arrives through initDesktopShell, so this module
@@ -38,6 +37,8 @@ function buildStatusBar() {
   bar.id = 'dskStatus';
   bar.setAttribute('aria-label', 'Status bar');
   bar.append(
+    item('project', { icon: 'folder', onClick: act('openProject') }),
+    sep(),
     item('proxy', { dot: true, mono: true, onClick: act('openSettings', 'proxy') }),
     item('intercept', { icon: 'intercept', onClick: act('openPanel', 'intercept') }),
     item('scope', { icon: 'scope', onClick: act('openSettings', 'scope') }),
@@ -46,7 +47,6 @@ function buildStatusBar() {
     item('warnings', { icon: 'alert', onClick: toggleWarnings }),
     item('connection', { dot: true, onClick: toggleConnection }),
     sep(),
-    item('project', { icon: 'folder', onClick: act('openProject') }),
     item('version', { onClick: act('openReleases') }),
   );
   env.items.connection.addEventListener('pointerdown', () => { env.pressOpen = isConnectionOpen(); });
@@ -122,9 +122,6 @@ function closeWarnings(restoreFocus = false) {
 
 // ---- title toolbar ----
 function buildTitleToolbar(mac) {
-  const start = document.querySelector('#bar .fb-start');
-  const chip = document.getElementById('mobileProjectChip');
-  if (start && chip) start.appendChild(chip);
   const ring = document.getElementById('ctxRing');
   if (ring && !document.getElementById('dskIcptPill')) {
     const pill = el('button', 'dsk-icpt-pill');
