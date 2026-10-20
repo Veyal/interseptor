@@ -84,11 +84,11 @@ type Store struct {
 	// flowTxs counts the SQLite transactions the flow writers have opened. It
 	// exists so the batching contract is observable: a drain pass must commit
 	// once per batch, not once per queued write.
-	flowTxs atomic.Uint64
-	flowWake       chan struct{}
-	flowOpCh       chan flowCmd
-	flowStop       chan struct{}
-	flowDone       chan struct{}
+	flowTxs  atomic.Uint64
+	flowWake chan struct{}
+	flowOpCh chan flowCmd
+	flowStop chan struct{}
+	flowDone chan struct{}
 }
 
 // Flow is one captured request/response exchange. Bodies are referenced by
