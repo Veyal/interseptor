@@ -9,7 +9,7 @@ import { renderIntercept, toggleIntercept, toggleResponseIntercept, loadRules, i
 import { repInit, intrInit, repSend, openNewRepeaterTab, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
-import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
+import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadChromeStatus, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
 import { loadEngagementBrief } from './engagement.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
@@ -509,7 +509,7 @@ function dispatchSseMessage(m){
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
 
-    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
+    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadChromeStatus();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   }
@@ -994,7 +994,7 @@ projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
 ['scope.update','settings.update','session.update','activity','findings.update','engagement.update'].forEach(type=>registerSseHandler(type,()=>refreshProjectState(type)));
 registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
 
-renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadChromeStatus();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
 settleWorkspaceBootWatchdog();

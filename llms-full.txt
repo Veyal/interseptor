@@ -1166,7 +1166,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (296)
+### REST routes (300)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1202,6 +1202,8 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | DELETE | `/api/checks/{id}` | Delete a custom check |
 | GET | `/api/checks/{id}` | Read a custom check's source |
 | PUT | `/api/checks/{id}` | Create/update a custom check (rejected if it doesn't compile). |
+| GET | `/api/chrome` | Chrome/Chromium availability and managed install status |
+| POST | `/api/chrome/install` | Download and install Chrome for Testing automatically |
 | GET | `/api/codecs` | List project-scoped Starlark message codecs (id, source, meta, compile error) |
 | POST | `/api/codecs/encode` | Re-encode edited plaintext to a wire body. |
 | GET | `/api/codecs/reference` | Message-codec authoring reference (Starlark API, markdown) |
@@ -1443,6 +1445,8 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/sysproxy` | Enable/disable the OS system proxy (macOS). |
 | GET | `/api/tags` | List tags in use with flow counts and colors |
 | PUT | `/api/tags/{tag}/color` | Set or clear a tag's display color. |
+| GET | `/api/test-browser` | Test browser availability and target proxy |
+| POST | `/api/test-browser/launch` | Launch isolated test browser pointing to proxy |
 | GET | `/api/tls-diagnosis` | Diagnose whether HTTPS interception is working vs simply no traffic yet |
 | GET | `/api/ui/{panel}` | Project-scoped UI state blob (panel=repeater\|intruder\|intruder-presets) |
 | PUT | `/api/ui/{panel}` | Save project-scoped UI state (JSON body) |

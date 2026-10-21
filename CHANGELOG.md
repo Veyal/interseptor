@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Automated standalone Chrome for Testing installer & CLI command.** Added an integrated Chrome manager that resolves and downloads official Google Chrome for Testing standalone portable builds into `~/.interseptor/chrome` across macOS (Apple Silicon / Intel), Linux (x86_64 / arm64), and Windows (x64 / x86) with zero root permissions required. Includes the `interseptor install-chrome` command and `--install-chrome` startup flag, automatic discovery for PDF reports (`pdfexport`), app window (`appwindow`), and test browser launcher (`testbrowser`), Control API endpoints (`GET /api/chrome`, `POST /api/chrome/install`), a one-click install button in the Setup wizard and Settings panel, and an updated actionable error message when starting without Chrome. (`internal/chromemgr/`, `cmd/interseptor/chrome.go`, `internal/control/chrome.go`, `internal/pdfexport/pdfexport.go`, `internal/control/ui/`.)
+
 ### Changed
 
 - **Status triage enabled for agent-maintained findings while preserving content protection.** Users can now update finding statuses (`open`, `verified`, `fixed`, `wont_fix`, `false_positive`, `ignored`, `needs_verification`) via the detail header status badge dropdown, the persistent triage bar, and row context menus even when findings editing is off (agent-maintained mode). Finding content (summary, impact, root cause, reproduction steps, evidence flows, screenshots, remediation, retest, and titles) remains strictly guarded against accidental edits until editing mode is enabled. (`internal/control/ui/js/findings.js`, `internal/control/ui/findings.css`, `internal/control/ui/css/desktop/panel-findings.css`, `internal/control/ui_findings_readonly_test.go`.)

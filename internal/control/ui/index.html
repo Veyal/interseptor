@@ -966,6 +966,15 @@ Content-Type: application/json
             <p class="hint u-mb-2">Route this machine's traffic through Interseptor (macOS only).</p>
             <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="sysProxyToggle" aria-pressed="false">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
+          <div class="section" id="chromeSection">
+            <h3>Standalone Chrome</h3>
+            <p class="hint u-mb-2">Provides the desktop UI window, isolated test browser sessions, and PDF report export.</p>
+            <div class="row u-gap-3 u-wrap u-align-center">
+              <span id="chromeStatusBadge" class="hint">Checking…</span>
+              <button type="button" class="btn" id="installChromeBtn" hidden>Install Chrome</button>
+              <button type="button" class="btn" id="launchTestBrowserBtn" hidden>Launch test browser</button>
+            </div>
+          </div>
           <div class="section">
             <h3>Capture policy</h3>
             <p class="hint u-mb-2">Store only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded.</p>

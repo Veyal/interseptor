@@ -106,6 +106,8 @@ func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *ios
 	h.mux.HandleFunc("POST /api/sysproxy", set.setSysProxy)
 	h.mux.HandleFunc("GET /api/test-browser", set.getTestBrowser)
 	h.mux.HandleFunc("POST /api/test-browser/launch", set.postTestBrowserLaunch)
+	h.mux.HandleFunc("GET /api/chrome", set.getChromeStatus)
+	h.mux.HandleFunc("POST /api/chrome/install", set.postChromeInstall)
 	h.mux.HandleFunc("GET /api/ca.crt", set.getCA)
 	h.mux.HandleFunc("GET /openapi.json", (&metaAPI{h}).openapi)
 	h.mux.HandleFunc("GET /api/android/status", and.getAndroidStatus)

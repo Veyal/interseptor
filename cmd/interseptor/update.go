@@ -52,12 +52,14 @@ Usage:
   interseptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
   interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
   interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
+  interseptor install-chrome install standalone Chrome for Testing (UI window & PDF reports)
   interseptor update       install the latest release
   interseptor stop         stop all running instances (--all: also MCP bridges, launcher, vault)
   interseptor version      print the running version
 
 Common flags / env:
   --project <name|path>    open a specific project (or INTERSEPTOR_PROJECT)
+  --install-chrome         download and install Chrome before starting if missing
   --headless               don't open the UI window on start (or INTERSEPTOR_HEADLESS)
   --open                   open the UI window even over SSH (or INTERSEPTOR_OPEN_BROWSER)
   --control-port <port>    control UI/API port on 127.0.0.1 (e.g. 9967 for a second instance)

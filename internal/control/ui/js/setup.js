@@ -145,6 +145,7 @@ function renderStep() {
       </div>
        <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
        <button class="btn u-mb-3" id="setupTestBrowser" hidden>Launch test browser</button>
+       <button class="btn u-mb-3" id="setupInstallChrome" hidden>Install Chrome</button>
       <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code id="setupControlAddr">${esc(setupAddrs.control || location.host || '…')}</code>.</p>
       <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
@@ -184,10 +185,27 @@ function renderStep() {
       }
     };
     const testBrowserButton=$('#setupTestBrowser');
+    const installChromeButton=$('#setupInstallChrome');
+    const updateChromeUI=()=>{
+      api('/api/chrome')
+        .then(st=>{
+          if(step!==0)return;
+          if(testBrowserButton&&testBrowserButton.isConnected){
+            testBrowserButton.hidden=!st?.available;
+          }
+          if(installChromeButton&&installChromeButton.isConnected){
+            installChromeButton.hidden=!!st?.available || !st?.supported;
+          }
+        })
+        .catch(()=>{
+          api('/api/test-browser')
+            .then(st=>{ if(step===0&&testBrowserButton?.isConnected) testBrowserButton.hidden=!st?.available; })
+            .catch(()=>{});
+        });
+    };
+    if(testBrowserButton||installChromeButton) updateChromeUI();
+
     if(testBrowserButton){
-      api('/api/test-browser')
-        .then(st=>{ if(step===0&&testBrowserButton.isConnected) testBrowserButton.hidden=!st?.available; })
-        .catch(()=>{});
       testBrowserButton.onclick=async()=>{
         if(setupActionBusy)return;
         const label=testBrowserButton.textContent;
@@ -197,6 +215,19 @@ function renderStep() {
           toast(res?.message||'test browser launched in an isolated profile');
         }catch(e){ toastError('Could not launch test browser',e); }
         finally{ setSetupActionBusy(testBrowserButton,false,label); }
+      };
+    }
+    if(installChromeButton){
+      installChromeButton.onclick=async()=>{
+        if(setupActionBusy)return;
+        const label=installChromeButton.textContent;
+        setSetupActionBusy(installChromeButton,true,'Installing Chrome…');
+        try{
+          const res=await api('/api/chrome/install',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+          toast(res?.message||'Chrome installed successfully');
+          updateChromeUI();
+        }catch(e){ toastError('Could not install Chrome',e); }
+        finally{ setSetupActionBusy(installChromeButton,false,label); }
       };
     }
     setupReadiness();

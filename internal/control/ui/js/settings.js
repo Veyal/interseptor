@@ -2341,6 +2341,59 @@ $('#iosSshInstallCaBtn')&&($('#iosSshInstallCaBtn').onclick=()=>iosSshAction(asy
   toast(r.message||'Profile opened on device');
 }));
 
+export async function loadChromeStatus(){
+  const sec=$('#chromeSection'), badge=$('#chromeStatusBadge'), installBtn=$('#installChromeBtn'), launchBtn=$('#launchTestBrowserBtn');
+  if(!sec)return;
+  try{
+    const st=await api('/api/chrome');
+    if(!st)return;
+    if(st.available){
+      badge.textContent=st.managedInstalled ? 'Managed Chrome installed ('+st.platform+')' : 'System Chrome available';
+      badge.className='hint u-fg2';
+      if(installBtn)installBtn.hidden=true;
+      if(launchBtn)launchBtn.hidden=false;
+    }else{
+      badge.textContent='No Chrome found (needed for desktop window & PDF export)';
+      badge.className='hint';
+      if(installBtn)installBtn.hidden=!st.supported;
+      if(launchBtn)launchBtn.hidden=true;
+    }
+  }catch(e){
+    if(badge)badge.textContent='Status unavailable';
+  }
+}
+
+$('#installChromeBtn')&&($('#installChromeBtn').onclick=async()=>{
+  const btn=$('#installChromeBtn');
+  btn.disabled=true;
+  btn.textContent='Downloading…';
+  try{
+    const res=await api('/api/chrome/install',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+    toast(res?.message||'Chrome installed successfully');
+    await loadChromeStatus();
+  }catch(e){
+    toastError('Failed to install Chrome',e);
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Install Chrome';
+  }
+});
+
+$('#launchTestBrowserBtn')&&($('#launchTestBrowserBtn').onclick=async()=>{
+  const btn=$('#launchTestBrowserBtn');
+  btn.disabled=true;
+  btn.textContent='Launching…';
+  try{
+    const res=await api('/api/test-browser/launch',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+    toast(res?.message||'Test browser launched');
+  }catch(e){
+    toastError('Failed to launch test browser',e);
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Launch test browser';
+  }
+});
+
 // Findings (and any panel) asks to open a Settings section over the bus rather
 // than importing openSettingsSection — the edge that closed the findings→settings
 // cycle. openSettingsSection is a hoisted declaration, so this runs at load.

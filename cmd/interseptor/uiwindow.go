@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/Veyal/interseptor/internal/appwindow"
+	"github.com/Veyal/interseptor/internal/pdfexport"
 )
 
 // envProjectSwitch marks a process started by a project-switch re-exec. The
@@ -42,7 +45,11 @@ func openUIWindow(url string, headless, force bool) {
 	}
 	go func() {
 		if err := appwindow.New().Open(url, appwindow.ProfileDir()); err != nil {
-			log.Printf("Could not open the UI window (%v) — open %s in a browser", err, url)
+			if errors.Is(err, pdfexport.ErrNoBrowser) || strings.Contains(err.Error(), "no headless Chrome found") {
+				log.Printf("Could not open the UI window (no Chrome found: run 'interseptor install-chrome' to download it automatically, or set INTERSEPTOR_CHROME) — open %s in a browser", url)
+			} else {
+				log.Printf("Could not open the UI window (%v) — open %s in a browser", err, url)
+			}
 		}
 	}()
 }

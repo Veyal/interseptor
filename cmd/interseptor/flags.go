@@ -34,6 +34,10 @@ func normalizeCLIArgs(args []string) []string {
 			a = "--data-dir=" + strings.TrimPrefix(a, "--data_dir=")
 		case a == "--data_dir":
 			a = "--data-dir"
+		case strings.HasPrefix(a, "--install_chrome="):
+			a = "--install-chrome=" + strings.TrimPrefix(a, "--install_chrome=")
+		case a == "--install_chrome":
+			a = "--install-chrome"
 		}
 		out[i] = a
 	}
@@ -61,7 +65,7 @@ func reexecArgs(args []string, target string) []string {
 			if !hasValue {
 				i++ // skip the separate value
 			}
-		case "open":
+		case "open", "install-chrome":
 			// bool flag: never consumes a following argument
 		default:
 			out = append(out, a)

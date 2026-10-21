@@ -36,6 +36,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/chromemgr"
 )
 
 // EnvBrowser names an exact Chrome/Chromium binary to use. When it is set and
@@ -377,11 +379,17 @@ func launchBrowser(ctx context.Context, bin string, args []string, logPath strin
 }
 
 // browserCandidates are the usual absolute install locations for this platform,
-// tried after PATH.
+// tried after PATH. Includes managed Chrome from ~/.interseptor/chrome.
 func browserCandidates() []string {
+	var managed []string
+	if dir := chromemgr.Dir(os.Getenv("INTERSEPTOR_DATA_DIR")); dir != "" {
+		managed = chromemgr.CandidatePaths(dir, runtime.GOOS, runtime.GOARCH)
+	}
+
+	var system []string
 	switch runtime.GOOS {
 	case "darwin":
-		return []string{
+		system = []string{
 			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			"/Applications/Chromium.app/Contents/MacOS/Chromium",
 			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
@@ -394,17 +402,15 @@ func browserCandidates() []string {
 				dirs = append(dirs, base)
 			}
 		}
-		var out []string
 		for _, base := range dirs {
-			out = append(out,
+			system = append(system,
 				filepath.Join(base, `Google\Chrome\Application\chrome.exe`),
 				filepath.Join(base, `Chromium\Application\chrome.exe`),
 				filepath.Join(base, `Microsoft\Edge\Application\msedge.exe`),
 			)
 		}
-		return out
 	default:
-		return []string{
+		system = []string{
 			"/usr/bin/google-chrome",
 			"/usr/bin/google-chrome-stable",
 			"/usr/bin/chromium",
@@ -413,4 +419,5 @@ func browserCandidates() []string {
 			"/usr/bin/microsoft-edge",
 		}
 	}
+	return append(managed, system...)
 }

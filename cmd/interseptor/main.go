@@ -52,7 +52,7 @@ func isLoopbackBind(addr string) bool {
 
 func knownTopLevelCommand(arg string) bool {
 	switch arg {
-	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "help", "-h", "--help", "mcp":
+	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "install-chrome", "chrome", "help", "-h", "--help", "mcp":
 		return true
 	}
 	return false
@@ -109,6 +109,16 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "install-chrome", "chrome":
+			subArgs := os.Args[2:]
+			if os.Args[1] == "chrome" && len(subArgs) > 0 && subArgs[0] == "install" {
+				subArgs = subArgs[1:]
+			}
+			if err := runInstallChrome(subArgs); err != nil {
+				fmt.Fprintf(os.Stderr, "install-chrome failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		case "help", "-h", "--help":
 			printUsage()
 			return
@@ -156,6 +166,7 @@ func run() error {
 	controlAddrFlag := fs.String("control-addr", "", "control UI/API listen address host:port (overrides --control-port)")
 	dataDirFlag := fs.String("data-dir", "", "global data directory (default ~/.interseptor; also INTERSEPTOR_DATA_DIR)")
 	proxyPortFlag := fs.Int("proxy-port", 0, "proxy listen TCP port on loopback (default 8080)")
+	installChromeFlag := fs.Bool("install-chrome", false, "install Chrome for Testing before starting if missing")
 	if err := fs.Parse(normalizeCLIArgs(os.Args[1:])); err != nil {
 		return err
 	}
@@ -172,6 +183,12 @@ func run() error {
 			return fmt.Errorf("migrate data dir: %w", err)
 		}
 		globalDir = filepath.Join(home, newDataDirName)
+	}
+
+	if *installChromeFlag {
+		if err := runInstallChrome([]string{"--data-dir", globalDir}); err != nil {
+			log.Printf("install-chrome: %v", err)
+		}
 	}
 
 	projectArg := *projectFlag
