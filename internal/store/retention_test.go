@@ -805,4 +805,3 @@ func TestDeleteFlowsByHostOverSQLiteVariableLimit(t *testing.T) {
 		t.Fatalf("deleted %d, want %d", deleted, n)
 	}
 }
-

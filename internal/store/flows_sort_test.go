@@ -77,7 +77,7 @@ func flowIDs(flows []*Flow) []int64 {
 
 // Every History sort expression must be index-backed: without an expression
 // index, ORDER BY lower(host) / lower(path) / COALESCE(res_len,0) /
-// lower(COALESCE(mime,'')) builds a temp B-tree per page of a large capture.
+// lower(COALESCE(mime,”)) builds a temp B-tree per page of a large capture.
 func TestFlowSortExpressionsAreIndexBacked(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

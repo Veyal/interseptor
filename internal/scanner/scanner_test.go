@@ -843,4 +843,3 @@ func TestSensitiveURLParamExpanded(t *testing.T) {
 		t.Fatalf("expected sensitive token in URL finding for refresh_token; got: %s", titles(got))
 	}
 }
-

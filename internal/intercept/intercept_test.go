@@ -445,7 +445,9 @@ func TestChangeNotifierReportsHeldAndReleasedWithID(t *testing.T) {
 	e.SetChangeNotifier(log.record())
 
 	req := newReq(t, "GET", "https://example.com/p", "")
-	go func() { e.Hold(&store.Flow{Host: "example.com", Path: "/p", Method: "GET"}, req, []byte("GET /p HTTP/1.1\r\nHost: example.com\r\n\r\n")) }()
+	go func() {
+		e.Hold(&store.Flow{Host: "example.com", Path: "/p", Method: "GET"}, req, []byte("GET /p HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+	}()
 	waitQueue(t, e, 1)
 	id := e.Queue()[0].ID
 

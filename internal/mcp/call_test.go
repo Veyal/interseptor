@@ -174,4 +174,3 @@ func TestAuditEndpointAndRecordFindingFromFlow(t *testing.T) {
 		t.Fatalf("record_finding_from_flow result missing expected content: %s", recRes)
 	}
 }
-
