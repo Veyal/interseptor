@@ -1454,3 +1454,41 @@ func TestFindingsAgentDefaultsToNeedsVerificationAndIgnoredStatus(t *testing.T) 
 		t.Fatalf("after PATCH ignoreReason = %q, want 'Low impact / Client won't care'", got.ProofReview.IgnoreReason)
 	}
 }
+
+// Triage sends only the ignore reason: it must merge into the stored proof
+// review, never replace claims/evidence an agent wrote after the page loaded.
+func TestFindingIgnoreReasonMergesIntoStoredProofReview(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/findings", "application/json",
+		strings.NewReader(`{"title":"AI discovered issue","severity":"High","source":"ai","proofReview":{"execution":"demonstrated","reason":"agent proof"}}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	var f store.Finding
+	json.NewDecoder(resp.Body).Decode(&f)
+	resp.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("%s/api/findings/%d", ts.URL, f.ID),
+		strings.NewReader(`{"status":"ignored","ignoreReason":"Low impact"}`))
+	patchResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH: %v", err)
+	}
+	patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d", patchResp.StatusCode)
+	}
+	got, err := st.GetFinding(f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "ignored" || got.ProofReview.IgnoreReason != "Low impact" {
+		t.Fatalf("status/ignoreReason = %q/%q", got.Status, got.ProofReview.IgnoreReason)
+	}
+	if got.ProofReview.Reason != "agent proof" || got.ProofReview.Execution != "demonstrated" {
+		t.Fatalf("agent proof review was overwritten: %+v", got.ProofReview)
+	}
+}

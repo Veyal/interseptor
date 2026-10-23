@@ -1391,7 +1391,7 @@ function acknowledgedFindingValue(id, key, fallback) {
 let findingClosing = false;
 function enqueueFindingPatch(id, fields, onStaged) {
   const patchKeys = Object.keys(fields || {});
-  const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'proofReview');
+  const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'ignoreReason');
   if (!findingsEditable() && !isStatusPatch) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
   if (findingMutationBlocked(id)) return Promise.reject(new Error('Finding is being deleted or is no longer available.'));
   const queue = findingWriteQueue(id);
@@ -1416,10 +1416,16 @@ async function drainFindingWrites(id) {
     while (queue.pendingFields) {
       const fields = queue.pendingFields;
       queue.pendingFields = null;
+      // Coalesced writes can carry both: the server takes one or the other, so a
+      // pending ignore reason rides inside the proof review it was merged with.
+      if (fields.proofReview && Object.prototype.hasOwnProperty.call(fields, 'ignoreReason')) {
+        fields.proofReview = { ...fields.proofReview, ignoreReason: fields.ignoreReason };
+        delete fields.ignoreReason;
+      }
       const waiters = queue.pendingWaiters.splice(0);
       try {
         const patchKeys = Object.keys(fields || {});
-        const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'proofReview');
+        const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'ignoreReason');
         if (!isStatusPatch) {
           assertFindingsWritable(); // editing may have been switched off while this save waited
         }
@@ -1590,10 +1596,7 @@ function openFindingMore(e, trigger, f) {
 function openIgnoreReasonMenu(e, trigger, f) {
   if (e && e.stopPropagation) e.stopPropagation();
   const applyReason = (reason) => {
-    patchFinding(f.id, {
-      status: 'ignored',
-      proofReview: { ...(f.proofReview || {}), ignoreReason: reason }
-    }).then(r => {
+    patchFinding(f.id, { status: 'ignored', ignoreReason: reason }).then(r => {
       if (r && r.latest) {
         f.status = 'ignored';
         f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
@@ -2035,7 +2038,7 @@ function renderFindingDetail() {
         const reason = ignoreEl.value.trim();
         if ((f.proofReview?.ignoreReason || '') === reason) return;
         try {
-          const res = await patchFinding(f.id, { proofReview: { ...(f.proofReview || {}), ignoreReason: reason } });
+          const res = await patchFinding(f.id, { ignoreReason: reason });
           if (res && res.latest) {
             f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
             await loadFindings();

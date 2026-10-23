@@ -365,10 +365,10 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 		}
 	}
 	for file, want := range map[string]string{
-		"js/tools.js":     `class="btn xs findings-write" id="repAddFinding"`,
-		"js/scanner.js":   `class="btn accent findings-write" id="scanPromote"`,
-		"js/proxy.js":     "if(findingsEditable()){",
-		"js/findings.js":  "document.documentElement.dataset.findingsEditing",
+		"js/tools.js":    `class="btn xs findings-write" id="repAddFinding"`,
+		"js/scanner.js":  `class="btn accent findings-write" id="scanPromote"`,
+		"js/proxy.js":    "if(findingsEditable()){",
+		"js/findings.js": "document.documentElement.dataset.findingsEditing",
 	} {
 		if !strings.Contains(readUIAsset(t, file), want) {
 			t.Errorf("%s missing %q", file, want)
@@ -425,7 +425,7 @@ const drainFindingWrites=async(id)=>{
   q.pendingFields=null;
   drainedFields.push(f);
   const patchKeys=Object.keys(f||{});
-  const isStatusPatch=patchKeys.length>0&&patchKeys.every(k=>k==='status'||k==='proofReview');
+  const isStatusPatch=patchKeys.length>0&&patchKeys.every(k=>k==='status'||k==='ignoreReason');
   if(!isStatusPatch)assertFindingsWritable();
   fetches.push(f);
   for(const w of q.pendingWaiters.splice(0))w.resolve({latest:true});
@@ -437,8 +437,13 @@ gate=false;
 const r1=await enqueueFindingPatch(1,{status:'verified'});
 if(!r1||!r1.latest)throw Error('status patch must succeed when agent-maintained');
 
-const r2=await enqueueFindingPatch(1,{status:'ignored',proofReview:{ignoreReason:'duplicate'}});
+const r2=await enqueueFindingPatch(1,{status:'ignored',ignoreReason:'duplicate'});
 if(!r2||!r2.latest)throw Error('ignored with reason must succeed when agent-maintained');
+
+// A whole proofReview carries the agent's claims and evidence: it is content.
+let errReview=null;
+try { await enqueueFindingPatch(1,{proofReview:{ignoreReason:'x'}}); } catch(e) { errReview=e; }
+if(!errReview||errReview.message!==MSG)throw Error('proofReview edit must reject when agent-maintained: '+errReview);
 
 // But content edits are rejected
 let errSummary=null;
@@ -450,4 +455,20 @@ try { await enqueueFindingPatch(1,{title:'new title'}); } catch(e) { errTitle=e;
 if(!errTitle||errTitle.message!==MSG)throw Error('title edit must reject when agent-maintained: '+errTitle);
 `
 	nodeModule(t, script)
+}
+
+// The server refuses a PATCH carrying both proofReview and ignoreReason, so a
+// coalesced write must fold the reason into the review before it is sent.
+func TestUIFindingWriteQueueFoldsIgnoreReasonIntoProofReview(t *testing.T) {
+	src := readUIAsset(t, "js/findings.js")
+	drain := sliceBetween(t, src, "async function drainFindingWrites(", "const payload = JSON.stringify(fields);")
+	for _, want := range []string{
+		"fields.proofReview && Object.prototype.hasOwnProperty.call(fields, 'ignoreReason')",
+		"fields.proofReview = { ...fields.proofReview, ignoreReason: fields.ignoreReason };",
+		"delete fields.ignoreReason;",
+	} {
+		if !strings.Contains(drain, want) {
+			t.Errorf("drainFindingWrites missing %q", want)
+		}
+	}
 }

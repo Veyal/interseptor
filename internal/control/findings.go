@@ -797,6 +797,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		Target                   *string                     `json:"target"`
 		Targets                  *store.FindingTargets       `json:"targets"`
 		ProofReview              *store.FindingProofReview   `json:"proofReview"`
+		IgnoreReason             *string                     `json:"ignoreReason"` // merged into the stored proofReview
 		Claims                   *[]store.FindingClaim       `json:"claims"`
 		NotExecuted              *[]store.FindingNotExecuted `json:"notExecuted"`
 		RelatedFindings          *[]store.FindingRelation    `json:"relatedFindings"`
@@ -821,6 +822,22 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.requireFinding(w, id) {
 		return
+	}
+	if in.IgnoreReason != nil {
+		if in.ProofReview != nil {
+			httpErr(w, http.StatusBadRequest, "send either proofReview or ignoreReason, not both")
+			return
+		}
+		// Merge into the stored review, not the client's cached copy, so triage
+		// never drops claims or evidence an agent recorded after the page loaded.
+		cur, err := h.st.GetFinding(id)
+		if err != nil {
+			httpErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		review := cur.ProofReview
+		review.IgnoreReason = strings.TrimSpace(*in.IgnoreReason)
+		in.ProofReview = &review
 	}
 	if in.Title != nil {
 		title, msg := checkFindingTitle(*in.Title)
