@@ -132,6 +132,7 @@ func runLauncher(args []string) error {
 		exe:         exe,
 		reg:         reg,
 		token:       token,
+		bindHost:    launcherBindHost(addr),
 	}
 
 	ln, err := net.Listen("tcp", addr)
@@ -159,6 +160,7 @@ type launcherServer struct {
 	globalDir, projectsDir, logsDir, exe string
 	reg                                  *launcher.Registry
 	token                                string // required via X-Interseptor-Launcher-Token on mutating routes
+	bindHost                             string // explicit non-loopback bind host also accepted as Host
 
 	mu sync.Mutex // serializes check-then-spawn / check-then-stop
 }
@@ -174,7 +176,7 @@ func (lh *launcherServer) routes() http.Handler {
 	mux.HandleFunc("GET /api/instances", lh.handleList)
 	mux.Handle("POST /api/instances/{project}/start", lh.requireLauncherToken(http.HandlerFunc(lh.handleStart)))
 	mux.Handle("POST /api/instances/{project}/stop", lh.requireLauncherToken(http.HandlerFunc(lh.handleStop)))
-	return mux
+	return lh.launcherHostGuard(mux)
 }
 
 // requireLauncherToken rejects a mutating request unless it carries the

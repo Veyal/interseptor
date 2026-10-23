@@ -46,7 +46,7 @@ func TestUnauthenticatedStartRejected(t *testing.T) {
 	lh, _ := newTestLauncherServer(t)
 	mux := lh.routes()
 
-	req := httptest.NewRequest("POST", "/api/instances/acme/start", nil)
+	req := httptest.NewRequest("POST", launcherTestOrigin+"/api/instances/acme/start", nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -62,7 +62,7 @@ func TestUnauthenticatedStopRejected(t *testing.T) {
 	lh, _ := newTestLauncherServer(t)
 	mux := lh.routes()
 
-	req := httptest.NewRequest("POST", "/api/instances/acme/stop", nil)
+	req := httptest.NewRequest("POST", launcherTestOrigin+"/api/instances/acme/stop", nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -75,7 +75,7 @@ func TestWrongTokenRejected(t *testing.T) {
 	lh, _ := newTestLauncherServer(t)
 	mux := lh.routes()
 
-	req := httptest.NewRequest("POST", "/api/instances/acme/start", nil)
+	req := httptest.NewRequest("POST", launcherTestOrigin+"/api/instances/acme/start", nil)
 	req.Header.Set("X-Interseptor-Launcher-Token", "not-the-real-token")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -92,7 +92,7 @@ func TestReadRoutesStayOpen(t *testing.T) {
 	mux := lh.routes()
 
 	for _, path := range []string{"/", "/api/instances"} {
-		req := httptest.NewRequest("GET", path, nil)
+		req := httptest.NewRequest("GET", launcherTestOrigin+path, nil)
 		rr := httptest.NewRecorder()
 		mux.ServeHTTP(rr, req)
 		if rr.Code != 200 {
@@ -109,7 +109,7 @@ func TestCorrectTokenStartSucceedsPastAuth(t *testing.T) {
 	lh, tok := newTestLauncherServer(t)
 	mux := lh.routes()
 
-	req := httptest.NewRequest("POST", "/api/instances/acme/start", nil)
+	req := httptest.NewRequest("POST", launcherTestOrigin+"/api/instances/acme/start", nil)
 	req.Header.Set("X-Interseptor-Launcher-Token", tok)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -126,7 +126,7 @@ func TestDashboardEmbedsLauncherToken(t *testing.T) {
 	lh, tok := newTestLauncherServer(t)
 	mux := lh.routes()
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", launcherTestOrigin+"/", nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -358,7 +358,7 @@ func TestHandleStopUsesStrictAliveInterseptorCheck(t *testing.T) {
 		reg:         reg,
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/instances/demo/stop", nil)
+	req := httptest.NewRequest(http.MethodPost, launcherTestOrigin+"/api/instances/demo/stop", nil)
 	req.SetPathValue("project", "demo")
 	rec := httptest.NewRecorder()
 
@@ -442,7 +442,7 @@ func TestHandleStopGracefulThenForceWhenStillAlive(t *testing.T) {
 		reg:         reg,
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/instances/demo/stop", nil)
+	req := httptest.NewRequest(http.MethodPost, launcherTestOrigin+"/api/instances/demo/stop", nil)
 	req.SetPathValue("project", "demo")
 	rec := httptest.NewRecorder()
 
@@ -497,7 +497,7 @@ func fetchDashboard(t *testing.T) (string, string) {
 	t.Helper()
 	lh, tok := newTestLauncherServer(t)
 	rr := httptest.NewRecorder()
-	lh.routes().ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
+	lh.routes().ServeHTTP(rr, httptest.NewRequest("GET", launcherTestOrigin+"/", nil))
 	if rr.Code != 200 {
 		t.Fatalf("GET /: status = %d", rr.Code)
 	}
