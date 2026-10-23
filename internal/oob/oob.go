@@ -39,6 +39,7 @@ const (
 	maxInteractionHostBytes        = 512
 	maxInteractionRemoteAddrBytes  = 256
 	maxInteractionBodyPreviewBytes = 512
+	maxInteractionMethodBytes      = 32
 )
 
 // Interaction is one recorded inbound hit.
@@ -137,7 +138,7 @@ func (c *Catcher) Record(r *http.Request, bodyPreview string) {
 	}
 	it := Interaction{
 		Token:      tok,
-		Method:     r.Method,
+		Method:     truncateInteractionField(r.Method, maxInteractionMethodBytes),
 		Path:       truncateInteractionField(r.URL.Path, maxInteractionPathBytes),
 		RemoteAddr: truncateInteractionField(r.RemoteAddr, maxInteractionRemoteAddrBytes),
 		Host:       truncateInteractionField(r.Host, maxInteractionHostBytes),

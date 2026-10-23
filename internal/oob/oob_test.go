@@ -76,6 +76,7 @@ func TestRecordBoundsPublicCallbackMetadata(t *testing.T) {
 	req.Host = strings.Repeat("h", maxInteractionHostBytes+100)
 	req.RemoteAddr = strings.Repeat("r", maxInteractionRemoteAddrBytes+100)
 	req.Header.Set("User-Agent", strings.Repeat("u", maxInteractionUserAgentBytes+100))
+	req.Method = strings.Repeat("M", maxInteractionMethodBytes+100)
 	c.Record(req, strings.Repeat("b", maxInteractionBodyPreviewBytes+100))
 
 	got := c.List()
@@ -87,6 +88,7 @@ func TestRecordBoundsPublicCallbackMetadata(t *testing.T) {
 		got string
 		max int
 	}{
+		"method":      {it.Method, maxInteractionMethodBytes},
 		"path":        {it.Path, maxInteractionPathBytes},
 		"query":       {it.Query, maxInteractionQueryBytes},
 		"host":        {it.Host, maxInteractionHostBytes},
