@@ -645,6 +645,7 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
 	}
+	var err error
 	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
@@ -652,6 +653,14 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	if dest == "" {
 		httpErr(w, http.StatusBadRequest, "path required")
 		return
+	}
+	aiSource := isAISource(r)
+	if aiSource {
+		var status int
+		if dest, status, err = h.aiExportDest(dest); err != nil {
+			httpErr(w, status, err.Error())
+			return
+		}
 	}
 	snap, err := h.snapshotDB()
 	if err != nil {
@@ -679,7 +688,13 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	if err := replaceFilePreservingDestination(tmpPath, dest); err != nil {
+	if aiSource {
+		// Never replace: a hard link fails if dest appeared since the check.
+		if err := os.Link(tmpPath, dest); err != nil {
+			httpErr(w, http.StatusConflict, "refusing to overwrite existing file "+filepath.Base(dest))
+			return
+		}
+	} else if err := replaceFilePreservingDestination(tmpPath, dest); err != nil {
 		httpInternalErr(w, err)
 		return
 	}

@@ -149,8 +149,10 @@ func (s *Server) authorizationHeader() string {
 func (s *Server) Serve(in io.Reader, out io.Writer) error {
 	br := bufio.NewReaderSize(in, 1<<20)
 	for {
-		line, err := br.ReadBytes('\n')
-		if t := bytes.TrimSpace(line); len(t) > 0 {
+		line, tooLong, err := readBoundedLine(br, maxStdioLineBytes)
+		if tooLong {
+			s.write(out, nil, nil, &rpcError{Code: -32600, Message: fmt.Sprintf("request exceeds %d bytes", maxStdioLineBytes)})
+		} else if t := bytes.TrimSpace(line); len(t) > 0 {
 			s.handleLine(t, out)
 		}
 		if err != nil {
@@ -158,6 +160,28 @@ func (s *Server) Serve(in io.Reader, out io.Writer) error {
 				return nil
 			}
 			return err
+		}
+	}
+}
+
+// maxStdioLineBytes caps one newline-delimited stdio message, matching the
+// HTTP transport's body cap. A variable so tests can lower it.
+var maxStdioLineBytes = 8 << 20
+
+// readBoundedLine reads one '\n'-terminated line without buffering more than
+// max bytes. An over-long line is consumed and discarded (tooLong=true).
+func readBoundedLine(br *bufio.Reader, max int) (line []byte, tooLong bool, err error) {
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if !tooLong {
+			if len(line)+len(chunk) > max {
+				tooLong, line = true, nil
+			} else {
+				line = append(line, chunk...)
+			}
+		}
+		if err != bufio.ErrBufferFull {
+			return line, tooLong, err
 		}
 	}
 }
@@ -179,6 +203,11 @@ func (s *Server) handleLine(line []byte, out io.Writer) {
 		return
 	}
 	notification := len(req.ID) == 0 || string(req.ID) == "null"
+	defer func() {
+		if rec := recover(); rec != nil && !notification {
+			s.write(out, req.ID, nil, &rpcError{Code: -32603, Message: fmt.Sprintf("internal error: %v", rec)})
+		}
+	}()
 	result, rerr := s.dispatch(req.Method, req.Params)
 	if notification {
 		return // notifications get no response
@@ -372,7 +401,12 @@ func (s *Server) callTool(params json.RawMessage) any {
 // runs it, and fires the best-effort Activity report — timing, summary, intent,
 // and result snippet — identically for both callers, so the live AI-activity
 // feed and FlagAI History tagging behave the same regardless of transport.
-func (s *Server) runTool(name string, args map[string]any) (string, error) {
+func (s *Server) runTool(name string, args map[string]any) (text string, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			text, err = "", fmt.Errorf("tool %s failed internally: %v", name, rec)
+		}
+	}()
 	t, ok := s.tools[name]
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
@@ -386,7 +420,7 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 		args = map[string]any{}
 	}
 	start := time.Now()
-	text, err := t.call(args)
+	text, err = t.call(args)
 	if s.report != nil {
 		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
 		if err != nil {
@@ -1055,7 +1089,7 @@ func (s *Server) registerTools() {
 			var firstErr error
 			fetched := 0
 			get := func(sd string) string {
-				raw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/raw?side=%s", id, sd))
+				raw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/raw?side=%s", id, url.QueryEscape(sd)))
 				if err != nil {
 					if firstErr == nil {
 						firstErr = err
@@ -2113,14 +2147,14 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("export_full_project",
-		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA and custom checks are not included. Returns the path and size.",
+		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA and custom checks are not included. The archive is always written into Interseptor's exports directory (~/.interseptor/exports) and never overwrites an existing file. Returns the path and size.",
 		obj(map[string]any{
-			"path": p("string", "absolute path to write the .zip to, e.g. /backups/acme.zip"),
+			"path": p("string", "file name for the .zip, e.g. acme.zip (written under the exports directory)"),
 		}, "path"),
 		func(a map[string]any) (string, error) {
 			path := strings.TrimSpace(argStr(a, "path"))
 			if path == "" {
-				return "", fmt.Errorf("path is required (absolute .zip path to write)")
+				return "", fmt.Errorf("path is required (.zip file name to write under the exports directory)")
 			}
 			return s.api(http.MethodPost, "/api/export/full/file", map[string]any{"path": path})
 		})
