@@ -299,7 +299,7 @@ func TestWindowsUpdateScript(t *testing.T) {
 		`set "NEW=C:\tools\interseptor.exe.new"`,
 		`taskkill /PID %%p /T /F`,
 		`:retry`,
-		`if !TRY! GEQ 90 goto fail`,
+		`if %TRY% GEQ 90 goto fail`,
 		`start "" "%DEST%"`,
 		`interseptor-update.log`,
 	} {

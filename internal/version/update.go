@@ -60,7 +60,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		target = strings.TrimPrefix(target, "v")
 	} else {
 		prog.step("Checking for latest release…")
-		latest, newer, err := CheckLatestFresh(ctx) // explicit update: never trust the hourly cache
+		latest, _, err := CheckLatestFresh(ctx) // explicit update: never trust the hourly cache
 		if err != nil {
 			return fmt.Errorf("check for updates: %w", err)
 		}
@@ -68,17 +68,18 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 			return fmt.Errorf("no releases found on GitHub")
 		}
 		target = latest
-		if !opts.Force && !newer && String() == latest {
-			fmt.Fprintf(out, "interseptor v%s is already up to date\n", String())
+		cur := String()
+		newer := latestIsNewer(cur, latest)
+		if opts.Check {
+			if newer {
+				fmt.Fprintf(out, "update available: v%s (you have v%s)\n", latest, cur)
+			} else {
+				fmt.Fprintf(out, "interseptor v%s is up to date\n", cur)
+			}
 			return nil
 		}
-		if opts.Check {
-			cur := String()
-			if cur == latest {
-				fmt.Fprintf(out, "interseptor v%s is up to date\n", cur)
-			} else {
-				fmt.Fprintf(out, "update available: v%s (you have v%s)\n", latest, cur)
-			}
+		if !opts.Force && !newer {
+			fmt.Fprintf(out, "interseptor v%s is already up to date (latest release v%s)\n", cur, latest)
 			return nil
 		}
 	}
@@ -126,11 +127,13 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 			return err
 		}
 		prog.downloadDone()
-		if sum, ok := checksumFor(rel, name); ok {
-			prog.step("Verifying checksum…")
-			if err := verifySHA256(data, sum); err != nil {
-				return err
-			}
+		prog.step("Verifying checksum…")
+		sum, err := checksumFor(rel, name)
+		if err != nil {
+			return fmt.Errorf("refusing to install %s: %w", name, err)
+		}
+		if err := verifySHA256(data, sum); err != nil {
+			return err
 		}
 		prog.step("Extracting binary…")
 		bin, err := extractBinary(data, name)
@@ -459,7 +462,11 @@ func platformTokens(goos, goarch string) (osToken, archToken string) {
 	return osToken, archToken
 }
 
-func checksumFor(rel *releaseInfo, assetName string) (string, bool) {
+// checksumFor fetches the release's checksums.txt and returns the SHA-256 for
+// exactly assetName. It fails closed: a missing or unreadable checksums file,
+// or no line for the asset, is an error so an unverified binary is never
+// installed.
+func checksumFor(rel *releaseInfo, assetName string) (string, error) {
 	var url string
 	for _, a := range rel.Assets {
 		if strings.EqualFold(a.Name, "checksums.txt") {
@@ -468,28 +475,64 @@ func checksumFor(rel *releaseInfo, assetName string) (string, bool) {
 		}
 	}
 	if url == "" {
-		return "", false
+		return "", errors.New("release has no checksums.txt")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	data, err := download(ctx, url, nil)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("download checksums.txt: %w", err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	if sum, ok := parseChecksums(string(data), assetName); ok {
+		return sum, nil
+	}
+	return "", fmt.Errorf("checksums.txt has no entry for %s", assetName)
+}
+
+// parseChecksums finds assetName in sha256sum output ("<hex>  <name>", or
+// "<hex> *<name>" for binary mode). The file name must match exactly.
+func parseChecksums(data, assetName string) (string, bool) {
+	for _, line := range strings.Split(data, "\n") {
+		parts := strings.Fields(strings.TrimSpace(line))
+		if len(parts) != 2 {
 			continue
 		}
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-		if strings.EqualFold(parts[len(parts)-1], assetName) || strings.HasSuffix(strings.ToLower(parts[len(parts)-1]), strings.ToLower(assetName)) {
-			return parts[0], true
+		sum, name := parts[0], strings.TrimPrefix(parts[1], "*")
+		if name == assetName && len(sum) == 64 {
+			if _, err := hex.DecodeString(sum); err == nil {
+				return sum, true
+			}
 		}
 	}
 	return "", false
+}
+
+// latestIsNewer reports whether latest should replace the running cur. A build
+// newer than the latest release is never "updated" (downgraded). A local or
+// dev suffix on the same core version counts as that version; a prerelease
+// (e.g. -rc1) is older than the same core release.
+func latestIsNewer(cur, latest string) bool {
+	c, l := parseSemver(cur), parseSemver(latest)
+	if l == nil {
+		return false
+	}
+	if c == nil {
+		return true // unknown build version: offer the release
+	}
+	if d := cmpSemver(l, c); d != 0 {
+		return d > 0
+	}
+	return isPrerelease(cur) && !isPrerelease(latest)
+}
+
+func isPrerelease(v string) bool {
+	core := strings.SplitN(strings.TrimPrefix(strings.TrimSpace(v), "v"), "+", 2)[0]
+	i := strings.IndexByte(core, '-')
+	if i < 0 {
+		return false
+	}
+	suffix := strings.ToLower(core[i+1:])
+	return !strings.HasPrefix(suffix, "local") && !strings.HasPrefix(suffix, "dev")
 }
 
 func verifySHA256(data []byte, want string) error {
@@ -724,17 +767,21 @@ func windowsUpdateScript(newPath, dest, bat, logPath, legacyPath string) string 
 	if legacyPath != "" {
 		legacyBat := strings.TrimSuffix(legacyPath, filepath.Ext(legacyPath)) + ".bat"
 		if strings.HasSuffix(strings.ToLower(legacyPath), ".exe") {
-			// Replace interceptor.exe with interceptor.bat that forwards to interseptor.exe
+			// Replace interceptor.exe with interceptor.bat that forwards to
+			// interseptor.exe. legacyBlock is inserted verbatim into the
+			// script, so this is the batch text after one fmt pass: "%%~dp0"
+			// and "%%*" in the batch echo a literal %~dp0 / %* into the shim
+			// (one fmt level needs %%%% to yield %%).
 			legacyBlock = fmt.Sprintf(`
 REM Compatibility shim for the pre-rename binary name.
 if exist "%%LEGACY%%" del "%%LEGACY%%" >nul 2>&1
 echo @echo off> "%s"
-echo "%%~dp0interseptor.exe" %%*>> "%s"
+echo "%%%%~dp0interseptor.exe" %%%%*>> "%s"
 `, legacyBat, legacyBat)
 		}
 	}
 	return fmt.Sprintf(`@echo off
-setlocal EnableDelayedExpansion
+setlocal DisableDelayedExpansion
 set "NEW=%s"
 set "DEST=%s"
 set "BAT=%s"
@@ -758,7 +805,7 @@ set /a TRY=0
 move /Y "%%NEW%%" "%%DEST%%" >nul 2>&1
 if not errorlevel 1 goto success
 set /a TRY+=1
-if !TRY! GEQ 90 goto fail
+if %%TRY%% GEQ 90 goto fail
 timeout /t 2 /nobreak >nul
 goto retry
 
