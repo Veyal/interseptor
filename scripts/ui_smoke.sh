@@ -33,7 +33,14 @@ cleanup() {
     [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
-  rm -rf "$work"
+  # Chrome's helper processes can still be writing the profile after the
+  # browser exits; retry, and never turn a passing smoke into a failure.
+  for _ in 1 2 3 4 5; do
+    rm -rf "$work" 2>/dev/null && return 0
+    sleep 1
+  done
+  echo "ui-smoke: could not remove $work" >&2
+  return 0
 }
 trap cleanup EXIT
 
