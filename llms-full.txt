@@ -127,7 +127,7 @@ There is no install script. Pick one path:
 | Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Release archive | download `interseptor_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) from the [Releases](https://github.com/Veyal/interseptor/releases) page, verify `checksums.txt`, extract |
 | From source | `git clone https://github.com/Veyal/interseptor.git && cd interseptor && make build` |
-| Update in place | `interseptor update` (also `interseptor update --check`, `interseptor update --version 2.8.0`) |
+| Update in place | `interseptor update` (also `interseptor update --check`, `interseptor update --version 2.8.0`). The UI's one-click update (`POST /api/update`) refuses AI/MCP and API-key callers with 403; read `GET /api/update` to report what is available. |
 
 Start it and check that it is running:
 
@@ -922,7 +922,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (133)
+### MCP tools (135)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -973,6 +973,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `forward_request` | `id` | Forward a held request (optionally with edited raw bytes). |
 | `forward_response` | `id` | Forward a held response (optionally with edited raw bytes). |
 | `get_authz` | none | List saved authorization-test identities (name + auth headers per role). |
+| `get_authz_run` | `runId` | Read one persisted authorization run by the runId its endpoint returned: summary plus the normalized identity... |
 | `get_collection` | `collectionUid` | One collection with its items (folders and requests, ordered by rank) and its script approval status. |
 | `get_engagement_brief` | none | Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch... |
 | `get_finding` | `id` | Read one complete finding in the canonical evidence-first format, including structured blocks, readiness... |
@@ -995,6 +996,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `ios_ssh_status` | none | Check jailbroken iOS device SSH reachability and authentication. |
 | `ios_status` | none | List iOS simulators (Xcode simctl) and USB iPhones (libimobiledevice): UDID, name, boot state, LAN host... |
 | `list_authz` | none | List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz). |
+| `list_authz_runs` | none | List persisted authorization-run history newest first: id, ts, kind (single\|bulk\|differential\|crosshost)... |
 | `list_checks` | none | List custom Starlark checks (id, source, compile error). |
 | `list_codecs` | none | List project Starlark message codecs (id, source, meta, compile error). |
 | `list_collections` | none | List request collections (Postman-style trees) and environments. |
@@ -1166,7 +1168,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (300)
+### REST routes (310)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1190,9 +1192,16 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/authz/differential` | Differential auth test: replay ONE flow as anonymous + selected identities and classify each as auth_failure... |
 | GET | `/api/authz/flow-auth/{id}` | Cookie/Authorization from a flow + Set-Cookie expiry hints |
 | POST | `/api/authz/from-flow/{id}` | Promote a flow's captured auth headers into a saved authz identity ({name, merge?}) |
+| GET | `/api/authz/identities/{name}` | Identity workspace detail: {identity, auth:{type:none\|cookie\|bearer\|basic\|header... |
+| PATCH | `/api/authz/identities/{name}` | Edit one identity in place. |
+| POST | `/api/authz/identities/{name}/check` | Probe one identity's session: replays a flow as this identity and stores the verdict as lastCheck. |
+| POST | `/api/authz/identities/{name}/refresh-from-flow/{id}` | Replace an identity's headers with the auth extracted from flow {id}, re-point its source and log a refreshed... |
 | POST | `/api/authz/identity` | Add or update one authz identity by name without touching others. |
 | DELETE | `/api/authz/identity/{name}` | Remove one authz identity by name (404 if absent) |
 | POST | `/api/authz/run` | Run authz test. |
+| GET | `/api/authz/runs` | Authorization-run history newest first (?limit=50). |
+| DELETE | `/api/authz/runs/{id}` | Delete one persisted authz run (204; 404 if absent) |
+| GET | `/api/authz/runs/{id}` | One persisted authz run: {run, matrix:{identities, rows:[{flowId,method,host,path,baseline:{status,length},cel... |
 | GET | `/api/ca.crt` | Download the local CA certificate |
 | GET | `/api/capabilities` | Alias of /api/mcp/capabilities: schemaVersion, schemaHash and supported finding fields (targetsSupported) |
 | GET | `/api/checks` | List custom Starlark scanner checks (id, source, compile error) |
@@ -1450,6 +1459,9 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/tls-diagnosis` | Diagnose whether HTTPS interception is working vs simply no traffic yet |
 | GET | `/api/ui/{panel}` | Project-scoped UI state blob (panel=repeater\|intruder\|intruder-presets) |
 | PUT | `/api/ui/{panel}` | Save project-scoped UI state (JSON body) |
+| GET | `/api/update` | One-click update status. |
+| POST | `/api/update` | Download, checksum-verify and install the latest release in the background (202 + state); progress arrives as... |
+| POST | `/api/update/restart` | Relaunch the updated binary on the same project, flags and ports (202, then the server re-execs). |
 | POST | `/api/variables/resolve` | Resolve a template against the real variable layers. |
 | GET | `/api/variables/{kind}/{uid}` | Declared variables plus current values of one owner (kind: environment\|collection\|folder\|request\|global) |
 | PUT | `/api/variables/{kind}/{uid}` | Replace the declared variables of one owner. |
@@ -2716,6 +2728,8 @@ interseptor update --version 2.1.0
 ```
 
 `interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
+
+**Or update from the UI.** When a newer release is out, the version badge at the bottom of the navigation rail reads `↑ vX.Y.Z available`. Click it to see the release notes, then **Update**: Interseptor downloads the release, verifies it against `checksums.txt` (a mismatch stops the update and leaves your binary untouched), and installs it while you keep working. **Restart to Update** then relaunches the new version on the same project and ports, and the page reconnects by itself. Copies installed with Homebrew or Scoop show the command to run instead (`brew upgrade interseptor`, `scoop update interseptor`); local development builds and binaries in a folder you cannot write to explain why they cannot update themselves. The macOS app runs its own updater when you click the badge. AI agents cannot start an update.
 
 Every tagged version is listed on the [**Releases**](https://github.com/Veyal/interseptor/releases)
 page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins one.
