@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	cvsspkg "github.com/Veyal/interseptor/internal/cvss"
 	cvss31 "github.com/pandatix/go-cvss/31"
@@ -245,24 +247,72 @@ func validateSeverityMatchesCVSS(f *Finding) error {
 	return fmt.Errorf("%w: severity %q conflicts with the calculated CVSS rating %s (score %.1f); set severity to %s or document a deliberate difference in proofReview.severityOverride", ErrInvalidFinding, f.Severity, ev.Severity, ev.Score, ev.Severity)
 }
 
-// alignFindingSeverities aligns existing findings where a CVSS 4.0 vector
-// determines severity, ensuring database rows match the calculated rating.
+// severityAlignmentSetting records that the one-time CVSS 4.0 severity
+// alignment has run. Once set, the alignment never runs again, so findings
+// merged later keep their historical severity (see createFindingPreserving).
+const severityAlignmentSetting = "migration.alignFindingSeverities.v1"
+
+type severityFix struct {
+	id  int64
+	sev string
+}
+
+// alignFindingSeverities is a one-time migration that sets the severity of
+// findings whose CVSS 4.0 vector calculates a different rating, unless the
+// finding documents a SeverityOverride. Each change bumps updated_ts and
+// writes a finding revision, all in one transaction with the completion flag.
 func alignFindingSeverities(db *sql.DB) error {
-	rows, err := db.Query(`SELECT id, cvss, severity, proof_review FROM findings WHERE cvss LIKE 'CVSS:4.0/%'`)
+	tx, err := db.Begin()
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var done string
+	err = tx.QueryRow(`SELECT value FROM settings WHERE key = ?`, severityAlignmentSetting).Scan(&done)
+	if err == nil {
 		return nil
 	}
-	defer rows.Close()
-	type fix struct {
-		id  int64
-		sev string
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
-	var fixes []fix
+	fixes, err := findingSeverityFixes(tx)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	change := FindingChange{Actor: "interseptor", Source: "migration", Reason: "severity aligned with the calculated CVSS 4.0 rating"}
+	for _, f := range fixes {
+		if err := revisionBefore(tx, f.id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE findings SET severity = ?, updated_ts = ? WHERE id = ?`, f.sev, now, f.id); err != nil {
+			return err
+		}
+		if err := appendFindingRevision(tx, f.id, "update", change); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO settings(key, value) VALUES(?, '1')
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, severityAlignmentSetting); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// findingSeverityFixes lists findings whose stored severity disagrees with the
+// rating their CVSS 4.0 vector calculates and that carry no SeverityOverride.
+func findingSeverityFixes(tx *sql.Tx) ([]severityFix, error) {
+	rows, err := tx.Query(`SELECT id, cvss, severity, proof_review FROM findings WHERE cvss LIKE 'CVSS:4.0/%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var fixes []severityFix
 	for rows.Next() {
 		var id int64
 		var vector, curSev, proofReview string
 		if err := rows.Scan(&id, &vector, &curSev, &proofReview); err != nil {
-			continue
+			return nil, err
 		}
 		var pr FindingProofReview
 		_ = scanFindingJSON(proofReview, &pr)
@@ -271,13 +321,10 @@ func alignFindingSeverities(db *sql.DB) error {
 		}
 		ev, err := cvsspkg.Evaluate(vector)
 		if err == nil && !ev.Legacy && ev.Severity != "" && !strings.EqualFold(curSev, ev.Severity) {
-			fixes = append(fixes, fix{id: id, sev: ev.Severity})
+			fixes = append(fixes, severityFix{id: id, sev: ev.Severity})
 		}
 	}
-	for _, f := range fixes {
-		_, _ = db.Exec(`UPDATE findings SET severity = ? WHERE id = ?`, f.sev, f.id)
-	}
-	return nil
+	return fixes, rows.Err()
 }
 
 func (s *Store) UpdateFindingMetadata(id int64, patch FindingMetadataPatch) error {

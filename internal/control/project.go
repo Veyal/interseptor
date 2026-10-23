@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -241,20 +240,9 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, e := range entries {
-			u, err := url.Parse(e.URL)
-			if err != nil || !u.IsAbs() || u.Host == "" {
+			fl, ok := harEntryFlow(e)
+			if !ok {
 				continue
-			}
-			ts := e.TS
-			if ts.IsZero() {
-				ts = time.Now()
-			}
-			fl := &store.Flow{
-				TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
-				Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
-				HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
-				ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
-				DurationMs: e.DurationMs, Flags: store.FlagImported,
 			}
 			inserted, err := h.insertImportedFlowOnce(fl, e.ReqBody, e.ResBody, seen)
 			if err != nil {

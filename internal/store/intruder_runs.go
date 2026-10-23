@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -124,6 +125,9 @@ func (s *Store) ListIntruderRuns(limit int) []RunMeta {
 		if rows.Scan(&m.RunID, &m.StartedTS, &m.FinishedTS, &m.Attack, &m.Size) == nil {
 			out = append(out, m)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("store: list intruder runs: %v", err)
 	}
 	return out
 }

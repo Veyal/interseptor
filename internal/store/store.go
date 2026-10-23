@@ -4,6 +4,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -451,7 +452,12 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	_ = alignFindingSeverities(db)
+	// Best-effort like the old per-Open pass: a failed alignment rolls back,
+	// leaves the completion flag unset so the next Open retries, and never
+	// locks the operator out of the project.
+	if err := alignFindingSeverities(db); err != nil {
+		log.Printf("store: align finding severities: %v", err)
+	}
 	var maxID int64
 	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
 		db.Close()

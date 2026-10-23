@@ -21,6 +21,29 @@ type HostStat struct {
 	Bytes int64
 }
 
+// referencedFlowIDsSQL selects every flow id a finding depends on, so no
+// retention pass deletes evidence a finding still points at: body flow blocks
+// (finding_flows), proofReview.evidence and capability-claim evidence,
+// structured claim evidence, targets[].flow_ids, and the verification baseline
+// and payload flows. Malformed JSON columns are read as empty, and hash-only
+// references (NULL flow id) are dropped so NOT IN never sees a NULL.
+const referencedFlowIDsSQL = `SELECT ref FROM (
+	SELECT flow_id AS ref FROM finding_flows
+	UNION SELECT baseline_flow FROM finding_verification
+	UNION SELECT payload_flow FROM finding_verification
+	UNION SELECT json_extract(e.value, '$.flowId') FROM findings f,
+		json_each(CASE WHEN json_valid(f.proof_review) THEN f.proof_review ELSE '{}' END, '$.evidence') e
+	UNION SELECT json_extract(r.value, '$.flowId') FROM findings f,
+		json_each(CASE WHEN json_valid(f.proof_review) THEN f.proof_review ELSE '{}' END, '$.claims') c,
+		json_each(c.value, '$.evidence') r
+	UNION SELECT json_extract(r.value, '$.flowId') FROM findings f,
+		json_each(CASE WHEN json_valid(f.structured) THEN f.structured ELSE '{}' END, '$.claims') c,
+		json_each(c.value, '$.evidence') r
+	UNION SELECT i.value FROM findings f,
+		json_each(CASE WHEN json_valid(f.targets) THEN f.targets ELSE '[]' END) t,
+		json_each(t.value, '$.flow_ids') i
+) WHERE ref > 0`
+
 func retentionHostMatches(pattern, host string) bool {
 	return hostpattern.MatchHost(pattern, host)
 }
@@ -36,7 +59,9 @@ func retentionHostMatches(pattern, host string) bool {
 //     error to prevent silently wiping all data.
 //
 // Pattern matching is case-insensitive and supports leading-wildcard patterns
-// (e.g. "*.example.com" matches "example.com" and all subdomains).
+// (e.g. "*.example.com" matches "example.com" and all subdomains). This is an
+// explicit purge: flows findings reference are deleted too, and those findings
+// then show the evidence as missing (automatic retention preserves them).
 func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) {
 	s.syncFlows()
 	if len(hosts) == 0 {
@@ -122,13 +147,14 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 		// FTS rows are keyed by rowid (= flow id); delete them for the matching
 		// hosts (the indexed content columns aren't needed to delete), then the
 		// flows — all in one transaction so search can't see orphans.
-		if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
+		hostWhere := `lower(host) IN (` + ph + `)`
+		if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE `+hostWhere+`)`, args...); err != nil {
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: unindex: %w", err)
 		}
-		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
+		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE `+hostWhere+`)`, args...); err != nil {
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: untag: %w", err)
 		}
-		res, err := tx.Exec(`DELETE FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
+		res, err := tx.Exec(`DELETE FROM flows WHERE `+hostWhere, args...)
 		if err != nil {
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: delete: %w", err)
 		}
@@ -144,7 +170,7 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 
 // DeleteFlowsOlderThan removes every flow whose timestamp (unix milliseconds,
 // the unit the flows.ts column stores) is before cutoffMillis, with its FTS
-// index and tags, preserving flows attached to findings. Returns the count deleted.
+// index and tags, preserving flows findings reference (referencedFlowIDsSQL). Returns the count deleted.
 func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 	s.syncFlows()
 	tx, err := s.db.Begin()
@@ -152,13 +178,13 @@ func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: begin: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows))`, cutoffMillis); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`))`, cutoffMillis); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: unindex: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows))`, cutoffMillis); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`))`, cutoffMillis); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: untag: %w", err)
 	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows)`, cutoffMillis)
+	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`)`, cutoffMillis)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: delete: %w", err)
 	}
@@ -170,7 +196,7 @@ func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 }
 
 // DeleteFlowsKeepNewest keeps only the most-recent n flows (by id, descending)
-// and deletes the rest, preserving flows attached to findings. n<=0 deletes nothing.
+// and deletes the rest, preserving flows findings reference (referencedFlowIDsSQL). n<=0 deletes nothing.
 func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 	if n <= 0 {
 		return 0, nil
@@ -182,13 +208,13 @@ func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: begin: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: unindex: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: untag: %w", err)
 	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows)`, n)
+	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`)`, n)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: delete: %w", err)
 	}

@@ -1,6 +1,8 @@
 package redact
 
-import "strings"
+import (
+	"strings"
+)
 
 // CredentialHeaderNames are the HTTP header names whose value is a credential.
 // One list drives both the free-text pass (Text) and the raw-message pass
@@ -12,6 +14,45 @@ var CredentialHeaderNames = []string{
 	"x-api-key", "x-auth-token", "x-access-token", "x-csrf-token", "x-xsrf-token",
 }
 
+// credentialHeaderSegments are whole name segments (split on '-' and '_') that
+// mark any other header as carrying a credential (X-Amz-Security-Token,
+// PRIVATE-TOKEN, X-Vault-Token, X-Amz-Credential, X-Hub-Signature-256, X-Auth).
+// Whole segments keep X-Author or X-Session-Count clear.
+var credentialHeaderSegments = map[string]bool{
+	"token": true, "secret": true, "password": true, "passwd": true, "credential": true,
+	"credentials": true, "signature": true, "auth": true, "apikey": true, "accesskey": true,
+	"sessionid": true, "sessiontoken": true,
+}
+
+// credentialHeaderPairs are adjacent segment pairs that name a credential
+// (Api-Key, X-Access-Key, X-Session-Id).
+var credentialHeaderPairs = map[string]bool{
+	"api key": true, "access key": true, "session id": true, "session key": true, "private key": true,
+}
+
+// isEvidenceHeader names headers that mention credentials but carry protocol
+// evidence a finding may rest on: authentication challenges and CORS policy.
+func isEvidenceHeader(name string) bool {
+	switch name {
+	case "www-authenticate", "proxy-authenticate", "authentication-info", "proxy-authentication-info":
+		return true
+	}
+	return strings.HasPrefix(name, "access-control-")
+}
+
+func hasCredentialSegment(name string) bool {
+	parts := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
+	for i, p := range parts {
+		if credentialHeaderSegments[p] {
+			return true
+		}
+		if i > 0 && credentialHeaderPairs[parts[i-1]+" "+p] {
+			return true
+		}
+	}
+	return false
+}
+
 var credentialHeaderSet = func() map[string]struct{} {
 	m := make(map[string]struct{}, len(CredentialHeaderNames))
 	for _, n := range CredentialHeaderNames {
@@ -20,9 +61,10 @@ var credentialHeaderSet = func() map[string]struct{} {
 	return m
 }()
 
-// CredentialHeaders masks the value of every CredentialHeaderNames header in a
-// raw HTTP message, leaving the request/status line, every other header, and
-// the body exactly as captured. Each masked value becomes the same
+// CredentialHeaders masks the value of every CredentialHeaderNames header, and
+// of every header whose name carries a credential segment (hasCredentialSegment),
+// in a raw HTTP message, plus secret-named query values on the request line,
+// leaving every other header and the body exactly as captured. Each masked value becomes the same
 // length+digest placeholder Text uses, so a report reader can still tell two
 // requests apart by whether they carried the same credential.
 //
@@ -52,7 +94,7 @@ func CredentialHeaders(raw string) string {
 		switch {
 		case first:
 			first = false
-			out.WriteString(line)
+			out.WriteString(maskQueryValues(line))
 		case isHeaderContinuation(line):
 			if folding {
 				out.WriteString(maskHeaderContinuation(line))
@@ -71,15 +113,35 @@ func CredentialHeaders(raw string) string {
 
 // cutLine splits off the first line of s, returning it without its terminator,
 // the terminator itself ("\r\n", "\n" or "" at end of input), and the remainder.
+//
+// A bare "\r" also ends a line: the report and preview renderers split on it,
+// so treating it as line content would let "X-Foo: a\rAuthorization: ..." draw
+// an unmasked credential on its own line.
 func cutLine(s string) (line, term, rest string) {
-	i := strings.IndexByte(s, '\n')
+	i := strings.IndexAny(s, "\r\n")
 	if i < 0 {
 		return s, "", ""
 	}
-	if i > 0 && s[i-1] == '\r' {
-		return s[:i-1], "\r\n", s[i+1:]
+	if s[i] == '\r' && i+1 < len(s) && s[i+1] == '\n' {
+		return s[:i], "\r\n", s[i+2:]
 	}
-	return s[:i], "\n", s[i+1:]
+	return s[:i], s[i : i+1], s[i+1:]
+}
+
+// maskQueryValues masks secret-named query parameters on a request line
+// (?access_token=...&api_key=...) with the same key=value rules Text uses.
+func maskQueryValues(line string) string {
+	line = keyedLong.ReplaceAllStringFunc(line, sub(keyedLong, 1, 2, 3))
+	line = keyedShort.ReplaceAllStringFunc(line, sub(keyedShort, 1, 2, 3))
+	return numericCode.ReplaceAllStringFunc(line, sub(numericCode, 1, 2, 3))
+}
+
+func isCredentialHeaderName(name string) bool {
+	name = strings.ToLower(name)
+	if _, ok := credentialHeaderSet[name]; ok {
+		return true
+	}
+	return !isEvidenceHeader(name) && hasCredentialSegment(name)
 }
 
 func isHeaderContinuation(line string) bool {
@@ -95,7 +157,7 @@ func maskCredentialHeaderLine(line string) (string, bool) {
 		return line, false
 	}
 	name := strings.ToLower(strings.TrimSpace(line[:colon]))
-	if _, ok := credentialHeaderSet[name]; !ok {
+	if !isCredentialHeaderName(name) {
 		return line, false
 	}
 	value := line[colon+1:]

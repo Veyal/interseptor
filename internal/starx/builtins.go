@@ -146,7 +146,7 @@ func JSONEncodeBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tu
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "value", &v); err != nil {
 		return nil, err
 	}
-	goVal, err := fromStarlark(v)
+	goVal, err := fromStarlark(v, 0)
 	if err != nil {
 		return nil, fmt.Errorf("json_encode: %w", err)
 	}
@@ -191,8 +191,17 @@ func toStarlark(v interface{}) starlark.Value {
 	return starlark.None
 }
 
+// maxEncodeDepth bounds list/dict nesting in fromStarlark. A script can build
+// a self-referencing value (l = []; l.append(l)); without a bound the
+// recursion overflows the goroutine stack, a fatal error no recover catches.
+const maxEncodeDepth = 1000
+
 // fromStarlark converts a Starlark value into a JSON-marshalable Go value.
-func fromStarlark(v starlark.Value) (interface{}, error) {
+// depth is the current list/dict nesting level.
+func fromStarlark(v starlark.Value, depth int) (interface{}, error) {
+	if depth > maxEncodeDepth {
+		return nil, fmt.Errorf("value nested deeper than %d levels (cyclic list or dict?)", maxEncodeDepth)
+	}
 	switch x := v.(type) {
 	case starlark.NoneType:
 		return nil, nil
@@ -213,7 +222,7 @@ func fromStarlark(v starlark.Value) (interface{}, error) {
 		defer it.Done()
 		var e starlark.Value
 		for it.Next(&e) {
-			gv, err := fromStarlark(e)
+			gv, err := fromStarlark(e, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -227,7 +236,7 @@ func fromStarlark(v starlark.Value) (interface{}, error) {
 			if !ok {
 				return nil, fmt.Errorf("dict keys must be strings, got %s", item[0].Type())
 			}
-			gv, err := fromStarlark(item[1])
+			gv, err := fromStarlark(item[1], depth+1)
 			if err != nil {
 				return nil, err
 			}

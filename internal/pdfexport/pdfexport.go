@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -316,7 +317,18 @@ func (r *Renderer) args(dir, src, out string) []string {
 	if boolEnv(r.getenv(EnvNoSandbox)) {
 		args = append(args, "--no-sandbox")
 	}
-	return append(args, "--print-to-pdf="+out, "file://"+filepath.ToSlash(src))
+	return append(args, "--print-to-pdf="+out, fileURL(src))
+}
+
+// fileURL builds an escaped file:// URL for a local path, so a temp directory
+// containing '#', '%' or spaces still names the exact file ('#' would
+// otherwise start a fragment and '%' an escape sequence).
+func fileURL(path string) string {
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p // Windows drive path: file:///C:/...
+	}
+	return (&url.URL{Scheme: "file", Path: p}).String()
 }
 
 func boolEnv(v string) bool {

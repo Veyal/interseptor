@@ -1100,6 +1100,21 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 	return s.createFinding(f, true, changes...)
 }
 
+// deriveSeverityFromCVSS makes a changed CVSS 4.0 vector set severity when the
+// write did not supply one, mirroring create. A documented SeverityOverride, a
+// legacy vector or an unparseable one leaves severity alone (nil result).
+func deriveSeverityFromCVSS(f *Finding) *string {
+	if strings.TrimSpace(f.ProofReview.SeverityOverride) != "" {
+		return nil
+	}
+	ev, err := cvsspkg.Evaluate(f.Cvss)
+	if err != nil || ev.Legacy || ev.Severity == "" {
+		return nil
+	}
+	f.Severity = ev.Severity
+	return &f.Severity
+}
+
 // createFindingPreserving inserts a finding copied from another project. It
 // skips the write-time CVSS:4.0 and severity-vs-CVSS contract so merge keeps
 // legacy CVSS 3.1 vectors and historical severities exactly as recorded; every
@@ -1393,6 +1408,9 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	}
 	if err := normalizeFindingAssessment(&resulting); err != nil {
 		return err
+	}
+	if severity == nil && resulting.Cvss != current.Cvss {
+		severity = deriveSeverityFromCVSS(&resulting)
 	}
 	if resulting.Cvss != current.Cvss || resulting.Severity != current.Severity {
 		if err := validateSeverityMatchesCVSS(&resulting); err != nil {

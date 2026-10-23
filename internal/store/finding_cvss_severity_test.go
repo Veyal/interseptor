@@ -81,8 +81,16 @@ func TestUpdateFindingSeverityMismatchBlockedOnlyWhenChanged(t *testing.T) {
 		t.Fatalf("aligned severity rejected: %v", err)
 	}
 	other := "CVSS:4.0/AV:N/AC:H/AT:N/PR:H/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N"
-	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &other, nil); !errors.Is(err, ErrInvalidFinding) {
-		t.Fatalf("changing vector so severity mismatches must be blocked, got %v", err)
+	high := "High"
+	if err := s.UpdateFinding(id, &high, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &other, nil); !errors.Is(err, ErrInvalidFinding) {
+		t.Fatalf("changing vector with a mismatching severity must be blocked, got %v", err)
+	}
+	// A vector-only change takes the calculated severity instead of conflicting.
+	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &other, nil); err != nil {
+		t.Fatalf("vector-only change must derive severity, got %v", err)
+	}
+	if got := dbSeverity(t, s, id); got != "Info" {
+		t.Fatalf("derived severity %q, want Info", got)
 	}
 	info := "Info"
 	if err := s.UpdateFinding(id, &info, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &other, nil); err != nil {
@@ -111,7 +119,9 @@ func TestFindingSeverityFollowsCVSSScore(t *testing.T) {
 	// Seed legacy vector directly in DB with mismatched Low severity:
 	seedLegacyCVSS(t, s, id, v69)
 
-	// Re-opening store must align database rows permanently:
+	// Re-opening a project written before the one-time alignment must align
+	// database rows permanently:
+	forgetSeverityAlignment(t, s)
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}

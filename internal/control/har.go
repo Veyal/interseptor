@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/harx"
@@ -50,20 +51,9 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 	}
 	n := 0
 	for _, e := range entries {
-		u, perr := url.Parse(e.URL)
-		if perr != nil || !u.IsAbs() || u.Host == "" {
+		fl, ok := harEntryFlow(e)
+		if !ok {
 			continue
-		}
-		ts := e.TS
-		if ts.IsZero() {
-			ts = time.Now()
-		}
-		fl := &store.Flow{
-			TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
-			Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
-			HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
-			ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
-			DurationMs: e.DurationMs, Flags: store.FlagImported,
 		}
 		if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
 			httpInternalErr(w, err)
@@ -76,6 +66,27 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "flow.new"}) // nudge the UI to refresh history
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
+}
+
+// harEntryFlow maps one HAR entry to an imported flow. Like the Burp import it
+// accepts only absolute http/https URLs and defaults an empty method to GET;
+// ok is false for an entry that must be skipped.
+func harEntryFlow(e harx.Entry) (*store.Flow, bool) {
+	u, err := url.Parse(e.URL)
+	if err != nil || !u.IsAbs() || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil, false
+	}
+	ts := e.TS
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	return &store.Flow{
+		TS: ts, Method: orVal(strings.TrimSpace(e.Method), "GET"), Scheme: u.Scheme, Host: u.Hostname(),
+		Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
+		HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
+		ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
+		DurationMs: e.DurationMs, Flags: store.FlagImported,
+	}, true
 }
 
 func (h *projectAPI) insertImportedFlow(flow *store.Flow, reqBody, resBody []byte) error {
