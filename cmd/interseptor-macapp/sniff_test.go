@@ -104,3 +104,33 @@ func TestURLSnifferBoundsBuffer(t *testing.T) {
 		t.Errorf("buffer grew to %d bytes, want <= %d", n, sniffBufferMax)
 	}
 }
+
+// A wildcard control bind logs a URL whose Host the control guard rejects as
+// non-loopback (302 to /login), so the sniffed URL must be mapped to loopback.
+func TestSniffedControlURLNormalizesWildcardBinds(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"http://0.0.0.0:9966", "http://127.0.0.1:9966"},
+		{"http://[::]:9966", "http://127.0.0.1:9966"},
+		{"http://:9966", "http://127.0.0.1:9966"},
+		{"http://127.0.0.1:9971", "http://127.0.0.1:9971"},
+		{"http://[::1]:9972", "http://[::1]:9972"},
+	}
+	for _, tt := range tests {
+		if got := sniffedControlURL(tt.in); got != tt.want {
+			t.Errorf("sniffedControlURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestURLSnifferReportsLoopbackForWildcardBind(t *testing.T) {
+	s := newURLSniffer()
+	s.Write([]byte("Interseptor v1 · UI on http://[::]:9973 · data /x\n"))
+	select {
+	case got := <-s.found:
+		if got != "http://127.0.0.1:9973" {
+			t.Errorf("got %q, want the loopback URL", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("sniffer did not report the URL")
+	}
+}

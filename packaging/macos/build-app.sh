@@ -40,6 +40,11 @@ trap cleanup EXIT
 
 VERSION="${VERSION:-$(git -C "$REPO_ROOT" describe --tags --dirty 2>/dev/null || echo dev)}"
 VERSION="${VERSION#v}"
+# The Go binaries are stamped with the full version — prerelease suffix,
+# -<n>-g<sha> for a between-tags commit, -dirty for local changes — so such a
+# build never reports itself as the release it follows (release.yml checks the
+# bundled CLI against the full tag, prereleases included).
+BINARY_VERSION="$VERSION"
 # CFBundleShortVersionString/CFBundleVersion must be numeric-dotted; strip any
 # -g<sha>/-dirty suffix. With no reachable tag, `git describe` fails and the
 # `dev` sentinel below falls back to the compiled-in version rather than
@@ -50,10 +55,13 @@ if [[ ! "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
 		's/^[[:space:]]*(const|var)[[:space:]]+Version[[:space:]]*=[[:space:]]*"([^"]*)".*$/\2/p' \
 		"$REPO_ROOT/internal/version/version.go" | head -1)"
 	echo "==> git describe gave no usable version ('$VERSION'); using internal/version: ${SHORT_VERSION:-0.0.0}"
+	BINARY_VERSION=""
 fi
 [[ "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]] || SHORT_VERSION="0.0.0"
+# No usable tag: mark the binaries as a local build, as `make build` does.
+[[ -n "$BINARY_VERSION" ]] || BINARY_VERSION="$SHORT_VERSION-local"
 
-echo "==> Building $APP_NAME $VERSION"
+echo "==> Building $APP_NAME $VERSION (binaries: $BINARY_VERSION, bundle: $SHORT_VERSION)"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
@@ -65,7 +73,7 @@ build_universal() {
 	for arch in amd64 arm64; do
 		echo "    $out ($arch)"
 		( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" \
-			go build -trimpath -ldflags "-s -w -X github.com/Veyal/interseptor/internal/version.Version=$SHORT_VERSION" \
+			go build -trimpath -ldflags "-s -w -X github.com/Veyal/interseptor/internal/version.Version=$BINARY_VERSION" \
 				-o "$tmp/$arch" "$pkg" )
 	done
 	lipo -create -output "$out" "$tmp/amd64" "$tmp/arm64"

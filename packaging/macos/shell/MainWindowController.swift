@@ -90,8 +90,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.bridge.pageWillLoad()
             self?.webView.regions = .init()
         }
-        navigator.onFinish = { [weak self] in self?.stateView.isHidden = true }
+        navigator.onFinish = { [weak self] in
+            // The blank page unload() loads finishes asynchronously; it must not
+            // hide the loading overlay connect() showed for the next server.
+            guard let self, self.loadedURL != nil else { return }
+            self.stateView.isHidden = true
+        }
         navigator.onFail = { [weak self] error in self?.showLoadFailure(error) }
+        navigator.onCrashLoop = { [weak self] in self?.showCrashLoopFailure() }
     }
 
     private func layout(in window: NSWindow) {
@@ -126,6 +132,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// allowed in the web view, whatever UI path is configured.
     func load(_ base: URL, remote: Bool) {
         let url = Settings.uiURL(base: base)
+        if let old = loadedURL, Origin(old) != Origin(url) { bridge.discardPending() }
         loadedURL = url
         navigator.allowedOrigin = Origin(url)
         window?.subtitle = remote ? (base.host ?? "") : ""
@@ -136,7 +143,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func unload() {
         loadedURL = nil
         navigator.allowedOrigin = nil
+        bridge.discardPending()
         webView.loadHTMLString("", baseURL: nil)
+    }
+
+    /// The web content process crashed repeatedly and automatic reloads gave
+    /// up; Retry starts a fresh budget.
+    private func showCrashLoopFailure() {
+        guard loadedURL != nil else { return }
+        showFailure(title: "Could not load Interseptor",
+                    message: "The page stopped responding repeatedly.",
+                    actions: [StateView.Action(title: "Retry") { [weak self] in
+                        self?.navigator.resetCrashBudget()
+                        self?.reloadFromStart()
+                    }])
     }
 
     private func showLoadFailure(_ error: Error) {

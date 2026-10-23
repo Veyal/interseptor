@@ -38,6 +38,9 @@ const (
 	// shutdownGrace matches the SIGTERM-then-SIGKILL window `interseptor stop`
 	// uses, so quitting the app behaves the same as stopping it from the CLI.
 	shutdownGrace = 6 * time.Second
+	// lifelineEnv tells the server to treat stdin EOF as a graceful shutdown
+	// request (see cmd/interseptor/lifeline.go).
+	lifelineEnv = "INTERSEPTOR_EXIT_ON_STDIN_EOF=1"
 )
 
 func main() {
@@ -47,6 +50,10 @@ func main() {
 		os.Exit(2)
 	}
 	if opts.shell {
+		// A write to stdout after the shell closed its end of the pipe would
+		// otherwise raise SIGPIPE and kill this process before it stops the
+		// server it owns; ignored, the write just fails with EPIPE.
+		signal.Ignore(syscall.SIGPIPE)
 		pw := newProtocolWriter(os.Stdout)
 		if err := runLauncher(pw.ready, watchEOF(os.Stdin)); err != nil {
 			pw.fail(err.Error())
@@ -137,9 +144,17 @@ func (l *launcher) run() error {
 	out := io.MultiWriter(l.log, sniffer)
 
 	cmd := exec.Command(l.bin)
-	cmd.Env = append(os.Environ(), "INTERSEPTOR_NO_BROWSER=1")
+	cmd.Env = append(os.Environ(), "INTERSEPTOR_NO_BROWSER=1", lifelineEnv)
 	cmd.Stdout = out
 	cmd.Stderr = out
+	// The child's lifeline: this process holds the write end of its stdin until
+	// it returns. If it is SIGKILLed the kernel closes the pipe and the server
+	// shuts down (lifelineEnv) instead of being orphaned.
+	lifeline, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("start %s: %w", l.bin, err)
+	}
+	defer lifeline.Close()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start %s: %w", l.bin, err)
 	}

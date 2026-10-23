@@ -46,6 +46,11 @@ final class DesktopBridge: NSObject, WKScriptMessageHandler {
     /// A new document is loading: its bridge is not ready until it says so.
     func pageWillLoad() { ready = false }
 
+    /// Drops commands queued for the page that was loading: the target server
+    /// changed, and a queued ⌘I meant for the old one must not toggle
+    /// intercept on the new one once it is ready.
+    func discardPending() { queue.removeAll() }
+
     func run(_ command: String) {
         guard ready, let webView else {
             queue.append(command)

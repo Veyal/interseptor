@@ -64,7 +64,7 @@ final class WebUIDelegate: NSObject, WKUIDelegate {
             // A blob/data URL or an API export opened in a new tab is a file the
             // user wants, not a page: save it.
             webView.startDownload(using: action.request) { [weak self] d in d.delegate = self?.downloads }
-        } else if url.scheme?.lowercased() != "about" {
+        } else if ExternalLinks.canOpenExternally(url) {
             NSWorkspace.shared.open(url)
         }
         return nil

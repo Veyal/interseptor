@@ -34,6 +34,16 @@
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<!-- Connect to Server… accepts plain-http control servers (a Tailscale
+	     MagicDNS name, a LAN host); ATS would otherwise block them in the web
+	     view. Only web content and local-network loads are exempted. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT licensed. See LICENSE.</string>
 </dict>

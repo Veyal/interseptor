@@ -40,9 +40,15 @@ func TestMacOSBuildStampsBundleVersionIntoBinaries(t *testing.T) {
 		t.Fatalf("read macOS build script: %v", err)
 	}
 
-	const stamp = "-X github.com/Veyal/interseptor/internal/version.Version=$SHORT_VERSION"
+	// The binaries carry the full version (prerelease, -dirty, -local), so the
+	// release check against the tag passes for an rc and a local build never
+	// passes itself off as the release; Info.plist keeps the numeric version.
+	const stamp = "-X github.com/Veyal/interseptor/internal/version.Version=$BINARY_VERSION"
 	if !strings.Contains(string(script), stamp) {
-		t.Fatalf("macOS build script must stamp the bundle version with %q", stamp)
+		t.Fatalf("macOS build script must stamp the binaries with %q", stamp)
+	}
+	if !strings.Contains(string(script), `BINARY_VERSION="$VERSION"`) {
+		t.Fatal("macOS build script must derive the binary version from the full tag")
 	}
 }
 

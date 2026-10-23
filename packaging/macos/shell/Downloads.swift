@@ -6,7 +6,7 @@ import WebKit
 @MainActor
 final class DownloadController: NSObject, WKDownloadDelegate {
     weak var window: NSWindow?
-    private var destinations: [ObjectIdentifier: URL] = [:]
+    private var destinations: [ObjectIdentifier: (staged: URL, final: URL)] = [:]
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
@@ -20,11 +20,12 @@ final class DownloadController: NSObject, WKDownloadDelegate {
                 completionHandler(nil)
                 return
             }
-            // The panel already confirmed any overwrite; WebKit refuses to write
-            // over an existing file.
-            try? FileManager.default.removeItem(at: url)
-            self?.destinations[ObjectIdentifier(download)] = url
-            completionHandler(url)
+            // The panel already confirmed any overwrite. WebKit refuses to write
+            // over an existing file, so it writes a staging file that replaces
+            // the original only once the download has finished.
+            let staged = DownloadStaging.stagingURL(for: url)
+            self?.destinations[ObjectIdentifier(download)] = (staged, url)
+            completionHandler(staged)
         }
         if let window, window.isVisible {
             panel.beginSheetModal(for: window, completionHandler: finish)
@@ -35,15 +36,26 @@ final class DownloadController: NSObject, WKDownloadDelegate {
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        if let url = destinations.removeValue(forKey: ObjectIdentifier(download)) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        guard let dest = destinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        do {
+            try DownloadStaging.commit(staged: dest.staged, to: dest.final)
+            NSWorkspace.shared.activateFileViewerSelecting([dest.final])
+        } catch {
+            DownloadStaging.discard(staged: dest.staged, destination: dest.final)
+            showFailure(error)
         }
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        destinations.removeValue(forKey: ObjectIdentifier(download))
+        if let dest = destinations.removeValue(forKey: ObjectIdentifier(download)) {
+            DownloadStaging.discard(staged: dest.staged, destination: dest.final)
+        }
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
+        showFailure(error)
+    }
+
+    private func showFailure(_ error: Error) {
         let alert = NSAlert(error: error)
         alert.messageText = "Download failed"
         if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }

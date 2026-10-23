@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -26,6 +27,18 @@ func parseUIURL(line string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimRight(m[1], ".,;"), true
+}
+
+// sniffedControlURL maps the URL the server logged onto one the local UI can
+// load. A wildcard bind is logged as http://0.0.0.0:… or http://[::]:…, whose
+// Host the control guard refuses as non-loopback, so it goes through
+// controlURL like the env guess does.
+func sniffedControlURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.Host == "" {
+		return raw
+	}
+	return controlURL(u.Host)
 }
 
 // urlSniffer is an io.Writer that watches the server's output for the control
@@ -69,7 +82,7 @@ func (s *urlSniffer) Write(p []byte) (int, error) {
 			s.done = true
 			s.buf = nil
 			select {
-			case s.found <- u:
+			case s.found <- sniffedControlURL(u):
 			default:
 			}
 			return len(p), nil

@@ -48,7 +48,10 @@ URL the server actually bound, waits until it answers, and prints exactly one
 line to stdout: `INTERSEPTOR_READY <url>`. If anything fails it prints
 `INTERSEPTOR_ERROR <message>`. It then supervises until SIGTERM/SIGINT or until
 its stdin reaches EOF, which means the shell died, and stops the server
-gracefully (SIGTERM, then SIGKILL after 6s). If an Interseptor server is already
+gracefully (SIGTERM, then SIGKILL after 6s). The server gets the same kind of
+lifeline: its stdin is a pipe the supervisor holds open, and
+`INTERSEPTOR_EXIT_ON_STDIN_EOF=1` makes it shut down gracefully at EOF, so a
+SIGKILLed supervisor cannot leave it orphaned. If an Interseptor server is already
 running on the control address, the supervisor reports that URL. It never stops
 that server, because it did not start it. Run without `--shell`,
 `interseptor-macapp` keeps its old behaviour of opening an app window in a
@@ -63,8 +66,10 @@ browser.
   System Settings. The window title stays current for Mission Control and the
   Window menu, and its colour follows the UI theme. The window frame persists between launches, and full screen is
   supported.
-- Only the control origin loads inside the web view. External links,
-  `target=_blank` and `window.open` go to the default browser. Attachments,
+- Only the control origin loads inside the web view. External `http`, `https`
+  and `mailto` links, `target=_blank` and `window.open` go to the default
+  browser or mail app; any other scheme is dropped rather than launching
+  whatever app claims it. Attachments,
   non-displayable responses and `blob:`/`data:` links save through a native save
   panel. `<input type=file>` uses a native open panel, and JS
   `alert`/`confirm`/`prompt` appear as sheets.
@@ -76,8 +81,10 @@ browser.
   and the project name with its live state. A notification is posted when a
   request is held while the app is in the background.
 - **File → Connect to Server…** loads a remote control URL (for example a
-  Tailscale `http://100.x.y.z:9966`) instead of starting a local proxy.
-  **Use Local Proxy** switches back.
+  Tailscale `http://100.x.y.z:9966` or a MagicDNS name) instead of starting a
+  local proxy. Plain `http` is allowed for web content and the local network
+  (`NSAllowsArbitraryLoadsInWebContent`, `NSAllowsLocalNetworking` in
+  `Info.plist`). **Use Local Proxy** switches back.
 - The page receives `desktop-app desktop-macos` classes and a
   `window.interseptorDesktop` bridge (`post`, plus `run(command)` provided by
   the UI). Its user agent ends in `InterseptorDesktop/<version>`. Menu commands
@@ -107,9 +114,14 @@ All output goes to `~/Library/Logs/Interseptor.log` (**Help → Show Log**).
 
 ## Shell tests
 
-`packaging/macos/shell-tests/run.sh` compiles `shell/Supervisor.swift` with plain `swiftc` and runs
-its state-machine tests (clean stop, crash report, SIGTERM-ignoring child forced down by SIGKILL,
-restart after a forced stop, stale exits). `go test ./cmd/interseptor-macapp` runs it on macOS.
+`packaging/macos/shell-tests/run.sh` compiles the Foundation-only shell files
+(`Supervisor.swift`, `ExternalLinks.swift`, `DownloadStaging.swift`,
+`ReloadBudget.swift`) with plain `swiftc` and runs their tests: the supervisor
+state machine (clean stop, crash report, SIGTERM-ignoring child forced down by
+SIGKILL, restart after a forced stop, stale exits, an error line that arrives
+after the exit, no leaked file descriptors, appending log writes), the
+external-link scheme allowlist, download staging over an existing file, and
+the crash-reload budget. `go test ./cmd/interseptor-macapp` runs it on macOS.
 The View menu panel order and shortcuts are checked against the web rail by the same package.
 
 ## Signing and notarization
@@ -178,33 +190,23 @@ reads release metadata. `INTERSEPTOR_ALLOW_BUNDLE_UPDATE=1` overrides the refusa
 and is safe only for an unsigned local build. Sparkle-style in-place bundle
 updates are still unimplemented; updating means dropping in a new `.app`.
 
-**Local access is unauthenticated by default.** The control UI auto-trusts
-loopback connections carrying no API key. That is reasonable for a CLI you
-started yourself, but weaker for an app that sits running in the background.
-Set `INTERSEPTOR_REQUIRE_LOCAL_AUTH=1` to require a key from local clients too:
+**Local access is unauthenticated.** The control UI trusts loopback
+connections that carry no API key, with a loopback `Host` and `Origin` (which
+defeats DNS rebinding and cross-site requests). That is reasonable for a CLI you
+started yourself, but weaker for an app that sits running in the background:
+any local process running as you can drive the control API. There is currently
+no setting that requires a key from local clients, so treat every local process
+as trusted while the app runs, and quit it when you do not need it. Keys are
+still required for every non-loopback client.
+
+Do not change the app's environment by editing the bundle's `Info.plist`
+(`LSEnvironment`): any edit inside the bundle breaks its code signature. Use
+the `defaults` keys above, or, for another `INTERSEPTOR_*` variable, set it in
+launchd's user environment before launching the app (it lasts until logout):
 
 ```bash
-INTERSEPTOR_REQUIRE_LOCAL_AUTH=1 /Applications/Interseptor.app/Contents/MacOS/interseptor
+launchctl setenv INTERSEPTOR_NO_UPDATE_CHECK 1
 ```
-
-Enforcement only arms itself once at least one API key exists, so turning it on
-with a fresh profile cannot lock you out of the UI you need in order to mint the
-first key. The HTTP `/mcp` front end carries a per-process internal token for its control-plane calls; that token
-is never persisted and is rejected on any non-loopback connection.
-
-The cost is that **external** local clients must then authenticate: `curl` needs
-`Authorization: Bearer <key>`, and the separate `interseptor mcp` stdio process
-does not currently pass a key, so it will be refused. Leave the flag off if you
-depend on that subcommand.
-
-While the flag is on, the **IP allowlist** (Settings → API → Allowlist) stops
-granting access. It is a keyless trust grant, which is the very thing this mode
-removes — and an entry covering loopback would otherwise disable the hardening
-completely and silently. Allowlisted remote clients need an API key too.
-
-The bundle does not set this flag for you — silently breaking MCP for every
-desktop user would be worse than the default. To make it stick for the app, add
-it to the bundle's `Info.plist` under `LSEnvironment`, or launch from a shell.
 
 **CI builds the bundle but cannot sign it.** `ci.yml` has a `macos-app` job on
 `macos-latest` that runs the darwin test suite, builds the bundle, validates the

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -201,6 +203,58 @@ func TestShellModeStartsChildAndStopsItWhenParentGoes(t *testing.T) {
 	}
 }
 
+// The child gets a lifeline: a stdin pipe the launcher holds open plus the env
+// var telling the server to shut down at EOF, so a SIGKILLed launcher can never
+// orphan it. With the old /dev/null stdin the read below would hit EOF at once.
+func TestShellModeGivesChildAStdinLifeline(t *testing.T) {
+	srv := fakeControlPlane(t)
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "env")
+	eof := filepath.Join(dir, "eof")
+	bin := filepath.Join(dir, serverBinaryName)
+	script := "#!/bin/sh\n" +
+		"echo \"$INTERSEPTOR_EXIT_ON_STDIN_EOF\" > " + envFile + "\n" +
+		"echo \"Interseptor vX · UI on " + srv.URL + " · data /x\"\n" +
+		"while read -r _; do :; done\n" +
+		"touch " + eof + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := &syncBuffer{}
+	parentGone := make(chan struct{})
+	l := &launcher{
+		bin:          bin,
+		url:          "http://127.0.0.1:1",
+		client:       srv.Client(),
+		log:          io.Discard,
+		logName:      "test.log",
+		signals:      make(chan os.Signal),
+		parentGone:   parentGone,
+		onReady:      func(u string) { io.WriteString(out, readyLine(u)) },
+		readyTimeout: 5 * time.Second,
+	}
+	errCh := make(chan error, 1)
+	go func() { errCh <- l.run() }()
+
+	waitFor(t, func() bool { return strings.Contains(out.String(), "INTERSEPTOR_READY ") })
+	if b, _ := os.ReadFile(envFile); strings.TrimSpace(string(b)) != "1" {
+		t.Errorf("child env INTERSEPTOR_EXIT_ON_STDIN_EOF = %q, want 1", strings.TrimSpace(string(b)))
+	}
+	time.Sleep(150 * time.Millisecond)
+	if _, err := os.Stat(eof); err == nil {
+		t.Error("child saw stdin EOF while the launcher was still running")
+	}
+	close(parentGone)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("did not return after the parent went away")
+	}
+}
+
 func TestShellModeReportsChildExitDuringStartup(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, serverBinaryName)
@@ -236,6 +290,41 @@ func TestProtocolWriterFlushesEachLine(t *testing.T) {
 	}
 	if line != "INTERSEPTOR_READY http://127.0.0.1:19996\n" {
 		t.Errorf("got %q", line)
+	}
+}
+
+// A protocol write after the shell closed its end of stdout must fail with
+// EPIPE, not kill the supervisor with SIGPIPE (which would orphan its server).
+// The startup error path writes INTERSEPTOR_ERROR, so no server is needed.
+func TestShellModeSurvivesClosedStdout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the launcher binary")
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "interseptor-macapp")
+	if out, err := exec.Command("go", "build", "-o", exe, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	defer w.Close()
+	cmd := exec.Command(exe, "--shell")
+	// No interseptor next to the launcher or on PATH: startup fails at once.
+	cmd.Env = []string{"PATH=" + dir, "HOME=" + dir}
+	cmd.Stdout = w
+	err = cmd.Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("run err = %v, want a non-zero exit", err)
+	}
+	if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		t.Fatalf("killed by %v, want a normal exit with EPIPE ignored", ws.Signal())
+	}
+	if ee.ExitCode() != 1 {
+		t.Errorf("exit code %d, want 1", ee.ExitCode())
 	}
 }
 

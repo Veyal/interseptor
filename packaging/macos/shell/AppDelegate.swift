@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         windowController.showLoading()
         statusItem.setStateLine("Starting proxy…")
+        lastError = nil // a previous run's error must not explain this one's exit
         let exe = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("interseptor-macapp")
         do {
             try supervisor.start(executable: exe, environment: Settings.supervisorEnvironment())
@@ -80,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             lastError = nil
             windowController.load(url, remote: false)
         case .error(let message):
+            // May arrive after .exited (the supervisor prints it, then exits,
+            // and the exit can win the race): it then replaces the generic
+            // "stopped unexpectedly" text with the real cause.
+            guard !quitting else { return }
             lastError = message
             showSupervisorFailure(message)
         case .exited(let code):

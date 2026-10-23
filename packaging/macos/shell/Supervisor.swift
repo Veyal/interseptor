@@ -22,13 +22,21 @@ final class Supervisor {
     private final class Run {
         let process: Process
         let stdin: Pipe
+        /// The log file handed to the process as stderr; nil when it fell back
+        /// to the shared null device, which must never be closed.
+        let log: FileHandle?
         var lineBuffer = Data() // touched only on the stdout reader queue
         var stopping = false
         var exited = false
+        /// Its unexpected exit was reported. The supervisor prints
+        /// INTERSEPTOR_ERROR and then exits, and the exit can reach the main
+        /// queue before that stdout line does: the line is still delivered.
+        var exitReported = false
         var completions: [() -> Void] = []
-        init(process: Process, stdin: Pipe) {
+        init(process: Process, stdin: Pipe, log: FileHandle?) {
             self.process = process
             self.stdin = stdin
+            self.log = log
         }
     }
 
@@ -53,26 +61,37 @@ final class Supervisor {
 
         let input = Pipe()
         let output = Pipe()
+        let log = Self.logHandle()
         p.standardInput = input
         p.standardOutput = output
-        p.standardError = Self.logHandle() ?? FileHandle.nullDevice
+        p.standardError = log ?? FileHandle.nullDevice
 
-        let run = Run(process: p, stdin: input)
-        output.fileHandleForReading.readabilityHandler = { [weak self, weak run] handle in
+        let run = Run(process: p, stdin: input, log: log)
+        // The handler holds the run until EOF, so a line that arrives after the
+        // exit was handled (and the run released) is still parsed. Clearing the
+        // handler at EOF breaks that cycle.
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             if data.isEmpty {
                 handle.readabilityHandler = nil
+                try? handle.close()
                 return
             }
-            guard let self, let run else { return }
-            self.consume(data, from: run)
+            self?.consume(data, from: run)
         }
         p.terminationHandler = { [weak self] proc in
             let status = proc.terminationStatus
             DispatchQueue.main.async { self?.handleExit(run, status) }
         }
 
-        try p.run()
+        do {
+            try p.run()
+        } catch {
+            output.fileHandleForReading.readabilityHandler = nil
+            try? output.fileHandleForReading.close()
+            release(run)
+            throw error
+        }
         current = run
     }
 
@@ -103,6 +122,7 @@ final class Supervisor {
 
     private func abandon(_ run: Run) {
         if current === run { current = nil }
+        release(run)
         finish(run)
     }
 
@@ -113,16 +133,28 @@ final class Supervisor {
         done.forEach { $0() }
     }
 
+    /// Drops the run's own file descriptors and its exit handler (which holds
+    /// the run). Stdout is closed by its reader at EOF, after the last line.
+    private func release(_ run: Run) {
+        run.process.terminationHandler = nil
+        try? run.stdin.fileHandleForWriting.close()
+        try? run.log?.close()
+    }
+
     private func handleExit(_ run: Run, _ status: Int32) {
         guard !run.exited else { return } // abandoned earlier; its completions already ran
         let isCurrent = current === run
         if isCurrent { current = nil }
+        release(run)
         if run.stopping {
             finish(run)
         } else {
             run.exited = true
             // An exit from a process that was already replaced is stale.
-            if isCurrent { onEvent?(.exited(status)) }
+            if isCurrent {
+                run.exitReported = true
+                onEvent?(.exited(status))
+            }
         }
     }
 
@@ -134,12 +166,21 @@ final class Supervisor {
             guard let line = String(data: lineData, encoding: .utf8) else { continue }
             if let event = Self.parse(line) {
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.current === run, !run.stopping else { return }
+                    guard let self, self.shouldDeliver(event, from: run) else { return }
                     self.onEvent?(event)
                 }
             }
         }
         if run.lineBuffer.count > 64 << 10 { run.lineBuffer.removeAll() }
+    }
+
+    /// Lines from the current run are delivered unless it is being stopped. An
+    /// error line that lost the race with its own run's reported exit is still
+    /// delivered — it explains that exit — as long as no newer run has started.
+    private func shouldDeliver(_ event: Event, from run: Run) -> Bool {
+        if current === run { return !run.stopping }
+        if case .error = event { return run.exitReported && current == nil }
+        return false
     }
 
     static func parse(_ line: String) -> Event? {
@@ -157,11 +198,15 @@ final class Supervisor {
     private static func logHandle() -> FileHandle? {
         let url = logURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: url.path) {
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-        }
-        guard let h = try? FileHandle(forWritingTo: url) else { return nil }
-        h.seekToEndOfFile()
-        return h
+        return appendHandle(at: url)
+    }
+
+    /// Opens path for appending with O_APPEND, as the Go supervisor opens the
+    /// same log: every write lands at the current end, so neither side can
+    /// overwrite the other's lines (a seek-to-end-then-write fd would).
+    static func appendHandle(at url: URL) -> FileHandle? {
+        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { return nil }
+        return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 }

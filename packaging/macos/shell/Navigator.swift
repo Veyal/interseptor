@@ -25,6 +25,12 @@ final class Navigator: NSObject, WKNavigationDelegate {
     var onStart: (() -> Void)?
     var onFinish: (() -> Void)?
     var onFail: ((Error) -> Void)?
+    /// The web content process kept crashing; automatic reloads stopped.
+    var onCrashLoop: (() -> Void)?
+    private var crashReloads = ReloadBudget()
+
+    /// Gives automatic crash recovery a fresh budget (an explicit retry).
+    func resetCrashBudget() { crashReloads.reset() }
 
     static func isLocalScheme(_ url: URL?) -> Bool {
         guard let s = url?.scheme?.lowercased() else { return true }
@@ -55,8 +61,9 @@ final class Navigator: NSObject, WKNavigationDelegate {
             return
         }
         // Only a top-level navigation is the user's intent to go somewhere; a
-        // foreign sub-frame load is just blocked.
-        if mainFrame, let url {
+        // foreign sub-frame load is just blocked, as is any scheme that would
+        // launch an arbitrary app.
+        if mainFrame, let url, ExternalLinks.canOpenExternally(url) {
             NSWorkspace.shared.open(url)
         }
         decisionHandler(.cancel)
@@ -98,7 +105,11 @@ final class Navigator: NSObject, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        webView.reload()
+        if crashReloads.allow() {
+            webView.reload()
+        } else {
+            onCrashLoop?()
+        }
     }
 
     private func reportFailure(_ error: Error) {
