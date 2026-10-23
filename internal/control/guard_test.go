@@ -76,6 +76,32 @@ func TestSecurityGuardHostAndOrigin(t *testing.T) {
 	if c := code("127.0.0.1:9966", "null"); c != http.StatusForbidden {
 		t.Fatalf("opaque 'null' Origin must be blocked, got %d", c)
 	}
+	// Another local web app (dev server, notebook, launcher) is a different
+	// origin: XSS there must not become control of Interseptor.
+	if c := code("127.0.0.1:9966", "http://localhost:3000"); c != http.StatusForbidden {
+		t.Fatalf("loopback Origin on another port must be blocked, got %d", c)
+	}
+	if c := code("127.0.0.1:9966", "http://localhost:9966"); c != http.StatusNoContent {
+		t.Fatalf("same-port loopback Origin under another loopback name should pass, got %d", c)
+	}
+	if c := code("127.0.0.1:80", "http://127.0.0.1"); c != http.StatusNoContent {
+		t.Fatalf("default-port Origin should match port 80, got %d", c)
+	}
+}
+
+func TestHandlerRefusesFraming(t *testing.T) {
+	h, _, _ := newHub(t)
+	for _, path := range []string{"/", "/api/version"} {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966"+path, nil)
+		rec := httptest.NewRecorder()
+		h.Handler().ServeHTTP(rec, req)
+		if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+			t.Errorf("%s: X-Frame-Options = %q, want SAMEORIGIN", path, got)
+		}
+		if got := rec.Header().Get("Content-Security-Policy"); got != "frame-ancestors 'self'" {
+			t.Errorf("%s: Content-Security-Policy = %q", path, got)
+		}
+	}
 }
 
 // The loopback guard must not be defeatable by a spoofed Host header when the

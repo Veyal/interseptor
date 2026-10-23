@@ -33,6 +33,7 @@ import (
 	"github.com/Veyal/interseptor/internal/ios"
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/oob"
+	"github.com/Veyal/interseptor/internal/proc"
 	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/sender"
@@ -87,6 +88,7 @@ type Hub struct {
 	sysProxyDisable    func() error
 	sysProxyStatus     func() (bool, error)
 	sysProxySupported  func() bool
+	sysProxyOwnerAlive func(int) bool // is the instance that enabled the OS proxy still running?
 	// launchTestBrowser starts an isolated Chrome/Chromium pointed at the proxy;
 	// testBrowserAvailable reports whether a browser could be found. Seams so the
 	// handler is testable without launching a real browser.
@@ -201,10 +203,12 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sysProxyDisable:      sysproxy.Disable,
 		sysProxyStatus:       sysproxy.Status,
 		sysProxySupported:    sysproxy.Supported,
+		sysProxyOwnerAlive:   proc.AliveInterseptor,
 		launchTestBrowser:    testbrowser.Launch,
 		testBrowserAvailable: testbrowser.Available,
 		gcBodiesFn:           st.GCBodies,
 	}
+	h.snd.SetOwnListenerCheck(h.isOwnDialTarget)
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
@@ -244,7 +248,19 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 
 // Handler returns the control-plane HTTP handler, wrapped in the loopback/CSRF
 // security guard (see securityGuard).
-func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
+func (h *Hub) Handler() http.Handler { return noFraming(h.securityGuard(h.mux)) }
+
+// noFraming stops other sites from framing the UI (clickjacking a same-origin
+// action such as "Replay now"). The public OOB catcher answers callers verbatim.
+func noFraming(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/oob/") {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.

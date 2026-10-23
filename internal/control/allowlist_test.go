@@ -32,6 +32,48 @@ func TestClientIPTrustsForwardedOnlyFromLoopbackPeer(t *testing.T) {
 	}
 }
 
+// A DNS-rebinding page (its own domain resolving to 127.0.0.1) arrives from a
+// loopback peer with its domain as Host; it must not be able to claim an
+// allowlisted client IP through forwarded headers.
+func TestClientIPIgnoresForwardedHeadersForUntrustedHost(t *testing.T) {
+	for _, h := range []string{"X-Forwarded-For", "CF-Connecting-IP", "X-Real-IP"} {
+		req := httptest.NewRequest(http.MethodPost, "http://rebind.example.com:9966/api/keys", nil)
+		req.Host = "rebind.example.com:9966"
+		req.RemoteAddr = "127.0.0.1:5555"
+		req.Header.Set(h, "100.100.1.1")
+		if got := clientIP(req); got != "127.0.0.1" {
+			t.Fatalf("%s from a rebinding host: clientIP = %q, want the peer", h, got)
+		}
+	}
+	t.Setenv("INTERSEPTOR_TRUSTED_PROXY_HOSTS", "tunnel.example.com")
+	req := httptest.NewRequest(http.MethodGet, "http://tunnel.example.com/", nil)
+	req.Host = "tunnel.example.com"
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("X-Forwarded-For", "100.100.1.1")
+	if got := clientIP(req); got != "100.100.1.1" {
+		t.Fatalf("configured tunnel host: clientIP = %q", got)
+	}
+}
+
+func TestSecurityGuardAllowlistRejectsRebindingHost(t *testing.T) {
+	h, st, _ := newHub(t)
+	if _, err := st.AddIPAllowlist("100.64.0.0/10", "tailnet"); err != nil {
+		t.Fatal(err)
+	}
+	g := h.securityGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	req := httptest.NewRequest(http.MethodPost, "http://rebind.example.com:9966/api/keys", strings.NewReader(`{"scope":"full"}`))
+	req.Host = "rebind.example.com:9966"
+	req.RemoteAddr = "127.0.0.1:4444"
+	req.Header.Set("Origin", "http://rebind.example.com:9966")
+	req.Header.Set("X-Forwarded-For", "100.100.1.1")
+	req = req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9966}))
+	rec := httptest.NewRecorder()
+	g.ServeHTTP(rec, req)
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("rebinding page with spoofed X-Forwarded-For was let in via the allowlist")
+	}
+}
+
 func TestSecurityGuardAllowlistBypassesKey(t *testing.T) {
 	h, st, _ := newHub(t)
 	if _, err := st.AddIPAllowlist("100.65.105.2", "laptop"); err != nil {

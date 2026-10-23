@@ -126,7 +126,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 		case loopbackConn && loopbackHost:
 			// Unauthenticated loopback: the legacy local-trust path, byte-for-byte
 			// unchanged so local development keeps working with no login.
-			if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
+			if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o, r.Host) {
 				httpErr(w, http.StatusForbidden, "cross-origin request rejected")
 				return
 			}
@@ -310,12 +310,32 @@ func isLoopbackAddr(a net.Addr) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// isLoopbackOrigin reports whether an Origin header value points at loopback.
-// A malformed or opaque origin (e.g. "null") is treated as non-loopback.
-func isLoopbackOrigin(origin string) bool {
+// isLoopbackOrigin reports whether an Origin header value points at loopback on
+// the same port as host (the request's Host), so another local web app (a dev
+// server, a notebook, the launcher) cannot drive the control API. A malformed
+// or opaque origin (e.g. "null") is treated as non-loopback.
+func isLoopbackOrigin(origin, host string) bool {
 	u, err := url.Parse(origin)
-	if err != nil || u.Host == "" {
+	if err != nil || u.Host == "" || !isLoopbackHost(u.Host) {
 		return false
 	}
-	return isLoopbackHost(u.Host)
+	return originPort(u) == hostPort(host, u.Scheme)
+}
+
+func originPort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	return "80"
+}
+
+// hostPort returns the port of a Host header, defaulting by scheme.
+func hostPort(host, scheme string) string {
+	if _, p, err := net.SplitHostPort(host); err == nil && p != "" {
+		return p
+	}
+	return originPort(&url.URL{Scheme: scheme})
 }

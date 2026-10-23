@@ -19,6 +19,7 @@ interseptor [flags]
 | `--data-dir <path>` / `INTERSEPTOR_DATA_DIR` | Set the global data directory. |
 | `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` | Refuse non-loopback proxy, control, launcher, and related binds. |
 | `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the startup update check. |
+| `INTERSEPTOR_TRUSTED_PROXY_HOSTS` | Comma-separated hostnames of a reverse proxy or named tunnel whose `X-Forwarded-For` / `CF-Connecting-IP` / `X-Real-IP` count for the IP allowlist. Loopback, `*.ts.net` (Tailscale Serve) and `*.trycloudflare.com` are always trusted; any other `Host` uses the connecting peer's address. |
 
 Underscore aliases such as `--control_port` are accepted for compatibility, but hyphenated names are
 canonical.
