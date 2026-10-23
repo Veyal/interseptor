@@ -7,7 +7,7 @@ import {
 
 test('parseCommand routes every panel and command in the contract', () => {
   for (const p of PANELS) assert.deepEqual(parseCommand('panel:' + p), { action: 'panel', arg: p });
-  assert.equal(PANELS.length, 11);
+  assert.equal(PANELS.length, 12);
   assert.deepEqual(parseCommand('intercept:toggle-request'), { action: 'toggleRequestIntercept', arg: null });
   assert.deepEqual(parseCommand('intercept:toggle-response'), { action: 'toggleResponseIntercept', arg: null });
   assert.deepEqual(parseCommand('palette:open'), { action: 'openPalette', arg: null });

@@ -3,7 +3,6 @@ package control
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -38,25 +37,90 @@ func (h *authzAPI) mutateIdentities(fn func([]identity) ([]identity, error)) ([]
 	return next, nil
 }
 
-// stampIdentity records write time and (when given) owner on an identity.
-func stampIdentity(id identity, owner string, now time.Time) identity {
+// clearServerOwned drops the fields only the server writes (first-create stamp,
+// provenance, health), so a caller cannot forge who created an identity or
+// that its session was checked.
+func clearServerOwned(id identity) identity {
+	id.CreatedAt, id.CreatedBy, id.Source, id.LastCheck = "", "", nil, nil
+	return id
+}
+
+// stampIdentity records write time, owner and first-create metadata on an
+// identity. createdAt/createdBy are only filled when still empty; an upsert
+// over an existing identity carries the originals across (see
+// carryIdentityHistory), so they are written exactly once.
+func stampIdentity(id identity, actor string, now time.Time) identity {
 	id.Name = strings.TrimSpace(id.Name)
 	id.UpdatedAt = now.UTC().Format(time.RFC3339)
-	if owner != "" {
-		id.Owner = owner
+	if actor != "" {
+		id.Owner = actor
+	}
+	if id.CreatedAt == "" {
+		id.CreatedAt = id.UpdatedAt
+	}
+	if id.CreatedBy == "" {
+		id.CreatedBy = id.Owner
 	}
 	return id
+}
+
+// carryIdentityHistory preserves the metadata an upsert must not destroy: the
+// first-create stamp always, and the workspace fields a caller that only sent
+// {name, headers} never mentioned. PATCH edits in place and can clear them.
+func carryIdentityHistory(prev, next identity) identity {
+	if prev.CreatedAt != "" {
+		next.CreatedAt = prev.CreatedAt
+	}
+	if prev.CreatedBy != "" {
+		next.CreatedBy = prev.CreatedBy
+	}
+	if next.Role == "" {
+		next.Role = prev.Role
+	}
+	if next.Notes == "" {
+		next.Notes = prev.Notes
+	}
+	if next.Source == nil {
+		next.Source = prev.Source
+	}
+	if next.LastCheck == nil {
+		next.LastCheck = prev.LastCheck
+	}
+	return next
 }
 
 // upsertIdentity replaces the identity with the same name, or appends it.
 func upsertIdentity(list []identity, id identity) []identity {
 	for i := range list {
 		if list[i].Name == id.Name {
-			list[i] = id
+			list[i] = carryIdentityHistory(list[i], id)
 			return list
 		}
 	}
 	return append(list, id)
+}
+
+// findIdentity returns a copy of the identity named name.
+func findIdentity(list []identity, name string) (identity, bool) {
+	for _, id := range list {
+		if id.Name == name {
+			return id, true
+		}
+	}
+	return identity{}, false
+}
+
+// identityWriteEvent is the event kind for one upsert: a first create, a
+// broken-marking, or a plain update.
+func identityWriteEvent(prev identity, existed bool, next identity) string {
+	switch {
+	case !existed:
+		return identityEventCreated
+	case next.Broken && !prev.Broken:
+		return identityEventMarkedBroken
+	default:
+		return identityEventUpdated
+	}
 }
 
 // setAuthz saves identities. Default mode is merge-by-name so parallel callers
@@ -80,13 +144,29 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	owner := strings.TrimSpace(in.Owner)
+	actor := identityActor(r, in.Owner)
+	sourceKind := identityActorSourceKind(r)
+	type written struct {
+		name, event string
+	}
+	var log []written
 	out, err := h.mutateIdentities(func(cur []identity) ([]identity, error) {
+		// Replace drops identities missing from the list, but one that is still
+		// listed keeps its history: the legacy modal sends only {name, headers}.
+		before := cur
 		if mode == authzModeReplace {
 			cur = nil
 		}
 		for _, id := range in.Identities {
-			cur = upsertIdentity(cur, stampIdentity(id, owner, now))
+			prev, existed := findIdentity(before, strings.TrimSpace(id.Name))
+			stamped := stampIdentity(clearServerOwned(id), actor, now)
+			if existed {
+				stamped = carryIdentityHistory(prev, stamped)
+			} else {
+				stamped.Source = &identitySource{Kind: sourceKind}
+			}
+			log = append(log, written{stamped.Name, identityWriteEvent(prev, existed, stamped)})
+			cur = upsertIdentity(cur, stamped)
 		}
 		return cur, nil
 	})
@@ -94,7 +174,13 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	for _, wr := range log {
+		h.appendIdentityEvent(wr.name, wr.event, actor, "")
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"identities": out, "mode": mode})
+	for _, wr := range log {
+		h.broadcastAuthzIdentities(wr.name)
+	}
 }
 
 // addAuthzIdentity upserts exactly one identity by name.
@@ -107,21 +193,34 @@ func (h *authzAPI) addAuthzIdentity(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "name required")
 		return
 	}
+	actor := identityActor(r, id.Owner)
+	sourceKind := identityActorSourceKind(r)
+	var event, name string
 	out, err := h.mutateIdentities(func(cur []identity) ([]identity, error) {
-		return upsertIdentity(cur, stampIdentity(id, "", time.Now())), nil
+		prev, existed := findIdentity(cur, strings.TrimSpace(id.Name))
+		stamped := stampIdentity(clearServerOwned(id), actor, time.Now())
+		if existed {
+			stamped = carryIdentityHistory(prev, stamped)
+		} else {
+			stamped.Source = &identitySource{Kind: sourceKind}
+		}
+		event, name = identityWriteEvent(prev, existed, stamped), stamped.Name
+		return upsertIdentity(cur, stamped), nil
 	})
 	if err != nil {
 		httpInternalErr(w, err)
 		return
 	}
+	h.appendIdentityEvent(name, event, actor, "")
 	writeJSON(w, http.StatusOK, map[string]any{"identities": out})
+	h.broadcastAuthzIdentities(name)
 }
 
 // removeAuthzIdentity deletes one identity by name; other identities are untouched.
 func (h *authzAPI) removeAuthzIdentity(w http.ResponseWriter, r *http.Request) {
-	name, err := url.PathUnescape(r.PathValue("name"))
-	name = strings.TrimSpace(name)
-	if err != nil || name == "" {
+	// PathValue is already unescaped; unescaping again breaks names with '%'.
+	name := strings.TrimSpace(r.PathValue("name"))
+	if name == "" {
 		httpErr(w, http.StatusBadRequest, "name required")
 		return
 	}
@@ -148,5 +247,7 @@ func (h *authzAPI) removeAuthzIdentity(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, "identity not found")
 		return
 	}
+	h.dropIdentityEvents(name)
 	writeJSON(w, http.StatusOK, map[string]any{"identities": out})
+	h.broadcastAuthzIdentities(name)
 }

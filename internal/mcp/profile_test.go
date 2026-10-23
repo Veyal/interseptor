@@ -43,6 +43,7 @@ var fullToolNames = []string{
 	"check_readiness", "detect_ssl_pinning", "scope_from_url",
 	"request_human_input", "get_human_response", "host_stats", "prune_history",
 	"run_login_macro", "get_authz", "list_authz", "set_authz", "add_authz_identity",
+	"list_authz_runs", "get_authz_run",
 	"remove_authz_identity", "authz_differential", "auth_timeline", "authz_run",
 	"authz_check_sessions", "cross_host_token_replay",
 	"oob_state", "oob_new", "oob_set_base", "oob_enable",

@@ -16,13 +16,14 @@ import (
 // never by removal or cloning), and keep the sheets inside the design system.
 
 var desktopToolsSheets = []string{
-	"css/desktop/panel-collections.css", "css/desktop/panel-intruder.css",
+	"css/desktop/panel-collections.css", "css/desktop/panel-identities.css", "css/desktop/panel-intruder.css",
 	"css/desktop/panel-repeater.css", "css/desktop/panel-tools.css",
 }
 
 var desktopToolsModules = []string{
 	"js/desktop-panel-tools.js", "js/desktop-panel-kit.js", "js/desktop-panel-tools-model.js",
 	"js/desktop-panel-repeater.js", "js/desktop-panel-intruder.js", "js/desktop-panel-collections.js",
+	"js/desktop-panel-identities.js",
 }
 
 // flattenCSSRules returns every "selector{body}" pair, descending into @media
@@ -148,7 +149,7 @@ func TestUIDesktopToolsSharedSheetUsesClassSelectors(t *testing.T) {
 			t.Errorf("panel-tools.css selector %q uses a panel id; per-panel rules belong in the panel's sheet", r[0])
 		}
 	}
-	for _, name := range []string{"css/desktop/panel-repeater.css", "css/desktop/panel-intruder.css", "css/desktop/panel-collections.css"} {
+	for _, name := range []string{"css/desktop/panel-repeater.css", "css/desktop/panel-intruder.css", "css/desktop/panel-collections.css", "css/desktop/panel-identities.css"} {
 		panel := strings.TrimSuffix(strings.TrimPrefix(name, "css/desktop/panel-"), ".css")
 		for _, r := range flattenCSSRules(stripCSSComments(readUIAsset(t, name))) {
 			if !strings.Contains(r[0], "#panel-"+panel) {
@@ -207,9 +208,9 @@ func TestUIDesktopToolsMovedControlsStillExist(t *testing.T) {
 	var skip = map[string]bool{
 		// Built by the desktop modules themselves.
 		"repActionRow": true, "repMore": true, "repBarMore": true, "intrMore": true, "intrInfo": true, "collMoreTools": true,
-		"intrRunLine": true,
+		"intrRunLine": true, "identMoreTools": true,
 	}
-	for _, name := range []string{"js/desktop-panel-repeater.js", "js/desktop-panel-intruder.js", "js/desktop-panel-collections.js"} {
+	for _, name := range []string{"js/desktop-panel-repeater.js", "js/desktop-panel-intruder.js", "js/desktop-panel-collections.js", "js/desktop-panel-identities.js"} {
 		js := stripJSLineComments(readUIAsset(t, name))
 		for _, m := range regexp.MustCompile(`\$\('([^']+)'\)`).FindAllStringSubmatch(js, -1) {
 			for _, id := range idRE.FindAllStringSubmatch(m[1], -1) {

@@ -35,6 +35,9 @@ export const EVENTS = Object.freeze({
   SETUP_OPEN: 'setup:open',
   // tlsdiag.js owns the traffic-diagnosis view.
   TLS_RELOAD_DIAGNOSIS: 'tls:reload-diagnosis',
+  // identities.js owns the Identities panel: payload {name?, runId?} opens it on
+  // that identity and/or that access-test run.
+  IDENTITIES_OPEN: 'identities:open',
   // flow inspection (unified <flow-inspector>): any surface can ask to open a
   // flow or broadcast the current selection to popout windows.
   FLOW_SELECT: 'flow:select',

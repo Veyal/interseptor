@@ -1,5 +1,5 @@
 // desktop-panel-tools.js — entry of the desktop skin for the test panels
-// (Repeater, Intruder, Collections; docs/desktop-design.md, Panels). Loaded as
+// (Repeater, Intruder, Identities, Collections; docs/desktop-design.md, Panels). Loaded as
 // its own module script. In a browser tab nothing here runs: app.js marks
 // <html class="desktop-app"> only in a desktop host, and every panel module
 // starts after that class is present. The shared helpers live in
@@ -8,6 +8,7 @@ import { isDesktop } from './desktop-panel-kit.js';
 import { initRepeaterDesktop } from './desktop-panel-repeater.js';
 import { initIntruderDesktop } from './desktop-panel-intruder.js';
 import { initCollectionsDesktop } from './desktop-panel-collections.js';
+import { initIdentitiesDesktop } from './desktop-panel-identities.js';
 
 function boot() {
   if (!isDesktop() || boot.done) return;
@@ -15,6 +16,7 @@ function boot() {
   initRepeaterDesktop();
   initIntruderDesktop();
   initCollectionsDesktop();
+  initIdentitiesDesktop();
 }
 
 if (isDesktop()) boot();

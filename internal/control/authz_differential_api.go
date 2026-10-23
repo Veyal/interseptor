@@ -57,7 +57,8 @@ func (h *authzAPI) authzDifferentialRun(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, ev)
+	runID := h.persistAuthzRun(r, authzRunKindDifferential, flowTarget(f), authzMatrixFromDifferential(ev), ev)
+	writeJSONWithRunID(w, ev, runID)
 }
 
 // selectDifferentialIdentities filters the saved identities by name. An empty

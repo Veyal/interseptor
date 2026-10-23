@@ -18,14 +18,16 @@ struct MainMenu {
     let interceptResponses: NSMenuItem
     let inspector: NSMenuItem
 
-    /// Rail order. ⌘1–⌘9 go to the first nine; Activity takes ⌥⌘9. Settings
-    /// is ⌘, in the app menu (no second shortcut). None of these collide with
+    /// Rail order. ⌘1–⌘9 go to the original nine panels (Identities, added
+    /// later, has none); Activity takes ⌥⌘9. Settings is ⌘, in the app menu
+    /// (no second shortcut). None of these collide with
     /// a standard macOS shortcut or a Mod+ combo in the web UI (keys.js).
     static let panels: [PanelItem] = [
         PanelItem(title: "Proxy", id: "proxy", key: "1"),
         PanelItem(title: "Intercept", id: "intercept", key: "2"),
         PanelItem(title: "Repeater", id: "repeater", key: "3"),
         PanelItem(title: "Intruder", id: "intruder", key: "4"),
+        PanelItem(title: "Identities", id: "identities", key: ""), // no ⌘-digit: keeps ⌘5–⌘9 where they were
         PanelItem(title: "Collections", id: "collections", key: "5"),
         PanelItem(title: "Scanner", id: "scanner", key: "6"),
         PanelItem(title: "Map", id: "map", key: "7"),
@@ -78,10 +80,10 @@ struct MainMenu {
     private func appMenu() -> NSMenu {
         let m = NSMenu(title: "Interseptor")
         m.addItem(Self.item("About Interseptor", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
-        m.addItem(.separator())
-        m.addItem(Self.command("Settings…", "panel:settings", ","))
         m.addItem(Self.item("Check for Updates…", #selector(AppDelegate.checkForUpdates(_:))))
         m.addItem(Self.item("Automatically Check for Updates", #selector(AppDelegate.toggleAutomaticUpdateChecks(_:))))
+        m.addItem(.separator())
+        m.addItem(Self.command("Settings…", "panel:settings", ","))
         m.addItem(.separator())
         let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         let servicesMenu = NSMenu(title: "Services")

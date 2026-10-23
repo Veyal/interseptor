@@ -37,7 +37,7 @@ func TestReadKeyRedactsCredentialBearingGETResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, path := range []string{"/api/session", "/api/authz"} {
+	for _, path := range []string{"/api/session", "/api/authz", "/api/authz/identities/admin"} {
 		resp := credentialGET(t, h, path, "Bearer "+readKey, true)
 		if resp.Code != http.StatusOK {
 			t.Fatalf("GET %s: status %d", path, resp.Code)
@@ -76,7 +76,7 @@ func TestFullKeyAndLoopbackRetainCredentialBearingGETResponses(t *testing.T) {
 		{name: "loopback trust", remote: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, path := range []string{"/api/session", "/api/authz"} {
+			for _, path := range []string{"/api/session", "/api/authz", "/api/authz/identities/admin"} {
 				resp := credentialGET(t, h, path, tc.auth, tc.remote)
 				if resp.Code != http.StatusOK {
 					t.Fatalf("GET %s: status %d", path, resp.Code)

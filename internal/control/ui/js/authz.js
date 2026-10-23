@@ -34,7 +34,7 @@ function setAuthzActionBusy(busy) {
   const restore=!busy&&authzActionBusy?authzActionFocus:null;
   if(!busy)authzActionFocus=null;
   authzActionBusy = !!busy;
-  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose', '#authzScopeEdit'].forEach(sel => {
+  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose', '#authzScopeEdit', '#authzOpenIdentities'].forEach(sel => {
     const b = $(sel); if (!b) return;
     b.disabled = authzActionBusy;
     b.setAttribute('aria-busy', authzActionBusy ? 'true' : 'false');
@@ -356,7 +356,19 @@ function authzImageButton(d){
   return '<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"/></svg> Render image</button>'
     +'<button class="btn xs" id="authzCopyMatrixPng" aria-label="Copy this authorization matrix as a PNG image" title="Copy the matrix straight to the clipboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy matrix as PNG</button>';
 }
+// authzSavedRunLink: every run is kept server-side (GET /api/authz/runs/{id});
+// the link opens it in Identities → Access results.
+function authzSavedRunLink(d){
+  if(!(d&&d.runId))return '';
+  return '<button type="button" class="btn xs" id="authzSavedRun" title="Open this run in Identities, Access results"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-identity"/></svg> Saved to Access results</button>';
+}
+function wireAuthzSavedRun(d){
+  const b=$('#authzSavedRun');
+  if(!b||!d||!d.runId)return;
+  b.onclick=()=>{if(authzActionBusy)return;closeAuthz();busEmit(EVENTS.IDENTITIES_OPEN,{runId:String(d.runId)});};
+}
 function wireAuthzImageButton(d){
+  wireAuthzSavedRun(d);
   const b=$('#authzRenderImage');
   if(!b||!d.runId)return;
   b.onclick=()=>import('./evidence-render.js').then(m=>{const p=m.authzPreview(d.runId);return m.open(p.kind,p.params,{opener:b});}).catch(e=>toastError('Render failed',e));
@@ -370,7 +382,7 @@ function renderAuthzResults(d){
   const bulk=runs.length>1||authzMode==='scope';
   if(!bulk){
     const res=runs[0].results||[];
-    box.innerHTML=(d.runId?'<div class="row u-gap-2 u-mb-2"><div class="spacer"></div>'+authzImageButton(d)+'</div>':'')+'<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
+    box.innerHTML=(d.runId?'<div class="row u-gap-2 u-mb-2 u-wrap">'+authzSavedRunLink(d)+'<div class="spacer"></div>'+authzImageButton(d)+'</div>':'')+'<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
       +res.map((r,i)=>renderAuthzRow(r,i)).join('');
     wireAuthzFlowRows(box);
     wireAuthzImageButton(d);
@@ -382,7 +394,7 @@ function renderAuthzResults(d){
     <div class="spacer"></div>
     <button class="btn${authzViewMode==='list'?' on':''} xs" id="authzViewList"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg> List</button>
     <button class="btn${authzViewMode==='matrix'?' on':''} xs" id="authzViewMatrix"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"/></svg> Matrix</button>
-    ${authzImageButton(d)}
+    ${authzSavedRunLink(d)}${authzImageButton(d)}
   </div>`;
   box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
   $('#authzViewList')?.addEventListener('click',()=>{authzViewMode='list';renderAuthzResults(d);});
@@ -411,7 +423,8 @@ function renderCrossHostResults(d){
   const results=d.results||[];
   if(!results.length){box.innerHTML=authzEmptyState('globe','No in-scope hosts','Browse the target through the proxy first.');return;}
   const accepted=results.filter(r=>r.accepted).length;
-  let html=`<div class="hint u-mb-2">Cross-host JWT replay · <span class="u-mono">${esc(d.method||'')} ${esc(d.path||'/')}</span> · ${accepted} of ${results.length} host${results.length===1?'':'s'} accepted</div>`;
+  let html=d.runId?`<div class="row u-gap-2 u-mb-2">${authzSavedRunLink(d)}</div>`:'';
+  html+=`<div class="hint u-mb-2">Cross-host JWT replay · <span class="u-mono">${esc(d.method||'')} ${esc(d.path||'/')}</span> · ${accepted} of ${results.length} host${results.length===1?'':'s'} accepted</div>`;
   html+='<div class="authz-row authz-head"><span>host</span><span>status</span><span>length</span><span>verdict</span></div>';
   results.forEach(r=>{
     const err=!!r.error||r.status===0;
@@ -424,6 +437,7 @@ function renderCrossHostResults(d){
   });
   box.innerHTML=html;
   wireAuthzFlowRows(box);
+  wireAuthzSavedRun(d);
 }
 
 $('#authzAdd')&&($('#authzAdd').onclick=()=>{authzIdentityEditEpoch++;renderIdentities([...collectIds(),{name:'',headers:''}]);});
@@ -439,6 +453,7 @@ $('#authzSave')&&($('#authzSave').onclick=async()=>{
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 });
 $('#authzClose')&&($('#authzClose').onclick=closeAuthz);
+$('#authzOpenIdentities')&&($('#authzOpenIdentities').onclick=()=>{if(authzActionBusy)return;closeAuthz();busEmit(EVENTS.IDENTITIES_OPEN,{});});
 $('#authzMode')&&($('#authzMode').querySelectorAll('button').forEach(b=>b.onclick=()=>setAuthzMode(b.dataset.m)));
 $('#authzRun')&&($('#authzRun').onclick=async()=>{
   if(authzActionBusy)return;

@@ -3085,13 +3085,44 @@ func (s *Server) registerTools() {
 			"name":    p("string", "identity name (e.g. admin, user, anonymous)"),
 			"headers": p("string", "auth headers as 'Key: Value' lines (array or object also accepted); empty = anonymous"),
 			"owner":   p("string", "optional owner label"),
+			"role":    p("string", "optional role this identity represents (e.g. tenant admin, read-only)"),
+			"notes":   p("string", "optional free-text note kept with the identity"),
 		}, "name"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"name": argStr(a, "name"), "headers": a["headers"]}
-			if o := argStr(a, "owner"); o != "" {
-				body["owner"] = o
+			for _, k := range []string{"owner", "role", "notes"} {
+				if v := argStr(a, k); v != "" {
+					body[k] = v
+				}
 			}
 			return s.api(http.MethodPost, "/api/authz/identity", body)
+		})
+
+	s.add("list_authz_runs",
+		"List persisted authorization-run history newest first: id, ts, kind (single|bulk|differential|crosshost), actor, target endpoint, identity names and how many cells matched the baseline (suspicious).",
+		obj(map[string]any{"limit": p("integer", "max runs (default 50, newest first)")}),
+		func(a map[string]any) (string, error) {
+			path := "/api/authz/runs"
+			if v := argInt(a, "limit", 0); v > 0 {
+				path += "?limit=" + strconv.Itoa(v)
+			}
+			out, err := s.apiGet(path)
+			return boundJSON(out, 400), err
+		})
+
+	s.add("get_authz_run",
+		"Read one persisted authorization run by the runId its endpoint returned: summary plus the normalized identity x endpoint matrix (verdicts allowed|denied|error|same|different|expired) and the original response.",
+		obj(map[string]any{"runId": pt("integer")}, "runId"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "runId")
+			if err != nil {
+				return "", err
+			}
+			if id <= 0 {
+				return "", fmt.Errorf("runId is required (a non-zero integer)")
+			}
+			out, err := s.apiGet(fmt.Sprintf("/api/authz/runs/%d", id))
+			return boundJSON(out, 600), err
 		})
 
 	s.add("remove_authz_identity",
@@ -3147,7 +3178,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("authz_run",
-		"Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control.",
+		"Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control. The result's runId addresses the persisted run (get_authz_run, list_authz_runs).",
 		obj(map[string]any{
 			"flowId":     p("integer", "single flow to test"),
 			"inScope":    p("boolean", "bulk: deduped in-scope endpoints"),

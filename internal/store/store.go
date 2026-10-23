@@ -338,6 +338,20 @@ CREATE TABLE IF NOT EXISTS finding_verification (
   ts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_finding_verification_run ON finding_verification(run_id);
+
+-- Authorization-test run history (authz_runs.go). The three JSON blobs are
+-- opaque to the store: summary is the listing row, matrix the normalized
+-- identity x endpoint grid, raw the original handler response.
+CREATE TABLE IF NOT EXISTS authz_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT '',
+  actor TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '{}',
+  matrix TEXT NOT NULL DEFAULT '{}',
+  raw TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_authz_runs_ts ON authz_runs(ts);
 `
 
 // storePragmas is applied via the DSN so every pooled connection gets it.

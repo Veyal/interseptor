@@ -31,6 +31,53 @@ type identity struct {
 	// the server's write paths.
 	UpdatedAt string `json:"updatedAt,omitempty"`
 	Owner     string `json:"owner,omitempty"`
+
+	// Workspace metadata. Every field is optional and omitted when empty, so an
+	// identity list stored by an older build still decodes unchanged.
+	Role  string `json:"role,omitempty"`
+	Notes string `json:"notes,omitempty"`
+	// CreatedAt/CreatedBy are stamped once, on first create, and never
+	// overwritten by a later upsert (see carryIdentityHistory).
+	CreatedAt string          `json:"createdAt,omitempty"`
+	CreatedBy string          `json:"createdBy,omitempty"`
+	Source    *identitySource `json:"source,omitempty"`
+	LastCheck *identityCheck  `json:"lastCheck,omitempty"`
+}
+
+// identity source kinds. "login-macro" is part of the contract but no code
+// path produces it: the login macro (session.go) refreshes a live session, it
+// never creates an authz identity.
+const (
+	identitySourceManual     = "manual"
+	identitySourceFlow       = "flow"
+	identitySourceLoginMacro = "login-macro"
+	identitySourceAgent      = "agent"
+)
+
+// identitySource records where an identity's credentials came from.
+type identitySource struct {
+	Kind   string `json:"kind"`
+	FlowID int64  `json:"flowId,omitempty"`
+	Method string `json:"method,omitempty"`
+	Host   string `json:"host,omitempty"`
+	Path   string `json:"path,omitempty"`
+}
+
+// identity check verdicts (POST /api/authz/identities/{name}/check).
+const (
+	identityVerdictOK      = "ok"
+	identityVerdictExpired = "expired"
+	identityVerdictDenied  = "denied"
+	identityVerdictError   = "error"
+)
+
+// identityCheck is the stored result of the most recent session probe.
+type identityCheck struct {
+	TS      string `json:"ts"`
+	Status  int    `json:"status"`
+	Verdict string `json:"verdict"`
+	FlowID  int64  `json:"flowId,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // UnmarshalJSON accepts headers as a "Key: Value\n..." string (canonical form),
@@ -304,13 +351,20 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"runs": runs,
 		"summary": map[string]any{
 			"endpoints": len(runs),
 			"flagged":   flagged,
 		},
-	})
+	}
+	kind := authzRunKindBulk
+	var target *authzRunTarget
+	if in.FlowID > 0 {
+		kind, target = authzRunKindSingle, flowTarget(flows[0])
+	}
+	runID := h.persistAuthzRun(r, kind, target, authzMatrixFromRuns(runs), out)
+	writeJSONWithRunID(w, out, runID)
 }
 
 func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity, extra int64) authzRunOut {
@@ -714,19 +768,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		path = jwtextract.ReplayPath(path, jwt)
 	}
 
-	type hostResult struct {
-		Host     string `json:"host"`
-		Scheme   string `json:"scheme"`
-		Port     int    `json:"port"`
-		URL      string `json:"url"`
-		Status   int    `json:"status"`
-		Length   int64  `json:"length"`
-		Accepted bool   `json:"accepted"`
-		FlowID   int64  `json:"flowId,omitempty"`
-		Error    string `json:"error,omitempty"`
-	}
-
-	var results []hostResult
+	var results []crossHostResult
 	for _, t := range targets {
 		targetURL := t.scheme + "://" + netutil.URLAuthority(t.scheme, t.host, t.port) + path
 
@@ -747,7 +789,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			Options:   h.guardedOptions(nil),
 		})
 
-		hr := hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}
+		hr := crossHostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}
 		if sendErr != nil {
 			hr.Error = "send failed"
 		}
@@ -769,7 +811,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		jwtPreview = jwtPreview[:50] + "…"
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"flowId":    in.FlowID,
 		"method":    ref.Method,
 		"path":      path,
@@ -777,7 +819,23 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		"jwtSource": jwtSource,
 		"jwt":       jwtPreview,
 		"results":   results,
-	})
+	}
+	runID := h.persistAuthzRun(r, authzRunKindCrossHost, flowTarget(ref),
+		authzMatrixFromCrossHost(ref.Host, ref.Method, path, results), out)
+	writeJSONWithRunID(w, out, runID)
+}
+
+// crossHostResult is one host's reply to a cross-host token replay.
+type crossHostResult struct {
+	Host     string `json:"host"`
+	Scheme   string `json:"scheme"`
+	Port     int    `json:"port"`
+	URL      string `json:"url"`
+	Status   int    `json:"status"`
+	Length   int64  `json:"length"`
+	Accepted bool   `json:"accepted"`
+	FlowID   int64  `json:"flowId,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // flowURLStr reconstructs the absolute URL of a captured flow.

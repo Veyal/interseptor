@@ -96,7 +96,12 @@ type authzRunCache struct {
 func (c *authzRunCache) put(runs []authzRunOut) string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
-	id := hex.EncodeToString(b[:])
+	return c.putID(hex.EncodeToString(b[:]), runs)
+}
+
+// putID caches runs under a caller-chosen id (the persisted run's history id),
+// so the same id addresses the stored run and the renderable one.
+func (c *authzRunCache) putID(id string, runs []authzRunOut) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.runs[id] = runs
@@ -206,9 +211,13 @@ func trimAuthzRuns(runs []authzRunOut) []authzRunOut {
 }
 
 // captureAuthzRun wraps POST /api/authz/run: a successful response is cached
-// (bounded, see trimAuthzRuns) under a new runId, which is added to the JSON as
-// "runId". The authz handler itself is unchanged. Responses over
-// maxAuthzCaptureBytes are streamed to the client untouched and not cached.
+// (bounded, see trimAuthzRuns) so the matrix can still be rendered after the
+// run. The handler persists the run itself and puts its numeric history id in
+// the response as "runId"; the cache reuses that id as its key so one id
+// addresses both the history row and the renderer. Only when the handler
+// returned no id (an older/alternate response shape) does the cache mint a
+// random one. Responses over maxAuthzCaptureBytes are streamed to the client
+// untouched and not cached.
 func (e *evidenceAPI) captureAuthzRun(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		buf := &bufferedResponse{dst: w, header: http.Header{}, limit: maxAuthzCaptureBytes}
@@ -222,8 +231,14 @@ func (e *evidenceAPI) captureAuthzRun(next http.HandlerFunc) http.HandlerFunc {
 			if json.Unmarshal(body, &doc) == nil {
 				var runs []authzRunOut
 				if json.Unmarshal(doc["runs"], &runs) == nil && len(runs) > 0 {
-					id, _ := json.Marshal(e.authz.put(trimAuthzRuns(runs)))
-					doc["runId"] = id
+					var persisted int64
+					_ = json.Unmarshal(doc["runId"], &persisted)
+					if persisted > 0 {
+						e.authz.putID(strconv.FormatInt(persisted, 10), trimAuthzRuns(runs))
+					} else {
+						id, _ := json.Marshal(e.authz.put(trimAuthzRuns(runs)))
+						doc["runId"] = id
+					}
 					if out, err := json.Marshal(doc); err == nil {
 						body = append(out, '\n')
 					}

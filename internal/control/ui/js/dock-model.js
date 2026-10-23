@@ -5,14 +5,14 @@
 
 export const DOCK_DESTINATIONS = [
   { id: 'capture', label: 'Capture', icon: 'proxy', panels: ['proxy', 'intercept'] },
-  { id: 'test', label: 'Test', icon: 'repeater', panels: ['repeater', 'intruder', 'collections'] },
+  { id: 'test', label: 'Test', icon: 'repeater', panels: ['repeater', 'intruder', 'identities', 'collections'] },
   { id: 'recon', label: 'Recon', icon: 'scanner', panels: ['scanner', 'map'] },
   { id: 'report', label: 'Report', icon: 'report', panels: ['findings', 'notes', 'activity'] },
   { id: 'more', label: 'More', icon: 'more', panels: ['settings'] },
 ];
 
 export const PANEL_LABELS = {
-  proxy: 'Proxy', intercept: 'Intercept', repeater: 'Repeater', intruder: 'Intruder', collections: 'Collections',
+  proxy: 'Proxy', intercept: 'Intercept', repeater: 'Repeater', intruder: 'Intruder', identities: 'Identities', collections: 'Collections',
   scanner: 'Scanner', map: 'Map', findings: 'Findings', notes: 'Notes', activity: 'Activity', settings: 'Settings',
 };
 

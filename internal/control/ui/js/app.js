@@ -156,7 +156,7 @@ function resolveSavedTab(){
   if(id==='scanner'){try{if(localStorage.getItem('scanSub')==='findings')id='findings';}catch(e){}}
   if(id==='api')id='settings';
   if(id==='discover')id='map';
-  const known=['proxy','intercept','repeater','intruder','collections','scanner','map','findings','notes','activity','settings'];
+  const known=['proxy','intercept','repeater','intruder','identities','collections','scanner','map','findings','notes','activity','settings'];
   return known.includes(id)?id:'proxy';
 }
 function goToNotes(){

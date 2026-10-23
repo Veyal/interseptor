@@ -69,15 +69,21 @@ func (h *authzAPI) authzPromoteFromFlow(w http.ResponseWriter, r *http.Request) 
 	if in.Merge != nil {
 		merge = *in.Merge
 	}
-	ids, err := h.promoteFlowToAuthz(id, name, merge)
+	actor := identityActor(r, "")
+	ids, err := h.promoteFlowToAuthz(id, name, merge, actor, identityEventUpdated)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"identities": ids})
+	h.broadcastAuthzIdentities(name)
 }
 
-func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]identity, error) {
+// promoteFlowToAuthz writes a flow's captured auth headers into the identity
+// named name and records the flow as the identity's source. updateEvent is the
+// event kind logged when the identity already existed ("updated" for a
+// promote, "refreshed" for an explicit refresh-from-flow).
+func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool, actor, updateEvent string) ([]identity, error) {
 	f, err := h.st.GetFlow(flowID)
 	if err != nil {
 		return nil, err
@@ -86,11 +92,28 @@ func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]
 	if strings.TrimSpace(headers) == "" {
 		return nil, fmt.Errorf("flow #%d has no Cookie/Authorization headers to promote", flowID)
 	}
-	newID := stampIdentity(identity{Name: name, Headers: headers}, "", time.Now())
-	return h.mutateIdentities(func(ids []identity) ([]identity, error) {
+	src := &identitySource{Kind: identitySourceFlow, FlowID: f.ID, Method: f.Method, Host: f.Host, Path: f.Path}
+	newID := stampIdentity(identity{Name: name, Headers: headers, Source: src}, actor, time.Now())
+	event := identityEventCreated
+	ids, err := h.mutateIdentities(func(ids []identity) ([]identity, error) {
+		if _, existed := findIdentity(ids, newID.Name); existed {
+			event = updateEvent
+		}
 		if merge {
-			return upsertIdentity(ids, newID), nil
+			// New credentials invalidate the previous session check.
+			ids = upsertIdentity(ids, newID)
+			for i := range ids {
+				if ids[i].Name == newID.Name {
+					ids[i].LastCheck = nil
+				}
+			}
+			return ids, nil
 		}
 		return append(ids, newID), nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	h.appendIdentityEvent(newID.Name, event, actor, "auth headers from flow #"+itoa64(f.ID))
+	return ids, nil
 }

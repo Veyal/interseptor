@@ -11,7 +11,7 @@ test('five destinations map to the rail groups and cover every panel once', () =
   assert.equal(new Set(panels).size, panels.length);
   // Every rail panel has a dock destination; Collections sits with Repeater and
   // Intruder in Test, as on the rail (it used to be reachable only by the palette).
-  assert.deepEqual([...panels].sort(), ['activity', 'collections', 'findings', 'intercept', 'intruder', 'map', 'notes', 'proxy', 'repeater', 'scanner', 'settings']);
+  assert.deepEqual([...panels].sort(), ['activity', 'collections', 'findings', 'identities', 'intercept', 'intruder', 'map', 'notes', 'proxy', 'repeater', 'scanner', 'settings']);
   assert.equal(destinationForPanel('collections'), 'test');
 });
 

@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="/css/evidence-render.css">
 <link rel="stylesheet" href="/css/collections.css">
 <link rel="stylesheet" href="/css/collections-matrix.css">
+<link rel="stylesheet" href="/css/identities.css">
 <link rel="stylesheet" href="/css/projects.css">
 <link rel="stylesheet" href="/canvas.css">
 <link rel="stylesheet" href="/desktop.css">
@@ -42,6 +43,7 @@
 <link rel="stylesheet" href="/css/desktop/panel-scanner.css">
 <link rel="stylesheet" href="/css/desktop/panel-settings.css">
 <link rel="stylesheet" href="/css/desktop/panel-collections.css">
+<link rel="stylesheet" href="/css/desktop/panel-identities.css">
 <link rel="stylesheet" href="/css/desktop/panel-intruder.css">
 <link rel="stylesheet" href="/css/desktop/panel-repeater.css">
 <link rel="stylesheet" href="/css/desktop/panel-tools.css">
@@ -227,7 +229,7 @@
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
-<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="collections">Collections</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
@@ -240,6 +242,7 @@
     <div class="nav-rail-group-label">Test</div>
     <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test" title="Repeater"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg>Repeater</button>
     <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test" title="Intruder"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-intruder"/></svg>Intruder<span id="intrBadge" class="nav-dot" aria-hidden="true"></span></button>
+    <button class="tab" id="tab-identities" role="tab" aria-selected="false" aria-controls="panel-identities" data-tab="identities" data-group="Test" title="Identities"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-identity"/></svg>Identities</button>
     <button class="tab" id="tab-collections" role="tab" aria-selected="false" aria-controls="panel-collections" data-tab="collections" data-group="Test" title="Collections"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-collection"/></svg>Collections<span id="collBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
@@ -572,6 +575,26 @@ Content-Type: application/json
   </div>
 
   <!-- /region:intruder -->
+  <!-- region:identities -->
+  <!-- Identities: saved authorization identities | provenance, token, auth flow, access results -->
+  <div class="panel" id="panel-identities" role="tabpanel" aria-labelledby="tab-identities" data-panel="identities">
+    <div class="toolbar ident-bar">
+      <input id="identFilter" class="btn btn-field ident-filter" type="search" aria-label="Filter identities" placeholder="Filter identities" spellcheck="false" autocomplete="off">
+      <button type="button" class="btn" id="identNew" aria-label="New identity" title="Create an identity from header lines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span class="lbl-long">New</span></button>
+      <button type="button" class="btn" id="identFromFlow" aria-label="Identity from selected flow" title="Promote the Cookie and Authorization headers of the selected History flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span class="lbl-long">From selected flow</span></button>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="identRunTest" aria-haspopup="dialog" title="Open the authorization test for the selected History flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg><span class="lbl-long">Run access test</span></button>
+    </div>
+    <div id="identStatus" class="statusline ident-status" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div class="ident-root" id="identRoot">
+      <div class="split-list ident-list-col">
+        <div id="identList" class="ident-list" role="listbox" aria-label="Identities"></div>
+        <div id="identListState" class="ident-state"></div>
+      </div>
+      <section class="split-detail ident-detail" aria-label="Identity detail"><div id="identDetail" class="ident-detail-body"></div></section>
+    </div>
+  </div>
+  <!-- /region:identities -->
   <!-- region:scanner -->
   <!-- SCANNER -->
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
@@ -1823,7 +1846,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="authzModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg> Authorization test</span>
       <span class="hint u-ml-2">compare access across roles</span>
-      <div class="spacer"></div><button class="btn" id="authzClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      <div class="spacer"></div><button type="button" class="btn" id="authzOpenIdentities" title="Manage identities, their tokens and past access results"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-identity"/></svg> Open in Identities</button><button class="btn" id="authzClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body u-col u-gap-3">
       <p class="hint u-lh u-m-0">Define identities below — the <b>first is the baseline</b>. Each replay swaps auth headers. Lower-privileged roles with <b>~same-size</b> responses are flagged.</p>
@@ -1944,29 +1967,6 @@ Content-Type: application/json
     </div>
   </div>
 </div>
-<div id="confirmModal" class="modal-overlay modal-overlay-high">
-  <div role="dialog" aria-modal="true" aria-labelledby="confirmTitle" class="modal-shell modal-sm">
-    <div class="modal-plain-head"><div id="confirmTitle" class="modal-shell-title">Confirm</div></div>
-    <div class="modal-plain-body u-fs-sm u-lh u-fg2" id="confirmMsg"></div>
-    <div class="row modal-shell-foot"><button class="btn" id="confirmCancel">Cancel</button><button class="btn btn-primary" id="confirmOk">OK</button></div>
-  </div>
-</div>
-<div id="evRenderDialog" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="evRenderTitle" class="modal-shell evr-shell">
-    <div class="modal-shell-head"><div id="evRenderTitle" class="modal-shell-title">Evidence render</div><button type="button" class="btn evr-close" id="evRenderClose" aria-label="Close evidence render preview"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
-    <div class="evr-tabs" id="evRenderTabs" role="tablist" aria-label="Render kind" hidden></div>
-    <div class="modal-shell-body evr-body">
-      <p class="evr-hint" id="evRenderHint"></p>
-      <div class="evr-options" id="evRenderOptions" hidden>
-        <label class="evr-option" id="evRenderMaskRow" hidden><input type="checkbox" id="evRenderMask" checked> Mask payloads and extracted values</label>
-        <label class="evr-option" id="evRenderBodyRow" hidden><input type="checkbox" id="evRenderBody"> Include response body lines (redacted, may still show personal data)</label>
-      </div>
-      <figure class="evr-figure">
-        <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false" tabindex="0">
-          <p class="evr-state" id="evRenderLoading" hidden>Rendering from recorded data…</p>
-          <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
-          <img class="evr-img" id="evRenderImg" alt="" hidden>
-        </div>
 <div id="updateModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="updTitle" aria-describedby="updSummary" class="modal-shell upd-dialog">
     <div class="row modal-shell-head">
@@ -1995,6 +1995,29 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<div id="confirmModal" class="modal-overlay modal-overlay-high">
+  <div role="dialog" aria-modal="true" aria-labelledby="confirmTitle" class="modal-shell modal-sm">
+    <div class="modal-plain-head"><div id="confirmTitle" class="modal-shell-title">Confirm</div></div>
+    <div class="modal-plain-body u-fs-sm u-lh u-fg2" id="confirmMsg"></div>
+    <div class="row modal-shell-foot"><button class="btn" id="confirmCancel">Cancel</button><button class="btn btn-primary" id="confirmOk">OK</button></div>
+  </div>
+</div>
+<div id="evRenderDialog" class="modal-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="evRenderTitle" class="modal-shell evr-shell">
+    <div class="modal-shell-head"><div id="evRenderTitle" class="modal-shell-title">Evidence render</div><button type="button" class="btn evr-close" id="evRenderClose" aria-label="Close evidence render preview"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
+    <div class="evr-tabs" id="evRenderTabs" role="tablist" aria-label="Render kind" hidden></div>
+    <div class="modal-shell-body evr-body">
+      <p class="evr-hint" id="evRenderHint"></p>
+      <div class="evr-options" id="evRenderOptions" hidden>
+        <label class="evr-option" id="evRenderMaskRow" hidden><input type="checkbox" id="evRenderMask" checked> Mask payloads and extracted values</label>
+        <label class="evr-option" id="evRenderBodyRow" hidden><input type="checkbox" id="evRenderBody"> Include response body lines (redacted, may still show personal data)</label>
+      </div>
+      <figure class="evr-figure">
+        <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false" tabindex="0">
+          <p class="evr-state" id="evRenderLoading" hidden>Rendering from recorded data…</p>
+          <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
+          <img class="evr-img" id="evRenderImg" alt="" hidden>
+        </div>
         <figcaption class="evr-caption" id="evRenderCaption"></figcaption>
       </figure>
       <p class="evr-summary" id="evRenderSummary" aria-hidden="true"></p>
@@ -2131,6 +2154,7 @@ Content-Type: application/json
 <script type="module" src="/js/app.js"></script>
 <script type="module" src="/js/desktop-panel-tools.js"></script>
 <script type="module" src="/js/collections.js"></script>
+<script type="module" src="/js/identities.js"></script>
 <script type="module" src="/js/runner.js"></script>
 <script type="module" src="/js/collections-matrix.js"></script>
 <script type="module" src="/js/desktop-panel-intercept.js"></script>

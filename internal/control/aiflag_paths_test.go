@@ -231,6 +231,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/authz":                           "stores identities",
 	"/api/authz/from-flow/{}":              "promotes a captured flow to an identity",
 	"/api/authz/identity":                  "stores an identity",
+	"/api/authz/runs":                      "reads persisted authz run history",
 	"/api/checks":                          "stores check scripts",
 	"/api/checks/test":                     "runs a check against an already stored flow",
 	"/api/codecs":                          "stores codecs",
