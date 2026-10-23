@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.18.0` release.
+
 ## [2.18.0] - 2026-10-23
 
 > Minor release: one-command Chrome for Testing install, finding status triage while
