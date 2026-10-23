@@ -1967,6 +1967,34 @@ Content-Type: application/json
           <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
           <img class="evr-img" id="evRenderImg" alt="" hidden>
         </div>
+<div id="updateModal" class="modal-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="updTitle" aria-describedby="updSummary" class="modal-shell upd-dialog">
+    <div class="row modal-shell-head">
+      <span id="updTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg> Update Interseptor</span>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="updClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="modal-shell-body upd-body">
+      <p id="updSummary" class="upd-summary"></p>
+      <p id="updNotice" class="upd-notice" hidden></p>
+      <div id="updCommand" class="upd-command" hidden>
+        <code id="updCommandText"></code>
+        <button type="button" class="btn" id="updCopy" aria-label="Copy command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button>
+      </div>
+      <div id="updProgress" class="upd-progress" hidden>
+        <div class="upd-progress-head"><span id="updPhase"></span><span id="updBytes" class="upd-bytes"></span></div>
+        <div id="updBar" class="upd-bar" role="progressbar" aria-labelledby="updPhase" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="updBarFill" class="upd-bar-fill"></div></div>
+      </div>
+      <p id="updError" class="upd-error" role="alert" hidden></p>
+      <h3 class="upd-notes-title">Release notes</h3>
+      <div id="updNotes" class="upd-notes md"></div>
+    </div>
+    <div class="row modal-shell-foot">
+      <a class="btn" id="updRelease" href="https://github.com/Veyal/interseptor/releases" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-external"/></svg> View release</a>
+      <button type="button" class="btn btn-primary" id="updAction">Update</button>
+    </div>
+  </div>
+</div>
         <figcaption class="evr-caption" id="evRenderCaption"></figcaption>
       </figure>
       <p class="evr-summary" id="evRenderSummary" aria-hidden="true"></p>

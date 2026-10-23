@@ -672,8 +672,20 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 
 // scheduleProjectSwitch arms a delayed switch to target after d, canceling any
 // pending switch first so rapid repeated requests don't stack delayed re-execs —
-// only the latest target actually fires. Guarded by switchMu.
+// only the latest target actually fires.
 func (h *Hub) scheduleProjectSwitch(target string, d time.Duration) {
+	h.scheduleRelaunch(d, "project switch to "+strconv.Quote(target), func() error {
+		if h.SwitchProject == nil {
+			return nil
+		}
+		return h.SwitchProject(target)
+	})
+}
+
+// scheduleRelaunch runs relaunch (a re-exec of this process) after d. A newer
+// request replaces a pending one, and hub shutdown cancels it and waits for a
+// relaunch already in flight. Guarded by switchMu.
+func (h *Hub) scheduleRelaunch(d time.Duration, what string, relaunch func() error) {
 	h.switchMu.Lock()
 	defer h.switchMu.Unlock()
 	if h.switchClosed {
@@ -689,14 +701,11 @@ func (h *Hub) scheduleProjectSwitch(target string, d time.Duration) {
 			return
 		}
 		h.switchTimer = nil
-		switchProject := h.SwitchProject
 		h.switchWG.Add(1)
 		h.switchMu.Unlock()
 		defer h.switchWG.Done()
-		if switchProject != nil {
-			if err := switchProject(target); err != nil {
-				log.Printf("control: project switch to %q failed: %v", target, err)
-			}
+		if err := relaunch(); err != nil {
+			log.Printf("control: %s failed: %v", what, err)
 		}
 	})
 }

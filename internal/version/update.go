@@ -395,7 +395,13 @@ func releaseAssetExists(ctx context.Context, url string) bool {
 
 // pickAsset chooses a release archive for the running platform.
 func pickAsset(rel *releaseInfo, version string) (name, url string) {
-	candidates := assetCandidates(version, runtime.GOOS, runtime.GOARCH)
+	return pickAssetFor(rel, version, runtime.GOOS, runtime.GOARCH)
+}
+
+// pickAssetFor chooses a release archive for goos/goarch: an exact GoReleaser
+// name first, then any archive naming both the OS and the architecture.
+func pickAssetFor(rel *releaseInfo, version, goos, goarch string) (name, url string) {
+	candidates := assetCandidates(version, goos, goarch)
 	byName := map[string]string{}
 	for _, a := range rel.Assets {
 		byName[strings.ToLower(a.Name)] = a.URL
@@ -406,7 +412,7 @@ func pickAsset(rel *releaseInfo, version string) (name, url string) {
 		}
 	}
 	// Fuzzy: any archive that mentions os+arch.
-	osToken, archToken := platformTokens(runtime.GOOS, runtime.GOARCH)
+	osToken, archToken := platformTokens(goos, goarch)
 	for _, a := range rel.Assets {
 		low := strings.ToLower(a.Name)
 		if !strings.HasSuffix(low, ".tar.gz") && !strings.HasSuffix(low, ".zip") {
@@ -467,6 +473,11 @@ func platformTokens(goos, goarch string) (osToken, archToken string) {
 // or no line for the asset, is an error so an unverified binary is never
 // installed.
 func checksumFor(rel *releaseInfo, assetName string) (string, error) {
+	return checksumForCtx(context.Background(), rel, assetName)
+}
+
+// checksumForCtx is checksumFor bound to ctx (cancellation from the caller).
+func checksumForCtx(ctx context.Context, rel *releaseInfo, assetName string) (string, error) {
 	var url string
 	for _, a := range rel.Assets {
 		if strings.EqualFold(a.Name, "checksums.txt") {
@@ -477,7 +488,7 @@ func checksumFor(rel *releaseInfo, assetName string) (string, error) {
 	if url == "" {
 		return "", errors.New("release has no checksums.txt")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	data, err := download(ctx, url, nil)
 	if err != nil {
@@ -545,27 +556,46 @@ func verifySHA256(data []byte, want string) error {
 }
 
 func download(ctx context.Context, url string, prog *updateProgress) ([]byte, error) {
+	var report func(done, total int64)
+	if prog != nil {
+		report = prog.downloadProgress
+	}
+	data, total, err := fetchAsset(ctx, url, report)
+	if prog != nil && prog.term {
+		prog.downloadProgress(int64(len(data)), total)
+	}
+	return data, err
+}
+
+// downloadReport downloads url, calling report(done, total) at most every
+// 200ms and once at the end.
+func downloadReport(ctx context.Context, url string, report func(done, total int64)) ([]byte, error) {
+	data, total, err := fetchAsset(ctx, url, report)
+	if err == nil && report != nil {
+		report(int64(len(data)), total)
+	}
+	return data, err
+}
+
+func fetchAsset(ctx context.Context, url string, report func(done, total int64)) ([]byte, int64, error) {
 	req, err := newGitHubRequest(ctx, http.MethodGet, url)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
+		return nil, 0, fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
 	}
 	var body io.Reader = resp.Body
-	if prog != nil {
-		body = &progressReader{r: resp.Body, prog: prog, total: resp.ContentLength}
+	if report != nil {
+		body = &progressReader{r: resp.Body, report: report, total: resp.ContentLength}
 	}
 	data, err := io.ReadAll(io.LimitReader(body, 256<<20))
-	if prog != nil && prog.term {
-		prog.downloadProgress(int64(len(data)), resp.ContentLength)
-	}
-	return data, err
+	return data, resp.ContentLength, err
 }
 
 func extractBinary(archive []byte, name string) ([]byte, error) {
@@ -635,12 +665,18 @@ func untarGzWithLimits(data []byte, limits archiveReadLimits) ([]byte, error) {
 		expandedBytes += h.Size
 		base := filepath.Base(h.Name)
 		if isReleaseBinaryName(base) {
+			if h.Typeflag != tar.TypeReg {
+				return nil, fmt.Errorf("update archive member %q is not a regular file", h.Name)
+			}
 			binary, err := io.ReadAll(&io.LimitedReader{R: tr, N: limits.fileBytes + 1})
 			if err != nil {
 				return nil, fmt.Errorf("read update binary: %w", err)
 			}
 			if int64(len(binary)) > limits.fileBytes {
 				return nil, fmt.Errorf("update binary exceeds expanded size limit of %d bytes", limits.fileBytes)
+			}
+			if len(binary) == 0 {
+				return nil, fmt.Errorf("update binary %q is empty", h.Name)
 			}
 			return binary, nil
 		}
@@ -685,6 +721,9 @@ func unzipBinWithLimits(data []byte, limits archiveReadLimits) ([]byte, error) {
 		if !isReleaseBinaryName(base) {
 			continue
 		}
+		if !f.Mode().IsRegular() {
+			return nil, fmt.Errorf("update archive member %q is not a regular file", f.Name)
+		}
 		rc, err := f.Open()
 		if err != nil {
 			return nil, err
@@ -697,6 +736,9 @@ func unzipBinWithLimits(data []byte, limits archiveReadLimits) ([]byte, error) {
 		if int64(len(binary)) > limits.fileBytes {
 			return nil, fmt.Errorf("update binary exceeds expanded size limit of %d bytes", limits.fileBytes)
 		}
+		if len(binary) == 0 {
+			return nil, fmt.Errorf("update binary %q is empty", f.Name)
+		}
 		return binary, nil
 	}
 	return nil, fmt.Errorf("interseptor binary not found in zip")
@@ -706,6 +748,12 @@ func installBinary(dest string, data []byte, legacyPath string) error {
 	if runtime.GOOS == "windows" {
 		return installBinaryWindows(dest, data, legacyPath)
 	}
+	return installBinaryUnix(dest, data, legacyPath)
+}
+
+// installBinaryUnix writes dest.new and renames it over dest. The rename is
+// atomic and a running process keeps executing its old inode.
+func installBinaryUnix(dest string, data []byte, legacyPath string) error {
 	tmp := dest + ".new"
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
 		return err

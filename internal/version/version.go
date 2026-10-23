@@ -18,6 +18,11 @@ import (
 // §"Cutting a release".
 var Version = "2.18.1"
 
+// Channel is "release" in binaries GoReleaser publishes (set through -ldflags
+// -X). Any other build came from source, and one-click self-update leaves it
+// alone rather than overwrite a developer's binary with a release.
+var Channel = ""
+
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interseptor"
 

@@ -160,8 +160,9 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 	dialogs := re.FindAllStringSubmatch(index, -1)
 	// #flowModal was removed when the three inspection surfaces were unified into
 	// the single Flow Drawer (#103); the inspector is no longer a centered dialog.
-	if len(dialogs) != 18 {
-		t.Fatalf("found %d dialogs, want exactly 18 live dialogs", len(dialogs))
+	// #updateModal (one-click update) brought the count to 19.
+	if len(dialogs) != 19 {
+		t.Fatalf("found %d dialogs, want exactly 19 live dialogs", len(dialogs))
 	}
 	for _, dialog := range dialogs {
 		if !strings.Contains(core, "'"+dialog[1]+"'") {

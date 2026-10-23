@@ -83,6 +83,7 @@ func (h *Hub) Close() {
 		if h.hi != nil {
 			h.hi.close()
 		}
+		h.upd.stop()
 		h.stopProjectSwitch()
 		h.StopTunnel()
 		h.closeActivitySocket()

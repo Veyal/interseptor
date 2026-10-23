@@ -26,7 +26,7 @@ func TestUIDesktopModelAndBridgeUnderNode(t *testing.T) {
 func TestUIDesktopBridgeIsWiredFromAppBoot(t *testing.T) {
 	app := readUIAsset(t, "js/app.js")
 	requireUIContains(t, app,
-		"import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp } from './desktop.js';",
+		"import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp, requestNativeUpdateCheck } from './desktop.js';",
 		"initDesktop({",
 		// Commands reuse the shell's own paths, not duplicate fetches.
 		"toggleIntercept();return true;", "toggleResponseIntercept();return true;",

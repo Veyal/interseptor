@@ -286,6 +286,7 @@ func run() error {
 			return reexecProject(exe, target)
 		}
 	}
+	wireSelfUpdate(hub, restartProjectTarget(globalDir, projectName, dir))
 	prx := proxy.New(st, capture.New(st), ca, eng, hub)
 	prx.Scope = sc
 	// Official example extension (issue #25): opt-in via env, off by default.

@@ -260,3 +260,23 @@ test('Ctrl+wheel blocker is installed for the Chrome --app window only, not the 
   m2.initDesktop();
   assert.equal(chrome.listeners.includes('wheel'), true);
 });
+
+test('update check: the native macOS app gets check-updates; other hosts return false', async () => {
+  const posted = [];
+  installDom({ host: { platform: 'macos', version: '0', post: (msg) => posted.push(msg) } });
+  const native = await import('../js/desktop.js?case=update-native');
+  native.initDesktop();
+  posted.length = 0;
+  assert.equal(native.requestNativeUpdateCheck(), true);
+  assert.deepEqual(posted, [{ type: 'check-updates' }]);
+
+  installDom({ standalone: true });
+  const chrome = await import('../js/desktop.js?case=update-chrome');
+  chrome.initDesktop();
+  assert.equal(chrome.requestNativeUpdateCheck(), false, 'Chrome --app windows use the web dialog');
+
+  installDom();
+  const tab = await import('../js/desktop.js?case=update-tab');
+  tab.initDesktop();
+  assert.equal(tab.requestNativeUpdateCheck(), false, 'browser tabs use the web dialog');
+});

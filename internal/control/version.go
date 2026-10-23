@@ -20,7 +20,12 @@ func (h *metaAPI) apiVersion(w http.ResponseWriter, r *http.Request) {
 	h.updMu.Lock()
 	latest, avail := h.updLatest, h.updAvail
 	h.updMu.Unlock()
+	method := ""
+	if h.Updater != nil {
+		method = string(h.Updater.Install().Method)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"installMethod":   method, // "desktop": the native macOS app runs and updates this server
 		"version":         version.String(),
 		"latest":          latest,
 		"updateAvailable": avail,

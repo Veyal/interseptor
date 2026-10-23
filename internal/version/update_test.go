@@ -57,30 +57,6 @@ func TestDownloadUsesGitHubToken(t *testing.T) {
 	}
 }
 
-func pickAssetFor(rel *releaseInfo, version, goos, goarch string) (string, string) {
-	candidates := assetCandidates(version, goos, goarch)
-	byName := map[string]string{}
-	for _, a := range rel.Assets {
-		byName[strings.ToLower(a.Name)] = a.URL
-	}
-	for _, c := range candidates {
-		if u, ok := byName[strings.ToLower(c)]; ok {
-			return c, u
-		}
-	}
-	osToken, archToken := platformTokens(goos, goarch)
-	for _, a := range rel.Assets {
-		low := strings.ToLower(a.Name)
-		if !strings.HasSuffix(low, ".tar.gz") && !strings.HasSuffix(low, ".zip") {
-			continue
-		}
-		if strings.Contains(low, osToken) && strings.Contains(low, archToken) {
-			return a.Name, a.URL
-		}
-	}
-	return "", ""
-}
-
 func TestUntarGz(t *testing.T) {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
@@ -200,7 +176,7 @@ func TestProgressReaderReports(t *testing.T) {
 	var buf bytes.Buffer
 	prog := &updateProgress{out: &buf, term: false}
 	data := bytes.Repeat([]byte("x"), 3<<20)
-	_, err := io.ReadAll(&progressReader{r: bytes.NewReader(data), prog: prog, total: int64(len(data))})
+	_, err := io.ReadAll(&progressReader{r: bytes.NewReader(data), report: prog.downloadProgress, total: int64(len(data))})
 	if err != nil {
 		t.Fatal(err)
 	}

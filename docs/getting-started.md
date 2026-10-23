@@ -27,6 +27,8 @@ interseptor update --version 2.1.0
 
 `interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
 
+**Or update from the UI.** When a newer release is out, the version badge at the bottom of the navigation rail reads `↑ vX.Y.Z available`. Click it to see the release notes, then **Update**: Interseptor downloads the release, verifies it against `checksums.txt` (a mismatch stops the update and leaves your binary untouched), and installs it while you keep working. **Restart to Update** then relaunches the new version on the same project and ports, and the page reconnects by itself. Copies installed with Homebrew or Scoop show the command to run instead (`brew upgrade interseptor`, `scoop update interseptor`); local development builds and binaries in a folder you cannot write to explain why they cannot update themselves. The macOS app runs its own updater when you click the badge. AI agents cannot start an update.
+
 Every tagged version is listed on the [**Releases**](https://github.com/Veyal/interseptor/releases)
 page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins one.
 

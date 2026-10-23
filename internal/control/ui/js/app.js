@@ -34,7 +34,9 @@ import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
 import { liveEventStalesReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
-import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp } from './desktop.js';
+import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp, requestNativeUpdateCheck } from './desktop.js';
+import { openUpdateDialog, handleUpdateProgress } from './update.js';
+import { handleBadgeClick } from './update-model.js';
 import { initDesktopShell } from './desktop-shell.js';
 import { isMac, hasNativeHost } from './desktop-panel-kit.js';
 export { registerCommand, registerSseHandler };
@@ -713,21 +715,36 @@ function markVersionFailed(el){
   el.textContent='v?';el.dataset.failed='true';el.classList.remove('is-update');
   el.title='Could not read the version. Click to retry.';
 }
+// A click retries a failed read; with an update available it opens the update
+// dialog, or hands off to the native macOS app's own updater. Otherwise the
+// badge is a plain link to the releases page.
+function versionBadgeClick(el){
+  return handleBadgeClick({
+    failed:!!el&&el.dataset.failed==='true',
+    updateAvailable:!!el&&el.classList.contains('is-update'),
+    retry:()=>loadVersion(false),
+    // Only a server the macOS app itself runs is updated by the app; a remote,
+    // Homebrew or standalone server updates through its own dialog.
+    requestNative:()=>!!el&&el.dataset.installMethod==='desktop'&&requestNativeUpdateCheck(),
+    openDialog:openUpdateDialog,
+  });
+}
 {const el=$('#verBadge');if(el)el.addEventListener('click',e=>{
-  if(el.dataset.failed!=='true')return;
-  e.preventDefault();loadVersion(false);
+  if(versionBadgeClick(el))e.preventDefault();
 });}
+registerSseHandler('update.progress',handleUpdateProgress);
 async function loadVersion(retry){
   const el=$('#verBadge');
   try{
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
+    el.dataset.installMethod=d.installMethod||'';
     if(d.project)setTitleProject(d.project);
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent=d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
       el.textContent='↑ v'+d.latest+' available';el.classList.add('is-update');
-      el.title='You have v'+(d.version||'?')+' — a newer release is available. Click for releases.';
+      el.title='You have v'+(d.version||'?')+' — v'+d.latest+' is available. Click to update.';
     }else{
       el.textContent='v'+(d.version||'');el.classList.remove('is-update');
       el.title='Interseptor v'+(d.version||'');
@@ -961,10 +978,10 @@ if(isDesktopApp()){
       closeConnection:()=>closeConnectionPopover(),
       connectionOpen:()=>!!$('#connPop')&&!$('#connPop').hidden,
       openProject:()=>{if(projectScopedUIReady)openProjectModal();},
-      // The version item opens the releases page (what's new). #verBadge sits in
-      // the hidden rail foot on desktop, so its link is opened directly; a failed
-      // version read retries instead, as the badge itself does.
-      openReleases:()=>{const b=$('#verBadge');if(b&&b.dataset.failed==='true'){loadVersion(false);return;}window.open((b&&b.href)||'https://github.com/Veyal/interseptor/releases','_blank','noopener');},
+      // The version item acts like the badge (#verBadge sits in the hidden rail
+      // foot on desktop): retry a failed read, update when a release is
+      // available, otherwise open the releases page.
+      openReleases:()=>{const b=$('#verBadge');if(versionBadgeClick(b))return;window.open((b&&b.href)||'https://github.com/Veyal/interseptor/releases','_blank','noopener');},
       toggleIntercept:()=>{const b=$('#interceptToggle');if(b&&!b.disabled)toggleIntercept();},
     },
     registerCommand,

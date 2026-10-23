@@ -2284,7 +2284,7 @@ export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal'
   // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
   // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
   'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet','collEnvSheet','collScriptsSheet','collImportSheet','collExportSheet','collRunSheet',
-  'collMatrixSheet','collCoverageSheet','collTimingSheet','collExampleDiffSheet'];
+  'collMatrixSheet','collCoverageSheet','collTimingSheet','collExampleDiffSheet','updateModal'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];

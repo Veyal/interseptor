@@ -5,7 +5,8 @@
 // page zoom and drag ghosts on chrome. The native macOS shell additionally gets
 // a two-way bridge on window.interseptorDesktop:
 //   UI → native  post({type:'ready'}), {type:'theme',…}, {type:'status',…},
-//                {type:'drag-regions',rects,exclude}, {type:'file-accept',accept}
+//                {type:'drag-regions',rects,exclude}, {type:'file-accept',accept},
+//                {type:'check-updates'} (the native app runs its own updater)
 //   native → UI  run(command) → boolean, and the --titlebar-inset-left CSS
 //                variable on <html> (the traffic lights' width; 0 in full screen)
 // A host with a unified title bar (interseptorDesktop.titlebar === 'unified')
@@ -210,6 +211,15 @@ function focusFind() {
   el.focus();
   if (typeof el.select === 'function') el.select();
   return document.activeElement === el;
+}
+
+// requestNativeUpdateCheck hands an update to the native macOS app, which
+// replaces the whole signed bundle itself. False without a native bridge
+// (browser tab, Chrome --app window): the caller opens the web update dialog.
+export function requestNativeUpdateCheck() {
+  if (!bridge()) return false;
+  post({ type: 'check-updates' });
+  return true;
 }
 
 // noteDesktopStatus tells the bridge a status source may have changed; the

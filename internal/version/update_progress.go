@@ -73,7 +73,7 @@ func (p *updateProgress) downloadDone() {
 
 type progressReader struct {
 	r          io.Reader
-	prog       *updateProgress
+	report     func(done, total int64)
 	total      int64
 	n          int64
 	lastReport time.Time
@@ -84,7 +84,7 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	if n > 0 {
 		pr.n += int64(n)
 		if time.Since(pr.lastReport) >= 200*time.Millisecond || err == io.EOF {
-			pr.prog.downloadProgress(pr.n, pr.total)
+			pr.report(pr.n, pr.total)
 			pr.lastReport = time.Now()
 		}
 	}

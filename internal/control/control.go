@@ -43,6 +43,7 @@ import (
 	"github.com/Veyal/interseptor/internal/testbrowser"
 	"github.com/Veyal/interseptor/internal/tlsca"
 	"github.com/Veyal/interseptor/internal/tunnel"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 //go:embed ui
@@ -77,6 +78,7 @@ type Hub struct {
 	hi            *humanInput // pending AI→human input prompts (request_human_input)
 	mux           *http.ServeMux
 	authzMu       sync.Mutex // serializes read-modify-write of saved authz identities
+	authzEventsMu sync.Mutex // serializes read-modify-write of the per-identity event log
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
@@ -156,6 +158,13 @@ type Hub struct {
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
 	updLatest string
 	updAvail  bool
+
+	// Updater drives the web UI's one-click self-update; nil disables it.
+	// RestartForUpdate relaunches the staged binary on the same project and
+	// ports (re-exec on Unix, spawn-and-exit on Windows). Both set by cmd.
+	Updater          SelfUpdater
+	RestartForUpdate func(version.StagedUpdate) error
+	upd              updateJob
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
