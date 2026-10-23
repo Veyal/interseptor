@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/andybalholm/brotli v1.2.1
+	github.com/dlclark/regexp2/v2 v2.8.1
 	github.com/dop251/goja v0.0.0-20261006212518-44620e89763c
 	github.com/klauspost/compress v1.18.6
 	github.com/pandatix/go-cvss v0.6.4
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/dlclark/regexp2/v2 v2.8.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect

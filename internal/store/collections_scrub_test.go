@@ -17,6 +17,7 @@ var secretCanaries = []string{
 	"CANARY-COLL-BEARER", "CANARY-ITEM-BEARER", "CANARY-HEADER-AUTH", "CANARY-PARAM-KEY",
 	"CANARY-REV-BEARER", "CANARY-APIKEY-VALUE", "CANARY-BASIC-PASSWORD", "CANARY-DIRECT-TOKEN",
 	"CANARY-URL-QUERY", "CANARY-URL-RAWQ", "CANARY-URL-USERINFO", "CANARY-BODY-PW", "CANARY-BODY-FORM", "CANARY-BODY-URLENC", "CANARY-BODY-XML", "CANARY-BODY-GQL",
+	"CANARY-HAWK-AUTHKEY",
 }
 
 // seedSecrets builds a project carrying every kind of secret the scrub must remove,
@@ -37,6 +38,7 @@ func seedSecrets(t *testing.T, s *Store) (*Collection, *Item) {
 		Body: json.RawMessage(`{"mode":"raw","raw":"{\"username\":\"bob\",\"password\":\"CANARY-BODY-PW\",\"nested\":{\"client_secret\":\"CANARY-BODY-GQL\"}}"}`)})
 	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "form", Method: "POST",
 		URL:  json.RawMessage(`"https://example.com/f?access_token=CANARY-URL-QUERY"`),
+		Auth: json.RawMessage(`{"type":"hawk","hawk":[{"key":"authId","value":"hid"},{"key":"authKey","value":"CANARY-HAWK-AUTHKEY"}]}`),
 		Body: json.RawMessage(`{"mode":"urlencoded","urlencoded":[{"key":"user","value":"bob"},{"key":"password","value":"CANARY-BODY-URLENC"}]}`)})
 	mustItem(t, s, Item{CollectionUID: c.UID, Kind: "request", Name: "rawform", Method: "POST",
 		URL:  json.RawMessage(`{"raw":"https://example.com/x"}`),
@@ -434,6 +436,37 @@ func TestMergeCollectionsNameAndPathSignatureFallback(t *testing.T) {
 	_ = bc
 	if cs, _ := a.ListCollections(); len(cs) != 1 {
 		t.Fatalf("collections=%d", len(cs))
+	}
+}
+
+// Every auth type's credential field must be blanked by the auth scrub, while
+// identifiers (hawk id, akamai base URL, apikey header name) survive.
+func TestScrubBlanksEveryAuthTypeSecret(t *testing.T) {
+	auths := []string{
+		`{"type":"hawk","hawk":[{"key":"authId","value":"keep-id"},{"key":"authKey","value":"CANARY-HAWK-PM"},{"key":"algorithm","value":"sha256"}]}`,
+		`{"type":"hawk","hawk":[{"key":"id","value":"keep-id"},{"key":"key","value":"CANARY-HAWK-INSOMNIA"}]}`,
+		`{"auth":{"type":"hawk","hawk":{"authId":"keep-id","authKey":"CANARY-HAWK-V20"}}}`,
+		`{"authentication":{"type":"hawk","id":"keep-id","key":"CANARY-HAWK-INSOMNIA-RAW"}}`,
+		`{"type":"akamai","akamai":[{"key":"accessToken","value":"CANARY-AKAMAI-AT"},{"key":"clientToken","value":"CANARY-AKAMAI-CT"},{"key":"clientSecret","value":"CANARY-AKAMAI-CS"},{"key":"baseURL","value":"https://example.com"}]}`,
+		`{"type":"edgegrid","edgegrid":[{"key":"clientSecret","value":"CANARY-EDGEGRID-CS"}]}`,
+		`{"type":"ntlm","ntlm":[{"key":"username","value":"bob"},{"key":"password","value":"CANARY-NTLM-PW"}]}`,
+		`{"type":"asap","asap":[{"key":"privateKey","value":"CANARY-ASAP-PK"},{"key":"kid","value":"k1"}]}`,
+		`{"type":"jwt","jwt":[{"key":"secret","value":"CANARY-JWT-SECRET"},{"key":"privateKey","value":"CANARY-JWT-PK"}]}`,
+		`{"type":"oauth1","oauth1":[{"key":"consumerKey","value":"ck"},{"key":"consumerSecret","value":"CANARY-OAUTH1-CS"},{"key":"token","value":"CANARY-OAUTH1-T"},{"key":"tokenSecret","value":"CANARY-OAUTH1-TS"},{"key":"privateKey","value":"CANARY-OAUTH1-PK"}]}`,
+		`{"type":"awsv4","awsv4":[{"key":"accessKey","value":"AKIDEXAMPLE"},{"key":"secretKey","value":"CANARY-AWS-SK"},{"key":"sessionToken","value":"CANARY-AWS-ST"}]}`,
+		`{"type":"digest","digest":[{"key":"username","value":"bob"},{"key":"password","value":"CANARY-DIGEST-PW"}]}`,
+		`{"type":"apikey","apikey":[{"key":"key","value":"X-Api"},{"key":"value","value":"CANARY-APIKEY"}]}`,
+	}
+	for _, a := range auths {
+		out, _ := scrubJSON(a, true)
+		if strings.Contains(out, "CANARY") {
+			t.Errorf("secret survived the auth scrub: %s", out)
+		}
+		for _, keep := range []string{"keep-id", "X-Api", "https://example.com"} {
+			if strings.Contains(a, keep) && !strings.Contains(out, keep) {
+				t.Errorf("non-secret %q lost: %s", keep, out)
+			}
+		}
 	}
 }
 

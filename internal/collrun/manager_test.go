@@ -21,6 +21,32 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// Regression: a subscriber cancelling (SSE client disconnect) while the runner
+// emits events must never cause a send on a closed channel.
+func TestLiveRunUnsubscribeDuringEvents(t *testing.T) {
+	l := &LiveRun{subs: map[int]chan Event{}, started: make(chan struct{}), done: make(chan struct{})}
+	stop := make(chan struct{})
+	emitted := make(chan struct{})
+	go func() {
+		defer close(emitted)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				l.onEvent(Event{Type: "done"})
+			}
+		}
+	}()
+	for i := 0; i < 20000; i++ {
+		_, cancel := l.Subscribe()
+		cancel()
+	}
+	close(stop)
+	<-emitted
+	l.finish(nil, nil)
+}
+
 func TestManagerRunsToCompletionAndStreamsEvents(t *testing.T) {
 	m := NewManager()
 	defer m.Close()

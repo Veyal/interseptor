@@ -9,8 +9,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dlclark/regexp2/v2"
 	"github.com/dop251/goja"
 )
+
+// regexpMatchTimeout bounds one regexp match run by goja's backtracking
+// engine (regexp2: lookaround, backreferences), which vm.Interrupt cannot
+// stop mid-match. Without it a catastrophic pattern ignores the script
+// timeout and hangs an in-process runtime forever (worker mode is only
+// saved by the parent killing the child). goja reports a timed-out match as
+// "no match"; by then the Eval timeout interrupt is normally pending, so the
+// script still ends with ErrTimeout. Only a script whose own Timeout exceeds
+// this bound can observe a single >5s match as a silent non-match.
+const regexpMatchTimeout = DefaultTimeout
+
+func init() {
+	// regexp2 reads this when goja compiles a pattern; set once here, before
+	// any runtime exists, so there is no concurrent write.
+	regexp2.DefaultMatchTimeout = regexpMatchTimeout
+}
 
 type timer struct {
 	id       int64

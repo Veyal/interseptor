@@ -60,6 +60,29 @@ func TestInterruptSyncLoop(t *testing.T) {
 	}
 }
 
+// vm.Interrupt cannot stop goja's backtracking regexp engine mid-match, so a
+// catastrophic pattern (lookahead forces the regexp2 engine) must be bounded
+// by the regexp match timeout; the pending interrupt then ends the script.
+func TestInterruptCatastrophicRegexp(t *testing.T) {
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := eval(t, Options{Timeout: 100 * time.Millisecond}, `/^(a+)+(?=b)/.test("a".repeat(28)+"c")`)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrTimeout) {
+			t.Fatalf("err=%v", err)
+		}
+		if d := time.Since(start); d > regexpMatchTimeout+5*time.Second {
+			t.Fatalf("regexp not bounded: %s", d)
+		}
+	case <-time.After(regexpMatchTimeout + 20*time.Second):
+		t.Fatal("catastrophic regexp ignored the script timeout")
+	}
+}
+
 func TestInterruptInsidePromiseLoop(t *testing.T) {
 	src := `function f(){ return Promise.resolve().then(f) } f(); 0`
 	start := time.Now()

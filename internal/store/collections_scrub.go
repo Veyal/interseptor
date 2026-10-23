@@ -32,7 +32,7 @@ var templateRefRe = regexp.MustCompile(`^\s*\{\{[^{}]+\}\}\s*$`)
 var nonSecretSuffixes = []string{"url", "uri", "type", "prefix", "name", "location", "placement", "endpoint", "scheme", "algorithm", "expiry", "expires"}
 
 var secretNameParts = []string{"token", "secret", "password", "passwd", "passphrase", "apikey", "api-key", "api_key",
-	"authorization", "cookie", "privatekey", "private_key", "session", "signature", "credential"}
+	"authorization", "cookie", "privatekey", "private_key", "session", "signature", "credential", "authkey"}
 
 // IsSecretName reports whether a variable, header or parameter name designates
 // a secret (token, password, signature, ...). It is the single name heuristic of
@@ -99,6 +99,9 @@ func scrubValue(v any, authCtx bool, n *tally) any {
 		}
 		return t
 	case map[string]any:
+		if authCtx {
+			scrubHawkKey(t, n)
+		}
 		pairSecret, pairName := false, ""
 		for _, kk := range []string{"key", "name"} {
 			if s, ok := t[kk].(string); ok && (secretName(s) || (authCtx && kk == "key" && strings.EqualFold(s, "value"))) {
@@ -120,6 +123,27 @@ func scrubValue(v any, authCtx bool, n *tally) any {
 		return t
 	}
 	return v
+}
+
+// scrubHawkKey blanks the Hawk shared key, which Insomnia (and its import)
+// stores under the plain name "key" — too generic for the name heuristic (an
+// apikey auth's "key" is the header name). It covers the flat Insomnia shape
+// {"type":"hawk","key":..} and the pair rows {"type":"hawk","hawk":[{"key":"key",..}]}.
+func scrubHawkKey(t map[string]any, n *tally) {
+	if typ, _ := t["type"].(string); !strings.EqualFold(typ, "hawk") {
+		return
+	}
+	if blankable(t["key"]) {
+		t["key"] = ""
+		n.hit("key")
+	}
+	rows, _ := t["hawk"].([]any)
+	for _, r := range rows {
+		if m, ok := r.(map[string]any); ok && m["key"] == "key" && blankable(m["value"]) {
+			m["value"] = ""
+			n.hit("key")
+		}
+	}
 }
 
 // scrubJSON scrubs one stored JSON column; invalid or empty input is

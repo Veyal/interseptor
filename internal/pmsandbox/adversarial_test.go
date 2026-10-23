@@ -105,10 +105,19 @@ func TestAdversarialMemoryBombs(t *testing.T) {
 		"randomBytes":   `require("crypto").randomBytes(1e9)`,
 		"randomWA":      `CryptoJS.lib.WordArray.random(1e9)`,
 	}
+	// The size guards throw synchronously; the wider timeout only gives a
+	// loaded -race run headroom so the test pins the guard (kind "error"),
+	// never a timeout racing it.
+	widen := func(in *Input) { in.Limits.Timeout = 2 * time.Second }
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
-			out, _ := adv(t, src, nil)
+			out, _ := adv(t, src, widen)
 			wantKind(t, out, "error")
+			for _, e := range out.Errors {
+				if e.Kind == "timeout" {
+					t.Fatalf("guard did not fire before the timeout: %+v", out.Errors)
+				}
+			}
 		})
 	}
 }

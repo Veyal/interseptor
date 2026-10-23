@@ -96,6 +96,52 @@ func TestRoundTripThroughCurlImporter(t *testing.T) {
 	}
 }
 
+// An imported collection must not make the exported script read local files:
+// curl -F treats a value starting with @ or < (and ;headers=@file params) as
+// file references, and an argument starting with - as an option.
+func TestFormAndURLCannotReferenceLocalFiles(t *testing.T) {
+	b := store.CollectionsBundle{Collections: []store.Collection{{UID: "c", Name: "c"}}, Items: []store.Item{
+		{UID: "r", CollectionUID: "c", Kind: "request", Rank: "a", Name: "x", Method: "POST",
+			URL: json.RawMessage(`"-o/tmp/pwn https://example.com/"`),
+			Body: json.RawMessage(`{"mode":"formdata","formdata":[
+				{"key":"k1","value":"@/home/victim/.ssh/id_rsa"},
+				{"key":"k2","value":"</etc/passwd"},
+				{"key":"k3","value":"x;headers=@/etc/passwd"},
+				{"key":"k4","value":"@/etc/passwd\"q\\","contentType":"text/plain"},
+				{"key":"k5","value":"v","contentType":"text/plain;headers=@/etc/passwd"},
+				{"key":"k6=</etc/passwd;x","value":"v","contentType":"text/plain"},
+				{"key":"k7=</etc/passwd;x","type":"file"}
+			]}`)},
+	}}
+	out, err := ExportCollection(b, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out.Data)
+	for _, want := range []string{
+		`--url '-o/tmp/pwn https://example.com/'`,
+		`--form-string 'k1=@/home/victim/.ssh/id_rsa'`,
+		`--form-string 'k2=</etc/passwd'`,
+		`--form-string 'k3=x;headers=@/etc/passwd'`,
+		`-F 'k4="@/etc/passwd\"q\\";type=text/plain'`,
+		`-F 'k5="v";type=text/plain'`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "-F 'k1") || strings.Contains(s, "headers=@/etc/passwd'\n") || strings.Contains(s, "k6=") || strings.Contains(s, "k7=") {
+		t.Errorf("unsafe form field emitted:\n%s", s)
+	}
+	res, err := curlimp.Parse(out.Data, curlimp.Options{NewID: counter()})
+	if err != nil || len(res.Items) != 1 {
+		t.Fatalf("re-import: %v\n%s", err, s)
+	}
+	if body := string(res.Items[0].Body); !strings.Contains(body, `@/home/victim/.ssh/id_rsa`) || strings.Contains(body, `"type":"file"`) {
+		t.Errorf("re-imported body: %s", body)
+	}
+}
+
 func TestNoCollection(t *testing.T) {
 	if _, err := ExportCollection(store.CollectionsBundle{}, "x", Options{}); err != ErrNoCollection {
 		t.Fatalf("err = %v", err)

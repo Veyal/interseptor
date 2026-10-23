@@ -18,7 +18,7 @@ curl \
   -k \
   --path-as-is \
   'https://example.com/upload' \
-  -F 'title=x' \
+  --form-string 'title=x' \
   -F 'file=@FILE_PATH'
 
 # /Users/GQL

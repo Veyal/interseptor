@@ -194,7 +194,12 @@ func (e *exporter) command(it *store.Item, path string) string {
 	default:
 		parts = append(parts, "-X "+q(method))
 	}
-	parts = append(parts, q(raw))
+	if strings.HasPrefix(raw, "-") {
+		// curl would parse a leading '-' as an option
+		parts = append(parts, "--url "+q(raw))
+	} else {
+		parts = append(parts, q(raw))
+	}
 	parts = append(parts, authArgs...)
 	parts = append(parts, headerArgs...)
 	parts = append(parts, bodyArgs...)
@@ -327,19 +332,9 @@ func (e *exporter) body(it *store.Item, path string) (args []string, ct string) 
 		return args, ""
 	case "formdata":
 		for _, r := range b.FormData {
-			if r.off() {
-				continue
+			if !r.off() {
+				args = append(args, e.formField(r, path)...)
 			}
-			if r.Type == "file" {
-				e.warn(path, "needs-asset", "form field "+r.Key+" uploads a file; replace FILE_PATH with a local path")
-				args = append(args, "-F "+q(r.Key+"=@FILE_PATH"))
-				continue
-			}
-			v := r.Key + "=" + r.val()
-			if r.ContentType != "" {
-				v += ";type=" + r.ContentType
-			}
-			args = append(args, "-F "+q(v))
 		}
 		return args, ""
 	case "graphql":
@@ -368,6 +363,34 @@ func (e *exporter) body(it *store.Item, path string) (args []string, ct string) 
 	}
 	e.warn(path, "body:"+b.Mode, "body mode "+b.Mode+" has no curl equivalent and was omitted")
 	return nil, ""
+}
+
+// formField renders one enabled form-data row. Imported values are untrusted:
+// with -F, curl reads local files for a value starting with @ or <, and
+// parses ;headers=@file style parameters, so text goes through --form-string
+// (taken literally). A content type needs -F; the value is then a curl
+// double-quoted word (no file forms, ';' is literal) and the type is cut at
+// its first parameter separator. A name containing '=' cannot be expressed
+// with -F (curl splits at the first '=') and is skipped.
+func (e *exporter) formField(r row, path string) []string {
+	if (r.Type == "file" || r.ContentType != "") && strings.Contains(r.Key, "=") {
+		e.warn(path, "form-name", "form field name "+r.Key+" contains '=' and was omitted")
+		return nil
+	}
+	if r.Type == "file" {
+		e.warn(path, "needs-asset", "form field "+r.Key+" uploads a file; replace FILE_PATH with a local path")
+		return []string{"-F " + q(r.Key+"=@FILE_PATH")}
+	}
+	if r.ContentType == "" {
+		return []string{"--form-string " + q(r.Key+"="+r.val())}
+	}
+	ct := r.ContentType
+	if i := strings.IndexAny(ct, ";,\r\n"); i >= 0 {
+		e.warn(path, "form-type", "form field "+r.Key+": content type parameters were dropped")
+		ct = strings.TrimSpace(ct[:i])
+	}
+	v := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(r.val())
+	return []string{"-F " + q(r.Key+`="`+v+`";type=`+ct)}
 }
 
 // q single-quotes s for a POSIX shell.

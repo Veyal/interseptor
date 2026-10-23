@@ -237,21 +237,19 @@ func (l *LiveRun) onEvent(e Event) {
 	case "done":
 		l.totals = e.Totals
 	}
-	subs := make([]chan Event, 0, len(l.subs))
+	// Send while holding l.mu: cancel and finish close subscriber channels
+	// under the same lock, so a send can never hit a closed channel. The
+	// sends are non-blocking (a full channel drops the event; the consumer
+	// re-syncs from Snapshot), so holding the lock never stalls the runner.
 	for _, ch := range l.subs {
-		subs = append(subs, ch)
-	}
-	l.mu.Unlock()
-	if e.Type == "start" {
-		l.startedOnce.Do(func() { close(l.started) })
-	}
-	// Subscribers never block the runner: a full channel drops the event (the
-	// consumer re-syncs from Snapshot).
-	for _, ch := range subs {
 		select {
 		case ch <- e:
 		default:
 		}
+	}
+	l.mu.Unlock()
+	if e.Type == "start" {
+		l.startedOnce.Do(func() { close(l.started) })
 	}
 }
 
@@ -268,13 +266,12 @@ func (l *LiveRun) finish(rep *Report, err error) {
 		l.status = StatusAborted
 	}
 	l.pending = nil
-	subs := l.subs
-	l.subs = map[int]chan Event{}
-	l.mu.Unlock()
-	close(l.done)
-	for _, ch := range subs {
+	for _, ch := range l.subs {
 		close(ch)
 	}
+	l.subs = map[int]chan Event{}
+	close(l.done)
+	l.mu.Unlock()
 }
 
 // Subscribe streams events until the run ends (the channel is then closed).
