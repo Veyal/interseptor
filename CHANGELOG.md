@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-10-23
+
+> Minor release: one-command Chrome for Testing install, finding status triage while
+> editing is off, and a pre-release hardening pass — the proxy no longer forwards to
+> its own control API, DNS-rebinding and cross-port gaps in the control plane and
+> launcher are closed, the macOS app's supervisor and shell are more robust, SSE
+> streams through the proxy, the system proxy is restored on quit, and finding
+> evidence survives automatic retention.
+
 ### Added
 
 - **Automated standalone Chrome for Testing installer & CLI command.** Added an integrated Chrome manager that resolves and downloads official Google Chrome for Testing standalone portable builds into `~/.interseptor/chrome` across macOS (Apple Silicon / Intel), Linux (x86_64 / arm64), and Windows (x64 / x86) with zero root permissions required. Includes the `interseptor install-chrome` command and `--install-chrome` startup flag, automatic discovery for PDF reports (`pdfexport`), app window (`appwindow`), and test browser launcher (`testbrowser`), Control API endpoints (`GET /api/chrome`, `POST /api/chrome/install`), a one-click install button in the Setup wizard and Settings panel, and an updated actionable error message when starting without Chrome. (`internal/chromemgr/`, `cmd/interseptor/chrome.go`, `internal/control/chrome.go`, `internal/pdfexport/pdfexport.go`, `internal/control/ui/`.)
