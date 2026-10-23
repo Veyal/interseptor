@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.18.1] - 2026-10-23
+
+> Patch release: `interseptor install-chrome` (and the Settings/Setup install button)
+> now finds the Chrome for Testing binary it installed.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.18.0` release.
