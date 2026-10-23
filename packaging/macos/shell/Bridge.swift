@@ -3,7 +3,7 @@ import WebKit
 /// Native side of the web-UI bridge.
 ///
 /// UI → native: `window.webkit.messageHandlers.interseptor.postMessage(obj)`
-/// with `{type:'ready'|'theme'|'status'|'drag-regions'|'file-accept', …}`.
+/// with `{type:'ready'|'theme'|'status'|'drag-regions'|'file-accept'|'check-updates', …}`.
 /// Native → UI: `window.interseptorDesktop.run(command)`, queued until the
 /// page has said it is ready, and the `--titlebar-inset-left` CSS variable
 /// (the width the traffic lights take from the page's title toolbar), set at
@@ -18,6 +18,8 @@ final class DesktopBridge: NSObject, WKScriptMessageHandler {
     var onReady: (() -> Void)?
     var onDragRegions: ((WindowDragWebView.Regions) -> Void)?
     var onFileAccept: (([String]) -> Void)?
+    /// The user clicked the version badge: run a user-initiated update check.
+    var onCheckUpdates: (() -> Void)?
 
     private var ready = false
     private var queue: [String] = []
@@ -80,6 +82,8 @@ final class DesktopBridge: NSObject, WKScriptMessageHandler {
             onDragRegions?(WindowDragWebView.Regions(drag: Self.rects(body["rects"]), exclude: Self.rects(body["exclude"])))
         case "file-accept":
             onFileAccept?((body["accept"] as? [Any] ?? []).compactMap { $0 as? String })
+        case "check-updates":
+            onCheckUpdates?()
         default:
             break
         }

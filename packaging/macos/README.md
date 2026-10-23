@@ -90,8 +90,9 @@ browser.
   the UI). Its user agent ends in `InterseptorDesktop/<version>`. Menu commands
   are sent to the UI as `panel:<id>`, `intercept:toggle-request`, `palette:open`
   and similar commands. The UI reports `ready`, `theme` and `status` messages back,
-  plus `drag-regions` (where a press drags the window) and `file-accept` (the
-  accept list of the file input about to open, which the open panel then honours).
+  plus `drag-regions` (where a press drags the window), `file-accept` (the
+  accept list of the file input about to open, which the open panel then honours)
+  and `check-updates` (run a user-initiated update check).
 
 **Per-machine settings.** A Finder-launched app inherits launchd's
 environment, not a shell's, so the shell reads overrides from its defaults domain
@@ -112,16 +113,75 @@ with `defaults delete com.veyal.interseptor`.
 
 All output goes to `~/Library/Logs/Interseptor.log` (**Help → Show Log**).
 
+## Updates
+
+The shell updates itself from GitHub releases, natively and without Sparkle
+(`shell/Updater.swift`, `UpdateWindowController.swift`, `UpdateVerifier.swift`,
+`UpdateHelperScript.swift`, `Versioning.swift`).
+
+- **Checks.** Ten seconds after launch and then every 24 hours (checked
+  hourly, so a sleeping Mac catches up), the shell reads
+  `api.github.com/repos/Veyal/interseptor/releases/latest`. Drafts,
+  prereleases and tags with a prerelease suffix are ignored, and versions
+  compare numerically (`2.10.0` > `2.9.0`). **Interseptor → Check for
+  Updates…** and a click on the UI's version badge (bridge message
+  `{type:'check-updates'}`) always report a result. **Automatically Check for
+  Updates** turns the background checks off; `INTERSEPTOR_NO_UPDATE_CHECK=1`
+  also disables them. **Skip This Version** silences only automatic checks.
+  State lives in the defaults keys `UpdateLastCheck`, `UpdateSkippedVersion`,
+  `UpdateAutomaticChecks` and `UpdateStagedVersion`.
+- **Install.** The update window shows the release notes, then download
+  progress, **Verifying…** and **Preparing…**. Files go to
+  `~/Library/Caches/<bundle id>/Updates/<version>/`. A verified update is
+  staged: **Later** keeps it, and the next check or launch offers **Install and
+  Relaunch** again without a new download, as long as the staged bundle still
+  validates. **Install and Relaunch** uses the normal quit path (the held-request
+  prompt, then a graceful server stop). As the app exits, it spawns a detached
+  `/bin/sh` helper in its own session. The helper waits up to 60s for the old
+  process, renames the old bundle aside, moves the new one into place (falling
+  back to `ditto` across volumes), restores the old bundle if that fails, and
+  reopens the app. It logs to `~/Library/Logs/Interseptor-update.log`. Paths
+  reach the helper only as arguments, never as script text.
+- **What is verified before install.** Every URL (assets, redirects, the final
+  response) must be HTTPS on `github.com`, `objects.githubusercontent.com` or
+  `release-assets.githubusercontent.com`. `macos-checksums.txt` from the same
+  release must list the exact ZIP name `Interseptor-<tag>-unsigned.zip`, and the
+  ZIP's streamed SHA-256 must match it. `ditto -x -k` must unpack an
+  `Interseptor.app` whose `CFBundleIdentifier` equals the running app's, whose
+  `CFBundleShortVersionString` equals the release version, and which passes
+  `codesign --verify --deep --strict`. Any failure refuses the install and
+  offers **Download Manually…**.
+- **Trust model.** Trust rests on HTTPS to GitHub plus the checksum file the
+  release publishes. The bundle is ad-hoc signed, so there is no developer
+  identity to pin. The signature check catches corruption and tampering after
+  signing, not a malicious release. Anyone who can publish a release, or write
+  to the user's Caches or Applications folder, can already replace the app.
+  URLSession downloads carry no quarantine attribute, so the swapped app
+  relaunches without a Gatekeeper prompt.
+- **When it cannot update in place.** This is detected before any download.
+  The window explains the cause and offers **Download Manually…** instead of
+  **Install Update** when the app runs from App Translocation (a quarantined
+  copy opened outside Applications), from a read-only volume such as the
+  mounted DMG, or from a folder the user cannot write to. Moving Interseptor
+  into `/Applications` fixes the first two.
+
 ## Shell tests
 
 `packaging/macos/shell-tests/run.sh` compiles the Foundation-only shell files
 (`Supervisor.swift`, `ExternalLinks.swift`, `DownloadStaging.swift`,
-`ReloadBudget.swift`) with plain `swiftc` and runs their tests: the supervisor
+`ReloadBudget.swift`, `Versioning.swift`, `UpdateVerifier.swift`,
+`UpdateHelperScript.swift`) with plain `swiftc` and runs their tests: the supervisor
 state machine (clean stop, crash report, SIGTERM-ignoring child forced down by
 SIGKILL, restart after a forced stop, stale exits, an error line that arrives
 after the exit, no leaked file descriptors, appending log writes), the
 external-link scheme allowlist, download staging over an existing file, and
-the crash-reload budget. `go test ./cmd/interseptor-macapp` runs it on macOS.
+the crash-reload budget. The updater tests cover version comparison, release
+JSON to asset selection, the host allowlist, exact-name checksum parsing, the
+in-place install decision, verification of an ad-hoc signed fixture (good,
+wrong checksum, identifier, version, tampered, corrupt), and the install helper
+run against paths with spaces, quotes and `$(…)`, including a restore after a
+failed swap. `UPDATE_E2E_APP=<path>/Interseptor.app` additionally verifies a
+real built bundle. `go test ./cmd/interseptor-macapp` runs it on macOS.
 The View menu panel order and shortcuts are checked against the web rail by the same package.
 
 ## Signing and notarization
@@ -187,8 +247,8 @@ launcher and `Info.plist` on the old version. The bundled binary detects that it
 is the main executable of a `.app` and refuses, pointing at whole-bundle
 replacement instead. `interseptor update --check` still works, since it only
 reads release metadata. `INTERSEPTOR_ALLOW_BUNDLE_UPDATE=1` overrides the refusal
-and is safe only for an unsigned local build. Sparkle-style in-place bundle
-updates are still unimplemented; updating means dropping in a new `.app`.
+and is safe only for an unsigned local build. The shell's own updater
+replaces the whole bundle instead (see [Updates](#updates)).
 
 **Local access is unauthenticated.** The control UI trusts loopback
 connections that carry no API key, with a loopback `Host` and `Origin` (which

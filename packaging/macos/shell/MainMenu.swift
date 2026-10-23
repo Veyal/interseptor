@@ -80,6 +80,8 @@ struct MainMenu {
         m.addItem(Self.item("About Interseptor", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
         m.addItem(.separator())
         m.addItem(Self.command("Settings…", "panel:settings", ","))
+        m.addItem(Self.item("Check for Updates…", #selector(AppDelegate.checkForUpdates(_:))))
+        m.addItem(Self.item("Automatically Check for Updates", #selector(AppDelegate.toggleAutomaticUpdateChecks(_:))))
         m.addItem(.separator())
         let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         let servicesMenu = NSMenu(title: "Services")

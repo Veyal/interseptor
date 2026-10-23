@@ -13,5 +13,8 @@ xcrun swiftc -swift-version 5 -O -module-name ShellTests \
 	"$shell/ExternalLinks.swift" \
 	"$shell/DownloadStaging.swift" \
 	"$shell/ReloadBudget.swift" \
+	"$shell/Versioning.swift" \
+	"$shell/UpdateVerifier.swift" \
+	"$shell/UpdateHelperScript.swift" \
 	-o "$out/shell-tests"
 "$out/shell-tests"

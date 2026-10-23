@@ -37,6 +37,8 @@ leaf that imports only its model (`TestUIDesktopBridgeIsWiredFromAppBoot`).
   `{type:'file-accept', accept:[tokens]}` from a capture click listener and a wrapped
   `HTMLInputElement.prototype.click/showPicker` (covers detached inputs). The shell applies it to the
   next open panel within 3s; any token without a UTType (or no accept) means all files.
+- Updates: `{type:'check-updates'}` (main frame only) runs the native shell's user-initiated
+  update check, the same as Interseptor → Check for Updates…; the shell always reports a result.
 - `run(command)` returns a real boolean: false for unknown commands and for actions that cannot run
   yet (workspace not hydrated, intercept state unknown, a modal blocking the palette).
 

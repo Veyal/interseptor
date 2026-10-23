@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private var windowController: MainWindowController!
     private var mainMenu: MainMenu!
+    private var updater: Updater!
     private var statusItem: StatusItemController!
     private let supervisor = Supervisor()
     private let notifier = Notifier()
@@ -25,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        updater = Updater(currentVersion: version, bundleID: Bundle.main.bundleIdentifier ?? "com.veyal.interseptor",
+                          bundleURL: Bundle.main.bundleURL)
         mainMenu = MainMenu()
         NSApp.mainMenu = mainMenu.menu
         statusItem = StatusItemController()
@@ -39,12 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         windowController.onUseLocal = { [weak self] in self?.useLocal() }
         windowController.showWindow()
         connect()
+        updater.start()
     }
 
     private func wireBridge() {
         let bridge = windowController.bridge
         bridge.onTheme = { [weak self] bg, scheme in self?.windowController.applyTheme(background: bg, scheme: scheme) }
         bridge.onStatus = { [weak self] in self?.apply($0) }
+        bridge.onCheckUpdates = { [weak self] in self?.updater.check(userInitiated: true) }
     }
 
     // MARK: - Connecting
@@ -142,7 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             alert.addButton(withTitle: "Quit")
             alert.addButton(withTitle: "Cancel")
             alert.alertStyle = .warning
-            if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
+            if alert.runModal() != .alertFirstButtonReturn {
+                updater.cancelPendingInstall()
+                return .terminateCancel
+            }
         }
         quitting = true
         supervisor.stop(timeout: Self.quitTimeout) {
@@ -151,7 +159,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return .terminateLater
     }
 
+    /// The server has stopped and the quit is certain: a pending update's
+    /// helper may now start (it waits for this process to exit).
+    func applicationWillTerminate(_ notification: Notification) {
+        updater?.launchPendingInstall()
+    }
+
     // MARK: - Actions
+
+    @objc func checkForUpdates(_ sender: Any?) { updater.check(userInitiated: true) }
+
+    @objc func toggleAutomaticUpdateChecks(_ sender: Any?) { updater.automaticChecks.toggle() }
 
     @objc func runCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
@@ -197,6 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleInspector(_:)) { item.state = inspectorOn ? .on : .off }
+        if item.action == #selector(toggleAutomaticUpdateChecks(_:)) { item.state = updater?.automaticChecks == true ? .on : .off }
         return true
     }
 }
