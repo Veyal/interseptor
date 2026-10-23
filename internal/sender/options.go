@@ -120,7 +120,10 @@ func nextRedirect(r Request, flow *store.Flow) (Request, bool) {
 	if dropBody {
 		n.Method, n.Body = http.MethodGet, nil
 	}
-	crossHost := !strings.EqualFold(base.Host, target.Host)
+	// An https → http hop would expose credentials in clear text: treat a
+	// scheme downgrade like a cross-host hop for credential stripping.
+	downgrade := strings.EqualFold(base.Scheme, "https") && strings.EqualFold(target.Scheme, "http")
+	crossHost := !strings.EqualFold(base.Host, target.Host) || downgrade
 	skip := func(k string) bool {
 		c := http.CanonicalHeaderKey(k)
 		if c == "Host" || dropBody && (c == "Content-Length" || c == "Content-Type" || c == "Transfer-Encoding") {

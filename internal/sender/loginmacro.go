@@ -2,6 +2,7 @@ package sender
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -60,13 +61,26 @@ func ExtractSessionHeaders(resp *http.Response) []Header {
 
 // RunLoginMacro issues the recorded login request and returns session headers.
 func RunLoginMacro(cl *http.Client, m LoginMacro) ([]Header, error) {
-	_, hdrs, err := runLoginMacroReq(cl, m)
+	_, hdrs, err := runLoginMacroReq(context.Background(), cl, m)
 	return hdrs, err
+}
+
+// macroRequestTimeout caps a token/login macro request so a stalled macro
+// endpoint cannot hang sends, Intruder Stop, Engine.Close or shutdown.
+const macroRequestTimeout = 30 * time.Second
+
+// macroContext derives a macro request context from the send's context (nil
+// means none) with the macroRequestTimeout cap.
+func macroContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, macroRequestTimeout)
 }
 
 // runLoginMacroReq issues the login request and returns the response status code
 // plus the session headers it yields. Shared by the live run and the dry-run test.
-func runLoginMacroReq(cl *http.Client, m LoginMacro) (int, []Header, error) {
+func runLoginMacroReq(parent context.Context, cl *http.Client, m LoginMacro) (int, []Header, error) {
 	if !m.Enabled || m.Target == "" || m.Request == "" {
 		return 0, nil, nil
 	}
@@ -74,7 +88,9 @@ func runLoginMacroReq(cl *http.Client, m LoginMacro) (int, []Header, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	req, err := http.NewRequest(method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
+	ctx, cancel := macroContext(parent)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -103,7 +119,45 @@ type loginState struct {
 	mu         sync.RWMutex
 	macro      LoginMacro
 	at         time.Time
-	refreshing bool // a TTL refresh is in flight (prevents a thundering herd)
+	refreshing bool         // a TTL refresh is in flight (prevents a thundering herd)
+	gen        uint64       // bumped on every successful login
+	flight     *loginFlight // the 401 re-auth login in flight, shared by waiters
+}
+
+// loginFlight is one in-flight 401 re-auth login that concurrent callers wait on.
+type loginFlight struct {
+	done chan struct{}
+	err  error
+}
+
+func (ls *loginState) generation() uint64 {
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	return ls.gen
+}
+
+// joinFlight returns the in-flight re-auth (leader=false) or starts one
+// (leader=true). stale is true when a login already completed after the
+// caller's send started (seen), so it can retry without logging in again.
+func (ls *loginState) joinFlight(seen uint64) (f *loginFlight, leader, stale bool) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.gen != seen {
+		return nil, false, true
+	}
+	if ls.flight != nil {
+		return ls.flight, false, false
+	}
+	ls.flight = &loginFlight{done: make(chan struct{})}
+	return ls.flight, true, false
+}
+
+func (ls *loginState) endFlight(f *loginFlight, err error) {
+	ls.mu.Lock()
+	f.err = err
+	ls.flight = nil
+	ls.mu.Unlock()
+	close(f.done)
 }
 
 // tryBeginRefresh atomically checks whether an auto-refresh is due and not already
@@ -143,6 +197,7 @@ func (ls *loginState) get() (LoginMacro, time.Time) {
 func (ls *loginState) markRefreshed() {
 	ls.mu.Lock()
 	ls.at = time.Now()
+	ls.gen++
 	ls.mu.Unlock()
 }
 
@@ -158,31 +213,77 @@ func (s *Sender) SetLoginMacro(m LoginMacro) error {
 // session headers (auto-refresh, manual run, or 401 re-auth).
 func (s *Sender) SetSessionRefresh(fn func([]Header) error) { s.refreshSess = fn }
 
-func (s *Sender) maybeRefreshLogin() {
+func (s *Sender) maybeRefreshLogin(ctx context.Context) {
 	if !s.login.tryBeginRefresh() {
 		return
 	}
 	defer s.login.endRefresh()
-	_, _ = s.runLoginMacro()
+	_, _ = s.runLoginMacro(ctx)
 }
 
-func (s *Sender) runLoginMacro() ([]Header, error) {
+// reauth401 makes sure a login has happened since the send that got a 401
+// started (seen). Concurrent 401s share one login: the first caller runs it,
+// the rest wait for its result (or their own context).
+func (s *Sender) reauth401(ctx context.Context, seen uint64) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	f, leader, stale := s.login.joinFlight(seen)
+	if stale {
+		return nil
+	}
+	if leader {
+		_, err := s.runLoginMacro(ctx)
+		s.login.endFlight(f, err)
+		return err
+	}
+	select {
+	case <-f.done:
+		return f.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Sender) runLoginMacro(ctx context.Context) ([]Header, error) {
 	m, _ := s.login.get()
-	hdrs, err := RunLoginMacro(s.cl, m)
+	_, hdrs, err := runLoginMacroReq(ctx, s.cl, m)
 	if err != nil || len(hdrs) == 0 {
 		return hdrs, err
 	}
+	s.sess.mu.RLock()
+	merged := mergeSessionHeaders(s.sess.headers, hdrs)
+	s.sess.mu.RUnlock()
 	if s.refreshSess != nil {
-		if err := s.refreshSess(hdrs); err != nil {
+		if err := s.refreshSess(merged); err != nil {
 			return nil, err
 		}
 	}
-	s.applySessionHeaders(hdrs)
+	s.applySessionHeaders(merged)
 	s.login.markRefreshed()
 	return hdrs, nil
 }
 
-// applySessionHeaders replaces session headers with the login result.
+// mergeSessionHeaders overlays the login result onto the current session
+// headers by (case-insensitive) key: matching keys are replaced in place,
+// unrelated headers are kept, new keys are appended.
+func mergeSessionHeaders(cur, upd []Header) []Header {
+	out := append([]Header(nil), cur...)
+	for _, u := range upd {
+		replaced := false
+		for i := range out {
+			if strings.EqualFold(out[i].Key, u.Key) {
+				out[i], replaced = u, true
+			}
+		}
+		if !replaced {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// applySessionHeaders replaces session headers with the (merged) login result.
 func (s *Sender) applySessionHeaders(hdrs []Header) {
 	s.sess.mu.Lock()
 	s.sess.enabled = true
@@ -191,14 +292,14 @@ func (s *Sender) applySessionHeaders(hdrs []Header) {
 }
 
 // RunLoginMacroNow runs the login macro immediately (API / manual re-auth).
-func (s *Sender) RunLoginMacroNow() ([]Header, error) { return s.runLoginMacro() }
+func (s *Sender) RunLoginMacroNow() ([]Header, error) { return s.runLoginMacro(context.Background()) }
 
 // TestLoginMacro dry-runs the given login macro: it issues the login request and
 // returns the response status plus the session headers it WOULD set, WITHOUT
 // touching the live session. Backs the UI "Test" button so an operator can see
 // what the macro does (and whether it captures a session) before relying on it.
 func (s *Sender) TestLoginMacro(m LoginMacro) (status int, headers []Header, err error) {
-	return runLoginMacroReq(s.cl, m)
+	return runLoginMacroReq(context.Background(), s.cl, m)
 }
 
 func (s *Sender) shouldReauth401() bool {

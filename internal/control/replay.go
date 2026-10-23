@@ -70,6 +70,7 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		Body:      body,
 		Flags:     store.FlagRepeater | aiSourceFlag(r),
 		NoSession: !useCurrent,
+		Options:   h.guardedOptions(nil),
 	})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())

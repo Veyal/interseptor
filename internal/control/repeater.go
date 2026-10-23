@@ -119,7 +119,7 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		Headers: hdr,
 		Body:    []byte(body),
 		Flags:   store.FlagRepeater | aiSourceFlag(r),
-		Options: repeaterOptions(in),
+		Options: h.guardedOptions(repeaterOptions(in)),
 		Context: ctx,
 	})
 	if err != nil {

@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -42,7 +43,7 @@ func TestMaybeRefreshLoginNoThunderingHerd(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); snd.maybeRefreshLogin() }()
+		go func() { defer wg.Done(); snd.maybeRefreshLogin(context.Background()) }()
 	}
 	wg.Wait()
 

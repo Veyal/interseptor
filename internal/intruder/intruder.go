@@ -70,6 +70,9 @@ type Spec struct {
 	ProcessRules []string // payload transforms applied in order: "urlencode" | "base64" | "base64url" | "hex" | "htmlencode" | "md5" | "sha1" | "sha256" | "upper" | "lower" | "prefix:X" | "suffix:X"
 	ExtraFlags   int64    // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
 	Barrier      bool     `json:"barrier,omitempty"` // repeat mode, Threads>1: launch the first Threads requests together
+	// Guard, when set, vets every send's resolved destination at dial time
+	// (e.g. the tool's own listeners). Nil keeps the historical client path.
+	Guard *sender.IPGuard `json:"-"`
 }
 
 // Result is one attack request's outcome.
@@ -755,6 +758,7 @@ dispatch:
 				Body:    body,
 				Flags:   store.FlagIntruder | spec.ExtraFlags,
 				Context: ctx,
+				Options: guardOptions(spec.Guard),
 			})
 			sendEnd := time.Now()
 			res.TimeMs = sendEnd.Sub(sendStart).Milliseconds()
@@ -848,4 +852,12 @@ func (e *Engine) appendResult(res Result) {
 	e.done = e.log.count()
 	e.mu.Unlock()
 	e.fireNotify()
+}
+
+// guardOptions wraps a dial-time guard in send options (nil when unguarded).
+func guardOptions(g *sender.IPGuard) *sender.SendOptions {
+	if g == nil {
+		return nil
+	}
+	return &sender.SendOptions{Guard: g}
 }

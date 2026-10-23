@@ -15,9 +15,11 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/capture"
@@ -95,6 +97,8 @@ type Sender struct {
 
 	optCl optionClients // per-options client cache (options.go)
 
+	ownCheck atomic.Pointer[func(net.IP, int) bool] // refuses the tool's own listeners at dial time
+
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
 }
@@ -108,7 +112,7 @@ func (s *Sender) SetMacro(m Macro) {
 
 // macroToken runs the refresh request (if enabled) and returns the extracted
 // value plus where to inject it. Best-effort: any failure yields "".
-func (s *Sender) macroToken() (token, name, mode string) {
+func (s *Sender) macroToken(parent context.Context) (token, name, mode string) {
 	s.macroMu.RLock()
 	m := s.macro
 	s.macroMu.RUnlock()
@@ -123,7 +127,9 @@ func (s *Sender) macroToken() (token, name, mode string) {
 	if err != nil {
 		return "", "", ""
 	}
-	req, err := http.NewRequest(method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
+	ctx, cancel := macroContext(parent)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		return "", "", ""
 	}
@@ -315,10 +321,42 @@ func (s *Sender) dialContext(ctx context.Context, network, addr string) (net.Con
 	return s.dialVia(s.upstream.Load(), ctx, network, addr)
 }
 
+// SetOwnListenerCheck installs fn, which reports whether a resolved ip:port is
+// one of the tool's own listeners. Direct dials to such an address are refused,
+// so a target name resolving to loopback (or a redirect to it) cannot reach the
+// control API, without giving up the shared transport.
+func (s *Sender) SetOwnListenerCheck(fn func(net.IP, int) bool) {
+	if fn == nil {
+		s.ownCheck.Store(nil)
+		return
+	}
+	s.ownCheck.Store(&fn)
+}
+
+// refuseOwnListener is a net.Dialer Control hook run on the resolved address.
+func (s *Sender) refuseOwnListener(_, address string, _ syscall.RawConn) error {
+	fn := s.ownCheck.Load()
+	if fn == nil {
+		return nil
+	}
+	host, portStr, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil
+	}
+	port, err := strconv.Atoi(portStr)
+	ip := net.ParseIP(host)
+	if err != nil || ip == nil || !(*fn)(ip, port) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s is the tool's own listener", ErrGuardBlocked, address)
+}
+
 // dialVia dials addr directly, or through up when up is a SOCKS proxy.
 func (s *Sender) dialVia(up *url.URL, ctx context.Context, network, addr string) (net.Conn, error) {
 	if up == nil || !senderSOCKSUpstream(up) {
-		return senderNetDialer().DialContext(ctx, network, addr)
+		d := senderNetDialer()
+		d.Control = s.refuseOwnListener
+		return d.DialContext(ctx, network, addr)
 	}
 	if up.Scheme == "socks5" {
 		host, port, err := net.SplitHostPort(addr)
@@ -423,9 +461,10 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 	// applied to req below. Skipped when the send target is out of session scope.
 	var macroTok, macroName, macroMode string
 	if scopeOK {
-		s.maybeRefreshLogin()
-		macroTok, macroName, macroMode = s.macroToken()
+		s.maybeRefreshLogin(r.Context)
+		macroTok, macroName, macroMode = s.macroToken(r.Context)
 	}
+	loginGen := s.login.generation() // a login after this point makes a 401 stale
 	if macroTok != "" && macroMode == "placeholder" && macroName != "" {
 		r.Body = []byte(strings.ReplaceAll(string(r.Body), macroName, macroTok))
 		for k, vs := range r.Headers {
@@ -535,7 +574,7 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 
 	// 401 re-auth: run the login macro once and retry the original request.
 	if scopeOK && !r.retried401 && flow.Status == http.StatusUnauthorized && s.shouldReauth401() {
-		if _, err := s.runLoginMacro(); err == nil {
+		if err := s.reauth401(r.Context, loginGen); err == nil {
 			r2 := r
 			r2.retried401 = true
 			return s.sendOne(r2)

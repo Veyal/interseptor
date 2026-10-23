@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -44,6 +45,32 @@ type Request struct {
 	Binary  bool              // send a binary frame instead of text
 	Headers map[string]string // extra handshake headers (Cookie, Authorization, …)
 	ReadFor time.Duration     // how long to collect response frames (default 2s)
+	// CheckDial, when set, vets every resolved address right before the
+	// connection is made (net.Dialer.Control), so DNS names cannot reach a
+	// destination the literal-host checks would have refused.
+	CheckDial func(ip net.IP, port int) error
+}
+
+// dialControl adapts CheckDial to net.Dialer.Control.
+func dialControl(check func(net.IP, int) error) func(network, address string, _ syscall.RawConn) error {
+	if check == nil {
+		return nil
+	}
+	return func(_, address string, _ syscall.RawConn) error {
+		host, portStr, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return err
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return fmt.Errorf("unresolved dial address %q", address)
+		}
+		return check(ip, port)
+	}
 }
 
 // Frame is one sent or received WebSocket frame.
@@ -81,7 +108,7 @@ func Send(req Request) (*Result, error) {
 		}
 	}
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: dialControl(req.CheckDial)}
 	var conn net.Conn
 	if secure {
 		conn, err = tls.DialWithDialer(dialer, "tcp", host, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // pentest tool, by design

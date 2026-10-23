@@ -1,6 +1,7 @@
 package control
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -33,7 +34,9 @@ func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 		hdrs[hh.Key] = hh.Value
 	}
 	started := time.Now()
-	res, err := wsrepeater.Send(wsrepeater.Request{URL: in.URL, Message: in.Message, Binary: in.Binary, Headers: hdrs})
+	guard := h.ownGuard()
+	checkDial := func(ip net.IP, port int) error { return guard.Check(ip.String(), ip, port) }
+	res, err := wsrepeater.Send(wsrepeater.Request{URL: in.URL, Message: in.Message, Binary: in.Binary, Headers: hdrs, CheckDial: checkDial})
 	// Record the exchange (handshake + frames) as a flow so it can be cited as
 	// evidence. Best-effort and after the send: never affects the result.
 	flowID := h.recordWSExchange(in.URL, res, err, started, aiSourceFlag(r))

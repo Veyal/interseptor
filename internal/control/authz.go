@@ -367,7 +367,7 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 		}
 	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
-	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz | extra, NoSession: true})
+	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz | extra, NoSession: true, Options: h.guardedOptions(nil)})
 	rr := authzResult{Name: id.Name}
 	if sendErr != nil {
 		rr.Error = "send failed"
@@ -744,6 +744,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			Body:      refBody,
 			Flags:     store.FlagAuthz | aiSourceFlag(r),
 			NoSession: true,
+			Options:   h.guardedOptions(nil),
 		})
 
 		hr := hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}

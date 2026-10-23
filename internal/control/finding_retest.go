@@ -238,6 +238,7 @@ func (h *findingsAPI) retestOneFlow(r *http.Request, flowID int64, in retestRequ
 		Body:      body,
 		Flags:     store.FlagRepeater | aiSourceFlag(r),
 		NoSession: in.Session != "current",
+		Options:   h.guardedOptions(nil),
 	})
 	if err != nil {
 		obs.Error = err.Error()
