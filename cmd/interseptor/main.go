@@ -175,6 +175,11 @@ func run() error {
 	// legacy ~/.interceptor → ~/.interseptor typo migration only applies to the
 	// default location, so it's skipped for a custom data dir.
 	globalDir := strings.TrimSpace(*dataDirFlag)
+	if globalDir != "" {
+		// Lookups that resolve the data dir on their own (managed Chrome for the
+		// UI window, PDF export and /api/chrome) must agree with --data-dir.
+		_ = os.Setenv("INTERSEPTOR_DATA_DIR", globalDir)
+	}
 	if globalDir == "" {
 		globalDir = strings.TrimSpace(os.Getenv("INTERSEPTOR_DATA_DIR"))
 	}
@@ -267,6 +272,7 @@ func run() error {
 	hub.ProjectDir = dir
 	_ = os.MkdirAll(filepath.Join(dir, "codecs"), 0o755)
 	hub.GlobalDir = globalDir
+	recoverSystemProxy(hub) // undo an OS proxy left on by a crashed previous run
 	// Switching projects re-execs this binary with --project <target>: a clean
 	// fresh start on the new project's store/CA, no mid-session store swapping.
 	// The mechanism is platform-specific (syscall.Exec on Unix, spawn-and-exit on
@@ -369,7 +375,7 @@ func run() error {
 	hub.SyncSelfPorts = func() {
 		addrs := pm.Addrs()
 		all := append([]string{cm.Addr()}, addrs...)
-		prx.SelfPorts = selfPorts(all...)
+		prx.SetSelfPorts(selfPorts(all...))
 		hub.SetSelfAddr(cm.Addr())
 	}
 
@@ -386,11 +392,11 @@ func run() error {
 	}
 	// Never record traffic aimed at our own listeners, so proxying localhost
 	// doesn't fill history with — or feedback-loop on — our own UI/API.
-	prx.SelfPorts = selfPorts(append([]string{controlAddr}, proxyAddrs...)...)
+	prx.SetSelfPorts(selfPorts(append([]string{controlAddr}, proxyAddrs...)...))
 	if err := startRuntimeListeners(pm, cm, controlAddr, proxyAddrs); err != nil {
 		return err
 	}
-	prx.SelfPorts = selfPorts(append([]string{cm.Addr()}, pm.Addrs()...)...)
+	prx.SetSelfPorts(selfPorts(append([]string{cm.Addr()}, pm.Addrs()...)...))
 	hub.SetSelfAddr(cm.Addr())
 	if socket := mcp.ActivitySocketPath("http://" + cm.Addr()); socket != "" {
 		if err := hub.StartActivitySocket(socket); err != nil {
@@ -427,9 +433,14 @@ func run() error {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	select {
+	case <-stop:
+	case <-stdinLifeline(os.Getenv, os.Stdin):
+		log.Println("supervisor gone (stdin closed)")
+	}
 
 	log.Println("shutting down…")
+	releaseSystemProxy(hub)
 	close(retentionStop)
 	<-retentionDone
 	shutdownRuntime(5*time.Second, cm, hub, pm)

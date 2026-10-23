@@ -9,6 +9,22 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+// ApplyResponseHeaderRules runs only res-header rules (the body streams).
+func TestApplyResponseHeaderRulesOnlyTouchesHeaders(t *testing.T) {
+	e := New()
+	if err := e.SetRules([]store.Rule{
+		{Enabled: true, Type: "res-header", Match: `Server: .*`, Replace: "Server: redacted"},
+		{Enabled: false, Type: "res-header", Match: `X-Keep: .*`, Replace: ""},
+		{Enabled: true, Type: "res-body", Match: `.*`, Replace: "BODY"},
+	}); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	h := e.ApplyResponseHeaderRules(http.Header{"Server": {"nginx"}, "X-Keep": {"1"}})
+	if h.Get("Server") != "redacted" || h.Get("X-Keep") != "1" {
+		t.Fatalf("headers = %v", h)
+	}
+}
+
 func TestApplyResponseRules(t *testing.T) {
 	e := New()
 	if err := e.SetRules([]store.Rule{

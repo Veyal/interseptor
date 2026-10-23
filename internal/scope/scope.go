@@ -145,7 +145,7 @@ func hostMatches(r compiled, host string) bool {
 		return true
 	}
 	if r.hostRe != nil {
-		return r.hostRe.MatchString(strings.ToLower(host))
+		return r.hostRe.MatchString(hostpattern.Normalize(host))
 	}
 	pattern := r.hostExact
 	if r.hostWild != "" {

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/capture"
@@ -80,10 +81,70 @@ type Server struct {
 	// the full updated list, so the control plane can persist it and refresh the UI.
 	OnBypassAdded func([]string)
 
-	// SelfPorts are this tool's own loopback ports (control plane + proxy). Set
-	// by cmd; traffic to them is forwarded but never recorded, so proxying
-	// localhost doesn't fill history with — or feedback-loop on — our own UI.
-	SelfPorts []int
+	// selfPorts are this tool's own ports (control plane + proxy), set by cmd via
+	// SetSelfPorts and replaced at runtime when a listener is rebound. The proxy
+	// refuses to forward to them: the control plane trusts loopback requests as
+	// the local user, so forwarding would hand any proxy client (a LAN device in
+	// Wi-Fi mode, an emulator app under test) full control-API access.
+	selfPorts atomic.Pointer[[]int]
+}
+
+// errSelfTarget refuses a forward that would reach one of our own listeners.
+var errSelfTarget = errors.New("refusing to forward to Interseptor's own listener")
+
+// SetSelfPorts replaces the set of this tool's own listener ports.
+func (s *Server) SetSelfPorts(ports []int) {
+	cp := append([]int(nil), ports...)
+	s.selfPorts.Store(&cp)
+}
+
+func (s *Server) isSelfPort(port int) bool {
+	if p := s.selfPorts.Load(); p != nil {
+		for _, sp := range *p {
+			if sp == port {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// refuseSelfDial is a net.Dialer Control hook. It sees the resolved address, so
+// a hostname that resolves to loopback or to one of this machine's addresses
+// (invisible mode with Host naming the proxy) cannot reach our listeners.
+func (s *Server) refuseSelfDial(_, address string, _ syscall.RawConn) error {
+	host, portStr, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || !s.isSelfPort(port) {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || isLocalInterfaceIP(ip) {
+		return errSelfTarget
+	}
+	return nil
+}
+
+// isLocalInterfaceIP reports whether ip is assigned to one of this machine's interfaces.
+func isLocalInterfaceIP(ip net.IP) bool {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// selfDialer returns a dialer that refuses our own listeners after DNS resolution.
+func (s *Server) selfDialer(timeout time.Duration) *net.Dialer {
+	return &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second, Control: s.refuseSelfDial}
 }
 
 // New builds a proxy Server. ca, eng, and events may each be nil.
@@ -149,7 +210,7 @@ func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Con
 	if up := s.upstream.Load(); up != nil && isSOCKSUpstream(up) {
 		return dialViaSOCKS(ctx, up, network, addr)
 	}
-	return (&net.Dialer{}).DialContext(ctx, network, addr)
+	return (&net.Dialer{Control: s.refuseSelfDial}).DialContext(ctx, network, addr)
 }
 
 type originDialContextKey struct{}
@@ -332,6 +393,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Hostname()
 	port := strutil.AtoiOr(r.URL.Port(), defaultPort(scheme))
 
+	if s.isOwnListenerTarget(host, port) {
+		http.Error(w, errSelfTarget.Error(), http.StatusForbidden)
+		return
+	}
 	flow := s.newFlow(buildFlow(r, scheme, host, port, time.Now()))
 	if isUpgradeRequest(r.Header) {
 		s.handleUpgradeHTTP(w, r, flow)
@@ -360,6 +425,10 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dialHost, port := splitHostPort(r.Host, 443)
+	if s.isOwnListenerTarget(dialHost, port) {
+		http.Error(w, errSelfTarget.Error(), http.StatusForbidden)
+		return
+	}
 	logicalHost := dialHost
 	connectStarted := time.Now()
 	suppression := s.snapshotSuppression()
@@ -369,11 +438,13 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "hijacking unsupported", http.StatusInternalServerError)
 		return
 	}
-	clientConn, _, err := hj.Hijack()
+	clientConn, hjrw, err := hj.Hijack()
 	if err != nil {
 		return
 	}
 	defer clientConn.Close()
+	// Replay bytes the client pipelined after CONNECT (e.g. its ClientHello).
+	clientConn = withBufferedPrefix(clientConn, hjrw)
 	if _, err := clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n")); err != nil {
 		return
 	}
@@ -659,6 +730,10 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 	defer up.Close()
 
 	r.RequestURI = "" // required to write a server-received request as a client request
+	// Proxy credentials are for us, never the origin (Connection/Upgrade stay:
+	// they are the handshake).
+	r.Header.Del("Proxy-Authorization")
+	r.Header.Del("Proxy-Connection")
 	if err := r.Write(up); err != nil {
 		s.recordUpgradeError(clientConn, flow, "upgrade write: "+err.Error())
 		return
@@ -696,7 +771,14 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 
 func (s *Server) relayUpgrade(flow *proxyFlow, clientReader, upstreamReader *bufio.Reader, clientConn, upstreamConn net.Conn) {
 	done := make(chan struct{}, 2)
-	if flow.suppressCapture {
+	// Only WebSocket streams are frame-parsed; other upgrades (h2c, SPDY,
+	// tcp exec/attach) would be stalled or corrupted by it, so splice raw.
+	upg := http.Header(flow.ResHeaders).Get("Upgrade")
+	if upg == "" { // non-conforming 101 without Upgrade: fall back to what was requested
+		upg = http.Header(flow.ReqHeaders).Get("Upgrade")
+	}
+	isWS := strings.EqualFold(strings.TrimSpace(upg), "websocket")
+	if flow.suppressCapture || !isWS {
 		go relayRaw(clientReader, upstreamConn, upstreamConn, done)
 		go relayRaw(upstreamReader, clientConn, clientConn, done)
 	} else {
@@ -743,11 +825,14 @@ func (s *Server) recordUpgradeError(clientConn net.Conn, flow *proxyFlow, msg st
 // dialUpstream opens a raw connection to the target, using TLS for https so the
 // upgraded stream is end-to-end encrypted to the origin.
 func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
+	if s.isOwnListenerTarget(host, port) {
+		return nil, errSelfTarget
+	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	// KeepAlive lets the OS detect a half-open upstream (peer vanished without
 	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
 	// without an application-level timeout that would kill a legitimately idle one.
-	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	d := s.selfDialer(30 * time.Second)
 	tlsCfg := func() *tls.Config {
 		return s.tlsConfigForHost(host)
 	}
@@ -1068,6 +1153,9 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 		reqFinalize = fin
 	}
 
+	if s.isOwnListenerTarget(out.URL.Hostname(), strutil.AtoiOr(out.URL.Port(), defaultPort(out.URL.Scheme))) {
+		return nil, false, errSelfTarget
+	}
 	resp, rtErr := s.tr.RoundTrip(out)
 
 	if reqFinalize != nil {
@@ -1147,9 +1235,13 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 		w.Header().Set("Trailer", strings.Join(tk, ", "))
 	}
 	w.WriteHeader(resp.StatusCode)
+	// Flush the head now and after every body write so SSE / long-poll bodies
+	// reach the client incrementally (plain HTTP and the h2 MITM leg).
+	fw := newFlushWriter(w)
+	fw.flush()
 
 	if resTee, resFinalize, err := s.teeBody(flow, resp.Body); err == nil && resTee != nil {
-		_, cerr := io.Copy(w, resTee)
+		_, cerr := io.Copy(fw, resTee)
 		h, n, _ := resFinalize()
 		flow.ResBodyHash, flow.ResLen = h, n
 		if cerr != nil {
@@ -1262,6 +1354,19 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow.Flow))
 	if !hasRules && !hold {
 		return 0, nil, nil, false, false
+	}
+	// Never buffer an open-ended stream (SSE etc.): holding or body-rewriting
+	// it would stall delivery forever. Header-only rules don't need the body
+	// either. In both cases apply header rules in place and stream the body.
+	streaming := isStreamingResponse(resp)
+	if streaming {
+		hold = false
+	}
+	if !hold {
+		if _, hasBody, _ := s.eng.ResponseBodyScanLimit(); !hasBody || streaming {
+			s.applyResponseHeaderRulesInPlace(flow, resp)
+			return 0, nil, nil, false, false
+		}
 	}
 
 	readLimit := int64(maxTransformBody)
@@ -1419,15 +1524,7 @@ func (s *Server) fail(w http.ResponseWriter, flow *proxyFlow, msg string) {
 // shouldCapture reports whether a flow should be persisted. Traffic to our own
 // loopback listeners (control plane, proxy) is forwarded but never recorded.
 func (s *Server) shouldCapture(flow *store.Flow) bool {
-	if len(s.SelfPorts) == 0 || flow == nil || !isLoopbackName(flow.Host) {
-		return true
-	}
-	for _, p := range s.SelfPorts {
-		if p == flow.Port {
-			return false
-		}
-	}
-	return true
+	return flow == nil || !isLoopbackName(flow.Host) || !s.isSelfPort(flow.Port)
 }
 
 // isOwnListenerTarget reports whether host:port names one of Interseptor's own
@@ -1440,15 +1537,7 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 // gateAndForward after Host-retargeting is resolved, so an edited Host can't
 // slip a forward past this check.
 func (s *Server) isOwnListenerTarget(host string, port int) bool {
-	if len(s.SelfPorts) == 0 || !isLoopbackName(host) {
-		return false
-	}
-	for _, p := range s.SelfPorts {
-		if p == port {
-			return true
-		}
-	}
-	return false
+	return isLoopbackName(host) && s.isSelfPort(port)
 }
 
 // SetCaptureScopeOnly switches between persisting all traffic (false) and only

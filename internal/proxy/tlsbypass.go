@@ -168,8 +168,11 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 // dialRawUpstream opens a plain TCP connection to the origin (through the chained
 // upstream proxy's CONNECT if one is configured), for raw TLS passthrough.
 func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
+	if s.isOwnListenerTarget(host, port) {
+		return nil, errSelfTarget
+	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	d := s.selfDialer(30 * time.Second)
 	if up := s.upstream.Load(); up != nil {
 		if isHTTPUpstream(up) {
 			return dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))

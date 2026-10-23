@@ -47,7 +47,9 @@ pins a specific certificate still rejects the CA.
 
 For Simulator, select the target and use **Setup all** or install the CA and open the profile
 separately. For a physical device, download the `.mobileconfig` profile over a trusted path and install
-it. Then enable full trust under **Settings → General → About → Certificate Trust Settings**.
+it. Fetch the profile or CA before pointing the device at the proxy (or with the device proxy off):
+the proxy refuses to forward to Interseptor's own ports, including this computer's LAN address, so
+a proxied device cannot reach the control API through it. Then enable full trust under **Settings → General → About → Certificate Trust Settings**.
 
 The profile can configure the global HTTP proxy but cannot bypass application pinning. Jailbroken SSH
 automation sends credentials only for the setup request and does not persist them in project settings.

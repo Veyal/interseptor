@@ -253,6 +253,12 @@ func TestBrowserBackgroundSuppressionSeparatesTargetTraffic(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("upstream did not receive normal target request")
 	}
+	// A header-only response rule streams the body, so the flow is finalized
+	// just after the client sees EOF: wait for it rather than racing it.
+	waitFor(t, "normal target flow with both bodies", func() bool {
+		f, _ := st.QueryFlows(10)
+		return len(f) == 1 && f[0].ReqBodyHash != "" && f[0].ResBodyHash != ""
+	})
 	flows, err := st.QueryFlows(10)
 	if err != nil {
 		t.Fatalf("query normal target flow: %v", err)
@@ -390,6 +396,14 @@ func TestBrowserSuppressionDecisionRemainsStableAcrossToggle(t *testing.T) {
 				t.Fatalf("response body=%q", got.body)
 			}
 
+			if tt.wantCaptured {
+				// The streamed response is finalized just after the client sees EOF.
+				waitFor(t, "captured flow with both bodies", func() bool {
+					f, _ := st.QueryFlows(10)
+					_, u := events.snap()
+					return len(f) == 1 && f[0].ReqBodyHash != "" && f[0].ResBodyHash != "" && len(u) == 1
+				})
+			}
 			flows, err := st.QueryFlows(10)
 			if err != nil {
 				t.Fatalf("query flows: %v", err)

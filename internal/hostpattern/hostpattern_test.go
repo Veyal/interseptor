@@ -17,6 +17,20 @@ func TestMatchHost(t *testing.T) {
 		"": {
 			"anything.test": true,
 		},
+		// A fully-qualified trailing dot names the same host and must not
+		// escape include/exclude rules.
+		"example.com": {
+			"example.com.":  true,
+			"EXAMPLE.COM.":  true,
+			"example.com..": true,
+		},
+		"*.example.com": {
+			"api.example.com.": true,
+			"example.com.":     true,
+		},
+		"Example.COM.": {
+			"example.com": true,
+		},
 	}
 	for pattern, hosts := range cases {
 		for host, want := range hosts {

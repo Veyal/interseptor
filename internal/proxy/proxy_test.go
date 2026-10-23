@@ -369,7 +369,7 @@ func TestProxySkipsOwnListenerCapture(t *testing.T) {
 	defer s.Close()
 	ev := &recEvents{}
 	srv := New(s, capture.New(s), nil, nil, ev)
-	srv.SelfPorts = []int{9966, 8080}
+	srv.SetSelfPorts([]int{9966, 8080})
 
 	// Our own control plane (loopback:9966): not recorded, no events, no id.
 	own := srv.newFlow(&store.Flow{Host: "127.0.0.1", Port: 9966, Method: "GET", Path: "/api/flows", Status: 200})
@@ -408,9 +408,9 @@ func TestProxySkipsOwnListenerCapture(t *testing.T) {
 	}
 }
 
-// Self-traffic must bypass the whole intercept pipeline, not just capture — with
-// intercept ON, a request to one of our own listeners must pass straight through
-// (never enter the hold queue), or proxying localhost would freeze the UI.
+// Self-traffic must bypass the whole intercept pipeline — with intercept ON, a
+// request to one of our own listeners is refused at once (never held, never
+// forwarded): the control plane would trust the proxied loopback request.
 func TestProxyDoesNotInterceptOwnTraffic(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
@@ -428,7 +428,7 @@ func TestProxyDoesNotInterceptOwnTraffic(t *testing.T) {
 	eng := intercept.New()
 	eng.SetEnabled(true) // intercept ON — a normal request would block in the gate
 	srv := New(s, capture.New(s), nil, eng, nil)
-	srv.SelfPorts = []int{port} // pretend the upstream is one of our own listeners
+	srv.SetSelfPorts([]int{port}) // pretend the upstream is one of our own listeners
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -441,12 +441,12 @@ func TestProxyDoesNotInterceptOwnTraffic(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 2 * time.Second}
 	resp, err := client.Get(upstream.URL + "/health")
 	if err != nil {
-		t.Fatalf("self-traffic should pass straight through, not be held: %v", err)
+		t.Fatalf("self-traffic must be refused promptly, not held: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if string(body) != "ok" {
-		t.Fatalf("expected ok, got %q", body)
+	if resp.StatusCode != http.StatusForbidden || string(body) == "ok" {
+		t.Fatalf("self-traffic must be refused, got %d %q", resp.StatusCode, body)
 	}
 	if q := eng.Queue(); len(q) != 0 {
 		t.Fatalf("self-traffic must not enter the hold queue, got %d held", len(q))
@@ -1368,7 +1368,7 @@ func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 	eng := intercept.New()
 	eng.SetEnabled(true)
 	srv := New(s, capture.New(s), ca, eng, nil)
-	srv.SelfPorts = []int{ownPort}
+	srv.SetSelfPorts([]int{ownPort})
 	upPool := x509.NewCertPool()
 	upPool.AppendCertsFromPEM(upCA.CertPEM())
 	srv.tr.TLSClientConfig = &tls.Config{RootCAs: upPool}
@@ -2206,7 +2206,7 @@ func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 	defer own.Close()
 	uOwn, _ := url.Parse(own.URL)
 	ownPort, _ := strconv.Atoi(uOwn.Port())
-	srv.SelfPorts = []int{ownPort}
+	srv.SetSelfPorts([]int{ownPort})
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "response-from-upstream")
@@ -2297,7 +2297,7 @@ func TestProxyInterceptEditedHostToNonSelfTargetStillForwards(t *testing.T) {
 	srv := New(s, capture.New(s), nil, eng, nil)
 	// A SelfPorts entry that matches neither target — the guard must not refuse
 	// a legitimate retarget just because SelfPorts is non-empty.
-	srv.SelfPorts = []int{1}
+	srv.SetSelfPorts([]int{1})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

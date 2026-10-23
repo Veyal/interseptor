@@ -308,6 +308,21 @@ func (e *Engine) ApplyResponseRules(h http.Header, body []byte, skipLargeBody bo
 	return h, body
 }
 
+// ApplyResponseHeaderRules applies only the enabled res-header rules, for
+// callers that stream the body untouched (header-only rules, or open-ended
+// streams that must never be buffered).
+func (e *Engine) ApplyResponseHeaderRules(h http.Header) http.Header {
+	e.mu.Lock()
+	rules := e.rules
+	e.mu.Unlock()
+	for _, cr := range rules {
+		if cr.enabled && cr.typ == "res-header" {
+			h = applyResHeaderRule(h, cr.re, cr.replace)
+		}
+	}
+	return h
+}
+
 func applyResHeaderRule(h http.Header, re *regexp.Regexp, replace string) http.Header {
 	keys := make([]string, 0, len(h))
 	for k := range h {

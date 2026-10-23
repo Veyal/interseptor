@@ -10,6 +10,20 @@ func flow(host, path, scheme string, port int) *store.Flow {
 	return &store.Flow{Host: host, Path: path, Scheme: scheme, Port: port}
 }
 
+// A trailing-dot FQDN ("example.com.") is the same host and must not escape
+// exclude rules (exact, wildcard, or regex).
+func TestTrailingDotHostCannotEscapeScope(t *testing.T) {
+	for _, host := range []string{"example.com", "*.example.com", `^example\.com$`} {
+		e := New()
+		e.SetRules([]store.ScopeRule{{Enabled: true, Action: "exclude", Host: host}})
+		for _, h := range []string{"example.com.", "EXAMPLE.com."} {
+			if e.InScope(flow(h, "/", "https", 443)) {
+				t.Fatalf("exclude %q: host %q escaped scope", host, h)
+			}
+		}
+	}
+}
+
 // Wildcard scope must not be tricked by hosts that merely contain the base
 // domain as a substring or non-dot-boundary suffix — the classic wildcard
 // confusion (evil-acme.com, acme.com.evil.com). Also pins scheme case-folding
