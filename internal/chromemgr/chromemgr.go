@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -116,10 +117,14 @@ func BinaryPath(chromeDir, goos, goarch string) (string, error) {
 	return "", ErrNotInstalled
 }
 
-// Dir resolves the directory where managed Chrome is installed.
+// Dir resolves the directory where managed Chrome is installed: globalDir,
+// else INTERSEPTOR_DATA_DIR, else ~/.interseptor (or the legacy ~/.interceptor).
 func Dir(globalDir string) string {
+	if strings.TrimSpace(globalDir) == "" {
+		globalDir = os.Getenv("INTERSEPTOR_DATA_DIR")
+	}
 	if strings.TrimSpace(globalDir) != "" {
-		return filepath.Join(globalDir, "chrome")
+		return filepath.Join(strings.TrimSpace(globalDir), "chrome")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -144,13 +149,20 @@ type Installer struct {
 	GOARCH      string
 }
 
-// NewInstaller returns an Installer configured for the current system.
+// NewInstaller returns an Installer configured for the current system. The
+// client bounds connection setup only: the archive is ~150 MB, so a whole-request
+// timeout would make slow links fail; the caller's context cancels the download.
 func NewInstaller() *Installer {
 	return &Installer{
 		MetadataURL: DefaultMetadataURL,
-		Client:      &http.Client{Timeout: 30 * time.Second},
-		GOOS:        runtime.GOOS,
-		GOARCH:      runtime.GOARCH,
+		Client: &http.Client{Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+		}},
+		GOOS:   runtime.GOOS,
+		GOARCH: runtime.GOARCH,
 	}
 }
 
@@ -291,27 +303,9 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 		logStep("Extracting to %s…", targetDir)
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return "", fmt.Errorf("create destination directory: %w", err)
-	}
-
-	if err := extractZip(tmpZip.Name(), targetDir); err != nil {
-		return "", fmt.Errorf("extract Chrome archive: %w", err)
-	}
-
-	// On Darwin, strip quarantine attribute if present
-	if goos == "darwin" {
-		_ = exec.CommandContext(ctx, "xattr", "-dr", "com.apple.quarantine", targetDir).Run()
-	}
-
-	binPath, err := BinaryPath(targetDir, goos, goarch)
+	binPath, err := installArchive(ctx, tmpZip.Name(), targetDir, goos, goarch)
 	if err != nil {
-		return "", fmt.Errorf("locate installed binary: %w", err)
-	}
-
-	// Ensure binary has executable bits
-	if goos != "windows" {
-		_ = os.Chmod(binPath, 0o755)
+		return "", err
 	}
 
 	if logStep != nil {
@@ -320,19 +314,76 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 	return binPath, nil
 }
 
-func extractZip(zipPath, destDir string) error {
+// installArchive extracts the archive into a staging directory beside
+// targetDir and swaps it in only once the binary is present, so a failed or
+// cancelled install never leaves a half-extracted Chrome that looks installed.
+func installArchive(ctx context.Context, zipPath, targetDir, goos, goarch string) (string, error) {
+	parent := filepath.Dir(filepath.Clean(targetDir))
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", fmt.Errorf("create destination directory: %w", err)
+	}
+	stage, err := os.MkdirTemp(parent, ".chrome-stage-*")
+	if err != nil {
+		return "", fmt.Errorf("create staging directory: %w", err)
+	}
+	defer os.RemoveAll(stage)
+	if err := os.Chmod(stage, 0o755); err != nil {
+		return "", err
+	}
+
+	if err := extractZip(ctx, zipPath, stage); err != nil {
+		return "", fmt.Errorf("extract Chrome archive: %w", err)
+	}
+	// On Darwin, strip quarantine attribute if present
+	if goos == "darwin" {
+		_ = exec.CommandContext(ctx, "xattr", "-dr", "com.apple.quarantine", stage).Run()
+	}
+	if _, err := BinaryPath(stage, goos, goarch); err != nil {
+		return "", fmt.Errorf("locate installed binary: %w", err)
+	}
+
+	old := targetDir + ".old"
+	_ = os.RemoveAll(old)
+	if err := os.Rename(targetDir, old); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("move previous install aside: %w", err)
+	}
+	if err := os.Rename(stage, targetDir); err != nil {
+		_ = os.Rename(old, targetDir)
+		return "", fmt.Errorf("activate install: %w", err)
+	}
+	_ = os.RemoveAll(old)
+
+	binPath, err := BinaryPath(targetDir, goos, goarch)
+	if err != nil {
+		return "", fmt.Errorf("locate installed binary: %w", err)
+	}
+	if goos != "windows" {
+		_ = os.Chmod(binPath, 0o755)
+	}
+	return binPath, nil
+}
+
+// within reports whether path is dir or below it.
+func within(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel)
+}
+
+func extractZip(ctx context.Context, zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
-	cleanDest := filepath.Clean(destDir) + string(os.PathSeparator)
-
+	destDir = filepath.Clean(destDir)
 	for _, f := range r.File {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		// Prevent ZipSlip
 		targetPath := filepath.Join(destDir, f.Name)
-		if !strings.HasPrefix(filepath.Clean(targetPath)+string(os.PathSeparator), cleanDest) && filepath.Clean(targetPath) != filepath.Clean(destDir) {
+		if !within(destDir, targetPath) {
 			return fmt.Errorf("illegal zip entry path: %s", f.Name)
 		}
 
@@ -342,38 +393,63 @@ func extractZip(zipPath, destDir string) error {
 			}
 			continue
 		}
-
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 			return err
 		}
-
-		rc, err := f.Open()
-		if err != nil {
+		if f.Mode()&os.ModeSymlink != 0 {
+			if err := extractSymlink(f, destDir, targetPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := extractFile(f, targetPath); err != nil {
 			return err
-		}
-
-		mode := f.Mode()
-		// Ensure binaries in MacOS or root are executable
-		if strings.Contains(f.Name, "Contents/MacOS/") || strings.HasSuffix(f.Name, "/chrome") || f.Name == "chrome" {
-			mode |= 0o755
-		}
-
-		out, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-		if err != nil {
-			rc.Close()
-			return err
-		}
-
-		_, err = io.Copy(out, rc)
-		rc.Close()
-		out.Close()
-		if err != nil {
-			return err
-		}
-
-		if mode&0o111 != 0 {
-			_ = os.Chmod(targetPath, mode)
 		}
 	}
 	return nil
+}
+
+// extractSymlink recreates a symlink entry (the macOS app bundle relies on
+// framework links such as Versions/Current), refusing targets outside destDir.
+func extractSymlink(f *zip.File, destDir, targetPath string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(io.LimitReader(rc, 4096))
+	rc.Close()
+	if err != nil {
+		return err
+	}
+	link := string(b)
+	if link == "" || filepath.IsAbs(link) || !within(destDir, filepath.Join(filepath.Dir(targetPath), link)) {
+		return fmt.Errorf("illegal zip symlink: %s -> %s", f.Name, link)
+	}
+	return os.Symlink(link, targetPath)
+}
+
+func extractFile(f *zip.File, targetPath string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	mode := f.Mode().Perm()
+	// Ensure binaries in MacOS or root are executable
+	if strings.Contains(f.Name, "Contents/MacOS/") || strings.HasSuffix(f.Name, "/chrome") || f.Name == "chrome" {
+		mode |= 0o755
+	}
+	out, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode|0o200)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, rc)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Chmod(targetPath, mode)
 }

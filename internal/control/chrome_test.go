@@ -85,7 +85,9 @@ func TestChromeInstallHandler(t *testing.T) {
 	defer srv.Close()
 
 	customDir := t.TempDir()
-	t.Setenv("INTERSEPTOR_DATA_DIR", customDir)
+	oldDir := chromeDir
+	defer func() { chromeDir = oldDir }()
+	chromeDir = func() string { return customDir }
 
 	// Inject test installer
 	oldInstaller := newChromeInstaller
@@ -124,5 +126,20 @@ func TestChromeInstallHandler(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("installed binary not found on disk: %v", err)
+	}
+	if !strings.HasPrefix(path, customDir) {
+		t.Fatalf("installed into %q, want under the test dir %q (never the real home)", path, customDir)
+	}
+
+	// A second request reports the existing install instead of downloading again.
+	resp2, err := http.Post(ts.URL+"/api/chrome/install", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	defer resp2.Body.Close()
+	var again map[string]any
+	_ = json.NewDecoder(resp2.Body).Decode(&again)
+	if again["already"] != true {
+		t.Fatalf("second install = %v, want already:true", again)
 	}
 }

@@ -177,3 +177,136 @@ func TestCandidatePathsAbsolute(t *testing.T) {
 		}
 	}
 }
+
+// serveCfT serves CfT metadata pointing at /download.zip and the given archive.
+func serveCfT(t *testing.T, platform string, zipBytes []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".json") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"channels": map[string]any{"Stable": map[string]any{
+					"version": "156.0.8078.47",
+					"downloads": map[string]any{"chrome": []map[string]string{
+						{"platform": platform, "url": "http://" + r.Host + "/download.zip"},
+					}},
+				}},
+			})
+			return
+		}
+		w.Write(zipBytes)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+type zipEntry struct {
+	name, body string
+	mode       os.FileMode
+}
+
+func buildZip(t *testing.T, entries []zipEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, e := range entries {
+		hdr := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
+		mode := e.mode
+		if mode == 0 {
+			mode = 0o644
+		}
+		hdr.SetMode(mode)
+		w, err := zw.CreateHeader(hdr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprint(w, e.body)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func linuxInstaller(srv *httptest.Server) *Installer {
+	return &Installer{MetadataURL: srv.URL + "/m.json", Client: srv.Client(), GOOS: "linux", GOARCH: "amd64"}
+}
+
+func TestInstallFailureLeavesNoUsableBinary(t *testing.T) {
+	good := buildZip(t, []zipEntry{{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}, {name: "linux64/extra.pak", body: strings.Repeat("x", 4096)}})
+	// Corrupt the second member's compressed data so extraction fails midway.
+	bad := append([]byte(nil), good...)
+	idx := bytes.Index(bad, []byte("linux64/extra.pak")) // local header: data follows the name
+	for i := idx + len("linux64/extra.pak"); i < idx+len("linux64/extra.pak")+16; i++ {
+		bad[i] ^= 0xff
+	}
+	srv := serveCfT(t, "linux64", bad)
+	dest := filepath.Join(t.TempDir(), "chrome")
+	if _, err := linuxInstaller(srv).Install(context.Background(), dest, nil, nil); err == nil {
+		t.Fatal("Install of a corrupt archive succeeded")
+	}
+	if p, err := BinaryPath(dest, "linux", "amd64"); err == nil {
+		t.Fatalf("BinaryPath = %q after a failed install, want ErrNotInstalled", p)
+	}
+}
+
+func TestInstallReplacesPreviousInstall(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "chrome")
+	stale := filepath.Join(dest, "linux64", "stale.pak")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}}))
+	if _, err := linuxInstaller(srv).Install(context.Background(), dest, nil, nil); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale file from the previous install survived: %v", err)
+	}
+}
+
+func TestInstallKeepsSymlinksAndRejectsEscapes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{
+		{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
+		{name: "linux64/lib/real.so", body: "lib"},
+		{name: "linux64/lib/current.so", body: "real.so", mode: os.ModeSymlink | 0o777},
+	}))
+	dest := filepath.Join(t.TempDir(), "chrome")
+	if _, err := linuxInstaller(srv).Install(context.Background(), dest, nil, nil); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	link := filepath.Join(dest, "linux64", "lib", "current.so")
+	if target, err := os.Readlink(link); err != nil || target != "real.so" {
+		t.Fatalf("Readlink(%s) = %q, %v; want real.so", link, target, err)
+	}
+
+	for _, target := range []string{"../../../../etc/passwd", "/etc/passwd"} {
+		srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{
+			{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
+			{name: "linux64/evil", body: target, mode: os.ModeSymlink | 0o777},
+		}))
+		if _, err := linuxInstaller(srv).Install(context.Background(), filepath.Join(t.TempDir(), "chrome"), nil, nil); err == nil {
+			t.Errorf("Install accepted a symlink to %q", target)
+		}
+	}
+}
+
+func TestDirHonoursDataDirEnv(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("INTERSEPTOR_DATA_DIR", root)
+	if got, want := Dir(""), filepath.Join(root, "chrome"); got != want {
+		t.Fatalf("Dir(\"\") = %q, want %q", got, want)
+	}
+}
+
+func TestNewInstallerHasNoWholeDownloadTimeout(t *testing.T) {
+	// Client.Timeout covers reading the ~150 MB body, so slow links could never finish.
+	if c := NewInstaller().Client; c != nil && c.Timeout != 0 {
+		t.Fatalf("Client.Timeout = %v, want 0 (use transport/connect timeouts instead)", c.Timeout)
+	}
+}
