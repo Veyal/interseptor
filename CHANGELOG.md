@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.18.0` release.
 
+### Fixed
+
+- **`interseptor install-chrome` finds the binary it installed.** Chrome for Testing archives unpack into `chrome-<platform>/` (e.g. `chrome-mac-arm64/`), but the installer looked under `<platform>/`, so every real install failed with "managed Chrome is not installed" after the download; the unit tests built fake archives from the same wrong path. The expected layout is now pinned to the published archives, and a real install was verified end to end on macOS arm64 (binary runs headless, framework symlinks intact). (`internal/chromemgr/chromemgr.go`.)
+
 ## [2.18.0] - 2026-10-23
 
 > Minor release: one-command Chrome for Testing install, finding status triage while

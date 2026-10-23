@@ -232,11 +232,11 @@ func linuxInstaller(srv *httptest.Server) *Installer {
 }
 
 func TestInstallFailureLeavesNoUsableBinary(t *testing.T) {
-	good := buildZip(t, []zipEntry{{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}, {name: "linux64/extra.pak", body: strings.Repeat("x", 4096)}})
+	good := buildZip(t, []zipEntry{{name: "chrome-linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}, {name: "chrome-linux64/extra.pak", body: strings.Repeat("x", 4096)}})
 	// Corrupt the second member's compressed data so extraction fails midway.
 	bad := append([]byte(nil), good...)
-	idx := bytes.Index(bad, []byte("linux64/extra.pak")) // local header: data follows the name
-	for i := idx + len("linux64/extra.pak"); i < idx+len("linux64/extra.pak")+16; i++ {
+	idx := bytes.Index(bad, []byte("chrome-linux64/extra.pak")) // local header: data follows the name
+	for i := idx + len("chrome-linux64/extra.pak"); i < idx+len("chrome-linux64/extra.pak")+16; i++ {
 		bad[i] ^= 0xff
 	}
 	srv := serveCfT(t, "linux64", bad)
@@ -251,14 +251,14 @@ func TestInstallFailureLeavesNoUsableBinary(t *testing.T) {
 
 func TestInstallReplacesPreviousInstall(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "chrome")
-	stale := filepath.Join(dest, "linux64", "stale.pak")
+	stale := filepath.Join(dest, "chrome-linux64", "stale.pak")
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}}))
+	srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{{name: "chrome-linux64/chrome", body: "#!/bin/sh\n", mode: 0o755}}))
 	if _, err := linuxInstaller(srv).Install(context.Background(), dest, nil, nil); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -272,23 +272,23 @@ func TestInstallKeepsSymlinksAndRejectsEscapes(t *testing.T) {
 		t.Skip("symlinks need privileges on Windows")
 	}
 	srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{
-		{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
-		{name: "linux64/lib/real.so", body: "lib"},
-		{name: "linux64/lib/current.so", body: "real.so", mode: os.ModeSymlink | 0o777},
+		{name: "chrome-linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
+		{name: "chrome-linux64/lib/real.so", body: "lib"},
+		{name: "chrome-linux64/lib/current.so", body: "real.so", mode: os.ModeSymlink | 0o777},
 	}))
 	dest := filepath.Join(t.TempDir(), "chrome")
 	if _, err := linuxInstaller(srv).Install(context.Background(), dest, nil, nil); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	link := filepath.Join(dest, "linux64", "lib", "current.so")
+	link := filepath.Join(dest, "chrome-linux64", "lib", "current.so")
 	if target, err := os.Readlink(link); err != nil || target != "real.so" {
 		t.Fatalf("Readlink(%s) = %q, %v; want real.so", link, target, err)
 	}
 
 	for _, target := range []string{"../../../../etc/passwd", "/etc/passwd"} {
 		srv := serveCfT(t, "linux64", buildZip(t, []zipEntry{
-			{name: "linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
-			{name: "linux64/evil", body: target, mode: os.ModeSymlink | 0o777},
+			{name: "chrome-linux64/chrome", body: "#!/bin/sh\n", mode: 0o755},
+			{name: "chrome-linux64/evil", body: target, mode: os.ModeSymlink | 0o777},
 		}))
 		if _, err := linuxInstaller(srv).Install(context.Background(), filepath.Join(t.TempDir(), "chrome"), nil, nil); err == nil {
 			t.Errorf("Install accepted a symlink to %q", target)
@@ -308,5 +308,21 @@ func TestNewInstallerHasNoWholeDownloadTimeout(t *testing.T) {
 	// Client.Timeout covers reading the ~150 MB body, so slow links could never finish.
 	if c := NewInstaller().Client; c != nil && c.Timeout != 0 {
 		t.Fatalf("Client.Timeout = %v, want 0 (use transport/connect timeouts instead)", c.Timeout)
+	}
+}
+
+// The layout of the real Chrome for Testing archives (checked against the
+// published 156 zips): every platform unpacks into chrome-<platform>/.
+func TestRelativeBinaryPathMatchesRealArchiveLayout(t *testing.T) {
+	for platform, want := range map[string]string{
+		"mac-arm64": "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+		"mac-x64":   "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+		"linux64":   "chrome-linux64/chrome",
+		"win64":     "chrome-win64/chrome.exe",
+		"win32":     "chrome-win32/chrome.exe",
+	} {
+		if got := filepath.ToSlash(RelativeBinaryPath(platform)); got != want {
+			t.Errorf("RelativeBinaryPath(%q) = %q, want %q", platform, got, want)
+		}
 	}
 }

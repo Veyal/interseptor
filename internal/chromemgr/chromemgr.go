@@ -57,15 +57,18 @@ func PlatformKey(goos, goarch string) (string, error) {
 	return "", fmt.Errorf("%w: %s/%s", ErrUnsupportedPlatform, goos, goarch)
 }
 
-// RelativeBinaryPath returns the expected executable location inside the extracted archive.
+// RelativeBinaryPath returns the expected executable location inside the
+// extracted archive. Chrome for Testing archives unpack into a
+// "chrome-<platform>" directory (chrome-mac-arm64/, chrome-linux64/, ...).
 func RelativeBinaryPath(platform string) string {
+	root := "chrome-" + platform
 	switch {
 	case strings.HasPrefix(platform, "mac-"):
-		return filepath.Join(platform, "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing")
+		return filepath.Join(root, "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing")
 	case strings.HasPrefix(platform, "win"):
-		return filepath.Join(platform, "chrome.exe")
+		return filepath.Join(root, "chrome.exe")
 	default:
-		return filepath.Join(platform, "chrome")
+		return filepath.Join(root, "chrome")
 	}
 }
 
