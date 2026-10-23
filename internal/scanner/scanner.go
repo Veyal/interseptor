@@ -4,6 +4,7 @@
 package scanner
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -867,12 +868,32 @@ func openRedirectParam(host, path, body, location string) (name, val string, ok 
 		if !isAbsolute {
 			continue
 		}
-		if strings.Contains(locLower, strings.ToLower(host)) {
+		if redirectStaysOnHost(location, host) {
 			continue
 		}
 		return p[0], p[1], true
 	}
 	return "", "", false
+}
+
+// redirectStaysOnHost reports whether an absolute Location targets host or
+// one of its subdomains, comparing the parsed hostname (case-insensitive,
+// trailing dot ignored) rather than searching the whole URL for the name.
+// An unparseable Location is treated as on-host to avoid a false positive.
+func redirectStaysOnHost(location, host string) bool {
+	u, err := url.Parse(strings.TrimSpace(location))
+	if err != nil {
+		return true
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	norm := func(s string) string { return strings.TrimSuffix(strings.ToLower(strings.Trim(s, "[]")), ".") }
+	lh, th := norm(u.Hostname()), norm(host)
+	if th == "" {
+		return false
+	}
+	return lh == th || strings.HasSuffix(lh, "."+th)
 }
 
 // reflectedParam returns the first query/body parameter whose value (≥6 chars,
