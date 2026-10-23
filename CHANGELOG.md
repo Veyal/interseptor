@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-10-23
+
+> Minor release: the macOS app updates itself (native update window, verified
+> download, install and relaunch), the browser UI gets one-click update with
+> progress and restart, and a new Identities workspace lets you see and manage
+> every authorization identity agents create: provenance, token and health, the
+> auth flow behind it, and saved access-control results.
+
 ### Added
 
 - **The macOS app updates itself.** A native update window shows the release notes with Skip This Version, Remind Me Later and Install Update, downloads with a progress bar, then offers Install and Relaunch (or Later, keeping the verified update staged). The app checks at launch and every 24 hours (toggle in the app menu, off with `INTERSEPTOR_NO_UPDATE_CHECK=1`), adds **Check for Updates…** to the app menu, and the version badge in the window opens the same updater. Before installing it requires HTTPS GitHub download hosts, the zip's SHA-256 from the release's `macos-checksums.txt`, the same bundle identifier, the release version and a valid code signature; the bundle is swapped by a detached helper after the server stops gracefully, restoring the previous version on failure. An app running from the disk image, a translocated location or a read-only folder is told to move to Applications instead. (`packaging/macos/shell/Updater.swift`, `UpdateWindowController.swift`, `UpdateVerifier.swift`, `UpdateHelperScript.swift`, `Versioning.swift`.)
