@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.19.0` release.
+
 ## [2.19.0] - 2026-10-23
 
 > Minor release: the macOS app updates itself (native update window, verified
