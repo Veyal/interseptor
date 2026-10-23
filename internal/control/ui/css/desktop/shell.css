@@ -27,7 +27,10 @@ html.desktop-app #bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(18
   html.desktop-app #bar{grid-template-columns:auto minmax(0,1fr) auto}
 }
 html.desktop-app .fb-start{padding-left:var(--titlebar-inset-left,0px)}
-html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptStat,#icptCompact,#offlineBanner,.nav-rail-foot,#mobileProjectChip){display:none!important}
+html.desktop-app :is(#logo,#bar .brand,#fbEngage,#paneActions,#connChip,#themeToggle,#icptCompact,#offlineBanner,.nav-rail-foot,#mobileProjectChip){display:none!important}
+/* #icptStat is an aria-live status: the pill and status bar replace it visually, but it stays
+   rendered (visually hidden) so intercept changes are still announced. */
+html.desktop-app #icptStat{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 html.desktop-app .fb-zone{gap:8px;min-width:0}
 /* The centred command field: 360px, inset. */
 html.desktop-app #cmdkBtn{width:100%;min-width:0;max-width:none;min-height:var(--control-h);height:var(--control-h);padding:0 8px 0 12px;gap:8px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);background:var(--surface-inset);color:var(--text-muted);font-size:var(--text-ui);font-weight:400}
@@ -36,7 +39,7 @@ html.desktop-app #cmdkBtn .cmdk-label{color:var(--text-muted);gap:6px}
 html.desktop-app #cmdkBtn .cmdk-label .icon{width:14px;height:14px}
 /* The chord reads as one hint, "⌘K": the second key cancels the button's gap. */
 html.desktop-app #cmdkBtn kbd{margin-left:auto;min-width:0;padding:0;border:0;background:transparent;box-shadow:none;color:var(--text-muted);font:400 var(--text-ui)/20px var(--ui)}
-html.desktop-app #cmdkBtn kbd+kbd{margin-left:-7px}
+html.desktop-app.desktop-macos #cmdkBtn kbd+kbd{margin-left:-7px}
 /* The intercept pill: the one intercept control in the chrome. */
 html.desktop-app .dsk-icpt-pill{display:inline-flex;align-items:center;gap:8px;flex:none;height:var(--control-h);padding:0 12px;border:1px solid var(--border-subtle);border-radius:999px;background:transparent;color:var(--text-secondary);font:500 var(--text-ui)/1 var(--ui);white-space:nowrap}
 html.desktop-app .dsk-icpt-pill:hover{background:var(--surface-hover);color:var(--text-primary)}

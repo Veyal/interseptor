@@ -6,8 +6,8 @@
 
 html.desktop-app #panel-intercept{--chip-bg:color-mix(in srgb,var(--text-primary) 9%,transparent)}
 
-/* The status pill and status bar already say intercept is on. */
-html.desktop-app #panel-intercept #interceptWarning{display:none!important}
+/* The status pill and status bar already say intercept is on; the "state unavailable" error with Retry stays visible. */
+html.desktop-app #panel-intercept #interceptWarning:not(.is-unavailable){display:none!important}
 
 /* ---- control row ---- */
 html.desktop-app #panel-intercept .icpt-bar{flex-wrap:nowrap;align-items:center;gap:6px;height:var(--toolbar-h);min-height:var(--toolbar-h);padding:0 var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle);overflow:visible}

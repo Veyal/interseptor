@@ -756,11 +756,14 @@ if(tlsBanner){
 }}
 
 /* ---- boot ---- */
+let interceptUnknown=false;
 function renderInterceptUnavailable(error){
+  interceptUnknown=true;noteDesktopStatus();
   ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=true;});
   ['#icptReqState','#icptResState'].forEach(sel=>{const label=$(sel);if(label)label.textContent='Unknown';});
   const warning=$('#interceptWarning');if(!warning)return;
   warning.style.display='block';
+  warning.classList.add('is-unavailable');
   warning.innerHTML=`Intercept state unavailable: ${esc(error?.message||'connection failed')} <button type="button" class="btn" data-intercept-retry>Retry</button>`;
   const retry=warning.querySelector('[data-intercept-retry]');if(retry)retry.onclick=refreshIntercept;
 }
@@ -772,7 +775,9 @@ async function refreshIntercept(){
     if(generation!==interceptStateGeneration())return;
     replaceInterceptState(mergeInterceptFilterSince(next,filterGeneration));
     ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
-    renderIntercept();
+    interceptUnknown=false;
+    const unavailable=$('#interceptWarning');if(unavailable)unavailable.classList.remove('is-unavailable');
+    renderIntercept();noteDesktopStatus();
   }catch(e){if(generation!==interceptStateGeneration())return;renderInterceptUnavailable(e);}
 }
 async function bootProjectScopedUI(){
@@ -932,7 +937,7 @@ if(isDesktopApp()){
       return {
         proxyAddr:addr==='…'?'':addr,
         proxyAuthPasswordMissing:!!state.proxyAuthPasswordMissing,
-        intercept:{enabled:!!ic.enabled,responseEnabled:!!ic.responseEnabled,held:(ic.queue||[]).length+(ic.responseQueue||[]).length},
+        intercept:{unknown:interceptUnknown,enabled:!!ic.enabled,responseEnabled:!!ic.responseEnabled,held:(ic.queue||[]).length+(ic.responseQueue||[]).length},
         scope:{loaded:!!ps.loaded,inCount:ps.scope?.inCount,outCount:ps.scope?.outCount},
         flows:ps.evidence?.flows||(state.flows||[]).length,
         live:sseStatusNow,project:titleProject,

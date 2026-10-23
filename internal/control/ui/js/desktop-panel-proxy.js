@@ -220,13 +220,13 @@ function buildInspector() {
     id: 'inspectActionsBtn',
     tooltip: 'Attach as evidence, Copy as, Copy as PNG, more flow actions',
     items: [
-      { key: 'attach', label: 'Attach as evidence', icon: 'attach', hint: 'E', hidden: () => !shown(node('inspectAddFinding')), disabled: () => node('inspectAddFinding').disabled, run: later(() => node('inspectAddFinding')) },
+      { key: 'attach', label: 'Attach as evidence', icon: 'attach', hint: 'E', hidden: () => !shown(node('inspectAddFinding')), disabled: () => !node('inspectAddFinding') || node('inspectAddFinding').disabled, run: later(() => node('inspectAddFinding')) },
       menuSeparator(),
-      { key: 'copyas', label: 'Copy as…', icon: 'copy', hidden: () => !shown(node('inspectCopyAs')), disabled: () => node('inspectCopyAs').disabled, run: later(() => node('inspectCopyAs')) },
+      { key: 'copyas', label: 'Copy as…', icon: 'copy', hidden: () => !shown(node('inspectCopyAs')), disabled: () => !node('inspectCopyAs') || node('inspectCopyAs').disabled, run: later(() => node('inspectCopyAs')) },
       { key: 'png', label: 'Copy as PNG', icon: 'image', hidden: () => !!png() && !shown(png()), disabled: () => !png() || png().disabled, run: later(png) },
-      { key: 'pngopts', label: 'Copy as PNG options…', icon: 'settings', hidden: () => !shown(node('inspectCopyPngMore')), disabled: () => node('inspectCopyPngMore').disabled, run: later(() => node('inspectCopyPngMore')) },
+      { key: 'pngopts', label: 'Copy as PNG options…', icon: 'settings', hidden: () => !shown(node('inspectCopyPngMore')), disabled: () => !node('inspectCopyPngMore') || node('inspectCopyPngMore').disabled, run: later(() => node('inspectCopyPngMore')) },
       menuSeparator(),
-      { key: 'more', label: 'More flow actions…', icon: 'more', hidden: () => !shown(node('inspectMoreActions')), disabled: () => node('inspectMoreActions').disabled, run: later(() => node('inspectMoreActions')) },
+      { key: 'more', label: 'More flow actions…', icon: 'more', hidden: () => !shown(node('inspectMoreActions')), disabled: () => !node('inspectMoreActions') || node('inspectMoreActions').disabled, run: later(() => node('inspectMoreActions')) },
     ],
   });
   ['inspectAddFinding', 'inspectCopyPng', 'inspectCopyPngMore', 'inspectCopyAs', 'inspectMoreActions'].forEach((id) => { const n = node(id); if (n) move(n, src); });

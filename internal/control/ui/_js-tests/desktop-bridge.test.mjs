@@ -230,3 +230,33 @@ test('the desktop skin re-announces density: its 28px --row-h must reach lists t
   assert.ok(dom.classes.has('desktop-app'));
   assert.deepEqual(dom.dispatched, ['densitychange']);
 });
+
+test('keyboard modality only touches the <html> class when the state changes', async () => {
+  const host = { platform: 'macos', version: '0', post: () => {} };
+  const dom = installDom({ host });
+  const root = globalThis.document.documentElement;
+  const m = await import('../js/desktop.js?case=kbd-writes');
+  m.initDesktop({ actions: { panel: () => true } });
+  let writes = 0;
+  const { add, remove } = root.classList;
+  root.classList.add = (...c) => { writes++; add(...c); };
+  root.classList.remove = (...c) => { writes++; remove(...c); };
+  const fire = (type, e = {}) => dom.handlers[type].forEach((fn) => fn({ preventDefault() {}, target: null, ...e }));
+  fire('pointerdown'); fire('pointerdown'); fire('pointerdown');
+  assert.equal(writes, 0, 'clicks with the ring already off write nothing');
+  fire('keydown', { key: 'ArrowDown' }); fire('keydown', { key: 'ArrowDown' }); fire('keydown', { key: 'Tab' });
+  assert.equal(writes, 1, 'repeated navigation keys write once');
+  fire('pointerdown');
+  assert.equal(writes, 2);
+});
+
+test('Ctrl+wheel blocker is installed for the Chrome --app window only, not the native shell', async () => {
+  const native = installDom({ host: { platform: 'macos', version: '0', post: () => {} } });
+  const m1 = await import('../js/desktop.js?case=wheel-native');
+  m1.initDesktop();
+  assert.equal(native.listeners.includes('wheel'), false, 'WKWebView already has magnification off');
+  const chrome = installDom({ standalone: true });
+  const m2 = await import('../js/desktop.js?case=wheel-chrome');
+  m2.initDesktop();
+  assert.equal(chrome.listeners.includes('wheel'), true);
+});

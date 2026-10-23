@@ -274,3 +274,50 @@ test('overflow: a split control wrapped in a div keeps none of its buttons in th
   more.button.click();
   assert.equal(main.tabIndex, -1, 'opening re-locks every descendant');
 });
+
+test('overflow: choosing an item with the keyboard returns focus to the trigger, and Tab on a closed menu never traps', async () => {
+  const dom = installDom();
+  const kit = await load();
+  const a = button('a', 'A');
+  dom.body.appendChild(a);
+  const more = kit.createOverflow({ id: 'k', items: [a] });
+  dom.body.appendChild(more.button);
+  more.open();
+  a.click();
+  assert.equal(more.isOpen(), false);
+  assert.equal(dom.document.activeElement, more.button, 'focus left in the hidden item returns to the trigger');
+  // Tab while the menu is already closed (focus still inside it) lands on the trigger.
+  dom.document.activeElement = a;
+  const tab = a.dispatch('keydown', { key: 'Tab' });
+  assert.equal(tab.defaultPrevented, true);
+  assert.equal(dom.document.activeElement, more.button);
+});
+
+test('overflow: an item click that moved focus elsewhere does not steal it back', async () => {
+  const dom = installDom();
+  const kit = await load();
+  const a = button('a', 'A'), sheet = button('sheet', 'Sheet');
+  dom.body.appendChild(a); dom.body.appendChild(sheet);
+  const more = kit.createOverflow({ id: 'k2', items: [a] });
+  dom.body.appendChild(more.button);
+  a.addEventListener('click', () => sheet.focus());
+  more.open();
+  a.click();
+  assert.equal(dom.document.activeElement, sheet);
+});
+
+test('popup Escape: a modal opened over an open popup keeps Escape, the popup still closes', async () => {
+  const dom = installDom();
+  const kit = await load();
+  const a = button('a', 'A');
+  dom.body.appendChild(a);
+  const more = kit.createOverflow({ id: 'm', items: [a] });
+  dom.body.appendChild(more.button);
+  const modalField = new FakeNode('input');
+  dom.body.appendChild(modalField);
+  more.open();
+  const esc = modalField.dispatch('keydown', { key: 'Escape' });
+  assert.equal(esc.defaultPrevented, false, 'the modal handler can still see and act on Escape');
+  assert.equal(esc.stopped, false);
+  assert.equal(more.isOpen(), false);
+});

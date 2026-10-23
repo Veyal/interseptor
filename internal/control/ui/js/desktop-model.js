@@ -223,6 +223,7 @@ export function interceptPillModel(ic = {}) {
   const req = !!ic.enabled, resp = !!ic.responseEnabled;
   const held = Number(ic.held) > 0 ? Math.floor(Number(ic.held)) : 0;
   const tail = held ? ' \u00b7 ' + held + ' held' : '';
+  if (ic.unknown) return { text: 'Intercept unknown', pressed: false, label: 'Request intercept state is unavailable. Toggle request intercept.', title: 'Request intercept state is unavailable. Open Intercept to retry.' };
   const text = (req ? 'Intercept on' : resp ? 'Responses on' : 'Intercept off') + tail;
   const also = req && resp ? ' Responses are also held.' : !req && resp ? ' Responses are held.' : '';
   return {
@@ -251,7 +252,7 @@ export function statusBarModel(s = {}) {
   return {
     proxy: { text: proxy || 'Proxy', tone: !proxy ? 'muted' : authGap ? 'warn' : 'ok',
       label: !proxy ? 'Proxy address loading. Open proxy settings.' : authGap ? 'Proxy listening on ' + proxy + ' but proxy authentication has no password. Open proxy settings.' : 'Proxy listening on ' + proxy + '. Open proxy settings.' },
-    intercept: {
+    intercept: ic.unknown ? { text: 'Intercept unknown', tone: 'warn', label: 'Intercept state unavailable. Open Intercept to retry.' } : {
       text: on ? 'Intercept on' + (held ? ' · ' + held + ' held' : '') : held ? plural(held, 'held', 'held') : 'Intercept off',
       tone: on || held ? 'warn' : '',
       label: (on ? 'Intercepting ' + sides : 'Intercept off') + (held ? ', ' + plural(held, 'message', 'messages') + ' held' : '') + '. Open Intercept.',
@@ -311,7 +312,7 @@ export function dragRegionsMessage(drag, exclude) {
 // OVERLAY marks the surfaces that can open over the title toolbar: modals
 // (the command palette, dialogs, sheets), menus and popovers. Their opening or
 // closing re-reports the drag regions, so a press on an overlay reaches it.
-export const OVERLAY = '.modal-overlay,dialog,[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[aria-modal="true"],[popover],.dsk-pop';
+export const OVERLAY = '.modal-overlay,dialog,[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[aria-modal="true"],[popover],.dsk-pop,.dsk-menu';
 export const DRAG_SAMPLE_STEP = 8;
 
 // uncoveredDragRects splits a drag area into the parts no overlay covers.

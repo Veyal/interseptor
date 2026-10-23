@@ -136,11 +136,11 @@ function buildTitleToolbar(mac) {
   }
   const kbds = document.querySelectorAll('#cmdkBtn kbd');
   const chord = paletteShortcut(mac);
-  if (kbds.length === 2) { kbds[0].textContent = chord[0]; kbds[1].textContent = chord[1]; }
+  if (kbds.length === 2) { kbds[0].textContent = chord[0] + (mac ? '' : '+'); kbds[1].textContent = chord[1]; }
   // Shortcut hints written for both platforms ("Ctrl/⌘") name this one's key.
   document.querySelectorAll('kbd').forEach((k) => { if (k.textContent === 'Ctrl/⌘') k.textContent = mac ? '⌘' : 'Ctrl'; });
   const btn = document.getElementById('cmdkBtn');
-  if (btn) { const tip = chord.join('') + ' — jump to any panel, flow or finding'; btn.title = tip; if (btn.hasAttribute('data-tooltip')) btn.setAttribute('data-tooltip', tip); }
+  if (btn) { const tip = chord.join(mac ? '' : '+') + ' — jump to any panel, flow or finding'; btn.title = tip; if (btn.hasAttribute('data-tooltip')) btn.setAttribute('data-tooltip', tip); }
 }
 
 const setText = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };

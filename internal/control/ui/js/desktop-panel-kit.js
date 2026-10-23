@@ -167,6 +167,8 @@ function installDismiss() {
     const open = [...popups].filter((p) => p.isOpen());
     if (!open.length) return;
     if (document.querySelector('.ui-select-trigger[aria-expanded="true"]')) return;
+    // A modal opened over a popup owns Escape: close the popups quietly and let it through.
+    if (!open.some((p) => p.contains(e.target))) { open.forEach((p) => p.close({ focus: false })); return; }
     e.preventDefault();
     e.stopPropagation();
     open.forEach((p) => p.close({ focus: true }));
@@ -323,13 +325,15 @@ export function createOverflow({ id, label = 'More actions', tooltip, items, cla
     if (!b || b.disabled) return;
     // A split control's caret opens its own dropdown inside the menu: stay open.
     if (b.matches && b.matches('.evr-caret')) return;
-    close();
+    // Keep focus on the trigger when it was inside the menu; a click that moved
+    // focus elsewhere (a sheet, a popover) keeps it.
+    close({ focus: menu.contains(document.activeElement) });
   });
   // Focus that lands in a closed menu (a sheet or popover returning it to the
   // control that opened it) goes to the trigger instead of an invisible item.
   menu.addEventListener('focusin', () => { if (!isOpen()) button.focus({ preventScroll: true }); });
   menu.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') { e.preventDefault(); close({ focus: true }); return; }
+    if (e.key === 'Tab') { e.preventDefault(); if (isOpen()) close({ focus: true }); else button.focus({ preventScroll: true }); return; }
     const list = focusables();
     const at = list.indexOf(document.activeElement);
     const next = overflowStep(e.key, at < 0 ? 0 : at, list.length);

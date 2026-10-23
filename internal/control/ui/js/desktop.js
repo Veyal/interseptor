@@ -57,7 +57,13 @@ function isEditable(t) {
 // navigation key sets html.dsk-kbd; a pointer press or a native menu command
 // clears it, so focus moved by code after a command never paints a ring.
 function setKeyboardMode(on) {
-  try { document.documentElement.classList[on ? 'add' : 'remove']('dsk-kbd'); } catch { /* no classList */ }
+  // Toggling the class on every click or arrow key would wake the <html> class
+  // observer (a full drag-region rescan); only a real change touches it.
+  try {
+    const root = document.documentElement;
+    if (root.classList.contains('dsk-kbd') === on) return;
+    root.classList[on ? 'add' : 'remove']('dsk-kbd');
+  } catch { /* no classList */ }
 }
 
 function installGuards() {
@@ -75,7 +81,9 @@ function installGuards() {
   window.addEventListener('mouseup', noHistoryButton);
   // Ctrl+wheel and trackpad pinch (wheel with ctrlKey) zoom the page. Map and
   // the image lightbox handle the same event on their own element first.
-  window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  // The native macOS shell disables magnification itself, so the non-passive
+  // listener is only needed for the Chrome --app window.
+  if (env.desktop && env.desktop.platform === 'chromeapp') window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
   const noGestureZoom = (e) => { if (!(e.target instanceof Element && e.target.closest(OWN_ZOOM))) e.preventDefault(); };
   window.addEventListener('gesturestart', noGestureZoom, { passive: false });
   window.addEventListener('gesturechange', noGestureZoom, { passive: false });
@@ -161,7 +169,7 @@ function installDragRegions() {
     for (const r of records) {
       if (isOverlay(r.target) || [...r.addedNodes].some(isOverlay) || [...r.removedNodes].some(isOverlay)) { scheduleDragRegions(); return; }
     }
-  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'hidden', 'open', 'class'] });
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'hidden', 'open', 'class', 'data-open'] });
   window.addEventListener('resize', scheduleDragRegions);
   scheduleDragRegions();
 }

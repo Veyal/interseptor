@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interceptPillModel, statusBarModel } from '../js/desktop-model.js';
+import { interceptPillModel, statusBarModel, OVERLAY } from '../js/desktop-model.js';
 
 // Regression: with only Responses on, the title-bar pill read "Intercept off · 1
 // held" while the status bar read "Intercept on". The pill still toggles
@@ -20,4 +20,17 @@ test('pill states', () => {
   assert.equal(interceptPillModel({ enabled: true }).pressed, true);
   assert.equal(interceptPillModel({ enabled: false, held: 3 }).text, 'Intercept off · 3 held');
   assert.equal(interceptPillModel({ enabled: true, responseEnabled: true }).label, 'Request intercept on. Responses are also held. Toggle request intercept.');
+});
+
+test('an unknown intercept state is never reported as off', () => {
+  const pill = interceptPillModel({ unknown: true });
+  assert.equal(pill.text, 'Intercept unknown');
+  assert.equal(pill.pressed, false);
+  const bar = statusBarModel({ intercept: { unknown: true }, scope: {} }).intercept;
+  assert.equal(bar.text, 'Intercept unknown');
+  assert.doesNotMatch(bar.label, /Intercept off/);
+});
+
+test('open desktop menus count as overlays for the drag-region rescan', () => {
+  assert.ok(OVERLAY.split(',').includes('.dsk-menu'));
 });

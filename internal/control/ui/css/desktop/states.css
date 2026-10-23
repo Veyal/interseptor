@@ -25,7 +25,7 @@ html.desktop-app:not([data-theme="hc"]):not(#dsk-x) :is(.trow,#rows,#findList,#s
 /* Row keyboard focus: the hover tint plus a 1px inset accent edge. */
 html.desktop-app.dsk-kbd:not([data-theme="hc"]):not(#dsk-x) :is(.trow,.find-row,.scan-item,.icpt-item,.held,.coll-row,[role="row"],[role="treeitem"],tr[data-i]):focus-visible{outline-color:transparent;background:var(--surface-hover);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 60%,transparent)}
 /* Containers that code focuses for screen readers never draw a ring. */
-html.desktop-app:not(#dsk-x) :is(#main,.panel,.panel-heading,[role="tabpanel"],[role="dialog"],.modal-shell):focus-visible{outline-color:transparent}
+html.desktop-app:not([data-theme="hc"]):not(#dsk-x) :is(#main,.panel,.panel-heading,[role="tabpanel"],[role="dialog"],.modal-shell):focus-visible{outline-color:transparent}
 
 /* ---- input focus: lift, 1px accent border, soft halo ---- */
 html.desktop-app:not([data-theme="hc"]):not(#dsk-x) :is(input:not([type="checkbox"],[type="radio"],[type="range"],[type="button"],[type="submit"],[type="reset"],[type="file"],[type="color"]),textarea,select,[contenteditable="true"],.ui-select-trigger):focus-visible{outline:none;background-color:var(--surface-1);border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}

@@ -78,6 +78,8 @@ function buildLabels() {
   if (on && target && pattern && label) {
     const sync = () => { label.title = holdRuleSummary({ on: on.checked, target: target.value, pattern: pattern.value }); };
     ['change', 'input'].forEach((ev) => [on, target, pattern].forEach((n) => n.addEventListener(ev, sync)));
+    // intercept.js writes checked/value programmatically (boot, SSE) with no event.
+    document.addEventListener('intercept-filter-sync', sync);
     sync();
   }
 }

@@ -398,6 +398,7 @@ function syncInterceptBanner(){
   const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
   document.documentElement.classList.toggle('intercept-danger',interceptDanger);
   if(danger){
+    danger.classList.remove('is-unavailable');
     danger.style.display=interceptDanger?'block':'none';
     danger.textContent=total
       ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you Forward or Drop. Off after restart (session-only).`
@@ -421,6 +422,8 @@ export function renderIntercept(){
   const fo=$('#interceptFilterOn');if(fo&&document.activeElement!==fo)fo.checked=filterCheckboxChecked(ic,fo.checked);
   const ft=$('#interceptFilterTarget');if(ft&&document.activeElement!==ft)ft.value=ic.filterTarget||'any';
   const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp&&!filterErrorShown())fp.value=ic.filterPattern||'';
+  // Programmatic checked/value writes fire no change event; tell listeners (the desktop hold-rule tooltip).
+  document.dispatchEvent(new CustomEvent('intercept-filter-sync'));
   // unified queue: requests then responses, each tagged with its side
   const items=[...rq.map(h=>({...h,side:'req'})),...rrq.map(h=>({...h,side:'resp'}))];
   if(heldActionInFlight&&!items.some(h=>heldKey(h.side,h.id)===heldActionInFlight.key)){

@@ -187,7 +187,7 @@ func TestUIDesktopInterceptLayoutKeepsEveryControl(t *testing.T) {
 	css := stripCSSComments(readUIAsset(t, "css/desktop/panel-intercept.css"))
 	requireUIContains(t, css,
 		// The amber banner duplicates the status pill and status bar.
-		"#panel-intercept #interceptWarning{display:none!important}",
+		"#panel-intercept #interceptWarning:not(.is-unavailable){display:none!important}",
 		// Forward is the one primary; Drop is a danger ghost; shortcut hints are generated.
 		".icpt-actionbar .btn-danger{background:transparent", `content:"F" / ""`, `content:"D" / ""`,
 	)
