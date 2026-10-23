@@ -19,18 +19,39 @@ func List() ([]Proc, error) {
 	}
 	var procs []Proc
 	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		pid, path, args, ok := parsePSLine(line)
+		if !ok || pid == self {
 			continue
 		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid == self || !matchesInterseptor(baseFromPath(fields[1])) {
-			continue
-		}
-		args := fields[1:]
-		procs = append(procs, Proc{PID: pid, Path: fields[1], Args: args, Role: ClassifyRole(args)})
+		procs = append(procs, Proc{PID: pid, Path: path, Args: args, Role: ClassifyRole(args)})
 	}
 	return procs, nil
+}
+
+// parsePSLine parses one "pid command..." line from ps. The command line is
+// space-joined, so an executable under a path with spaces cannot be split on
+// whitespace: the path is the shortest space-delimited prefix of the command
+// whose base name is an Interseptor binary; the rest are its arguments.
+func parsePSLine(line string) (pid int, path string, args []string, ok bool) {
+	line = strings.TrimSpace(line)
+	pidStr, cmd, found := strings.Cut(line, " ")
+	if !found {
+		return 0, "", nil, false
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		return 0, "", nil, false
+	}
+	cmd = strings.TrimSpace(cmd)
+	for end := 0; end <= len(cmd); end++ {
+		if end < len(cmd) && cmd[end] != ' ' {
+			continue
+		}
+		if candidate := cmd[:end]; candidate != "" && matchesInterseptor(baseFromPath(candidate)) {
+			return pid, candidate, append([]string{candidate}, strings.Fields(cmd[end:])...), true
+		}
+	}
+	return 0, "", nil, false
 }
 
 // aliveInterseptor reports whether pid is alive AND its command name is an
