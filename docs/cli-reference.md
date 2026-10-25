@@ -54,6 +54,32 @@ interseptor update --force
 Update prefers a release binary and verifies published checksums when present; otherwise it falls
 back to `go install`.
 
+## Install the macOS app
+
+```text
+interseptor install-desktop [--dir <path>] [--version <x.y.z>] [--force] [--open]
+```
+
+macOS only. Downloads `Interseptor-v<version>-unsigned.zip` for the latest stable release (or
+`--version`) from GitHub, checks its SHA-256 against the release's `macos-checksums.txt`, and installs
+`Interseptor.app` into `/Applications` (or `~/Applications` when `/Applications` is not writable, or
+the absolute `--dir`). Before the swap it checks the bundle identifier, the version and the code
+signature (`codesign --verify --deep --strict`). The app is swapped in atomically, and the previous
+copy is restored if the swap fails. It refuses while that app is running. It does nothing when the
+same version is already installed, and it will not replace a newer version unless you pass `--force`.
+`--open` launches the app afterwards. Because the CLI downloads the zip itself, the app carries no
+quarantine flag and opens without the Gatekeeper **Open Anyway** step.
+
+## Install Chrome
+
+```text
+interseptor install-chrome [--data-dir <path>] [--force]
+```
+
+Installs Chrome for Testing under the data directory. The CLI uses it for its UI window, PDF report
+export and the test browser when no installed Chrome, Edge, Chromium or Brave is found. The macOS
+desktop app does not need it.
+
 ## MCP
 
 `interseptor mcp` runs the MCP server on stdio and connects to the control URL in

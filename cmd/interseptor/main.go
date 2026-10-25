@@ -52,7 +52,7 @@ func isLoopbackBind(addr string) bool {
 
 func knownTopLevelCommand(arg string) bool {
 	switch arg {
-	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "install-chrome", "chrome", "help", "-h", "--help", "mcp":
+	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "install-chrome", "chrome", "install-desktop", "help", "-h", "--help", "mcp":
 		return true
 	}
 	return false
@@ -116,6 +116,12 @@ func main() {
 			}
 			if err := runInstallChrome(subArgs); err != nil {
 				fmt.Fprintf(os.Stderr, "install-chrome failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "install-desktop":
+			if err := runInstallDesktop(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "install-desktop failed: %v\n", err)
 				os.Exit(1)
 			}
 			return

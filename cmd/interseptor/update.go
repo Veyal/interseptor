@@ -52,7 +52,9 @@ Usage:
   interseptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
   interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
   interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
-  interseptor install-chrome install standalone Chrome for Testing (UI window & PDF reports)
+  interseptor install-chrome install standalone Chrome for Testing (the CLI's UI window, PDF export
+                           and test browser; the desktop app does not need it)
+  interseptor install-desktop install or update the macOS desktop app (Interseptor.app) from GitHub
   interseptor update       install the latest release
   interseptor stop         stop all running instances (--all: also MCP bridges, launcher, vault)
   interseptor version      print the running version
@@ -82,6 +84,12 @@ Update flags:
   --version vX.Y.Z         install a specific release
   --force                  reinstall even when already up to date
 
+Install-desktop flags (macOS only):
+  --dir <path>             Applications folder (default /Applications if writable, else ~/Applications)
+  --version X.Y.Z          install a specific release instead of the latest
+  --force                  reinstall the same version or replace a newer one
+  --open                   open the app after installing
+
 Stop flags:
   --force, -f              skip graceful shutdown and force-kill immediately
   --timeout 6s             grace period before force-kill (default 6s)
@@ -96,6 +104,7 @@ Examples:
   interseptor update
   interseptor update --check
   interseptor update --version 0.6.0
+  interseptor install-desktop
   interseptor stop
   interseptor stop --force
   interseptor stop --all

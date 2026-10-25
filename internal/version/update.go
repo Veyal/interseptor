@@ -578,24 +578,9 @@ func downloadReport(ctx context.Context, url string, report func(done, total int
 }
 
 func fetchAsset(ctx context.Context, url string, report func(done, total int64)) ([]byte, int64, error) {
-	req, err := newGitHubRequest(ctx, http.MethodGet, url)
-	if err != nil {
-		return nil, 0, err
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
-	}
-	var body io.Reader = resp.Body
-	if report != nil {
-		body = &progressReader{r: resp.Body, report: report, total: resp.ContentLength}
-	}
-	data, err := io.ReadAll(io.LimitReader(body, 256<<20))
-	return data, resp.ContentLength, err
+	var buf bytes.Buffer
+	_, total, err := DownloadTo(ctx, &http.Client{Timeout: 5 * time.Minute}, url, &buf, 256<<20, report)
+	return buf.Bytes(), total, err
 }
 
 func extractBinary(archive []byte, name string) ([]byte, error) {
