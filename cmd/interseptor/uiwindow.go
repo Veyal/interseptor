@@ -46,6 +46,12 @@ func openUIWindow(url string, headless, force bool) {
 	go func() {
 		if err := appwindow.New().Open(url, appwindow.ProfileDir()); err != nil {
 			if errors.Is(err, pdfexport.ErrNoBrowser) || strings.Contains(err.Error(), "no headless Chrome found") {
+				// No Chromium browser for an app-style window: the UI works in
+				// any browser, so open the default one.
+				if oerr := openDefaultBrowser(url); oerr == nil {
+					log.Printf("Opened %s in your default browser (no Chrome, Edge, Chromium or Brave for an app window; PDF export and the test browser need one: run 'interseptor install-chrome')", url)
+					return
+				}
 				log.Printf("Could not open the UI window (no Chrome found: run 'interseptor install-chrome' to download it automatically, or set INTERSEPTOR_CHROME) — open %s in a browser", url)
 			} else {
 				log.Printf("Could not open the UI window (%v) — open %s in a browser", err, url)

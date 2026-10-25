@@ -145,7 +145,7 @@ function renderStep() {
       </div>
        <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
        <button class="btn u-mb-3" id="setupTestBrowser" hidden>Launch test browser</button>
-       <button class="btn u-mb-3" id="setupInstallChrome" hidden>Install Chrome</button>
+       <button class="btn u-mb-3" id="setupInstallChrome" hidden title="Optional: needed only for PDF report export and the isolated test browser">Install Chrome (optional)</button>
       <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code id="setupControlAddr">${esc(setupAddrs.control || location.host || '…')}</code>.</p>
       <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());

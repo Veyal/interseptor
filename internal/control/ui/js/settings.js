@@ -2353,7 +2353,7 @@ export async function loadChromeStatus(){
       if(installBtn)installBtn.hidden=true;
       if(launchBtn)launchBtn.hidden=false;
     }else{
-      badge.textContent='No Chrome found (needed for desktop window & PDF export)';
+      badge.textContent='No Chromium browser found (only PDF export and the test browser need one)';
       badge.className='hint';
       if(installBtn)installBtn.hidden=!st.supported;
       if(launchBtn)launchBtn.hidden=true;
