@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.20.0` release.
+
 ## [2.20.0] - 2026-10-25
 
 > Minor release: `interseptor install-desktop` installs the verified macOS app
