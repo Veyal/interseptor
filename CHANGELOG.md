@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-10-25
+
+> Minor release: `interseptor install-desktop` installs the verified macOS app
+> from the CLI (no Gatekeeper "Open Anyway" step), and the CLI opens the UI in
+> your default browser when no Chromium browser is installed; Chrome is now
+> clearly optional (PDF export and the test browser only).
+
 ### Added
 
 - **`interseptor install-desktop` installs the macOS app from the CLI.** It downloads `Interseptor-v<version>-unsigned.zip` for the latest stable release (or `--version`), fetches `macos-checksums.txt` first and refuses without an exact entry, checks the zip's SHA-256, unpacks it with `ditto` into a staging folder on the same volume, then runs the native updater's checks: bundle identifier `com.veyal.interseptor`, the release version, and `codesign --verify --deep --strict`. It also strips any quarantine flag. The app is then swapped into `/Applications` (or `~/Applications` when that is not writable, or an absolute `--dir`), and the previous copy is restored if the swap fails. It refuses while that app is running, does nothing when the same version is installed, and will not downgrade without `--force`. `--open` launches the app. Downloads accept HTTPS GitHub release hosts only, have no whole-request timeout, and stop on Ctrl-C. Temporary and staging files are removed on every exit path. Because the CLI fetches the zip itself, the app opens without the Gatekeeper **Open Anyway** step. The `install-chrome` help now says Chrome is for the CLI's UI window, PDF export and test browser, and that the desktop app does not need it. (`internal/desktopinstall`, `internal/version/download.go`, `cmd/interseptor/desktop.go`.)
