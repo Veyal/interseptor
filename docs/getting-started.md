@@ -60,6 +60,21 @@ Each release also attaches `Interseptor_<version>.dmg` and `Interseptor-v<versio
 native macOS app (macOS 12 or later, Apple silicon and Intel) that runs the same proxy and UI in its
 own window with a menu bar, Dock tile and notifications.
 
+**Easiest: install it from the CLI.** If you already have the `interseptor` binary, run:
+
+```bash
+interseptor install-desktop          # latest release into /Applications (or ~/Applications)
+interseptor install-desktop --open   # same, then launch it
+```
+
+It downloads the release zip, checks its SHA-256 against `macos-checksums.txt`, the bundle identifier,
+the version and the code signature, then swaps the app in atomically. A copy downloaded this way has
+no quarantine flag, so the first launch needs no **Open Anyway** step. Run it again to update. Quit the
+app first, because the command refuses while the app is running. See
+[the CLI reference](cli-reference.md#install-the-macos-app).
+
+**Or install the DMG by hand:**
+
 1. Download the DMG from the [Releases](https://github.com/Veyal/interseptor/releases) page, open it,
    and drag **Interseptor** to **Applications**.
 2. The app is not notarized, so the first launch is blocked. Open **System Settings → Privacy &
@@ -78,8 +93,8 @@ own window with a menu bar, Dock tile and notifications.
 
 1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
    The UI opens in its own app window (an installed Chrome, Edge, Chromium or Brave in app mode,
-   with no tabs or address bar). With `--headless`, over SSH, or when no such browser or desktop
-   is available, the log says which URL to open in any browser instead.
+   with no tabs or address bar). Without one of those browsers it opens in your default browser;
+   with `--headless`, over SSH, or with no desktop, the log says which URL to open instead.
 2. **Send traffic through it.** Point your browser/HTTP client at `127.0.0.1:8080`, or let
    Interseptor set the OS proxy for you (macOS, Windows, and GNOME Linux) — the first-run **Setup**
    wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at

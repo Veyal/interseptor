@@ -2762,6 +2762,21 @@ Each release also attaches `Interseptor_<version>.dmg` and `Interseptor-v<versio
 native macOS app (macOS 12 or later, Apple silicon and Intel) that runs the same proxy and UI in its
 own window with a menu bar, Dock tile and notifications.
 
+**Easiest: install it from the CLI.** If you already have the `interseptor` binary, run:
+
+```bash
+interseptor install-desktop          # latest release into /Applications (or ~/Applications)
+interseptor install-desktop --open   # same, then launch it
+```
+
+It downloads the release zip, checks its SHA-256 against `macos-checksums.txt`, the bundle identifier,
+the version and the code signature, then swaps the app in atomically. A copy downloaded this way has
+no quarantine flag, so the first launch needs no **Open Anyway** step. Run it again to update. Quit the
+app first, because the command refuses while the app is running. See
+[the CLI reference](https://veyal.github.io/interseptor/cli-reference/#install-the-macos-app).
+
+**Or install the DMG by hand:**
+
 1. Download the DMG from the [Releases](https://github.com/Veyal/interseptor/releases) page, open it,
    and drag **Interseptor** to **Applications**.
 2. The app is not notarized, so the first launch is blocked. Open **System Settings → Privacy &
@@ -2780,8 +2795,8 @@ own window with a menu bar, Dock tile and notifications.
 
 1. **Run it.** `interseptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
    The UI opens in its own app window (an installed Chrome, Edge, Chromium or Brave in app mode,
-   with no tabs or address bar). With `--headless`, over SSH, or when no such browser or desktop
-   is available, the log says which URL to open in any browser instead.
+   with no tabs or address bar). Without one of those browsers it opens in your default browser;
+   with `--headless`, over SSH, or with no desktop, the log says which URL to open instead.
 2. **Send traffic through it.** Point your browser/HTTP client at `127.0.0.1:8080`, or let
    Interseptor set the OS proxy for you (macOS, Windows, and GNOME Linux) — the first-run **Setup**
    wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at
@@ -4946,6 +4961,32 @@ interseptor update --force
 
 Update prefers a release binary and verifies published checksums when present; otherwise it falls
 back to `go install`.
+
+## Install the macOS app
+
+```text
+interseptor install-desktop [--dir <path>] [--version <x.y.z>] [--force] [--open]
+```
+
+macOS only. Downloads `Interseptor-v<version>-unsigned.zip` for the latest stable release (or
+`--version`) from GitHub, checks its SHA-256 against the release's `macos-checksums.txt`, and installs
+`Interseptor.app` into `/Applications` (or `~/Applications` when `/Applications` is not writable, or
+the absolute `--dir`). Before the swap it checks the bundle identifier, the version and the code
+signature (`codesign --verify --deep --strict`). The app is swapped in atomically, and the previous
+copy is restored if the swap fails. It refuses while that app is running. It does nothing when the
+same version is already installed, and it will not replace a newer version unless you pass `--force`.
+`--open` launches the app afterwards. Because the CLI downloads the zip itself, the app carries no
+quarantine flag and opens without the Gatekeeper **Open Anyway** step.
+
+## Install Chrome
+
+```text
+interseptor install-chrome [--data-dir <path>] [--force]
+```
+
+Installs Chrome for Testing under the data directory. The CLI uses it for its UI window, PDF report
+export and the test browser when no installed Chrome, Edge, Chromium or Brave is found. The macOS
+desktop app does not need it.
 
 ## MCP
 

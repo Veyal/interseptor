@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`interseptor install-desktop` installs the macOS app from the CLI.** It downloads `Interseptor-v<version>-unsigned.zip` for the latest stable release (or `--version`), fetches `macos-checksums.txt` first and refuses without an exact entry, checks the zip's SHA-256, unpacks it with `ditto` into a staging folder on the same volume, then runs the native updater's checks: bundle identifier `com.veyal.interseptor`, the release version, and `codesign --verify --deep --strict`. It also strips any quarantine flag. The app is then swapped into `/Applications` (or `~/Applications` when that is not writable, or an absolute `--dir`), and the previous copy is restored if the swap fails. It refuses while that app is running, does nothing when the same version is installed, and will not downgrade without `--force`. `--open` launches the app. Downloads accept HTTPS GitHub release hosts only, have no whole-request timeout, and stop on Ctrl-C. Temporary and staging files are removed on every exit path. Because the CLI fetches the zip itself, the app opens without the Gatekeeper **Open Anyway** step. The `install-chrome` help now says Chrome is for the CLI's UI window, PDF export and test browser, and that the desktop app does not need it. (`internal/desktopinstall`, `internal/version/download.go`, `cmd/interseptor/desktop.go`.)
+
 ### Changed
 
+- **The CLI opens the UI in your default browser when no Chromium browser is installed**, instead of only logging the URL; Chrome, Edge, Chromium or Brave still give the app-style window. Settings and the first-run setup now say Chrome is optional: it is needed only for PDF report export and the isolated test browser, and the macOS app does not need it for its window. (`cmd/interseptor/browser_open.go`, `cmd/interseptor/uiwindow.go`, `internal/control/ui/`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.19.0` release.
 
 ## [2.19.0] - 2026-10-23
