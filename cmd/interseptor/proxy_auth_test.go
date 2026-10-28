@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -17,103 +19,158 @@ import (
 // listener can use the proxy; remote control-plane access still requires an
 // API key.
 
-func TestProxyListenerServesUnauthenticatedOnNonLoopbackBind(t *testing.T) {
-	// Given
-	listener, err := net.Listen("tcp", "0.0.0.0:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := listener.Addr().String()
-	t.Cleanup(func() { _ = listener.Close() })
-	manager := &proxyManager{
-		handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-		listenFn: func(want string) (net.Listener, error) {
-			if want != addr {
-				return nil, errors.New("unexpected proxy test address")
-			}
-			return listener, nil
-		},
-	}
-	if err := manager.Start(addr); err != nil {
-		t.Fatal(err)
-	}
-	defer manager.Shutdown(context.Background())
+// proxyTestMarkerHeader identifies responses served by this test's handler.
+// A 0.0.0.0:port bind does not stop another process binding 127.0.0.1:port on
+// macOS, so a request to 127.0.0.1 can reach a foreign listener (observed as a
+// 401 from a concurrent test binary); the marker detects that.
+const proxyTestMarkerHeader = "X-Interseptor-Proxy-Test"
 
-	// When
-	response, err := http.Get("http://127.0.0.1" + addr[strings.LastIndexByte(addr, ':'):])
+// errForeignListener means the response did not come from this test's handler.
+var errForeignListener = errors.New("response from a foreign listener")
+
+var proxyTestMarkerSeq atomic.Int64
+
+func newProxyTestMarker() string {
+	return fmt.Sprintf("proxy-test-%d", proxyTestMarkerSeq.Add(1))
+}
+
+func markedNoContentHandler(marker string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(proxyTestMarkerHeader, marker)
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// getMarked GETs url and returns its status, or errForeignListener when the
+// response lacks marker or the connection was refused by someone else.
+func getMarked(url, marker string) (int, error) {
+	response, err := http.Get(url)
 	if err != nil {
-		t.Fatal(err)
+		return 0, fmt.Errorf("%w: %v", errForeignListener, err)
 	}
 	response.Body.Close()
+	if response.Header.Get(proxyTestMarkerHeader) != marker {
+		return response.StatusCode, fmt.Errorf("%w: status %d", errForeignListener, response.StatusCode)
+	}
+	return response.StatusCode, nil
+}
 
-	// Then
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("unauthenticated status = %d, want %d", response.StatusCode, http.StatusNoContent)
+// retryOnForeignListener runs attempt with fresh ports up to three times,
+// retrying only when another process answered on the same port.
+func retryOnForeignListener(t *testing.T, attempt func(marker string) error) {
+	t.Helper()
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = attempt(newProxyTestMarker()); err == nil || !errors.Is(err, errForeignListener) {
+			break
+		}
+		t.Logf("attempt %d: %v; retrying with fresh ports", i+1, err)
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestProxyManager_Rebind_servesWildcardAndLoopbackBinds(t *testing.T) {
-	// Given
-	wildcardListener, err := net.Listen("tcp", "0.0.0.0:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		wildcardListener.Close()
-		t.Fatal(err)
-	}
-	wildcardAddr := wildcardListener.Addr().String()
-	loopbackAddr := loopbackListener.Addr().String()
-	listeners := map[string]net.Listener{
-		wildcardAddr: wildcardListener,
-		loopbackAddr: loopbackListener,
-	}
-	t.Cleanup(func() {
-		for _, listener := range listeners {
-			_ = listener.Close()
+func loopbackURLForPort(addr string) string {
+	return "http://127.0.0.1" + addr[strings.LastIndexByte(addr, ':'):]
+}
+
+func TestProxyListenerServesUnauthenticatedOnNonLoopbackBind(t *testing.T) {
+	retryOnForeignListener(t, func(marker string) error {
+		// Given
+		listener, err := net.Listen("tcp", "0.0.0.0:0")
+		if err != nil {
+			return err
 		}
+		addr := listener.Addr().String()
+		defer listener.Close()
+		manager := &proxyManager{
+			handler: markedNoContentHandler(marker),
+			listenFn: func(want string) (net.Listener, error) {
+				if want != addr {
+					return nil, errors.New("unexpected proxy test address")
+				}
+				return listener, nil
+			},
+		}
+		if err := manager.Start(addr); err != nil {
+			return err
+		}
+		defer manager.Shutdown(context.Background())
+
+		// When
+		status, err := getMarked(loopbackURLForPort(addr), marker)
+		if err != nil {
+			return err
+		}
+
+		// Then
+		if status != http.StatusNoContent {
+			return fmt.Errorf("unauthenticated status = %d, want %d", status, http.StatusNoContent)
+		}
+		return nil
 	})
-	manager := &proxyManager{
-		handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-		listenFn: func(addr string) (net.Listener, error) {
-			listener, ok := listeners[addr]
-			if !ok {
-				return nil, errors.New("unexpected proxy test address")
+}
+
+func TestProxyManager_Rebind_servesWildcardAndLoopbackBinds(t *testing.T) {
+	retryOnForeignListener(t, func(marker string) error {
+		// Given
+		wildcardListener, err := net.Listen("tcp", "0.0.0.0:0")
+		if err != nil {
+			return err
+		}
+		loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			wildcardListener.Close()
+			return err
+		}
+		wildcardAddr := wildcardListener.Addr().String()
+		loopbackAddr := loopbackListener.Addr().String()
+		listeners := map[string]net.Listener{
+			wildcardAddr: wildcardListener,
+			loopbackAddr: loopbackListener,
+		}
+		defer func() {
+			for _, listener := range listeners {
+				_ = listener.Close()
 			}
-			delete(listeners, addr)
-			return listener, nil
-		},
-	}
-	if err := manager.Start(wildcardAddr); err != nil {
-		t.Fatal(err)
-	}
-	defer manager.Shutdown(context.Background())
+		}()
+		manager := &proxyManager{
+			handler: markedNoContentHandler(marker),
+			listenFn: func(addr string) (net.Listener, error) {
+				listener, ok := listeners[addr]
+				if !ok {
+					return nil, errors.New("unexpected proxy test address")
+				}
+				delete(listeners, addr)
+				return listener, nil
+			},
+		}
+		if err := manager.Start(wildcardAddr); err != nil {
+			return err
+		}
+		defer manager.Shutdown(context.Background())
 
-	// When
-	wildcardResponse, err := http.Get("http://127.0.0.1" + wildcardAddr[strings.LastIndexByte(wildcardAddr, ':'):])
-	if err != nil {
-		t.Fatal(err)
-	}
-	wildcardResponse.Body.Close()
-	if err := manager.Rebind(loopbackAddr); err != nil {
-		t.Fatal(err)
-	}
-	loopbackResponse, err := http.Get("http://" + loopbackAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loopbackResponse.Body.Close()
+		// When
+		wildcardStatus, err := getMarked(loopbackURLForPort(wildcardAddr), marker)
+		if err != nil {
+			return err
+		}
+		if err := manager.Rebind(loopbackAddr); err != nil {
+			return err
+		}
+		loopbackStatus, err := getMarked("http://"+loopbackAddr, marker)
+		if err != nil {
+			return err
+		}
 
-	// Then
-	if wildcardResponse.StatusCode != http.StatusNoContent {
-		t.Fatalf("wildcard status = %d, want %d", wildcardResponse.StatusCode, http.StatusNoContent)
-	}
-	if loopbackResponse.StatusCode != http.StatusNoContent {
-		t.Fatalf("loopback status = %d, want %d", loopbackResponse.StatusCode, http.StatusNoContent)
-	}
+		// Then
+		if wildcardStatus != http.StatusNoContent {
+			return fmt.Errorf("wildcard status = %d, want %d", wildcardStatus, http.StatusNoContent)
+		}
+		if loopbackStatus != http.StatusNoContent {
+			return fmt.Errorf("loopback status = %d, want %d", loopbackStatus, http.StatusNoContent)
+		}
+		return nil
+	})
 }
