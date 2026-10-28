@@ -52,11 +52,15 @@ Shared Starlark stdlib (`internal/starx`) plus AES-ECB helpers:
 
 | Builtin | Notes |
 |---|---|
-| `aes_ecb_encrypt(key, plaintext)` | PKCS7 pad → AES-ECB → **base64** ciphertext |
-| `aes_ecb_decrypt(key, ciphertext)` | base64 or raw → AES-ECB → plaintext string |
+| `aes_ecb_encrypt(key, plaintext, key_format="auto")` | PKCS7 pad → AES-ECB → **base64** ciphertext |
+| `aes_ecb_decrypt(key, ciphertext, key_format="auto")` | base64 or raw → AES-ECB → plaintext string |
 | `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | same as checks |
 
 `key` may be 16/24/32 raw bytes **or** hex of that length (32/48/64 hex chars).
+With the default `key_format="auto"`, a key that is valid hex of one of those lengths is
+decoded as hex, so a raw 32-byte ASCII key such as `0123456789abcdef0123456789abcdef`
+becomes a 16-byte key. Pass `key_format="raw"` to use the string bytes as-is, or
+`key_format="hex"` to require hex (an invalid hex key is then an error).
 
 ## Safety
 

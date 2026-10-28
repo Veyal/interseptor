@@ -98,14 +98,31 @@ func AESECBDecrypt(key, ciphertext []byte) ([]byte, error) {
 	return pkcs7Unpad(out, bs)
 }
 
-func decodeKeyArg(s string) ([]byte, error) {
-	// Prefer raw bytes; if it looks like hex of the right length, decode hex.
-	if len(s) == 32 || len(s) == 48 || len(s) == 64 {
-		if b, err := decodeHexLoose(s); err == nil {
-			return b, nil
+// decodeKeyArg interprets the key argument per key_format: "raw" uses the
+// string bytes as-is, "hex" requires hex, and "auto" (the default) decodes
+// hex when the string is valid hex of an AES key length (32/48/64 chars) and
+// otherwise uses the raw bytes. "auto" is ambiguous for a raw 32-byte ASCII
+// key that happens to be hex; pass key_format="raw" for those.
+func decodeKeyArg(s, format string) ([]byte, error) {
+	switch format {
+	case "raw":
+		return []byte(s), nil
+	case "hex":
+		b, err := decodeHexLoose(s)
+		if err != nil {
+			return nil, fmt.Errorf("key_format=hex: %w", err)
 		}
+		return b, nil
+	case "", "auto":
+		if len(s) == 32 || len(s) == 48 || len(s) == 64 {
+			if b, err := decodeHexLoose(s); err == nil {
+				return b, nil
+			}
+		}
+		return []byte(s), nil
+	default:
+		return nil, fmt.Errorf("key_format must be \"auto\", \"raw\" or \"hex\" (got %q)", format)
 	}
-	return []byte(s), nil
 }
 
 func decodeHexLoose(s string) ([]byte, error) {
@@ -134,13 +151,14 @@ func decodeHexLoose(s string) ([]byte, error) {
 }
 
 // AESECBEncryptBuiltin: aes_ecb_encrypt(key, plaintext) → base64 ciphertext.
-// key may be raw string bytes (len 16/24/32) or hex of that length.
+// key may be raw string bytes (len 16/24/32) or hex of that length; the
+// optional key_format="auto"|"raw"|"hex" removes the ambiguity.
 func AESECBEncryptBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var key, plaintext string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "key", &key, "plaintext", &plaintext); err != nil {
+	var key, plaintext, format string
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "key", &key, "plaintext", &plaintext, "key_format?", &format); err != nil {
 		return nil, err
 	}
-	kb, err := decodeKeyArg(key)
+	kb, err := decodeKeyArg(key, format)
 	if err != nil {
 		return nil, fmt.Errorf("aes_ecb_encrypt: %w", err)
 	}
@@ -154,11 +172,11 @@ func AESECBEncryptBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark
 // AESECBDecryptBuiltin: aes_ecb_decrypt(key, ciphertext) → plaintext string.
 // ciphertext may be raw bytes (as Starlark string) or standard base64.
 func AESECBDecryptBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var key, ciphertext string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "key", &key, "ciphertext", &ciphertext); err != nil {
+	var key, ciphertext, format string
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "key", &key, "ciphertext", &ciphertext, "key_format?", &format); err != nil {
 		return nil, err
 	}
-	kb, err := decodeKeyArg(key)
+	kb, err := decodeKeyArg(key, format)
 	if err != nil {
 		return nil, fmt.Errorf("aes_ecb_decrypt: %w", err)
 	}
