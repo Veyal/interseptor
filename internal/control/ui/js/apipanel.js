@@ -408,7 +408,7 @@ async function vaultBackup(){
   try{
     vaultListLoadEpoch++;
     const r=await api('/api/vault/backup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:id||undefined,label:label||undefined})});
-    if(res) res.innerHTML='<span class="u-accent">Backed up</span> '+(id||'')+(r.rev!=null?' rev #'+r.rev:'')+(r.size!=null?' · '+fmtBytes(r.size):'');
+    if(res) res.innerHTML='<span class="u-accent">Backed up</span> '+esc(id||'')+(r.rev!=null?' rev #'+r.rev:'')+(r.size!=null?' · '+fmtBytes(r.size):'');
     toast('vault backup complete');
     refreshVaultList();
   }catch(e){if(res)res.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';toastError('Vault request failed', e);}

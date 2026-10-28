@@ -70,6 +70,14 @@ func TestUIVaultSaveDoesNotClearANewerTokenDraft(t *testing.T) {
 	}
 }
 
+// The vault backup id is user-typed; it must be escaped before innerHTML.
+func TestUIVaultBackupResultEscapesID(t *testing.T) {
+	panel := requireUIContracts(t, "js/apipanel.js", "</span> '+esc(id||'')+")
+	if strings.Contains(panel, "</span> '+(id||'')") {
+		t.Fatal("vault backup result writes the raw backup id into innerHTML")
+	}
+}
+
 func TestUIShareDelayedRefreshBelongsToTheStartingAction(t *testing.T) {
 	requireUIContracts(t, "js/apipanel.js",
 		"let shareActionEpoch=0,shareRefreshTimer=null",
