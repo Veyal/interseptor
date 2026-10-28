@@ -155,13 +155,7 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 	}
 	s.tr = &http.Transport{
 		// Honor an optionally-configured chained upstream proxy (race-safe).
-		Proxy: func(*http.Request) (*url.URL, error) {
-			up := s.upstream.Load()
-			if up != nil && isSOCKSUpstream(up) {
-				return nil, nil
-			}
-			return up, nil
-		},
+		Proxy: s.transportProxy,
 		// Go's default MaxIdleConnsPerHost is 2, so ten parallel requests to one
 		// API host kept two connections and tore the rest down, paying a TCP and
 		// TLS handshake again on the next request. The proxy fans out across far
@@ -206,6 +200,36 @@ func (s *Server) SetUpstreamProxyCA(pemBytes []byte) error {
 	return nil
 }
 
+// transportProxy is the Transport's Proxy hook. Plain-HTTP requests go to an
+// HTTP(S) upstream as absolute-form requests. HTTPS requests return nil so the
+// Transport calls dialTLSContext, which CONNECT-tunnels through the upstream
+// itself and applies the origin TLS policy; Go's own CONNECT path would
+// handshake with TLSClientConfig and ignore it. SOCKS is handled in dialContext.
+func (s *Server) transportProxy(r *http.Request) (*url.URL, error) {
+	up := s.upstream.Load()
+	if up == nil || isSOCKSUpstream(up) {
+		return nil, nil
+	}
+	if r != nil && r.URL != nil && strings.EqualFold(r.URL.Scheme, "https") {
+		return nil, nil
+	}
+	return up, nil
+}
+
+// dialOriginRaw opens the TCP leg to an HTTPS origin, CONNECT-tunnelling
+// through an HTTP(S) upstream when one is configured.
+func (s *Server) dialOriginRaw(ctx context.Context, network, addr string) (net.Conn, error) {
+	up := s.upstream.Load()
+	if up == nil || !isHTTPUpstream(up) {
+		return s.dialContext(ctx, network, addr)
+	}
+	d := s.selfDialer(30 * time.Second)
+	if deadline, ok := ctx.Deadline(); ok {
+		d.Deadline = deadline
+	}
+	return dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
+}
+
 func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if up := s.upstream.Load(); up != nil && isSOCKSUpstream(up) {
 		return dialViaSOCKS(ctx, up, network, addr)
@@ -246,7 +270,12 @@ func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.
 		dialAddr = addr
 		isUpstreamProxyTLS = true
 	}
-	raw, err := s.dialContext(ctx, network, dialAddr)
+	var raw net.Conn
+	if isUpstreamProxyTLS {
+		raw, err = s.dialContext(ctx, network, dialAddr)
+	} else {
+		raw, err = s.dialOriginRaw(ctx, network, dialAddr)
+	}
 	if err != nil {
 		return nil, err
 	}
