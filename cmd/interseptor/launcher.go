@@ -384,7 +384,7 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		_ = cmd.Wait()
 		_ = logFile.Close()
-		_ = lh.reg.Remove(project)
+		_ = lh.reg.RemoveIfPID(project, inst.PID) // a restart meanwhile keeps its entry
 		close(exited)
 	}()
 
@@ -445,7 +445,7 @@ func (lh *launcherServer) handleStop(w http.ResponseWriter, r *http.Request) {
 			_ = launcherForce(pid)
 		}
 		lh.mu.Lock()
-		_ = lh.reg.Remove(project)
+		_ = lh.reg.RemoveIfPID(project, pid) // a restart meanwhile keeps its entry
 		lh.mu.Unlock()
 	}(inst.PID, project)
 

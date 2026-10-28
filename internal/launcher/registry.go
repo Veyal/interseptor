@@ -90,6 +90,18 @@ func (r *Registry) Remove(project string) error {
 	return r.saveLocked()
 }
 
+// RemoveIfPID drops project's entry only while it still records pid, so a late
+// cleanup for an exited process cannot unregister a restarted instance.
+func (r *Registry) RemoveIfPID(project string, pid int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if inst, ok := r.byProject[project]; !ok || inst.PID != pid {
+		return nil
+	}
+	delete(r.byProject, project)
+	return r.saveLocked()
+}
+
 // Reconcile drops entries whose process is no longer alive, as judged by
 // isAlive (injected so tests don't depend on real OS process state).
 func (r *Registry) Reconcile(isAlive func(pid int) bool) error {
