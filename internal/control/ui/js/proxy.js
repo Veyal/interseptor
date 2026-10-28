@@ -1,4 +1,4 @@
-import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DROPPED, flowPending, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, mountHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DROPPED, flowPending, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, mountHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, flowSelectionImageItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
 import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 import { on as busOn, EVENTS } from './bus.js';
@@ -2701,6 +2701,7 @@ export function showInspectorCtx(x,y,side){
         {label:'Map search (body)',icon:'map',val:short,act:()=>focusMapSearch(sel,'body')},
         looksLikeHost(sel)?{label:'Scope',icon:'scope',val:sel,act:()=>addHostToScope(sel)}:null,
       ].filter(Boolean)},
+      ...flowSelectionImageItems(f.id,curSide,sel),
     ];
     sections.push({head:'SELECTION · '+short,items});
   }

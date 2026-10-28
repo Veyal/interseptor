@@ -69,3 +69,18 @@
   .evr-foot{padding-bottom:max(12px,env(safe-area-inset-bottom,0px))}
   .evr-foot .btn{flex:1 1 auto}
 }
+
+/* Flow image focus form ("image around text") */
+.evr-focus{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-2);margin:0}
+.evr-focus[hidden]{display:none}
+.evr-focus-legend{flex:1 1 100%;font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.evr-field{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:var(--fs-xs);color:var(--fg2)}
+.evr-field-grow{flex:1 1 200px}
+.evr-field-num input{width:6ch}
+.evr-field input,.evr-field .ui-select{min-height:var(--hit-min);max-width:100%;box-sizing:border-box}
+.evr-focus .btn{min-height:var(--hit-min)}
+.evr-field input:focus-visible,.evr-focus .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+.evr-focus-error,.evr-focus-result{flex:1 1 100%;margin:0;font-size:var(--fs-xs);overflow-wrap:anywhere}
+.evr-focus-error{color:var(--red)}
+.evr-focus-result{color:var(--fg)}
+.evr-focus-error:empty,.evr-focus-result:empty{display:none}

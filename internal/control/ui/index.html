@@ -2011,6 +2011,19 @@ Content-Type: application/json
       <div class="evr-options" id="evRenderOptions" hidden>
         <label class="evr-option" id="evRenderMaskRow" hidden><input type="checkbox" id="evRenderMask" checked> Mask payloads and extracted values</label>
         <label class="evr-option" id="evRenderBodyRow" hidden><input type="checkbox" id="evRenderBody"> Include response body lines (redacted, may still show personal data)</label>
+        <form class="evr-focus" id="evRenderFocus" role="group" aria-labelledby="evRenderFocusLegend" hidden>
+          <span class="evr-focus-legend" id="evRenderFocusLegend">Focus</span>
+          <label class="evr-field evr-field-grow"><span>Text</span><input type="text" id="evRenderFocusText" class="btn-field" maxlength="202" placeholder="text or /regex/ to center on" autocomplete="off" spellcheck="false" aria-describedby="evRenderFocusError evRenderFocusResult"></label>
+          <label class="evr-option"><input type="checkbox" id="evRenderFocusRegex"> Regex</label>
+          <label class="evr-field"><span>In</span><select id="evRenderFocusSide" class="btn btn-field" aria-label="Search focus text in"><option value="both">Both</option><option value="req">Request</option><option value="res">Response</option></select></label>
+          <label class="evr-field"><span>Decode</span><select id="evRenderFocusDecode" class="btn btn-field" aria-label="Decode the body before drawing it"><option value="auto">Auto</option><option value="raw">Raw</option></select></label>
+          <label class="evr-field evr-field-num"><span>Context</span><input type="number" id="evRenderFocusContext" class="btn-field" min="0" max="40" step="1" value="6" inputmode="numeric" aria-label="Context lines around each match"></label>
+          <label class="evr-field"><span>Lines</span><input type="text" id="evRenderFocusLines" class="btn-field" placeholder="res:400-440" autocomplete="off" spellcheck="false" aria-label="Line ranges to keep"></label>
+          <label class="evr-field evr-field-grow"><span>Caption</span><input type="text" id="evRenderFocusCaption" class="btn-field" maxlength="120" placeholder="Highlighted: …" autocomplete="off" aria-label="Caption drawn under the title"></label>
+          <button type="submit" class="btn" id="evRenderFocusApply">Render</button>
+          <p class="evr-focus-error" id="evRenderFocusError" role="alert"></p>
+          <p class="evr-focus-result" id="evRenderFocusResult"></p>
+        </form>
       </div>
       <figure class="evr-figure">
         <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false" tabindex="0">

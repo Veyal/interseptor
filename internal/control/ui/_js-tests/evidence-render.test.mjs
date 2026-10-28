@@ -69,9 +69,10 @@ test('masking is on by default and unmasking is an explicit opt-in for the kinds
   assert.equal(renderRequest('intruder-race', { runId: 'r1' }, { mask: false }).url.endsWith('&unmask=1'), true);
   // timeline and distribution never show payloads, so the option is not sent
   assert.equal(renderRequest('intruder-timeline', { runId: 'r1' }, { mask: false }).url, '/api/intruder/attacks/r1/render.png?kind=timeline');
-  assert.deepEqual(optionControls('intruder-strip'), { mask: true, body: false });
-  assert.deepEqual(optionControls('flow-diff'), { mask: false, body: true });
-  assert.deepEqual(optionControls('finding-chain'), { mask: false, body: false });
+  assert.deepEqual(optionControls('intruder-strip'), { mask: true, body: false, focus: false });
+  assert.deepEqual(optionControls('flow-diff'), { mask: false, body: true, focus: false });
+  assert.deepEqual(optionControls('finding-chain'), { mask: false, body: false, focus: false });
+  assert.deepEqual(optionControls('flow-focus'), { mask: false, body: false, focus: true });
 });
 
 test('flow diff body lines are opt-in on both the GET and the attach body', () => {

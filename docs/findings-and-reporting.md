@@ -302,7 +302,7 @@ or image references remain visible rather than being silently removed.
 3. Use `create_finding` or `update_finding` with the report envelope, ordered `targets`, `proofReview`, and a structured `blocks` array.
 4. Use `add_finding_poc` for captured flows; set `role`, `note`, and `proof`.
 5. Use `add_finding_image` for real screenshots, choosing the accurate [image source classification](#evidence-rules).
-6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
+6. Use `render_evidence` for generated renders of recorded data (rate limit, lockout, race, authz, chain); they never replace a real screenshot. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence; add `focus` (the exact proof text) or `lines` when the proof is past the first 80 lines of a side ([Focused flow previews](api-and-mcp.md#focused-flow-previews)).
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
 
 ### Rating what you proved

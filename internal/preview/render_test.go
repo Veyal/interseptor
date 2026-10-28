@@ -60,11 +60,11 @@ func TestRenderTruncatesLongBody(t *testing.T) {
 	if img.Bounds().Dy() > 900 {
 		t.Fatalf("height %d too large for MaxLines=20 — truncation failed", img.Bounds().Dy())
 	}
-	// Re-render with text probe: truncateLines must mark truncation.
-	lines := truncateLines(strings.Split(string(res), "\n"), 20)
-	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "[truncated]") {
-		t.Fatalf("expected truncation marker in lines:\n%s", joined)
+	// Top mode ends with an explicit count marker instead of a bare cut.
+	rows := planTop(logicalLines(res), paneFocus{}, 20, 100)
+	last := rows[len(rows)-1]
+	if len(rows) != 20 || last.kind != rowMarker || !strings.Contains(last.text, "more lines (showing 1–19 of 502)") {
+		t.Fatalf("expected count marker, got %d rows ending %q", len(rows), last.text)
 	}
 }
 

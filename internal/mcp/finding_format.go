@@ -32,7 +32,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - If you could not capture anything, say why in proofReview.reason and keep status=needs_verification. Do not file the claim bare and do not invent a request.
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
-   - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot
+   - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot. Only the first 80 lines of each side are drawn by default: when the proof sits deeper in a long body, pass focus with the exact proof text (or lines=res:400-440) plus a caption, and check the reported match counts before relying on the image
    - Capability checklist before report-ready (readiness reports each separately): ACTION the exact triggering request/flow; RESULT the observed outcome; CONTROL a negative or normal-behavior request that distinguishes vulnerable behavior; VISUAL a real browser/device screenshot for browser findings
    - Operator-uploaded images count as visual proof only after a reviewer classifies them (classify_finding_image); generated previews and evidence renders never qualify
    - Use render_evidence for generated Intruder/authz/diff/waterfall/chain images (source=evidence_render, sourceRef kept); they are drawn from recorded data and are not browser proof, so a real screenshot via add_finding_image is still required for visual claims

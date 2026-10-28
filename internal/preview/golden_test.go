@@ -146,3 +146,25 @@ func TestGoldenRenders(t *testing.T) {
 	}
 	_ = fmt.Sprint
 }
+
+// Flow preview goldens: top mode (line numbers, count marker) and focus mode
+// (collapsed headers, gap markers, highlighter box and gutter bar) per theme.
+func TestGoldenFlowPreviews(t *testing.T) {
+	req := []byte("GET /api/users HTTP/1.1\r\nHost: example.com\r\nAccept: application/json\r\n\r\n")
+	res := longJSONResponse(40, 25)
+	focus := []FocusSpec{{Text: `"isAdmin":true`}}
+	cases := map[string]Options{
+		"flow_top":         {Side: SideRes, MaxCols: 60, MaxLines: 24, Title: "GET example.com/api/users → 200"},
+		"flow_focus_light": {MaxCols: 60, MaxLines: 24, Focus: focus, Caption: "Highlighted: admin flag", Title: "GET example.com/api/users → 200"},
+		"flow_focus_dark":  {MaxCols: 60, MaxLines: 24, Focus: focus, Theme: ThemeDark, Caption: "Highlighted: admin flag", Title: "GET example.com/api/users → 200"},
+	}
+	for name, o := range cases {
+		t.Run(name, func(t *testing.T) {
+			r, err := RenderFlow(req, res, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compareGolden(t, name, r.PNG)
+		})
+	}
+}

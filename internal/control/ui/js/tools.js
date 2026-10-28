@@ -8,7 +8,7 @@ import { wireRepeaterExtras } from './repeater.js';
 import { wireIntruderPreview } from './evidence-render.js';
 import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm, intrRowTitle, intrRequestCount, intrRepeatError, intrCountLabel, intrNumbersError, intrProgressLabel, intrValidateRegex, intrValidateTarget, intrSortRows, INTR_MAX_DELAY_MS } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, mountHexDump } from './core.js';
-import { flowPngMenuItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
+import { flowPngMenuItems, flowSelectionImageItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
 import { createListView, openFlow } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
@@ -1092,7 +1092,7 @@ function wireRepeaterActions(){
   $('#repToIntruder').onclick=repToIntruder;
   $('#repAddFinding').onclick=repAddToFinding;
   $('#repCopyCurl').onclick=repCopyCurl;
-  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur,mountFlowCopyPng,flowPngMenuItems,saveFile});
+  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur,mountFlowCopyPng,flowPngMenuItems,flowSelectionImageItems,saveFile});
   syncRepActions();
 }
 // parseRawRequest splits an edited raw HTTP request (CRLF or LF) into method,

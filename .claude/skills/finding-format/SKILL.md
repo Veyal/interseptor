@@ -68,7 +68,8 @@ claim it establishes.
 
 - Attach an Interseptor flow whenever the relevant request was captured.
 - Prefer a real `browser_screenshot` when visual state proves the issue.
-- Use `flow_preview` for a generated HTTP report image and retain `sourceFlowId`.
+- Use `flow_preview` for a generated HTTP report image and retain `sourceFlowId`. When the proof is past
+  the first 80 lines, pass `focus` (exact proof text) or `lines` and check the reported matches.
 - Never describe a generated flow preview as a real browser screenshot.
 - Caption identifies the artifact; proof identifies the security-relevant observation.
 - Redact secrets and unrelated private data from screenshots and prose.

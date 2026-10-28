@@ -165,7 +165,7 @@ export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast
 // toastError, openCtxMenu, repCur}. Returns {afterSend, sync, setAttached}.
 export function wireRepeaterExtras(deps) {
   const doc = document;
-  const { $, api, toast, toastError, openCtxMenu, repCur, mountFlowCopyPng, flowPngMenuItems, saveFile } = deps;
+  const { $, api, toast, toastError, openCtxMenu, repCur, mountFlowCopyPng, flowPngMenuItems, flowSelectionImageItems, saveFile } = deps;
   const group = $('#repActions');
   const resPane = doc.querySelector('#panel-repeater .rep-res');
   const work = doc.querySelector('#panel-repeater .rep-work');
@@ -267,6 +267,7 @@ export function wireRepeaterExtras(deps) {
       { label: 'Copy response body', icon: 'copy', disabled: !id, act: () => copyResponseBody(id) },
       { label: 'Save response to a file', icon: 'download', disabled: !id, act: () => saveResponseBody(id, t) },
       png.length ? { label: 'Copy exchange as PNG', icon: 'image', children: png } : { label: 'Copy exchange as PNG', icon: 'image', disabled: true },
+      ...(sel.trim() && id && flowSelectionImageItems ? flowSelectionImageItems(id, 'res', sel) : []),
       { sep: true },
       { label: 'Diff vs previous send', icon: 'diff', disabled: !diffModel(t || {}).ok, act: runDiff },
       { label: 'Attach as evidence', icon: 'attach', disabled: attachModel(t).disabled, act: () => runAttach(false, resView) },

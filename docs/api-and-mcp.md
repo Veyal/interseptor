@@ -244,7 +244,8 @@ PATCH  /api/findings/{id}                    partial update (blocks or legacy bo
 POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof?, position?}
 DELETE /api/findings/{id}/flows/{flowId}     detach a flow
 POST   /api/findings/{id}/images             attach {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}
-POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG
+POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG (focus params as below)
+GET    /api/flows/{id}/preview.png           ?side=&pretty=&layout=&theme=&maskHeaders=&focus=&regex=&focusSide=&lines=&context=&caption=&mode=&decode=
 GET    /api/intruder/attacks                 recent recorded Intruder runs (last 20 kept)
 GET    /api/intruder/attacks/{id}            one recorded run by runId; survives the next start and restarts
 GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip&width=&unmask=1&expected=N&format=json&png=1 evidence render PNG (unattached; X-Render-Alt/X-Render-Summary headers)
@@ -339,6 +340,86 @@ The UI and MCP share the report-quality and evidence contracts:
 Capability declarations under `proofReview.claims` are reviewer observations linked to retained
 artifacts, never automatic confirmation of exploitation. Image provenance is server-stamped and is
 separate from a reviewer's browser/device classification. See [Findings and reporting](findings-and-reporting.md).
+
+### Focused flow previews
+
+A flow preview draws the first 80 lines of each side by default ("top" mode), ending with a marker
+such as `… 520 more lines (showing 1–80 of 600) …`. When the proof sits deeper in a long body, ask for
+"focus" mode on `GET /api/flows/{id}/preview.png`, `POST /api/findings/{id}/flow-preview` or MCP
+`render_flow_preview`:
+
+| Parameter | Meaning |
+|---|---|
+| `focus` | Text to center on and highlight. Repeatable (query) or a string/array (JSON, MCP); up to 8, each ≤200 characters. Case-insensitive literal; whitespace after `:` and `,` is flexible, so `"isAdmin":true` finds the pretty-printed `"isAdmin": true`. |
+| `regex` | `1`/`true` treats every `focus` as an RE2 pattern. A pattern that does not compile is a 400. |
+| `focusSide` | `both` (default), `req` or `res`: where to search. |
+| `lines` | Logical line ranges to keep, e.g. `res:400-440,req:1-5` (1-based; the numbers drawn in the gutter, counted after decoding, pretty-printing and masking, before soft wrap). |
+| `context` | Lines kept around each match or range, 0-40 (default 6). |
+| `caption` | ≤120 characters drawn under the title whenever given, e.g. `Highlighted: role escalation in response`. On attach it is also the evidence caption. |
+| `mode` | Optional `top` or `focus` (also on MCP); focus is implied by `focus` or `lines`; `top` ignores them. |
+| `decode` | `auto` (default) or `raw`; anything else is a 400. `auto` draws a decoded body (see [Decoded bodies](#decoded-bodies-in-flow-images)); `raw` draws the captured bytes. Focus text, `regex` and `lines` apply to what is drawn: the decoded body with `auto`, the raw body with `raw`. |
+
+Focus mode keeps each side's first line, collapses headers into `… N headers hidden …` unless a match is
+in them, keeps ±`context` lines around every match and range, merges nearby windows, and replaces the
+rest with `… N lines hidden (a–b) …`. Rows are numbered; wrapped continuation rows are not. Every match
+gets a yellow highlighter box (split across wrapped rows when needed) and a gutter bar; line ranges get
+the bar only. The 80-row budget per side favors earlier matches and ends with `… K more matches not
+shown …` when it runs out (matches on a partly shown line count too). A soft-wrapped line too long for
+the budget, such as 20 KB of minified JSON, is clipped around its first match with `… N chars of line L
+hidden …` markers before and after; in top mode a cut inside a line is marked the same way. A range on the
+blank header/body separator draws that row with the gutter bar. A side that was searched without a hit
+shows its first line, the collapsed headers and one gap marker (short sides are shown whole); a side that
+was not searched renders normally.
+
+Each body is drawn from its first 64 KiB. A JSON body up to 256 KiB is pretty-printed first, so the cut
+falls on formatted lines and line numbers match the inspector; a cut body ends with `… Body truncated at
+64 KiB for the image (N KiB total) …`. Text beyond the cut is not found, and the notice says so. Literal
+focus text also matches the `\u003c`/`\u003e`/`\u0026` spelling of `<`/`>`/`&` (and back), because the
+image keeps a body's JSON escapes while the inspector decodes them.
+
+Matching runs on the displayed text. With `maskHeaders=1` a credential value stays masked; a focus text
+that only occurs there is reported as "Focus matched a masked value (hidden)" and is never echoed in the
+image or the headers. When nothing matches, the image falls back to top mode with a visible "Focus text
+not found" notice. A focused attach that draws no focus (nothing found, or no match fits) is refused with
+`422 {"error": "focus not found: …", "notFound": [...]}` and nothing is stored; send `mode=top` to attach
+the first lines without focus provenance. Every focused response carries:
+
+```text
+X-Interseptor-Focus-Mode: focus | top
+X-Interseptor-Focus-Matches: req=0,res=1
+X-Interseptor-Focus-Notfound: <percent-encoded items, comma separated>   (only when something matched nothing)
+X-Interseptor-Focus-Masked: 1                                           (a focus text occurs only in a masked value; not listed)
+X-Interseptor-Focus-Notshown: req | res | both                          (matches found but none fit in the image)
+X-Interseptor-Body-Truncated: req | res | both                          (a body was cut at 64 KiB for the image; on every preview)
+```
+
+An attached focused image keeps `source=flow_preview` and `sourceFlowId`, gains
+`sourceRef=flow:<id>:focus:<text|regex|lines>`, and its default caption records the focus texts and ranges.
+MCP `render_flow_preview` reports the same match counts and not-found notes in its text result.
+
+### Decoded bodies in flow images
+
+By default (`decode=auto`) a flow image shows each side's body readable instead of as the encoded bytes.
+Content-Encoding (gzip, br, ...) is undone first, as before; then, per side, the first rule that applies
+wins:
+
+1. **Message codec.** An enabled project codec (`msgcodec`, the same ones behind `GET /api/flows/{id}/decoded`)
+   that matches the flow and side: its plaintext is drawn (JSON is pretty-printed when `pretty=1`). Codec
+   runs keep the script step limit; bodies above 4 MiB are not handed to codecs. A codec error falls
+   through to the next rule and is named in the notice band.
+2. **Form.** `application/x-www-form-urlencoded` (or, for a request without a Content-Type, a body that
+   parses cleanly as `k=v&k=v`): one `key = value` line per pair, percent- and plus-decoded.
+3. **Base64.** A body that is entirely base64 (standard or URL alphabet, padding optional, surrounding
+   whitespace ignored, at least 16 characters) and decodes to valid UTF-8 printable text or JSON.
+
+Anything else is drawn unchanged, as is a body larger than the 256 KiB read limit (except through a
+codec). The request line and headers stay as captured: `Content-Length` and friends are not rewritten.
+A notice band per side says what was done (`Response decoded: codec "<title>"`, `Request decoded:
+form-urlencoded`, `Response decoded: base64`), and the response carries
+`X-Interseptor-Decoded-Body: req=codec:<id>,res=base64` (omitted when nothing was decoded). The 64 KiB
+cut and truncation notice apply to the decoded text. Masking (`maskHeaders`) is unchanged: it redacts
+credential header values only, and decoding adds no redaction of body content. Use `decode=raw` to show
+the original bytes, for example as evidence of the wire format or of the ciphertext itself.
 
 ### Evidence renders
 

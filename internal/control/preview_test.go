@@ -167,10 +167,11 @@ func TestAttachFindingFlowPreviewWithOptions(t *testing.T) {
 func TestFlowPreviewRawBoundsBodyBeforeRendering(t *testing.T) {
 	h, st, _ := newHub(t)
 	tail := []byte("PREVIEW_TAIL_MUST_NOT_BE_READ")
-	hash := putTestBody(t, st, append(bytes.Repeat([]byte("x"), int(maxFlowPreviewRequestBytes)), tail...))
+	body := append(bytes.Repeat([]byte("x"), previewPrettyLimit), tail...)
+	hash := putTestBody(t, st, body)
 	flowID, err := st.InsertFlow(&store.Flow{
 		Method: "POST", Host: "example.com", Path: "/upload", HTTPVersion: "HTTP/1.1",
-		ReqHeaders: map[string][]string{"Content-Type": {"text/plain"}}, ReqBodyHash: hash,
+		ReqHeaders: map[string][]string{"Content-Type": {"text/plain"}}, ReqBodyHash: hash, ReqLen: int64(len(body)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -179,12 +180,15 @@ func TestFlowPreviewRawBoundsBodyBeforeRendering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := h.flowRawSideForPreview(flow, true)
+	raw, size, err := h.flowRawSideForPreview(flow, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if int64(len(raw)) > maxFlowPreviewRequestBytes || bytes.Contains(raw, tail) {
+	if len(raw) > previewBodyCap+1024 || bytes.Contains(raw, tail) {
 		t.Fatalf("preview raw was not bounded before rendering: len=%d", len(raw))
+	}
+	if size != int64(len(body)) {
+		t.Fatalf("full body size %d, want %d", size, len(body))
 	}
 }
 

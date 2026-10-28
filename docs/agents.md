@@ -549,6 +549,14 @@ scanner, a checklist, or a vulnerability class name.
 - Attach every captured flow that proves a step. The flow stays the raw evidence.
 - For every server-side finding, also attach `render_flow_preview` for the action flow with role `result`.
   It improves reviewability and clears the "visual proof recommended" advisory. It is labeled generated.
+- A preview draws only the first 80 lines of each side. When the proof is deeper in a long body, pass
+  `focus` with the exact, distinctive proof text (for example `"isAdmin":true`, the reflected payload, or the
+  error string) or `lines` (`res:400-440`), plus a `caption` naming what is highlighted. The image keeps the
+  first line, collapses headers and highlights each match with surrounding context. Check the
+  `Focus: … matches` line in the result; on `Not found` fix the text once and render again (an attach that
+  finds nothing is refused and stores nothing). If it says the body was cut at 64 KiB, use `lines` or a
+  nearer string instead of retrying the same text. See
+  [Focused flow previews](api-and-mcp.md#focused-flow-previews).
 - Never upload a render or preview as `browser_screenshot`. The store refuses it.
 - Screenshots are base64 data (max 5 MiB). Never put base64 or local paths inside block JSON.
 - WebSocket evidence: `ws_send` records the handshake and every frame as a flow and returns its
@@ -659,9 +667,17 @@ id to use in later calls, and `readiness.stage` is `report_ready`. Then attach t
 {"name": "render_flow_preview", "arguments": {"flowId": 22, "findingId": 1, "role": "result", "proof": "What changed: the 200 response body lists every user's email and role for a customer session."}}
 ```
 
+When the proving line is past the first 80 lines of the response, focus the image on it:
+
+```json
+{"name": "render_flow_preview", "arguments": {"flowId": 22, "findingId": 1, "focus": "\"role\":\"admin\"", "focusSide": "res", "caption": "Highlighted: admin account in a customer's response", "role": "result", "proof": "What changed: the customer session receives an admin account record."}}
+```
+
 ```json
 {"name": "finding_readiness", "arguments": {"id": 1}}
 ```
+
+When the body is a codec-encoded, base64 or form-urlencoded payload, the image shows it decoded by default (`decode=auto`, with a notice band); `focus` and `lines` then refer to the decoded text. Add `"decode": "raw"` to show the original bytes as evidence of the wire format.
 
 REST equivalents of the three calls (save the arguments above as `finding.json` and add `"source":"ai"`):
 

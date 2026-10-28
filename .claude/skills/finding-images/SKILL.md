@@ -31,6 +31,24 @@ flow attached as the inspectable raw evidence, and do not present a preview as a
   `{flowId, side?, pretty?, layout?, theme?, caption?, role?, proof?, position?}` — render + attach
 - MCP: `render_flow_preview` with `flowId` + optional `findingId` / `pretty` / `layout` / `theme` /
   `role` / `proof` (pass `findingId` to attach it)
+- Focus mode (all three): `focus` (text, repeatable; `regex=1` for RE2), `focusSide`, `lines=res:400-440`,
+  `context` (0-40, default 6), `caption`. Only the first 80 lines of a side are drawn otherwise, so pass
+  the exact proof text when it sits deeper. Results come back in `X-Interseptor-Focus-*` headers (MCP: a
+  `Focus: … matches` line); not-found falls back to top mode with a drawn notice, but a focused attach
+  that draws no focus is a 422 that stores nothing. Each body is cut at 64 KiB after pretty-printing
+  (JSON ≤256 KiB), flagged by `X-Interseptor-Body-Truncated` and a notice row. A huge soft-wrapped line is
+  clipped around its first match (`clipLine`); `NotShown` reports matches that never got a highlighted row.
+  A masked-only focus text is never echoed. Focused attachments get
+  `sourceRef=flow:<id>:focus:<kind>`. Planner (pure, tested without pixels) lives in
+  `internal/preview/plan.go`; matching in `focus.go`. Go Mono lacks `⋯`/`↳`, so markers use `…` and
+  continuation rows leave the gutter blank.
+
+- Decoding (all three): `decode=auto` (default) draws the body readable after Content-Encoding: a matching
+  message codec's plaintext, else a form-urlencoded body (`key = value` lines), else a whole-body base64 text.
+  A notice band names the decoding and `X-Interseptor-Decoded-Body: req=codec:<id>,res=base64` reports it
+  (MCP: a `Decoded body:` line). Focus text and `lines=` refer to the decoded body; `decode=raw` draws the
+  captured bytes (use it to show the wire format or ciphertext as evidence,).
+  Headers and the request line are never rewritten. Code: `internal/control/preview_decode.go`.
 
 Defaults: `side=both`, `pretty=true`, `layout=vertical` (request above response), `theme=light`. Pass `layout=horizontal` for request left / response right.
 

@@ -172,7 +172,9 @@ export function activeFlowTheme(root) {
 
 // flowPreviewPngURL builds the server-rendered request+response PNG URL for a
 // flow. Defaults suit pasting into a document: both sides, pretty, request above
-// response, light theme.
+// response, light theme. Focus options (focus: string or array, regex,
+// focusSide, lines, context, caption, decode=raw) center the image on the proof instead
+// of the first 80 lines; see focusQuery.
 export function flowPreviewPngURL(id, opts) {
   const o = opts || {};
   const pick = (v, allowed, d) => (allowed.includes(v) ? v : d);
@@ -183,7 +185,23 @@ export function flowPreviewPngURL(id, opts) {
   const mask = o.mask === 1 || o.mask === true || o.mask === '1' ? 1 : 0;
   const n = Number(id);
   const base = `/api/flows/${Number.isSafeInteger(n) && n > 0 ? n : 0}/preview.png?side=${side}&pretty=${pretty}&layout=${layout}&theme=${theme}`;
-  return mask ? base + '&maskHeaders=1' : base;
+  return (mask ? base + '&maskHeaders=1' : base) + focusQuery(o);
+}
+
+// focusQuery encodes the focus options as '&key=value' pairs (focus repeats).
+export function focusQuery(o) {
+  const parts = [];
+  const add = (k, v) => parts.push('&' + k + '=' + encodeURIComponent(v));
+  const texts = (Array.isArray(o.focus) ? o.focus : [o.focus]).filter((t) => typeof t === 'string' && t.trim());
+  texts.slice(0, 8).forEach((t) => add('focus', t));
+  if (texts.length && (o.regex === true || o.regex === 1 || o.regex === '1')) add('regex', '1');
+  if (texts.length && ['req', 'res'].includes(o.focusSide)) add('focusSide', o.focusSide);
+  if (typeof o.lines === 'string' && o.lines.trim()) add('lines', o.lines.trim());
+  const ctx = Number(o.context);
+  if (o.context !== undefined && o.context !== null && o.context !== '' && Number.isInteger(ctx) && ctx >= 0 && ctx <= 40) add('context', String(ctx));
+  if (typeof o.caption === 'string' && o.caption.trim()) add('caption', o.caption.trim().slice(0, 120));
+  if (typeof o.decode === 'string' && o.decode.trim().toLowerCase() === 'raw') add('decode', 'raw');
+  return parts.join('');
 }
 
 // copyImageFileName: a safe .png download name from a caption.

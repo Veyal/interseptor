@@ -9,6 +9,7 @@
 import { placeFloatingSurface } from './surface-position.js';
 import { formatHexDump, hexLineFor } from './hexdump.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
+import { selectionToFocus } from './flow-focus-model.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
 import { createInflight, shareableRead, mutationScope } from './api-inflight.js';
@@ -2626,12 +2627,25 @@ export function copyPreviewPng(src, name) {
     }, () => {});
   });
 }
-// copyFlowPng copies one flow's rendered preview. opts matches flowCopyPngButton.
+// copyFlowPng copies one flow's rendered preview. opts matches flowCopyPngButton,
+// plus the focus options of flowPreviewPngURL (focus, focusSide, regex, lines,
+// context, caption) for an image centered on a selection.
 export function copyFlowPng(id, opts) {
   const o = opts || {};
   const side = o.side || 'both';
-  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, mask: o.mask, theme: o.theme || activeFlowTheme(document.documentElement) }),
-    'flow-' + id + '-' + side + (o.mask ? '-masked' : '') + '-preview');
+  const focus = { focus: o.focus, focusSide: o.focusSide, regex: o.regex, lines: o.lines, context: o.context, caption: o.caption };
+  copyPreviewPng(flowPreviewPngURL(id, { side, layout: o.layout, mask: o.mask, theme: o.theme || activeFlowTheme(document.documentElement), ...focus }),
+    'flow-' + id + '-' + side + (o.mask ? '-masked' : '') + (o.focus ? '-focus' : '') + '-preview');
+}
+// openFlowFocusImage opens the "image around text" preview for a flow: focus
+// controls, match result, Download and + Finding. opts: {side, selection,
+// focusSide, pick} (pick lands on the finding picker after the first render).
+export function openFlowFocusImage(id, opts) {
+  const o = opts || {};
+  import('./evidence-render.js').then((m) => {
+    const { kind, params } = m.flowFocusPreview(id, o);
+    return m.open(kind, params, { pick: !!o.pick });
+  }).catch((e) => toastError('Flow image failed', e));
 }
 // flowPngMenuItems are the "Copy as PNG" rows every flow menu shares, so the
 // Proxy row menu, the inspector menu and the Repeater menu offer the same three.
@@ -2642,6 +2656,19 @@ export function flowPngMenuItems(id) {
     { label: 'Request as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'req' }) },
     { label: 'Response as PNG', icon: 'image', act: () => copyFlowPng(id, { side: 'res' }) },
     { label: 'Flow as PNG · side by side', icon: 'image', act: () => copyFlowPng(id, { layout: 'horizontal' }) },
+    { label: 'Image around text…', icon: 'image', act: () => openFlowFocusImage(id) },
+  ];
+}
+// flowSelectionImageItems are the "around selection" image rows the request and
+// response viewers add when text is selected: the image centers on the selection
+// (first line, ≤200 chars) searched on the viewer's own side.
+export function flowSelectionImageItems(id, side, selection) {
+  const focus = selectionToFocus(selection);
+  if (!(Number(id) > 0) || !focus) return [];
+  const focusSide = side === 'req' ? 'req' : 'res';
+  return [
+    { label: 'Copy image around selection', icon: 'image', act: () => copyFlowPng(id, { focus, focusSide }) },
+    { label: 'Attach image around selection to finding…', icon: 'attach', act: () => openFlowFocusImage(id, { selection: focus, focusSide, pick: true }) },
   ];
 }
 // The click handler starts the clipboard write synchronously (Safari keeps the

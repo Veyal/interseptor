@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,7 +20,6 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/httplines"
-	"github.com/Veyal/interseptor/internal/preview"
 	"github.com/Veyal/interseptor/internal/version"
 )
 
@@ -605,6 +603,12 @@ func (s *Server) inScopeTraffic() bool {
 }
 
 func (s *Server) api(method, path string, body any) (string, error) {
+	out, _, err := s.apiWithHeaders(method, path, body)
+	return out, err
+}
+
+// apiWithHeaders is api plus the response headers (focus match reports).
+func (s *Server) apiWithHeaders(method, path string, body any) (string, http.Header, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -612,7 +616,7 @@ func (s *Server) api(method, path string, body any) (string, error) {
 	}
 	req, err := http.NewRequest(method, s.base+path, rdr)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	// Marks every call as AI-originated so the control plane can tag the
 	// resulting Repeater/Intruder/scan sends (FlagAI) and show them in History.
@@ -625,20 +629,20 @@ func (s *Server) api(method, path string, body any) (string, error) {
 	}
 	resp, err := s.cl.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("control API unreachable at %s — is `interseptor` running? (%v)", s.base, err)
+		return "", nil, fmt.Errorf("control API unreachable at %s — is `interseptor` running? (%v)", s.base, err)
 	}
 	defer resp.Body.Close()
 	b, readErr := io.ReadAll(io.LimitReader(resp.Body, maxControlAPIResponseBytes+1))
 	if readErr != nil {
-		return "", fmt.Errorf("read control API response: %w", readErr)
+		return "", nil, fmt.Errorf("read control API response: %w", readErr)
 	}
 	if len(b) > maxControlAPIResponseBytes {
-		return "", fmt.Errorf("%s %s response exceeds the 4 MiB MCP transfer limit; narrow the request or download %s%s through the control API", method, path, s.base, path)
+		return "", nil, fmt.Errorf("%s %s response exceeds the 4 MiB MCP transfer limit; narrow the request or download %s%s through the control API", method, path, s.base, path)
 	}
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("%s %s → %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", nil, fmt.Errorf("%s %s → %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	return string(b), nil
+	return string(b), resp.Header, nil
 }
 
 // ---- tool helpers ----
@@ -2000,8 +2004,7 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images/%s/classify", fid, url.PathEscape(hash)), map[string]any{"source": argStr(a, "source"), "reason": argStr(a, "reason")})
 		})
 
-	s.add("render_flow_preview",
-		"Render a captured flow as an Interseptor-styled HTTP request/response PNG. With findingId, it is attached as source=flow_preview with sourceFlowId retained; this is generated report evidence, not a real browser screenshot. Add a proof statement identifying the security-relevant line or state. Without findingId, returns a data URL.",
+	s.add("render_flow_preview", renderFlowPreviewDesc,
 		obj(map[string]any{
 			"flowId":    pt("integer"),
 			"side":      p("string", "both (default) | req | res"),
@@ -2009,66 +2012,22 @@ func (s *Server) registerTools() {
 			"layout":    p("string", "vertical (default, request above response) | horizontal (request left / response right)"),
 			"theme":     p("string", "light (default) | dark"),
 			"findingId": p("integer", "if set, attach the PNG to this finding"),
-			"caption":   pt("string"),
+			"caption":   p("string", "evidence caption, also drawn under the title (<=120 chars), e.g. \"Highlighted: role escalation in response\""),
 			"role":      p("string", "context|setup|baseline|action|result|control|retest|observation"),
 			"proof":     p("string", "what the generated HTTP image proves"),
 			"position":  p("integer", "0-based block index when attaching; omit to append"),
+			"focus": map[string]any{"oneOf": []any{
+				map[string]any{"type": "string"},
+				map[string]any{"type": "array", "items": pt("string"), "maxItems": 8},
+			}, "description": "exact proof text to center on and highlight (case-insensitive; spacing after : and , is flexible, so \"isAdmin\":true matches the pretty-printed line). One string or up to 8, each <=200 chars"},
+			"regex":     p("boolean", "treat focus as RE2 regular expressions (default false)"),
+			"focusSide": p("string", "where to search for focus: both (default) | req | res"),
+			"lines":     p("string", "logical line ranges to keep, e.g. res:400-440,req:1-5 (1-based, as numbered in the image gutter)"),
+			"context":   p("integer", "lines kept around each match or range (default 6, 0-40)"),
+			"mode":      p("string", "top | focus (optional; focus is implied by focus or lines; top ignores them and attaches the first lines without focus provenance)"),
+			"decode":    p("string", "auto (default, decoded body) | raw (captured bytes)"),
 		}, "flowId"),
-		func(a map[string]any) (string, error) {
-			flowID, err := reqInt(a, "flowId")
-			if err != nil {
-				return "", err
-			}
-			if flowID == 0 {
-				return "", fmt.Errorf("flowId is required (non-zero integer)")
-			}
-			side := strings.ToLower(strings.TrimSpace(argStr(a, "side")))
-			if side == "" {
-				side = "both"
-			}
-			layout := strings.ToLower(strings.TrimSpace(argStr(a, "layout")))
-			theme := strings.ToLower(strings.TrimSpace(argStr(a, "theme")))
-			pretty := argBool(a, "pretty", true)
-			fid := argInt(a, "findingId", 0)
-			if fid > 0 {
-				reqBody := map[string]any{
-					"flowId":  flowID,
-					"side":    side,
-					"pretty":  pretty,
-					"layout":  layout,
-					"theme":   theme,
-					"caption": argStr(a, "caption"),
-					"role":    argStr(a, "role"),
-					"proof":   argStr(a, "proof"),
-				}
-				if pos, ok := a["position"]; ok && pos != nil {
-					reqBody["position"] = pos
-				}
-				return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flow-preview", fid), reqBody)
-			}
-			q := url.Values{}
-			q.Set("side", side)
-			if pretty {
-				q.Set("pretty", "1")
-			} else {
-				q.Set("pretty", "0")
-			}
-			if layout != "" {
-				q.Set("layout", layout)
-			}
-			if theme != "" {
-				q.Set("theme", theme)
-			} else {
-				q.Set("theme", string(preview.ThemeLight))
-			}
-			raw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/preview.png?%s", flowID, q.Encode()))
-			if err != nil {
-				return "", err
-			}
-			b64 := base64.StdEncoding.EncodeToString([]byte(raw))
-			return fmt.Sprintf("PNG preview for flow %d (%d bytes, side=%s pretty=%v layout=%s theme=%s).\nmime=image/png\nURL: /api/flows/%d/preview.png?%s\ndata:image/png;base64,%s\n\nTip: re-call with findingId to attach directly to a finding.",
-				flowID, len(raw), side, pretty, preview.NormalizeLayout(layout), preview.NormalizeTheme(theme), flowID, q.Encode(), b64), nil
-		})
+		func(a map[string]any) (string, error) { return s.renderFlowPreview(a) })
 
 	s.add("remove_finding_poc",
 		"Detach a PoC flow from a finding.",

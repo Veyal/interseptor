@@ -18,9 +18,16 @@
 // Other families pass `params.url` (the PNG GET) and optional `params.attach`
 // (extra POST fields) from their own entry points.
 //
+// The flow-focus kind ("image around text") renders GET /api/flows/{id}/preview.png
+// with focus parameters, reads the X-Interseptor-Focus-* headers into a visible
+// result line and attaches through POST /api/findings/{id}/flow-preview.
+//
 // Nothing is drawn client-side and nothing untrusted reaches innerHTML: every
 // string is set through textContent / attributes. The pure helpers at the top
-// import nothing and run under `node --test`; DOM code loads core.js lazily.
+// import only pure modules and run under `node --test`; DOM code loads core.js lazily.
+
+import { flowPreviewPngURL } from './copy-image.js';
+import { focusOptions, focusAttachBody, readFocusHeaders, focusResultText, decodedBodyText, selectionToFocus, attachErrorText, CONTEXT_DEFAULT } from './flow-focus-model.js';
 
 export const KINDS = {
   'intruder-timeline': { family: 'intruder', short: 'timeline', label: 'Timeline', hint: 'Waterfall lanes: did the target throttle or lock out, and when?' },
@@ -31,6 +38,7 @@ export const KINDS = {
   'flow-diff': { family: 'flow-diff', short: 'diff', label: 'Flow diff', hint: 'What changed between two flows.' },
   'flow-waterfall': { family: 'flow-waterfall', short: 'waterfall', label: 'Flow waterfall', hint: 'Order and total duration of a flow sequence.' },
   'finding-chain': { family: 'finding-chain', short: 'chain', label: 'Finding chain', hint: 'How findings connect into an attack path.' },
+  'flow-focus': { family: 'flow-focus', short: 'focus', label: 'Flow image', hint: 'Centers a long request or response on the text or lines you choose and highlights them. Leave Focus empty for the first 80 lines.' },
 };
 
 const kindOrder = Object.keys(KINDS);
@@ -55,7 +63,7 @@ export const DEFAULT_OPTS = Object.freeze({ mask: true, includeBody: false });
 
 // optionControls says which option checkboxes apply to a kind.
 export function optionControls(kind) {
-  return { mask: kind === 'intruder-strip' || kind === 'intruder-race', body: kind === 'flow-diff' };
+  return { mask: kind === 'intruder-strip' || kind === 'intruder-race', body: kind === 'flow-diff', focus: kind === 'flow-focus' };
 }
 
 const withQuery = (url, extra) => url + (url.includes('?') ? '&' : '?') + extra;
@@ -71,6 +79,11 @@ export function renderRequest(kind, params = {}, opts = DEFAULT_OPTS) {
     let url = '/api/intruder/attacks/' + encodeURIComponent(runId) + '/render.png?kind=' + m.short;
     if (on.mask && opts.mask === false) url += '&unmask=1';
     return { url };
+  }
+  if (m.family === 'flow-focus') {
+    const id = Number(params.flowId);
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('a flow id is required');
+    return { url: flowPreviewPngURL(id, { side: params.side, theme: 'light', ...((opts && opts.focus) || {}) }) };
   }
   if (!params.url) throw new Error('this render needs a url');
   let url = String(params.url);
@@ -101,6 +114,16 @@ export const diffPreview = (a, b) => {
   return { kind: 'flow-diff', params: { id: x + '-' + y, url: '/api/render/flow-diff.png?a=' + x + '&b=' + y, attach: { flowIdA: x, flowIdB: y } } };
 };
 
+// flowFocusPreview opens the focused flow image, optionally seeded with a
+// selection (first line, ≤200 chars) searched on one side.
+export const flowFocusPreview = (flowId, { side = 'both', selection = '', focusSide = 'both' } = {}) => {
+  const id = Number(flowId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('a flow id is required');
+  const text = selectionToFocus(selection);
+  const seed = focusOptions({ text, side: focusSide, context: CONTEXT_DEFAULT });
+  return { kind: 'flow-focus', params: { id, flowId: id, side: ['req', 'res'].includes(side) ? side : 'both', seed: { text, side: seed.opts.focusSide, context: CONTEXT_DEFAULT, lines: '', caption: '', regexToggle: false, decode: 'auto' }, focus: seed.opts } };
+};
+
 export function downloadName(kind, params = {}) {
   const m = meta(kind);
   if (m.family === 'intruder') return 'interseptor-intruder-' + (safeId(params.runId) || 'run') + '-' + m.short + '.png';
@@ -111,7 +134,10 @@ export function downloadName(kind, params = {}) {
 export function attachRequest(findingId, kind, params = {}, caption = '', opts = DEFAULT_OPTS) {
   const id = Number(findingId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('choose a finding first');
-  meta(kind);
+  if (meta(kind).family === 'flow-focus') {
+    const f = (opts && opts.focus) || {};
+    return { path: '/api/findings/' + id + '/flow-preview', method: 'POST', body: focusAttachBody(params.flowId, { ...f, side: params.side }) };
+  }
   const on = optionControls(kind);
   const body = Object.assign({}, params.attach || {}, { kind });
   if (params.runId) body.runId = String(params.runId);
@@ -216,9 +242,53 @@ function syncOptions(kind) {
   if (!box) return;
   $id('evRenderMaskRow').hidden = !on.mask;
   $id('evRenderBodyRow').hidden = !on.body;
-  box.hidden = !(on.mask || on.body);
+  const focusBox = $id('evRenderFocus');
+  if (focusBox) {
+    focusBox.hidden = !on.focus;
+    if (on.focus) syncFocusFields(session.params.seed || {});
+  }
+  box.hidden = !(on.mask || on.body || on.focus);
   $id('evRenderMask').checked = session.opts.mask !== false;
   $id('evRenderBody').checked = !!session.opts.includeBody;
+}
+
+// syncFocusFields mirrors the last applied focus into the form fields.
+function syncFocusFields(seed) {
+  if (!session || session.focusSynced) return;
+  session.focusSynced = true;
+  $id('evRenderFocusText').value = seed.text || '';
+  $id('evRenderFocusRegex').checked = !!seed.regexToggle;
+  $id('evRenderFocusContext').value = String(seed.context == null ? CONTEXT_DEFAULT : seed.context);
+  $id('evRenderFocusLines').value = seed.lines || '';
+  $id('evRenderFocusCaption').value = seed.caption || '';
+  const sideSel = $id('evRenderFocusSide');
+  sideSel.value = seed.side || 'both';
+  const decodeSel = $id('evRenderFocusDecode');
+  decodeSel.value = seed.decode === 'raw' ? 'raw' : 'auto';
+  loadCore().then((core) => { if (core.refreshUiSelect) { core.refreshUiSelect(sideSel); core.refreshUiSelect(decodeSel); } }).catch(() => {});
+  $id('evRenderFocusError').textContent = '';
+  $id('evRenderFocusResult').textContent = '';
+}
+
+// applyFocus validates the form and re-renders with it.
+function applyFocus() {
+  if (!session || session.kind !== 'flow-focus') return;
+  const values = {
+    text: $id('evRenderFocusText').value,
+    regexToggle: $id('evRenderFocusRegex').checked,
+    side: $id('evRenderFocusSide').value,
+    context: $id('evRenderFocusContext').value,
+    lines: $id('evRenderFocusLines').value,
+    caption: $id('evRenderFocusCaption').value,
+    decode: $id('evRenderFocusDecode').value,
+  };
+  const { error, opts } = focusOptions(values);
+  const err = $id('evRenderFocusError');
+  err.textContent = error;
+  if (error) { setStatus('Focus not applied: ' + error); return; }
+  session.params = { ...session.params, seed: values };
+  session.opts = { ...session.opts, focus: opts };
+  load(session.kind);
 }
 
 function renderNote(kind, params) {
@@ -269,6 +339,10 @@ async function load(kind) {
     if (my !== epoch) return;
     const alt = decodeHeader(res.headers.get('X-Render-Alt')) || m.label + ' evidence render generated from recorded data';
     const summary = decodeHeader(res.headers.get('X-Render-Summary'));
+    const focusText = kind === 'flow-focus'
+      ? [focusResultText(readFocusHeaders((h) => res.headers.get(h))), decodedBodyText(res.headers.get('X-Interseptor-Decoded-Body'))].filter(Boolean).join(' ')
+      : '';
+    if (kind === 'flow-focus') $id('evRenderFocusResult').textContent = focusText;
     session.blob = blob;
     session.blobUrl = URL.createObjectURL(blob);
     session.alt = alt;
@@ -280,7 +354,7 @@ async function load(kind) {
     $id('evRenderCaption').textContent = alt;
     $id('evRenderSummary').textContent = summary;
     setBusy(false);
-    setStatus(m.label + ' preview ready. ' + (summary || alt));
+    setStatus(m.label + ' preview ready. ' + (focusText || summary || alt));
   } catch (e) {
     if (my !== epoch || (e && e.name === 'AbortError')) return;
     setBusy(false);
@@ -359,8 +433,11 @@ async function attach() {
     hidePicker(true);
     try { const ps = (await import('./project-state.js')).projectState; await ps.refresh({ reason: 'attach' }); } catch (e) { /* counters only */ }
   } catch (e) {
-    setStatus('Attach failed: ' + ((e && e.message) || 'request failed'));
-    core.toastError('Attach failed', e);
+    // 422: a focused image matched nothing drawable, so nothing was stored.
+    const msg = attachErrorText(e);
+    setStatus('Attach failed: ' + msg);
+    if (e && e.status === 422) core.toast(msg, 'error');
+    else core.toastError('Attach failed', e);
   } finally {
     go.disabled = false;
     go.removeAttribute('aria-busy');
@@ -411,6 +488,7 @@ function wire(core) {
   $id('evRenderDownload').addEventListener('click', download);
   $id('evRenderMask').addEventListener('change', (e) => { if (session) { session.opts = { ...session.opts, mask: e.target.checked }; load(session.kind); } });
   $id('evRenderBody').addEventListener('change', (e) => { if (session) { session.opts = { ...session.opts, includeBody: e.target.checked }; load(session.kind); } });
+  $id('evRenderFocus').addEventListener('submit', (e) => { e.preventDefault(); applyFocus(); });
   // Esc inside the picker only closes the picker; core's handler closes the modal otherwise.
   modal.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$id('evRenderPick').hidden) { e.preventDefault(); e.stopImmediatePropagation(); hidePicker(true); }
@@ -424,10 +502,14 @@ export async function open(kind, params = {}, opts = {}) {
   if (!modal) { core.toast('Evidence render preview is unavailable in this build', 'error'); return; }
   wire(core);
   if (session) { if (session.ctrl) session.ctrl.abort(); revoke(); }
-  session = { kind, params: params || {}, opts: { ...DEFAULT_OPTS }, ctrl: null, blobUrl: '', blob: null, alt: '', opener: opts.opener || document.activeElement };
+  const p = params || {};
+  session = { kind, params: p, opts: { ...DEFAULT_OPTS, ...(p.focus ? { focus: p.focus } : {}) }, ctrl: null, blobUrl: '', blob: null, alt: '', opener: opts.opener || document.activeElement };
   findingsLoaded = false;
-  core.openModal(modal, { onEscape: close, onDismiss: close, initialFocus: '#evRenderClose' });
+  const initialFocus = kind === 'flow-focus' && !opts.pick ? '#evRenderFocusText' : '#evRenderClose';
+  core.openModal(modal, { onEscape: close, onDismiss: close, initialFocus });
   await load(kind);
+  // "Attach image around selection to finding…" lands on the finding picker.
+  if (opts.pick && session && session.blob) await togglePicker();
 }
 
 export function close() {

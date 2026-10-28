@@ -29,6 +29,30 @@ Short recipes for agents driving Interseptor over MCP. Samples use only `example
 3. State the claim in the proof as counts only. The render does not confirm a race, and the requests used
    separate connections, not single-packet synchronisation. Verify the state change with a normal request.
 
+## Focused evidence image
+
+Use this when the proof sits deep in a long response (an admin flag at line 400 of a user list, a
+reflected payload near the end of an HTML page, an error string after a stack of headers).
+
+1. `get_flow` and copy the exact, distinctive proof text, for example `"isAdmin":true` or the payload
+   you sent. A common word such as `true` highlights every line.
+2. `render_flow_preview` with `flowId`, `findingId`, `focus` (that text), `focusSide=res`, a `caption`
+   such as "Highlighted: admin flag in a customer's response", `role=result` and a `proof`.
+   Use `lines=res:400-440` instead when you know the line numbers, or `regex=true` for a pattern.
+3. Read the result line `Focus: mode=focus, matches req=0 res=1.` With `findingId`, a focus that is not
+   found is refused and nothing is attached: fix the text once and render again, or pass `mode=top`. If
+   the result says the body was cut at 64 KiB, the text lies beyond the image: use `lines=` or a string
+   nearer the start instead of retrying the same text.
+
+`render_flow_preview` draws a form-urlencoded, base64 or codec-decoded body as readable text by default
+(`decode=auto`; a notice band says what was decoded, and the result adds a `Decoded body:` line). Quote the
+decoded text in `focus`, and `lines=` counts decoded lines. Pass `decode=raw` when the evidence is the
+encoding itself (the ciphertext, the wire format).
+
+The image keeps the response status line, collapses the headers, shows six lines around each match
+with the match highlighted and numbers every line. It is still a generated `flow_preview`, not
+browser proof.
+
 ## Authz and sequences
 
 - `kind=authz-matrix` from an authz differential run (`sourceRef=authz:<runId>`).

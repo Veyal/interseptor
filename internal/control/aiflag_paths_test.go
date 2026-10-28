@@ -258,6 +258,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/findings/{}/images/{}/classify":  "finding bookkeeping",
 	"/api/findings/{}/normalize-targets":   "finding bookkeeping",
 	"/api/flows/purge":                     "deletes flows",
+	"/api/flows/{}/preview.png":            "renders a stored flow, records nothing",
 	"/api/flows/tags":                      "flow bookkeeping",
 	"/api/flows/{}/auth-timeline":          "reads stored flows",
 	"/api/flows/{}/interception":           "flow bookkeeping",
