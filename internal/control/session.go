@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
@@ -152,14 +153,16 @@ func (h *sessionAPI) getSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// setSession is a partial update: only the fields present in the body change,
+// so saving one part (e.g. just the login macro) keeps the rest of the session.
 func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Enabled     bool               `json:"enabled"`
-		Headers     string             `json:"headers"`
-		Unscoped    bool               `json:"unscoped"`
+		Enabled     *bool              `json:"enabled"`
+		Headers     *string            `json:"headers"`
+		Unscoped    *bool              `json:"unscoped"`
 		Macro       *sender.Macro      `json:"macro"`
 		LoginMacro  *sender.LoginMacro `json:"loginMacro"`
-		HostHeaders map[string]string  `json:"hostHeaders"` // hostname → "Key: Value\n..." lines
+		HostHeaders *map[string]string `json:"hostHeaders"` // hostname → "Key: Value\n..." lines
 	}
 	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
@@ -170,22 +173,29 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	en := ""
-	if in.Enabled {
-		en = "1"
+	flag := func(b bool) string {
+		if b {
+			return "1"
+		}
+		return ""
 	}
-	un := ""
-	if in.Unscoped {
-		un = "1"
+	settings := map[string]string{}
+	if in.Enabled != nil {
+		settings["session.enabled"] = flag(*in.Enabled)
 	}
-	hhRaw, err := json.Marshal(in.HostHeaders)
-	if err != nil {
-		httpInternalErr(w, err)
-		return
+	if in.Headers != nil {
+		settings["session.headers"] = *in.Headers
 	}
-	settings := map[string]string{
-		"session.enabled": en, "session.headers": in.Headers,
-		"session.unscoped": un, "session.hostHeaders": string(hhRaw),
+	if in.Unscoped != nil {
+		settings["session.unscoped"] = flag(*in.Unscoped)
+	}
+	if in.HostHeaders != nil {
+		b, err := json.Marshal(*in.HostHeaders)
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		settings["session.hostHeaders"] = string(b)
 	}
 	if in.Macro != nil {
 		b, err := json.Marshal(*in.Macro)
@@ -203,24 +213,47 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 		}
 		settings["session.loginMacro"] = string(b)
 	}
-	if err := h.st.SetSettings(settings); err != nil {
+	var enabled, text, unscoped string
+	err := func() error {
+		sessionWriteMu.Lock()
+		defer sessionWriteMu.Unlock()
+		if len(settings) > 0 {
+			if err := h.st.SetSettings(settings); err != nil {
+				return err
+			}
+		}
+		// Apply the merged (stored) values, not just the fields in this request.
+		enabled, _, _ = h.st.GetSetting("session.enabled")
+		text, _, _ = h.st.GetSetting("session.headers")
+		unscoped, _, _ = h.st.GetSetting("session.unscoped")
+		if in.Enabled != nil || in.Headers != nil {
+			h.snd.SetSession(enabled == "1", parseSessionHeaders(text))
+		}
+		if in.HostHeaders != nil {
+			h.snd.SetSessionHostHeaders(parseHostHeaders(*in.HostHeaders))
+		}
+		if in.Macro != nil {
+			h.snd.SetMacro(*in.Macro)
+		}
+		if in.LoginMacro != nil {
+			_ = h.snd.SetLoginMacro(*in.LoginMacro)
+		}
+		return nil
+	}()
+	if err != nil {
 		httpInternalErr(w, err)
 		return
 	}
-	h.snd.SetSession(in.Enabled, parseSessionHeaders(in.Headers))
-	h.snd.SetSessionHostHeaders(parseHostHeaders(in.HostHeaders))
-	if in.Macro != nil {
-		h.snd.SetMacro(*in.Macro)
-	}
-	if in.LoginMacro != nil {
-		_ = h.snd.SetLoginMacro(*in.LoginMacro)
-	}
 	h.broadcast(map[string]any{"type": "session.update"})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled": in.Enabled, "headers": in.Headers, "unscoped": in.Unscoped,
+		"enabled": enabled == "1", "headers": text, "unscoped": unscoped == "1",
 		"macro": h.loadMacro(), "loginMacro": h.loadLoginMacro(),
 	})
 }
+
+// sessionWriteMu serializes session writes so the sender is applied from a
+// consistent stored state when two partial updates race.
+var sessionWriteMu sync.Mutex
 
 // runLoginMacro executes the recorded login request now and refreshes session headers.
 func (h *sessionAPI) runLoginMacro(w http.ResponseWriter, r *http.Request) {

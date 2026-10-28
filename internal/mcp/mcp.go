@@ -2741,18 +2741,23 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/settings") })
 
 	s.add("set_session",
-		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop. Use hostHeaders when testing multiple targets simultaneously — each host gets its own auth, overriding the global headers for that hostname.",
+		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop. Only the fields you pass change (omitted headers/hostHeaders are kept). Use hostHeaders when testing multiple targets simultaneously — each host gets its own auth, overriding the global headers for that hostname.",
 		obj(map[string]any{
 			"enabled":     pt("boolean"),
 			"headers":     p("string", "'Key: Value' lines — global fallback applied to all in-scope hosts"),
 			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} — replaces global headers for matching hosts only"),
 		}, "enabled"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/session", map[string]any{
-				"enabled":     argBool(a, "enabled", false),
-				"headers":     argStr(a, "headers"),
-				"hostHeaders": a["hostHeaders"],
-			})
+			// POST /api/session is a partial update: send only what was passed so
+			// the unscoped opt-in, login macro and omitted fields stay as they are.
+			body := map[string]any{"enabled": argBool(a, "enabled", false)}
+			if _, ok := a["headers"]; ok {
+				body["headers"] = argStr(a, "headers")
+			}
+			if v, ok := a["hostHeaders"]; ok && v != nil {
+				body["hostHeaders"] = v
+			}
+			return s.api(http.MethodPost, "/api/session", body)
 		})
 
 	s.add("decode",
@@ -3149,7 +3154,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("run_login_macro",
-		"Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. Configure via Settings → Session or set_session with loginMacro.",
+		"Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. Configure via Settings → Session, set_login_macro or set_login_macro_from_flow.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/session/login/run", nil) })
 

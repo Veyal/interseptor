@@ -231,7 +231,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/ios/ssh/setup", "Jailbroken iOS setup via SSH: open mobileconfig (CA + proxy) on device. Body: {host, port?, user, password?, keyPath?, proxyHost?, wifiHost?}"},
 	{"POST", "/api/ios/ssh/install-ca", "Jailbroken iOS: open mobileconfig profile on device via SSH. Body: same shape as POST /api/ios/ssh/setup"},
 	{"GET", "/api/session", "Get session/auth headers auto-applied to sends"},
-	{"POST", "/api/session", "Set session/auth headers (auto-applied to Repeater/Intruder). Body: {enabled, headers?, unscoped?, macro?, loginMacro?, hostHeaders?} — headers is \"Key: Value\" lines; hostHeaders is {hostname: \"Key: Value\\n...\"} per-host overrides"},
+	{"POST", "/api/session", "Set session/auth headers (auto-applied to Repeater/Intruder). Body: {enabled?, headers?, unscoped?, macro?, loginMacro?, hostHeaders?} — partial update: only fields present change; headers is \"Key: Value\" lines; hostHeaders is {hostname: \"Key: Value\\n...\"} per-host overrides"},
 	{"POST", "/api/session/login/run", "Run the login macro — refresh session headers from login response (no body)"},
 	{"POST", "/api/session/login/test", "Dry-run the saved login macro without applying the live session; returns status + captured headers"},
 	{"POST", "/api/session/login/from-flow/{id}", "Capture a flow's request as the login macro. Body: {enabled?, refreshSecs?, reauthOn401?}"},
