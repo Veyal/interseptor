@@ -276,6 +276,17 @@ func (h *authzAPI) authzDifferential(f *store.Flow, ids []identity, opts differe
 	return ev
 }
 
+// differentialBaseIndex is the context authzDifferential compared the others
+// against: the first one that did not error (-1 when every context errored).
+func differentialBaseIndex(cs []differentialContext) int {
+	for i, c := range cs {
+		if c.Error == "" {
+			return i
+		}
+	}
+	return -1
+}
+
 // finishDifferential derives the hypotheses and the optional ordering probe.
 func (h *authzAPI) finishDifferential(ev *authzDifferentialEvidence, f *store.Flow, anon *identity, opts differentialOpts) {
 	var anonCtx *differentialContext
@@ -285,8 +296,9 @@ func (h *authzAPI) finishDifferential(ev *authzDifferentialEvidence, f *store.Fl
 			break
 		}
 	}
-	if anonCtx != nil && len(ev.Contexts) > 1 && ev.Contexts[0].Outcome == outcomeSuccess &&
-		anonCtx.Outcome == outcomeSuccess && anonCtx.SameAsBaseline && !ev.Contexts[0].Anonymous {
+	base := differentialBaseIndex(ev.Contexts)
+	if anonCtx != nil && base >= 0 && ev.Contexts[base].Outcome == outcomeSuccess && !ev.Contexts[base].Anonymous &&
+		anonCtx.Outcome == outcomeSuccess && anonCtx.SameAsBaseline {
 		ev.AuthNotEnforced = true
 		ev.Hypotheses = append(ev.Hypotheses,
 			"Hypothesis: authentication may not be enforced — the anonymous replay succeeded with the same response as the baseline identity. Reproduce before reporting.")

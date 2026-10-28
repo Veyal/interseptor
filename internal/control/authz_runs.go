@@ -179,15 +179,16 @@ func authzMatrixFromRuns(runs []authzRunOut) authzMatrix {
 func authzMatrixFromDifferential(ev authzDifferentialEvidence) authzMatrix {
 	m := authzMatrix{Identities: []string{}, Rows: []authzMatrixRow{}}
 	row := authzMatrixRow{FlowID: ev.FlowID, Method: ev.Method, Host: ev.Host, Path: ev.Path, Cells: []authzMatrixCell{}}
+	base := differentialBaseIndex(ev.Contexts)
+	if base >= 0 {
+		row.Baseline = authzMatrixBaseline{Status: ev.Contexts[base].Status, Length: ev.Contexts[base].Length}
+	}
 	for i, c := range ev.Contexts {
 		m.Identities = append(m.Identities, c.Name)
-		if i == 0 {
-			row.Baseline = authzMatrixBaseline{Status: c.Status, Length: c.Length}
-		}
 		row.Cells = append(row.Cells, authzMatrixCell{
 			Identity: c.Name, Status: c.Status, Length: c.Length, FlowID: c.FlowID,
 			Verdict: authzCellVerdict(cellFacts{
-				err: c.Error, status: c.Status, same: c.SameAsBaseline && i > 0, baseline: i == 0,
+				err: c.Error, status: c.Status, same: c.SameAsBaseline && i != base, baseline: i == base,
 			}),
 			Note: c.Outcome,
 		})
