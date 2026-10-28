@@ -5,6 +5,7 @@ package proc
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -28,6 +29,9 @@ func List() ([]Proc, error) {
 	return procs, nil
 }
 
+// statPath is os.Stat, injectable so tests can fake executables on disk.
+var statPath = os.Stat
+
 // parsePSLine parses one "pid command..." line from ps. The command line is
 // space-joined, so an executable under a path with spaces cannot be split on
 // whitespace: the path is the shortest space-delimited prefix of the command
@@ -47,11 +51,30 @@ func parsePSLine(line string) (pid int, path string, args []string, ok bool) {
 		if end < len(cmd) && cmd[end] != ' ' {
 			continue
 		}
-		if candidate := cmd[:end]; candidate != "" && matchesInterseptor(baseFromPath(candidate)) {
+		if candidate := cmd[:end]; isInterseptorExecutable(candidate) {
 			return pid, candidate, append([]string{candidate}, strings.Fields(cmd[end:])...), true
 		}
 	}
 	return 0, "", nil, false
+}
+
+// isInterseptorExecutable reports whether candidate (a space-delimited prefix
+// of a ps command line) names an Interseptor binary. A prefix without spaces
+// is the real argv[0]. A prefix containing spaces is ambiguous — it may be
+// "vim /path/interseptor" — so it is accepted only when it is an absolute
+// path to an existing executable regular file.
+func isInterseptorExecutable(candidate string) bool {
+	if candidate == "" || !matchesInterseptor(baseFromPath(candidate)) {
+		return false
+	}
+	if !strings.Contains(candidate, " ") {
+		return true
+	}
+	if !filepath.IsAbs(candidate) {
+		return false
+	}
+	info, err := statPath(candidate)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
 // aliveInterseptor reports whether pid is alive AND its command name is an
