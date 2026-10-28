@@ -139,7 +139,7 @@ func runLauncher(args []string) error {
 	if err != nil {
 		return fmt.Errorf("launcher listen on %s: %w", addr, err)
 	}
-	srv := &http.Server{Handler: lh.routes()}
+	srv := newControlServer(lh.routes())
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("launcher serve: %v", err)

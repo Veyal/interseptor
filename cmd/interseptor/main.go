@@ -497,8 +497,34 @@ type controlManager struct {
 	srv  *http.Server
 }
 
+// Listener limits. The control plane serves the public /oob/ catcher, so a
+// slow client must not hold a connection open by trickling headers. There is
+// deliberately no WriteTimeout/ReadTimeout: SSE streams and large uploads run
+// as long as they need.
+const (
+	controlReadHeaderTimeout = 10 * time.Second
+	controlIdleTimeout       = 120 * time.Second
+	controlMaxHeaderBytes    = 1 << 20
+	proxyReadHeaderTimeout   = 30 * time.Second
+)
+
+func newControlServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: controlReadHeaderTimeout,
+		IdleTimeout:       controlIdleTimeout,
+		MaxHeaderBytes:    controlMaxHeaderBytes,
+	}
+}
+
+// newProxyServer bounds only the request-head read; the deadline is cleared
+// once headers arrive, so bodies, CONNECT tunnels and long polls are unaffected.
+func newProxyServer(h http.Handler) *http.Server {
+	return &http.Server{Handler: h, ReadHeaderTimeout: proxyReadHeaderTimeout}
+}
+
 func (m *controlManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: m.handler}
+	srv := newControlServer(m.handler)
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("control serve: %v", err)
@@ -575,7 +601,7 @@ type proxyManager struct {
 }
 
 func (m *proxyManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: m.handler}
+	srv := newProxyServer(m.handler)
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("proxy serve: %v", err)
