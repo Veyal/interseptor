@@ -12,8 +12,10 @@ import (
 )
 
 // flowSource is the narrow slice of the host this extension needs. Declaring it
-// here (instead of importing store) keeps the extension decoupled and testable;
-// *store.Store satisfies a superset of it.
+// here (instead of importing store) keeps the extension decoupled and testable.
+// *store.Store has no FlowSummary method, so it does not satisfy this directly:
+// wire it with a small adapter that calls store.GetFlow and returns the flow's
+// Method, Host and Path (ok=false on error), or a fake in tests.
 type flowSource interface {
 	FlowSummary(id int64) (method, host, path string, ok bool)
 }
