@@ -940,10 +940,8 @@ func dialViaUpstream(d *net.Dialer, up *url.URL, addr string, tlsConfig *tls.Con
 		conn = tc
 	}
 	req := &http.Request{Method: http.MethodConnect, URL: &url.URL{Opaque: addr}, Host: addr, Header: make(http.Header)}
-	if up.User != nil {
-		if pw, ok := up.User.Password(); ok {
-			req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(up.User.Username()+":"+pw)))
-		}
+	if auth := upstreamProxyAuthorization(up); auth != "" {
+		req.Header.Set("Proxy-Authorization", auth)
 	}
 	if err := req.Write(conn); err != nil {
 		conn.Close()
@@ -964,6 +962,21 @@ func dialViaUpstream(d *net.Dialer, up *url.URL, addr string, tlsConfig *tls.Con
 		return nil, err
 	}
 	return conn, nil
+}
+
+// upstreamProxyAuthorization returns the Basic Proxy-Authorization value for
+// the upstream URL's userinfo, matching net/http: a token-only "user@" URL
+// sends "user:" rather than nothing.
+func upstreamProxyAuthorization(up *url.URL) string {
+	if up.User == nil {
+		return ""
+	}
+	user := up.User.Username()
+	pw, hasPW := up.User.Password()
+	if user == "" && !hasPW {
+		return ""
+	}
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pw))
 }
 
 func dialerDeadline(d *net.Dialer) time.Time {

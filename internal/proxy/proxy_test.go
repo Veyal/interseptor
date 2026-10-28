@@ -2742,3 +2742,31 @@ func TestParseRawResponseNormalizesLFHead(t *testing.T) {
 		t.Fatalf("body=%q, want %q", b, want)
 	}
 }
+
+func TestDialViaUpstreamSendsTokenOnlyProxyAuthorization(t *testing.T) {
+	relay, seen := newConnectRelay(t)
+	origin, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen origin: %v", err)
+	}
+	defer origin.Close()
+	go func() {
+		c, err := origin.Accept()
+		if err == nil {
+			c.Close()
+		}
+	}()
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxy("http://token123@" + relay); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	conn, err := dialViaUpstream(&net.Dialer{Timeout: 3 * time.Second}, srv.upstream.Load(), origin.Addr().String(), nil)
+	if err != nil {
+		t.Fatalf("dialViaUpstream: %v", err)
+	}
+	conn.Close()
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("token123:"))
+	if got := (<-seen).auth; got != want {
+		t.Fatalf("Proxy-Authorization = %q, want %q", got, want)
+	}
+}
