@@ -21,7 +21,9 @@ func Build(method, url string, headers http.Header, body []byte) string {
 	if m == "" {
 		m = http.MethodGet
 	}
-	if m != http.MethodGet {
+	// curl sends --data-raw as POST unless told otherwise, so a GET with a
+	// body needs the method spelled out too.
+	if m != http.MethodGet || len(body) > 0 {
 		parts = append(parts, "-X '"+shellEscape(m)+"'")
 	}
 
