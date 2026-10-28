@@ -86,7 +86,20 @@ func carryIdentityHistory(prev, next identity) identity {
 	if next.LastCheck == nil {
 		next.LastCheck = prev.LastCheck
 	}
+	// The legacy modal sends {name, headers, broken} only: a still-broken
+	// identity keeps its reason. Un-breaking drops it with the flag.
+	if next.Broken && prev.Broken && next.BrokenNote == "" {
+		next.BrokenNote = prev.BrokenNote
+	}
 	return next
+}
+
+// identityUnchanged reports whether an upsert would leave the identity's
+// user-visible content as it was, so a legacy Run that re-saves the whole
+// list does not restamp or log identities nobody edited.
+func identityUnchanged(prev, next identity) bool {
+	return prev.Name == next.Name && prev.Headers == next.Headers && prev.Broken == next.Broken &&
+		prev.BrokenNote == next.BrokenNote && prev.Role == next.Role && prev.Notes == next.Notes
 }
 
 // upsertIdentity replaces the identity with the same name, or appends it.
@@ -150,23 +163,47 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 		name, event string
 	}
 	var log []written
+	var removed []string
 	out, err := h.mutateIdentities(func(cur []identity) ([]identity, error) {
+		log, removed = nil, nil
 		// Replace drops identities missing from the list, but one that is still
 		// listed keeps its history: the legacy modal sends only {name, headers}.
 		before := cur
 		if mode == authzModeReplace {
 			cur = nil
 		}
+		seen := map[string]bool{}
 		for _, id := range in.Identities {
-			prev, existed := findIdentity(before, strings.TrimSpace(id.Name))
+			name := strings.TrimSpace(id.Name)
+			// A name repeated in this payload updates what the earlier entry
+			// wrote instead of logging a second create.
+			src := before
+			if seen[name] {
+				src = cur
+			}
+			seen[name] = true
+			prev, existed := findIdentity(src, name)
 			stamped := stampIdentity(clearServerOwned(id), actor, now)
 			if existed {
 				stamped = carryIdentityHistory(prev, stamped)
+				if identityUnchanged(prev, stamped) {
+					// Legacy Run re-saves every row: keep the untouched one
+					// as it was (owner, updatedAt) and log nothing.
+					cur = upsertIdentity(cur, prev)
+					continue
+				}
 			} else {
 				stamped.Source = &identitySource{Kind: sourceKind}
 			}
 			log = append(log, written{stamped.Name, identityWriteEvent(prev, existed, stamped)})
 			cur = upsertIdentity(cur, stamped)
+		}
+		if mode == authzModeReplace {
+			for _, id := range before {
+				if _, kept := findIdentity(cur, id.Name); !kept {
+					removed = append(removed, id.Name)
+				}
+			}
 		}
 		return cur, nil
 	})
@@ -174,12 +211,18 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	for _, name := range removed {
+		h.dropIdentityEvents(name)
+	}
 	for _, wr := range log {
 		h.appendIdentityEvent(wr.name, wr.event, actor, "")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"identities": out, "mode": mode})
 	for _, wr := range log {
 		h.broadcastAuthzIdentities(wr.name)
+	}
+	for _, name := range removed {
+		h.broadcastAuthzIdentities(name)
 	}
 }
 
