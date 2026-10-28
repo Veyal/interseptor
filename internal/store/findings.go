@@ -1401,7 +1401,9 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		resulting.Body = stamped
 	}
 	preserveAssessmentMissing(current, &resulting)
-	if status != nil && strings.TrimSpace(*status) == "verified" && undemonstrated(resulting.ProofReview.Execution) {
+	// Gate on the normalized status so aliases ("confirmed") and casing
+	// ("Verified") can't slip past and be silently reset.
+	if status != nil && resulting.Status == "verified" && undemonstrated(resulting.ProofReview.Execution) {
 		return fmt.Errorf("%w: verify the impact first: this finding's proof review says the impact was not demonstrated; set proofReview.execution to demonstrated (with evidence) before marking it verified", ErrInvalidFinding)
 	}
 	if resulting.Cvss != current.Cvss {

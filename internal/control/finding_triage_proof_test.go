@@ -53,8 +53,11 @@ func TestTriageStatusSticksOnUndemonstratedFinding(t *testing.T) {
 			t.Fatalf("status %q was reset to %q", status, got.Status)
 		}
 	}
-	code, msg := patch(`{"status":"verified"}`)
-	if code != http.StatusBadRequest || !strings.Contains(msg, "demonstrated") {
-		t.Fatalf("verifying an undemonstrated finding = %d %q, want 400 explaining the proof gate", code, msg)
+	// Aliases and casing normalize to verified and must hit the same gate.
+	for _, status := range []string{"verified", "Verified", "confirmed"} {
+		code, msg := patch(fmt.Sprintf(`{"status":%q}`, status))
+		if code != http.StatusBadRequest || !strings.Contains(msg, "demonstrated") {
+			t.Fatalf("status %q on an undemonstrated finding = %d %q, want 400 explaining the proof gate", status, code, msg)
+		}
 	}
 }

@@ -319,3 +319,20 @@ func TestFindingCVSS4CalculatedBands(t *testing.T) {
 		}
 	}
 }
+
+// Status aliases ("confirmed") and casing ("Verified") normalize to verified,
+// so they must hit the same proof gate instead of being silently reset.
+func TestVerifyGateAppliesToStatusAliases(t *testing.T) {
+	s := newTestStore(t)
+	id, err := s.CreateFinding(&Finding{Title: "Prereq only", Severity: "High", ProofReview: FindingProofReview{Execution: "prerequisite_only", Reason: "needs a rooted device"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"verified", "Verified", "confirmed", " CONFIRMED "} {
+		st := status
+		err := s.UpdateFinding(id, nil, &st, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidFinding) {
+			t.Fatalf("status %q on an undemonstrated finding: err=%v, want ErrInvalidFinding", status, err)
+		}
+	}
+}
