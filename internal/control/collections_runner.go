@@ -118,8 +118,7 @@ func (c *collectionsAPI) runEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		httpErr(w, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
@@ -132,16 +131,17 @@ func (c *collectionsAPI) runEvents(w http.ResponseWriter, r *http.Request) {
 	ch, cancel := lr.Subscribe()
 	defer cancel()
 	since, _ := strconv.Atoi(r.URL.Query().Get("since"))
+	stream := newSSEStream(w)
+	failed := false
 	send := func(v any) {
 		b, err := json.Marshal(v)
 		if err != nil {
 			return
 		}
-		fmt.Fprintf(w, "data: %s\n\n", b)
-		flusher.Flush()
+		failed = stream.send(fmt.Sprintf("data: %s\n\n", b)) != nil
 	}
 	send(map[string]any{"type": "snapshot", "progress": lr.Snapshot(since)})
-	for {
+	for !failed {
 		select {
 		case <-r.Context().Done():
 			return

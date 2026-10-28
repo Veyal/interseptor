@@ -2,7 +2,9 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -117,10 +119,41 @@ func (h *Hub) CloseStreams() {
 	})
 }
 
+// sseWriteTimeout bounds each SSE write so a client that stops reading cannot
+// block its handler (and server Shutdown) forever. A var so tests can shorten it.
+var sseWriteTimeout = 30 * time.Second
+
+// sseStream writes Server-Sent Events frames with a per-write deadline.
+type sseStream struct {
+	w  http.ResponseWriter
+	rc *http.ResponseController
+}
+
+func newSSEStream(w http.ResponseWriter) *sseStream {
+	return &sseStream{w: w, rc: http.NewResponseController(w)}
+}
+
+// send writes one frame and flushes it, failing once the client stalls past
+// sseWriteTimeout or disconnects.
+func (s *sseStream) send(frame string) error {
+	if err := s.rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	if _, err := io.WriteString(s.w, frame); err != nil {
+		return err
+	}
+	if err := s.rc.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	// Clear the deadline so it cannot fire on a later response if the
+	// connection is reused after the stream ends.
+	_ = s.rc.SetWriteDeadline(time.Time{})
+	return nil
+}
+
 // handleEvents serves the Server-Sent Events stream.
 func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		httpErr(w, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
@@ -139,17 +172,20 @@ func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 		h.mu.Unlock()
 	}()
 
-	fmt.Fprint(w, "event: hello\ndata: {}\n\n")
+	stream := newSSEStream(w)
+	first := "event: hello\ndata: {}\n\n"
 	// Give a newly connected client the current intercept snapshot (with its Seq)
 	// as the first frame, so a late joiner is correct from the stream alone and has
 	// the baseline the per-item deltas reconcile against — rather than depending on
 	// a separate REST fetch to arrive first.
 	if h.eng != nil {
 		if b, err := json.Marshal(map[string]any{"type": "intercept.state", "intercept": h.interceptStateSummary()}); err == nil {
-			fmt.Fprintf(w, "data: %s\n\n", b)
+			first += fmt.Sprintf("data: %s\n\n", b)
 		}
 	}
-	flusher.Flush()
+	if stream.send(first) != nil {
+		return
+	}
 
 	ctx := r.Context()
 	for {
@@ -159,8 +195,9 @@ func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-h.streamStop:
 			return
 		case msg := <-ch:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
-			flusher.Flush()
+			if stream.send("data: "+msg+"\n\n") != nil {
+				return
+			}
 		}
 	}
 }
