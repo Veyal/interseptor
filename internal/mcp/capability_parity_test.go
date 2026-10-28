@@ -78,6 +78,11 @@ func TestRuleToolsAcceptSideAndPreserveCombinedType(t *testing.T) {
 	}
 	var got []received
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/rules" {
+			// update_rule reads the current rule to merge the supplied fields.
+			io.WriteString(w, `{"rules":[{"id":7,"ord":1,"enabled":true,"type":"res-header","match":"a","replace":"b"}]}`)
+			return
+		}
 		item := received{method: r.Method, path: r.URL.Path}
 		if r.Body != nil {
 			_ = json.NewDecoder(r.Body).Decode(&item.body)

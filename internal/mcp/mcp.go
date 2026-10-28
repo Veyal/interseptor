@@ -812,6 +812,73 @@ func rulePayload(a map[string]any, enabledDefault bool) map[string]any {
 	}
 }
 
+// mergedRulePayload builds an update_rule PUT body from the rule's current
+// values plus only the supplied args (PUT replaces the whole rule, so omitted
+// fields must not fall back to defaults such as enabled=true).
+func (s *Server) mergedRulePayload(id int, a map[string]any) (map[string]any, error) {
+	raw, err := s.apiGet("/api/rules")
+	if err != nil {
+		return nil, fmt.Errorf("read rule %d: %w", id, err)
+	}
+	var list struct {
+		Rules []struct {
+			ID      int64  `json:"id"`
+			Ord     int    `json:"ord"`
+			Enabled bool   `json:"enabled"`
+			Type    string `json:"type"`
+			Match   string `json:"match"`
+			Replace string `json:"replace"`
+			BigBody bool   `json:"bigBody"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(raw), &list); err != nil {
+		return nil, fmt.Errorf("decode rules: %w", err)
+	}
+	for _, r := range list.Rules {
+		if r.ID != int64(id) {
+			continue
+		}
+		out := map[string]any{"ord": r.Ord, "enabled": r.Enabled, "type": r.Type, "match": r.Match, "replace": r.Replace, "bigBody": r.BigBody}
+		side, kind, _ := strings.Cut(r.Type, "-")
+		_, hasSide := a["side"]
+		if _, hasType := a["type"]; hasType || hasSide {
+			typ := strings.ToLower(strings.TrimSpace(argStr(a, "type")))
+			if strings.Contains(typ, "-") {
+				out["type"] = typ
+			} else {
+				if typ != "" {
+					kind = typ
+				}
+				if hasSide {
+					switch strings.ToLower(strings.TrimSpace(argStr(a, "side"))) {
+					case "response", "res":
+						side = "res"
+					default:
+						side = "req"
+					}
+				}
+				out["type"] = side + "-" + kind
+			}
+		}
+		if _, ok := a["ord"]; ok {
+			out["ord"] = argInt(a, "ord", r.Ord)
+		}
+		if _, ok := a["enabled"]; ok {
+			out["enabled"] = argBool(a, "enabled", r.Enabled)
+		}
+		if _, ok := a["bigBody"]; ok {
+			out["bigBody"] = argBool(a, "bigBody", r.BigBody)
+		}
+		for _, k := range []string{"match", "replace"} {
+			if _, ok := a[k]; ok {
+				out[k] = argStr(a, k)
+			}
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("rule %d not found (list_rules shows the ids)", id)
+}
+
 // ---- argument validation (helpful errors) ----
 //
 // An AI driving these tools over MCP only ever sees the error string, so a bare
@@ -2587,15 +2654,20 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
-	s.add("update_rule", "Update a match-&-replace rule.",
+	s.add("update_rule", "Update a match-&-replace rule. Only the fields you pass change; the rest keep their current values.",
 		obj(map[string]any{
 			"id": pt("integer"), "side": ruleProps["side"], "type": ruleProps["type"],
 			"match": ruleProps["match"], "replace": ruleProps["replace"],
 			"enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
 			"bigBody": ruleProps["bigBody"],
-		}, "id", "type", "match"),
+		}, "id"),
 		func(a map[string]any) (string, error) {
-			out, err := s.api(http.MethodPut, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), rulePayload(a, true))
+			id := argInt(a, "id", 0)
+			payload, err := s.mergedRulePayload(id, a)
+			if err != nil {
+				return "", err
+			}
+			out, err := s.api(http.MethodPut, fmt.Sprintf("/api/rules/%d", id), payload)
 			return boundJSON(out, 200), err
 		})
 
