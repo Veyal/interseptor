@@ -2753,7 +2753,15 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
 // Minimal, safe markdown → HTML: escape first, then format a useful subset.
 export function renderMD(src){
   if(!src||!src.trim())return '<p class="hint">Empty — switch to Edit and jot down creds, findings, scope…</p>';
-  let s=esc(src),blocks=[],flowRefs=[];
+  // \x00-\x04 are reserved as placeholder delimiters below; strip them from input
+  // so typed control characters can't reference (or forge) a placeholder.
+  let s=esc(String(src).replace(/[\x00-\x04]/g,'')),blocks=[],flowRefs=[],media=[];
+  // Generated <img>/<a> markup is parked behind opaque placeholders and restored
+  // last, so no later pass (notably the link regex) can match across a tag's
+  // attributes and leave one open. \x03 = image (may sit inside link text),
+  // \x04 = link (never nested inside another link).
+  const pushMedia=(mark,html)=>{const i=media.length;media.push(html);return mark+i+mark;};
+  const attr=v=>String(v).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const pushFlow=(id,label,code)=>{const i=flowRefs.length;flowRefs.push({id:String(id),label,code:!!code});return '\x02'+i+'\x02';};
   s=s.replace(/```(\w*)\r?\n?([\s\S]*?)```/g,(m,lang,code)=>{
     const i=blocks.length;
@@ -2803,13 +2811,13 @@ export function renderMD(src){
   });
   s=s.replace(/(?:^|\n)((?:[-*] (?!\[[ xX]\] ).*(?:\r?\n|$))+)/g,(m,list)=>'\n<ul>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^[-*]\s?/,'')+'</li>').join('')+'</ul>');
   s=s.replace(/(?:^|\n)((?:\d+\. .*(?:\r?\n|$))+)/g,(m,list)=>'\n<ol>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^\d+\.\s?/,'')+'</li>').join('')+'</ol>');
-  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" tabindex="0" role="button" aria-label="Open screenshot: '+alt.replace(/"/g,'&quot;')+'" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
+  s=s.replace(/!\[([^\]\x00-\x04]*)\]\((https?:\/\/[^\s"<>)\[\]\x00-\x04]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>pushMedia('\x03','<img class="md-img" tabindex="0" role="button" aria-label="Open screenshot: '+attr(alt)+'" alt="'+attr(alt)+'" src="'+attr(src)+'">'));
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
   // Explicit in-app flow links: [label](flow:123) or [label](#flow-123)
-  s=s.replace(/\[([^\]]+)\]\((?:flow:|#flow-)(\d+)\)/g,(m,txt,id)=>'<a class="md-flow-link" data-flow="'+id+'" href="#flow-'+id+'">'+txt+'</a>');
+  s=s.replace(/\[([^\]\x04]+)\]\((?:flow:|#flow-)(\d+)\)/g,(m,txt,id)=>pushMedia('\x04','<a class="md-flow-link" data-flow="'+id+'" href="#flow-'+id+'">'+txt+'</a>'));
   s=s.replace(/`([^`\n]+)`/g,'<code>$1</code>');
-  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,(m,txt,href)=>'<a href="'+href.replace(/"/g,'&quot;')+'" target="_blank" rel="noopener">'+txt+'</a>');
+  s=s.replace(/\[([^\]\x04]+)\]\(((?:https?:\/\/|mailto:)[^\s"<>)\x00-\x04]+)\)/g,(m,txt,href)=>pushMedia('\x04','<a href="'+attr(href)+'" target="_blank" rel="noopener">'+txt+'</a>'));
   s='<p>'+s.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
   s=s.replace(/\x00(\d+)\x00/g,(m,i)=>{
     const b=blocks[Number(i)]||{code:'',lang:''};
@@ -2821,6 +2829,9 @@ export function renderMD(src){
     const body=r.code?'<code>flow:'+r.id+'</code>':r.label;
     return '<a class="md-flow-link" data-flow="'+r.id+'" href="#flow-'+r.id+'">'+body+'</a>';
   });
+  // Links first (their text may hold image placeholders), then images.
+  s=s.replace(/\x04(\d+)\x04/g,(m,i)=>media[Number(i)]||'');
+  s=s.replace(/\x03(\d+)\x03/g,(m,i)=>media[Number(i)]||'');
   return s.replace(/<p>\s*<\/p>/g,'').replace(/<p>(<(?:h\d|ul|ol|table|pre|blockquote|hr|div))/g,'$1').replace(/(<\/(?:h\d|ul|ol|table|pre|blockquote|div)>)<\/p>/g,'$1');
 }
 // ---- binary-body detection (inspector shows headers only for non-text bodies) ----
