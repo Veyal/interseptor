@@ -257,11 +257,20 @@ func appendQuery(u string, kvs []varstore.KV) string {
 	if len(parts) == 0 {
 		return u
 	}
+	// The fragment stays last: parameters appended after '#' never reach
+	// the server (an apikey-in-query auth would silently vanish).
+	frag := ""
+	if i := strings.IndexByte(u, '#'); i >= 0 {
+		u, frag = u[:i], u[i:]
+	}
 	sep := "?"
 	if strings.Contains(u, "?") {
 		sep = "&"
+		if strings.HasSuffix(u, "?") || strings.HasSuffix(u, "&") {
+			sep = ""
+		}
 	}
-	return u + sep + strings.Join(parts, "&")
+	return u + sep + strings.Join(parts, "&") + frag
 }
 
 func authField(f map[string]string, name string) string { return f[name] }
