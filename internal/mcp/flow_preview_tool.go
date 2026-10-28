@@ -69,10 +69,13 @@ func flowPreviewFocusArgs(a map[string]any, body map[string]any) {
 	if argBool(a, "regex", false) {
 		body["regex"] = true
 	}
-	for _, k := range []string{"focusSide", "lines", "mode"} {
+	for _, k := range []string{"focusSide", "mode"} {
 		if v := strings.TrimSpace(argStr(a, k)); v != "" {
 			body[k] = v
 		}
+	}
+	if v := argLines(a, "lines"); v != "" {
+		body["lines"] = v
 	}
 	if _, ok := a["context"]; ok {
 		body["context"] = argInt(a, "context", preview.DefaultFocusContext)

@@ -729,11 +729,44 @@ func argInt(a map[string]any, key string, def int) int {
 	return def
 }
 
+// argBool reads a boolean, also accepting the loose forms some MCP clients send
+// ("true"/"false", "1"/"0", 1/0) so they are not silently read as the default.
 func argBool(a map[string]any, key string, def bool) bool {
-	if b, ok := a[key].(bool); ok {
-		return b
+	switch x := a[key].(type) {
+	case bool:
+		return x
+	case float64:
+		if x == 1 || x == 0 {
+			return x == 1
+		}
+	case int:
+		if x == 1 || x == 0 {
+			return x == 1
+		}
+	case string:
+		switch strings.ToLower(strings.TrimSpace(x)) {
+		case "true", "1":
+			return true
+		case "false", "0":
+			return false
+		}
 	}
 	return def
+}
+
+// argLines reads a line-range argument given either as "res:1-5,req:2" or as
+// an array of ranges, which is joined with commas.
+func argLines(a map[string]any, key string) string {
+	if list, ok := a[key].([]any); ok {
+		parts := make([]string, 0, len(list))
+		for _, el := range list {
+			if s := strings.TrimSpace(fmt.Sprint(el)); s != "" && el != nil {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ",")
+	}
+	return strings.TrimSpace(argStr(a, key))
 }
 
 func rulePayload(a map[string]any, enabledDefault bool) map[string]any {
