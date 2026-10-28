@@ -13,6 +13,7 @@ func NormalizeCRLF(s string) string {
 
 // ParseRawRequest parses a raw HTTP request (request line + headers + body after a
 // blank line). Content-Length is dropped — callers recompute it from the body.
+// Transfer-Encoding is kept: the body is then the framed bytes as written.
 func ParseRawRequest(raw string) (method, path string, headers map[string][]string, body []byte, err error) {
 	norm := NormalizeCRLF(raw)
 	head := norm
@@ -33,6 +34,11 @@ func ParseRawRequest(raw string) (method, path string, headers map[string][]stri
 		h = http.Header{}
 	}
 	h.Del("Content-Length")
+	// http.ReadRequest moves Transfer-Encoding out of Header; put it back so a
+	// chunked template keeps its framing instead of being re-framed by length.
+	if len(req.TransferEncoding) > 0 {
+		h["Transfer-Encoding"] = append([]string(nil), req.TransferEncoding...)
+	}
 	if req.Host != "" {
 		h.Set("Host", req.Host)
 	}

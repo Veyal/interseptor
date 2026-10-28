@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strconv"
@@ -161,17 +162,57 @@ func (s *Sender) persistFor(r Request, flow *store.Flow) {
 // do performs the round trip, honouring per-send options.
 func (s *Sender) do(r Request, req *http.Request) (*http.Response, error) {
 	o := r.Options
+	if o != nil && len(o.RawHeaders) > 0 {
+		return s.rawRoundTrip(req, r.Body, o)
+	}
+	if len(req.Header.Values("Transfer-Encoding")) > 0 && isChunkFramed(r.Body) {
+		// net/http drops a Transfer-Encoding header and re-frames the body by
+		// length; a template that carries its own framing goes out verbatim.
+		return s.rawRoundTrip(req, r.Body, framedOptions(o, req))
+	}
 	if o == nil {
 		return s.cl.Do(req)
-	}
-	if len(o.RawHeaders) > 0 {
-		return s.rawRoundTrip(req, r.Body, o)
 	}
 	cl, err := s.clientFor(o)
 	if err != nil {
 		return nil, err
 	}
 	return cl.Do(req)
+}
+
+// isChunkFramed reports whether body is already chunked transfer-coded (as a
+// raw chunked template is). A decoded body with a stale Transfer-Encoding
+// header, e.g. from an import, keeps net/http's length framing.
+func isChunkFramed(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	_, err := io.Copy(io.Discard, httputil.NewChunkedReader(bytes.NewReader(body)))
+	return err == nil
+}
+
+// framedOptions returns a copy of o (defaults when nil) whose RawHeaders are
+// req's final headers, Host first, so the raw wire path writes them as-is.
+func framedOptions(o *SendOptions, req *http.Request) *SendOptions {
+	var oc SendOptions
+	if o != nil {
+		oc = *o
+	}
+	oc.RawHeaders = nil
+	if req.Host != "" {
+		oc.RawHeaders = append(oc.RawHeaders, RawHeader{Name: "Host", Value: req.Host})
+	}
+	keys := make([]string, 0, len(req.Header))
+	for k := range req.Header {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range req.Header[k] {
+			oc.RawHeaders = append(oc.RawHeaders, RawHeader{Name: k, Value: v})
+		}
+	}
+	return &oc
 }
 
 // --- client cache ---------------------------------------------------------
