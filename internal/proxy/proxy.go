@@ -1475,8 +1475,12 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 			}
 		}
 	}
-	// Keep framing consistent with the (possibly edited) body.
-	h.Set("Content-Length", strconv.Itoa(len(b)))
+	// Keep framing consistent with the (possibly edited) body. HEAD, 1xx, 204
+	// and 304 carry no body, so their Content-Length (if any) describes the
+	// representation and must be passed through as the origin sent it.
+	if !isBodylessResponse(resp) {
+		h.Set("Content-Length", strconv.Itoa(len(b)))
+	}
 	h.Del("Transfer-Encoding")
 	return st, h, b, true, false
 }
