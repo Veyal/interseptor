@@ -16,7 +16,7 @@ import (
 // it with the release tag through -ldflags -X; local builds retain this value.
 // It deliberately tracks the last published release. See CONTRIBUTING.md
 // §"Cutting a release".
-var Version = "2.20.0"
+var Version = "2.21.0"
 
 // Channel is "release" in binaries GoReleaser publishes (set through -ldflags
 // -X). Any other build came from source, and one-click self-update leaves it
