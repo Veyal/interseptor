@@ -123,6 +123,7 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 		return 0, nil
 	}
 
+	_ = s.FlushWSFrames() // queued frames must be visible to the delete below
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsByHost: begin: %w", err)
@@ -154,6 +155,9 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE `+hostWhere+`)`, args...); err != nil {
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: untag: %w", err)
 		}
+		if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (SELECT id FROM flows WHERE `+hostWhere+`)`, args...); err != nil {
+			return 0, fmt.Errorf("store.DeleteFlowsByHost: ws frames: %w", err)
+		}
 		res, err := tx.Exec(`DELETE FROM flows WHERE `+hostWhere, args...)
 		if err != nil {
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: delete: %w", err)
@@ -173,6 +177,7 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 // index and tags, preserving flows findings reference (referencedFlowIDsSQL). Returns the count deleted.
 func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 	s.syncFlows()
+	_ = s.FlushWSFrames() // queued frames must be visible to the delete below
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: begin: %w", err)
@@ -183,6 +188,9 @@ func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 	}
 	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`))`, cutoffMillis); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: untag: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`))`, cutoffMillis); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: ws frames: %w", err)
 	}
 	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ? AND id NOT IN (`+referencedFlowIDsSQL+`)`, cutoffMillis)
 	if err != nil {
@@ -202,6 +210,7 @@ func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 		return 0, nil
 	}
 	s.syncFlows()
+	_ = s.FlushWSFrames() // queued frames must be visible to the delete below
 	const keepSub = `SELECT id FROM flows ORDER BY id DESC LIMIT ?`
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -213,6 +222,9 @@ func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 	}
 	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: untag: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: ws frames: %w", err)
 	}
 	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`)`, n)
 	if err != nil {

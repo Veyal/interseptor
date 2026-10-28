@@ -702,6 +702,9 @@ func (s *Store) DeleteFlows(ids []int64) (int64, error) {
 		return 0, nil
 	}
 	s.syncFlows()
+	// Persist queued WebSocket frames first so the ws_frames delete below sees
+	// them (a frame landing after the delete would orphan onto a reused id).
+	_ = s.FlushWSFrames()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -727,6 +730,9 @@ func (s *Store) DeleteFlows(ids []int64) (int64, error) {
 			return 0, err
 		}
 		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`)`, args...); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (`+ph+`)`, args...); err != nil {
 			return 0, err
 		}
 		res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
