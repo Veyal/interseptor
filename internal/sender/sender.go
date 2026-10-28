@@ -465,15 +465,10 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 		macroTok, macroName, macroMode = s.macroToken(r.Context)
 	}
 	loginGen := s.login.generation() // a login after this point makes a 401 stale
+	template := r                    // unsubstituted: a 401 retry re-injects a fresh token
 	if macroTok != "" && macroMode == "placeholder" && macroName != "" {
 		r.Body = []byte(strings.ReplaceAll(string(r.Body), macroName, macroTok))
-		for k, vs := range r.Headers {
-			out := make([]string, len(vs))
-			for i, v := range vs {
-				out[i] = strings.ReplaceAll(v, macroName, macroTok)
-			}
-			r.Headers[k] = out
-		}
+		r.Headers = substituteHeaders(r.Headers, macroName, macroTok)
 	}
 
 	req, err := http.NewRequest(method, r.URL, bytes.NewReader(r.Body))
@@ -575,12 +570,26 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 	// 401 re-auth: run the login macro once and retry the original request.
 	if scopeOK && !r.retried401 && flow.Status == http.StatusUnauthorized && s.shouldReauth401() {
 		if err := s.reauth401(r.Context, loginGen); err == nil {
-			r2 := r
+			r2 := template
 			r2.retried401 = true
 			return s.sendOne(r2)
 		}
 	}
 	return flow, nil
+}
+
+// substituteHeaders returns a copy of headers with every occurrence of name in
+// a value replaced by tok, leaving the caller's map untouched.
+func substituteHeaders(headers map[string][]string, name, tok string) map[string][]string {
+	out := make(map[string][]string, len(headers))
+	for k, vs := range headers {
+		nv := make([]string, len(vs))
+		for i, v := range vs {
+			nv[i] = strings.ReplaceAll(v, name, tok)
+		}
+		out[k] = nv
+	}
+	return out
 }
 
 // SetOnPersist registers a callback invoked after each flow is stored. The
