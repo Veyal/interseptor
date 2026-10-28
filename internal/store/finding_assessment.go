@@ -174,7 +174,12 @@ func normalizeFindingAssessment(f *Finding) error {
 		if r.Reason == "" && len(f.NotExecuted) == 0 {
 			return fmt.Errorf("%w: explain why claimed impact has not been demonstrated", ErrInvalidFinding)
 		}
-		f.Status = "needs_verification"
+		// Undemonstrated impact cannot sit as an open or verified claim, but a
+		// triage decision (ignored, false positive, won't fix, fixed) stands.
+		switch f.Status {
+		case "", "open", "verified":
+			f.Status = "needs_verification"
+		}
 	default:
 		return fmt.Errorf("%w: execution must be demonstrated, prerequisite_only, or not_executed", ErrInvalidFinding)
 	}
@@ -694,4 +699,13 @@ func markMissingFindingReferences(db findingReferenceQuery, f *Finding) error {
 		}
 	})
 	return nil
+}
+
+// undemonstrated reports a proof review whose claimed impact was not shown.
+func undemonstrated(execution string) bool {
+	switch strings.TrimSpace(execution) {
+	case "prerequisite_only", "not_executed":
+		return true
+	}
+	return false
 }

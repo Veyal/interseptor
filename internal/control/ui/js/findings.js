@@ -840,7 +840,9 @@ function showFindingRowCtx(event, id) {
       openIgnoreReasonMenu(event, event.target || { getBoundingClientRect: () => ({ left: event.clientX, bottom: event.clientY }) }, f);
       return;
     }
-    patchFinding(id, { status: s }).then(r => { if (r && r.latest) { f.status = s; toast('status: ' + statusLabel(s)); renderFindings(); } });
+    patchFinding(id, { status: s })
+      .then(async r => { if (r && r.latest && await statusSaved(id, s)) { toast('status: ' + statusLabel(s)); renderFindings(); } })
+      .catch(err => toast(err.message, 'error'));
   };
   const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }); };
   openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #' + id, items: [
@@ -1596,15 +1598,13 @@ function openFindingMore(e, trigger, f) {
 function openIgnoreReasonMenu(e, trigger, f) {
   if (e && e.stopPropagation) e.stopPropagation();
   const applyReason = (reason) => {
-    patchFinding(f.id, { status: 'ignored', ignoreReason: reason }).then(r => {
-      if (r && r.latest) {
-        f.status = 'ignored';
-        f.proofReview = { ...(f.proofReview || {}), ignoreReason: reason };
+    patchFinding(f.id, { status: 'ignored', ignoreReason: reason }).then(async r => {
+      if (r && r.latest && await statusSaved(f.id, 'ignored')) {
         toast('finding marked as ignored');
         renderFindings();
         if (selFinding === f.id) renderFindingDetail();
       }
-    });
+    }).catch(err => toast(err.message, 'error'));
   };
   const items = IGNORE_REASONS.map(reason => ({
     label: reason,
@@ -1630,6 +1630,19 @@ function openIgnoreReasonMenu(e, trigger, f) {
   openCtxMenu(r.left, r.bottom + 2, [{ head: 'REASON FOR IGNORING', items }], trigger);
 }
 
+// statusSaved re-reads the findings and reports whether the server kept the
+// requested status; a server rule can keep another one, so the success toast
+// must follow what was saved, not that the request returned 200.
+async function statusSaved(id, want) {
+  await loadFindings();
+  const now = findings.find(x => x.id === id);
+  if (now && now.status !== want) {
+    toast('Status not changed: the server kept ' + statusLabel(now.status), 'error');
+    return false;
+  }
+  return true;
+}
+
 function openFindingStatusMenu(e, trigger, f) {
   if (e && e.stopPropagation) e.stopPropagation();
   const applyStatus = async (s) => {
@@ -1641,9 +1654,7 @@ function openFindingStatusMenu(e, trigger, f) {
     try {
       const res = await patchFinding(f.id, { status: s });
       if (res && res.latest) {
-        f.status = s;
-        toast('status: ' + statusLabel(s));
-        await loadFindings();
+        if (await statusSaved(f.id, s)) toast('status: ' + statusLabel(s));
         renderFindingDetail();
       }
     } catch (err) {
@@ -1879,9 +1890,7 @@ function renderFindingDetail() {
       try {
         const res = await patchFinding(f.id, { status: 'verified' });
         if (res && res.latest) {
-          f.status = 'verified';
-          toast('finding marked as verified');
-          await loadFindings();
+          if (await statusSaved(f.id, 'verified')) toast('finding marked as verified');
           renderFindingDetail();
         }
       } catch (err) { toast(err.message, 'error'); }
@@ -1894,9 +1903,7 @@ function renderFindingDetail() {
       try {
         const res = await patchFinding(f.id, { status: 'false_positive' });
         if (res && res.latest) {
-          f.status = 'false_positive';
-          toast('finding marked as false positive');
-          await loadFindings();
+          if (await statusSaved(f.id, 'false_positive')) toast('finding marked as false positive');
           renderFindingDetail();
         }
       } catch (err) { toast(err.message, 'error'); }

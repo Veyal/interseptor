@@ -125,8 +125,8 @@ func TestFindingTargetsAndExecutionPersist(t *testing.T) {
 		t.Fatalf("roundtrip: %+v", got)
 	}
 	verified := "verified"
-	if err := s.UpdateFinding(id, nil, &verified, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
-		t.Fatal(err)
+	if err := s.UpdateFinding(id, nil, &verified, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, ErrInvalidFinding) {
+		t.Fatalf("verifying an unexecuted finding = %v, want an explicit ErrInvalidFinding", err)
 	}
 	got, _ = s.GetFinding(id)
 	if got.Status != "needs_verification" {

@@ -726,6 +726,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .ctx-item .mono{color:var(--accent);font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:240px}
 .ctx-item.on{background:var(--accentDim)}
 .ctx-item.on .lbl{color:var(--accent)}
+.ctx-item.ctx-checked .lbl{color:var(--accent);font-weight:600}
+.ctx-item.ctx-checked .ctx-label-text::after{content:"\2713";margin-left:8px}
 .ctx-sep{height:1px;background:var(--line);margin:5px 4px}
 
 /* repeater */

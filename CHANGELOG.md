@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ignoring a finding and changing its status work on findings whose impact was not demonstrated.** For a finding whose proof review says the impact was not demonstrated (`prerequisite_only` / `not_executed`, common for agent findings), every update silently reset the status to **needs verification**, so Ignore, False positive, Won't fix and Fixed returned success but did nothing. Triage statuses now stick; marking such a finding **verified** is refused with an explanation (demonstrate the impact in the proof review first) instead of being silently reverted. The UI now confirms the status the server saved instead of reporting success on any `200`, and status menus mark the current status again. (`internal/store/finding_assessment.go`, `internal/store/findings.go`, `internal/control/ui/js/findings.js`, `internal/control/ui/js/core.js`.)
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.20.0` release.

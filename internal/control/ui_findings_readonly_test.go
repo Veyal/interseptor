@@ -472,3 +472,20 @@ func TestUIFindingWriteQueueFoldsIgnoreReasonIntoProofReview(t *testing.T) {
 		}
 	}
 }
+
+// Every status path reports the status the server saved: a server rule may
+// keep another one, and a 200 alone must not produce a success toast.
+func TestUIFindingStatusPathsConfirmSavedStatus(t *testing.T) {
+	src := readUIAsset(t, "js/findings.js")
+	if !strings.Contains(src, "async function statusSaved(id, want)") {
+		t.Fatal("findings.js lost statusSaved")
+	}
+	if n := strings.Count(src, "await statusSaved("); n < 5 {
+		t.Fatalf("statusSaved used %d times, want every status path (row menu, status menu, ignore, triage valid/invalid)", n)
+	}
+	for _, stale := range []string{"f.status = s;", "f.status = 'verified';", "f.status = 'false_positive';", "f.status = 'ignored';"} {
+		if strings.Contains(src, stale) {
+			t.Errorf("findings.js still assumes the saved status: %q", stale)
+		}
+	}
+}

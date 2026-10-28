@@ -1755,11 +1755,13 @@ function ctxItemHTML(it,i){
   const cls=['ctx-item'];
   if(right)cls.push('ctx-has-value');
   if(kids)cls.push('ctx-has-sub');
-  if(it.on)cls.push('on');
+  // .on is the keyboard/hover highlight (ctxPaintSel); the checked item keeps its own class.
+  if(it.on)cls.push('ctx-checked');
   if(it.disabled)cls.push('ctx-disabled');
   const aria=kids?' aria-haspopup="menu" aria-expanded="false"':'';
   const dis=it.disabled?' aria-disabled="true"':'';
-  return `<div class="${cls.join(' ')}" role="menuitem" tabindex="-1" data-i="${i}"${aria}${dis}${it.danger&&!right?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}${arrow}</div>`;
+  const checked=it.on?' aria-current="true"':'';
+  return `<div class="${cls.join(' ')}" role="menuitem" tabindex="-1" data-i="${i}"${aria}${dis}${checked}${it.danger&&!right?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}${arrow}</div>`;
 }
 
 // ctxPaintPanel fills a panel element and returns its focusable rows, each
