@@ -478,6 +478,11 @@ func (h *authzAPI) patchAuthzIdentity(w http.ResponseWriter, r *http.Request) {
 				cur[i].Notes = *in.Notes
 			}
 			if in.Headers != nil {
+				if cur[i].Headers != headers {
+					// New credentials invalidate the previous session check
+					// (as promoteFlowToAuthz does).
+					cur[i].LastCheck = nil
+				}
 				cur[i].Headers = headers
 			}
 			if in.Broken != nil {
