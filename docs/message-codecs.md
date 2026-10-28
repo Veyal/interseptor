@@ -38,6 +38,11 @@ def encode(flow, side, plaintext):
     return plaintext
 ```
 
+A codec is identified by its **file name**: `<project>/codecs/myapp.star` is codec `myapp`
+everywhere (decode results, encode, Repeater, collections). The `meta` `"id"` is a display
+label only (used as the title when `"title"` is absent), so a copied codec that kept the
+original `"id"` still encodes with its own file.
+
 `flow` matches the custom-check surface (`method`, `host`, `path`, `req_body` / `res_body`,
 `req_header(n)`, …). See [custom checks](custom-checks.md).
 

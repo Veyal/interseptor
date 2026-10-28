@@ -79,9 +79,6 @@ func Compile(id, src string) (*Codec, error) {
 			meta = parseMeta(id, d)
 		}
 	}
-	if meta.ID == "" {
-		meta.ID = id
-	}
 	fnM, ok := globals["match"]
 	if !ok {
 		return nil, fmt.Errorf("codec %q: missing match(flow, side)", id)
@@ -110,11 +107,15 @@ func Compile(id, src string) (*Codec, error) {
 	return &Codec{Meta: meta, Src: src, fnM: fnM, fnD: fnD, fnE: fnE}, nil
 }
 
+// parseMeta reads the script's meta dict. ID is always the file id (<id>.star):
+// encode, repeater and collections load codecs by file, so a copied codec that
+// kept the original meta "id" must not report the other file's id. The meta
+// "id" only serves as the display title when no "title" is given.
 func parseMeta(id string, d *starlark.Dict) Meta {
 	m := Meta{ID: id, Title: id, Enabled: true}
 	if v, ok, _ := d.Get(starlark.String("id")); ok {
 		if s, ok := starlark.AsString(v); ok && s != "" {
-			m.ID = s
+			m.Title = s
 		}
 	}
 	if v, ok, _ := d.Get(starlark.String("title")); ok {
