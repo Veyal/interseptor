@@ -264,6 +264,11 @@ export function isStale(baseline, latest) {
 export const RUN_KIND_LABELS = Object.freeze({ single: 'Single flow', bulk: 'All in-scope', differential: 'Differential', crosshost: 'Cross-host' });
 export const runKindLabel = (k) => RUN_KIND_LABELS[k] || 'Run';
 
+// The store retains the newest 200 runs (maxAuthzRuns) and runsForIdentity
+// filters them here, so fetch the whole retained history.
+export const RUN_HISTORY_LIMIT = 200;
+export const runsURL = () => '/api/authz/runs?limit=' + RUN_HISTORY_LIMIT;
+
 export function runsForIdentity(runs, name) {
   return (runs || []).filter((r) => Array.isArray(r.identities) && r.identities.includes(name));
 }

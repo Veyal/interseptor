@@ -61,7 +61,7 @@ async function loadRuns() {
   const gen = ++S.runsGen;
   S.runsError = null;
   try {
-    const d = await api('/api/authz/runs?limit=50');
+    const d = await api(M.runsURL());
     if (gen !== S.runsGen) return;
     S.runs = Array.isArray(d.runs) ? d.runs : [];
     if (S.runSel && !S.runs.some((r) => String(r.id) === S.runSel)) { S.runSel = ''; S.matrix = null; S.matrixFor = ''; }
