@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectionToFocus, parseFocusInput, normalizeLines, clampContext, readFocusHeaders, focusResultText, focusOptions, focusAttachBody, checkRegex, attachErrorText, decodedBodyText } from '../js/flow-focus-model.js';
+import { selectionToFocus, parseFocusInput, focusFormValues, normalizeLines, clampContext, readFocusHeaders, focusResultText, focusOptions, focusAttachBody, checkRegex, attachErrorText, decodedBodyText } from '../js/flow-focus-model.js';
 import { flowPreviewPngURL, focusQuery } from '../js/copy-image.js';
 import { renderRequest, attachRequest, flowFocusPreview, optionControls, KINDS } from '../js/evidence-render.js';
 
@@ -129,4 +129,28 @@ test('decodedBodyText explains X-Interseptor-Decoded-Body', () => {
   assert.equal(decodedBodyText(''), '');
   assert.equal(decodedBodyText('req=form,res=codec:example-envelope'), 'Decoded body: request form, response codec:example-envelope. Choose Raw to see the original bytes.');
   assert.equal(decodedBodyText('res=base64'), 'Decoded body: response base64. Choose Raw to see the original bytes.');
+});
+
+// Regression: a selection such as "/files/a.b+c/" was re-read as /regex/.
+test('a selection is always a literal focus, even when it looks like /regex/', () => {
+  const { params } = flowFocusPreview(5, { selection: '/files/a.b+c/' });
+  assert.equal(params.focus.regex, false);
+  assert.deepEqual(params.focus.focus, ['/files/a.b+c/']);
+  assert.equal(params.seed.literal, true);
+  assert.equal(parseFocusInput('/files/a.b+c/', false, true).regex, false);
+  assert.equal(parseFocusInput('/files/a.b+c/', false, true).focus, '/files/a.b+c/');
+  assert.equal(parseFocusInput('/a.b/', false).regex, true); // typed text keeps the /regex/ form
+});
+
+test('the seeded field stays literal until the user edits it', () => {
+  const { params } = flowFocusPreview(5, { selection: '/files/a.b+c/' });
+  const unchanged = focusFormValues({ text: '/files/a.b+c/', regexToggle: false, context: 6 }, params.seed);
+  assert.equal(unchanged.literal, true);
+  assert.equal(focusOptions(unchanged).opts.regex, false);
+  assert.deepEqual(focusOptions(unchanged).opts.focus, ['/files/a.b+c/']);
+  const edited = focusFormValues({ text: '/files/a.b/', regexToggle: false, context: 6 }, params.seed);
+  assert.equal(edited.literal, false);
+  assert.equal(focusOptions(edited).opts.regex, true);
+  const typed = focusFormValues({ text: '/x+/', regexToggle: false }, { text: '', literal: false });
+  assert.equal(focusOptions(typed).opts.regex, true);
 });

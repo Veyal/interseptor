@@ -27,7 +27,7 @@
 // import only pure modules and run under `node --test`; DOM code loads core.js lazily.
 
 import { flowPreviewPngURL } from './copy-image.js';
-import { focusOptions, focusAttachBody, readFocusHeaders, focusResultText, decodedBodyText, selectionToFocus, attachErrorText, CONTEXT_DEFAULT } from './flow-focus-model.js';
+import { focusOptions, focusFormValues, focusAttachBody, readFocusHeaders, focusResultText, decodedBodyText, selectionToFocus, attachErrorText, CONTEXT_DEFAULT } from './flow-focus-model.js';
 
 export const KINDS = {
   'intruder-timeline': { family: 'intruder', short: 'timeline', label: 'Timeline', hint: 'Waterfall lanes: did the target throttle or lock out, and when?' },
@@ -120,8 +120,9 @@ export const flowFocusPreview = (flowId, { side = 'both', selection = '', focusS
   const id = Number(flowId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('a flow id is required');
   const text = selectionToFocus(selection);
-  const seed = focusOptions({ text, side: focusSide, context: CONTEXT_DEFAULT });
-  return { kind: 'flow-focus', params: { id, flowId: id, side: ['req', 'res'].includes(side) ? side : 'both', seed: { text, side: seed.opts.focusSide, context: CONTEXT_DEFAULT, lines: '', caption: '', regexToggle: false, decode: 'auto' }, focus: seed.opts } };
+  // A selection is always literal text, never a /regex/.
+  const seed = focusOptions({ text, literal: true, side: focusSide, context: CONTEXT_DEFAULT });
+  return { kind: 'flow-focus', params: { id, flowId: id, side: ['req', 'res'].includes(side) ? side : 'both', seed: { text, literal: true, side: seed.opts.focusSide, context: CONTEXT_DEFAULT, lines: '', caption: '', regexToggle: false, decode: 'auto' }, focus: seed.opts } };
 };
 
 export function downloadName(kind, params = {}) {
@@ -273,7 +274,7 @@ function syncFocusFields(seed) {
 // applyFocus validates the form and re-renders with it.
 function applyFocus() {
   if (!session || session.kind !== 'flow-focus') return;
-  const values = {
+  const values = focusFormValues({
     text: $id('evRenderFocusText').value,
     regexToggle: $id('evRenderFocusRegex').checked,
     side: $id('evRenderFocusSide').value,
@@ -281,7 +282,7 @@ function applyFocus() {
     lines: $id('evRenderFocusLines').value,
     caption: $id('evRenderFocusCaption').value,
     decode: $id('evRenderFocusDecode').value,
-  };
+  }, session.params.seed);
   const { error, opts } = focusOptions(values);
   const err = $id('evRenderFocusError');
   err.textContent = error;

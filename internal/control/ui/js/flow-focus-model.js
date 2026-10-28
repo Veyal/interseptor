@@ -15,11 +15,13 @@ export function selectionToFocus(text) {
 }
 
 // parseFocusInput reads the Focus field: "/pattern/" is a regex, anything else
-// a literal; an explicit regex toggle wins for unslashed text.
-export function parseFocusInput(value, regexToggle) {
+// a literal; an explicit regex toggle wins for unslashed text. literal (text
+// that came from a selection, not typed) skips the /pattern/ form, so a
+// selected path like "/files/a.b+c/" is matched as written.
+export function parseFocusInput(value, regexToggle, literal) {
   const v = String(value == null ? '' : value).trim();
   if (!v) return { focus: '', regex: false };
-  const m = v.match(/^\/(.+)\/$/s);
+  const m = literal ? null : v.match(/^\/(.+)\/$/s);
   if (m) return { focus: m[1].slice(0, FOCUS_MAX), regex: true };
   return { focus: Array.from(v).slice(0, FOCUS_MAX).join(''), regex: !!regexToggle };
 }
@@ -116,8 +118,8 @@ export function attachErrorText(e) {
 }
 
 // focusOptions assembles the options flowPreviewPngURL and the attach body take.
-export function focusOptions({ text, regexToggle, side, context, lines, caption, decode } = {}) {
-  const f = parseFocusInput(text, regexToggle);
+export function focusOptions({ text, regexToggle, literal, side, context, lines, caption, decode } = {}) {
+  const f = parseFocusInput(text, regexToggle, literal);
   const l = normalizeLines(lines);
   const err = f.regex && f.focus ? checkRegex(f.focus) : '';
   return {
@@ -132,6 +134,14 @@ export function focusOptions({ text, regexToggle, side, context, lines, caption,
       decode: String(decode || '').trim().toLowerCase() === 'raw' ? 'raw' : 'auto',
     },
   };
+}
+
+// focusFormValues carries the literal flag of a selection-seeded Focus field
+// forward only while its text is unchanged; once edited, "/x/" means regex.
+export function focusFormValues(values, seed) {
+  const s = seed || {};
+  const v = values || {};
+  return { ...v, literal: !!(s.literal && String(v.text == null ? '' : v.text) === String(s.text == null ? '' : s.text)) };
 }
 
 // focusAttachBody is the POST /api/findings/{id}/flow-preview body.
