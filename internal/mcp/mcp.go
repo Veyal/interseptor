@@ -1996,7 +1996,10 @@ func (s *Server) registerTools() {
 				"source":       "captured_flow",
 				"sourceFlowId": flowID,
 			}
-			_, _ = s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", f.ID), pocBody)
+			if _, err := s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", f.ID), pocBody); err != nil {
+				return "", fmt.Errorf("created finding #%d %q but could not attach flow %d: %w; attach it with add_finding_poc (findingId=%d, flowId=%d) or delete the finding (UI: %s/#finding-%d)",
+					f.ID, title, flowID, err, f.ID, flowID, s.base, f.ID)
+			}
 
 			return fmt.Sprintf("Created finding #%d %q with flow #%d attached as %s proof.\n\nUI: %s/#finding-%d",
 				f.ID, title, flowID, role, s.base, f.ID) + statusCoercionNote(status, findingRes), nil
