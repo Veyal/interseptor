@@ -125,7 +125,9 @@ func (x *stepRun) onAuthFlow(f *store.Flow) {
 }
 
 // AuthCacheKey identifies an OAuth2 token slot: the same auth configuration in
-// the same collection, environment and identity shares one token.
+// the same collection, environment and identity shares one token. Pass the
+// RESOLVED fields (not the {{var}} template) so data-file iterations with
+// different credentials get different tokens; only a hash enters the key.
 func AuthCacheKey(coll, envUID, identity string, a AuthModel) string {
 	names := make([]string, 0, len(a.Fields))
 	for k := range a.Fields {
@@ -156,7 +158,7 @@ func ResolveAuth(in StepInput, reg *redact.Registry) (collauth.Config, string, e
 		}
 		cfg.Fields[k] = res.Value
 	}
-	return cfg, AuthCacheKey(in.Chain.Collection.UID, in.EnvUID, in.Identity, m.Auth), nil
+	return cfg, AuthCacheKey(in.Chain.Collection.UID, in.EnvUID, in.Identity, AuthModel{Type: cfg.Type, Fields: cfg.Fields}), nil
 }
 
 // applyAuth runs the collauth suite over the final wire request (after
@@ -174,7 +176,7 @@ func (x *stepRun) applyAuth(ctx context.Context, b *built, m *RequestModel, poli
 		hdr.Add(h.Key, h.Value)
 	}
 	req := &collauth.Request{Method: b.Method, URL: b.URL, Header: hdr, Body: b.Body}
-	key := AuthCacheKey(x.in.Chain.Collection.UID, x.in.EnvUID, x.in.Identity, m.Auth)
+	key := AuthCacheKey(x.in.Chain.Collection.UID, x.in.EnvUID, x.in.Identity, AuthModel{Type: b.AuthType, Fields: b.AuthFields})
 	actx := context.WithValue(ctx, authCtxKey{}, &authEnv{x: x, policy: policy})
 	res, err := x.p.Auth.Apply(actx, key, collauth.Config{Type: b.AuthType, Fields: b.AuthFields}, req)
 	if errors.Is(err, collauth.ErrUnsupported) {
