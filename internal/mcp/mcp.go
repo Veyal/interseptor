@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/version"
 )
 
@@ -752,6 +753,30 @@ func argBool(a map[string]any, key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+// statusCoercionNote explains, after a finding create/update, when the stored
+// status differs from the requested one (the server moves an undemonstrated
+// open/verified claim to needs_verification), so the agent isn't misled.
+func statusCoercionNote(requested, result string) string {
+	if strings.TrimSpace(requested) == "" || !store.ValidFindingStatus(requested) {
+		return ""
+	}
+	var f struct {
+		Status      string `json:"status"`
+		ProofReview struct {
+			Execution string `json:"execution"`
+		} `json:"proofReview"`
+	}
+	if json.Unmarshal([]byte(result), &f) != nil || f.Status == "" || f.Status == store.NormalizeFindingStatus(requested) {
+		return ""
+	}
+	why := ""
+	switch exec := strings.TrimSpace(f.ProofReview.Execution); exec {
+	case "prerequisite_only", "not_executed":
+		why = fmt.Sprintf(": impact not demonstrated (proofReview.execution=%s); set it to demonstrated with evidence first", exec)
+	}
+	return fmt.Sprintf("\n\nNote: status coerced to %s%s (requested %q).", f.Status, why, strings.TrimSpace(requested))
 }
 
 // argLines reads a line-range argument given either as "res:1-5,req:2" or as
@@ -1634,12 +1659,14 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return result, err
 			}
+			apiResult := result
 			var f struct {
 				ID int64 `json:"id"`
 			}
 			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
 				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
 			}
+			result += statusCoercionNote(status, apiResult)
 			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
@@ -1805,7 +1832,11 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return result, err
 			}
+			apiResult := result
 			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
+			if _, ok := a["status"]; ok {
+				result += statusCoercionNote(argStr(a, "status"), apiResult)
+			}
 			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
@@ -1968,7 +1999,7 @@ func (s *Server) registerTools() {
 			_, _ = s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", f.ID), pocBody)
 
 			return fmt.Sprintf("Created finding #%d %q with flow #%d attached as %s proof.\n\nUI: %s/#finding-%d",
-				f.ID, title, flowID, role, s.base, f.ID), nil
+				f.ID, title, flowID, role, s.base, f.ID) + statusCoercionNote(status, findingRes), nil
 		})
 
 	s.add("add_finding_image",

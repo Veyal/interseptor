@@ -774,6 +774,10 @@ func normalizeFindingSeverity(s string) string {
 	}
 }
 
+// NormalizeFindingStatus maps a status or documented alias to its canonical
+// value (unknown values become "open"), as the store does on write.
+func NormalizeFindingStatus(s string) string { return normalizeFindingStatus(s) }
+
 func normalizeFindingStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "verified", "confirmed":
