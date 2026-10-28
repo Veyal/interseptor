@@ -1040,7 +1040,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `test_login_macro` | none | Dry-run the login macro — returns login response status and headers it would capture (does not apply... |
 | `untag_flow` | `id`, `tags` | Remove tags from a flow without replacing the rest. |
 | `update_finding` | `id` | Update a finding (only fields you pass change) using the same evidence-first format as the UI. |
-| `update_rule` | `id`, `type`, `match` | Update a match-&-replace rule. |
+| `update_rule` | `id` | Update a match-&-replace rule. |
 | `vault_backup` | none | Snapshot the active project and upload it to the configured vault as a new revision. |
 | `vault_import` | `id` | Download a vault project revision into a NEW named local project under `~/.interseptor/projects/<name>`. |
 | `vault_list` | none | List projects stored on the configured project vault (always-on archive store, e.g. |

@@ -1073,7 +1073,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `test_login_macro` | none | Dry-run the login macro — returns login response status and headers it would capture (does not apply... |
 | `untag_flow` | `id`, `tags` | Remove tags from a flow without replacing the rest. |
 | `update_finding` | `id` | Update a finding (only fields you pass change) using the same evidence-first format as the UI. |
-| `update_rule` | `id`, `type`, `match` | Update a match-&-replace rule. |
+| `update_rule` | `id` | Update a match-&-replace rule. |
 | `vault_backup` | none | Snapshot the active project and upload it to the configured vault as a new revision. |
 | `vault_import` | `id` | Download a vault project revision into a NEW named local project under `~/.interseptor/projects/<name>`. |
 | `vault_list` | none | List projects stored on the configured project vault (always-on archive store, e.g. |
@@ -4495,6 +4495,11 @@ def encode(flow, side, plaintext):
     return plaintext
 ```
 
+A codec is identified by its **file name**: `<project>/codecs/myapp.star` is codec `myapp`
+everywhere (decode results, encode, Repeater, collections). The `meta` `"id"` is a display
+label only (used as the title when `"title"` is absent), so a copied codec that kept the
+original `"id"` still encodes with its own file.
+
 `flow` matches the custom-check surface (`method`, `host`, `path`, `req_body` / `res_body`,
 `req_header(n)`, …). See [custom checks](https://veyal.github.io/interseptor/custom-checks/).
 
@@ -4504,11 +4509,15 @@ Shared Starlark stdlib (`internal/starx`) plus AES-ECB helpers:
 
 | Builtin | Notes |
 |---|---|
-| `aes_ecb_encrypt(key, plaintext)` | PKCS7 pad → AES-ECB → **base64** ciphertext |
-| `aes_ecb_decrypt(key, ciphertext)` | base64 or raw → AES-ECB → plaintext string |
+| `aes_ecb_encrypt(key, plaintext, key_format="auto")` | PKCS7 pad → AES-ECB → **base64** ciphertext |
+| `aes_ecb_decrypt(key, ciphertext, key_format="auto")` | base64 or raw → AES-ECB → plaintext string |
 | `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | same as checks |
 
 `key` may be 16/24/32 raw bytes **or** hex of that length (32/48/64 hex chars).
+With the default `key_format="auto"`, a key that is valid hex of one of those lengths is
+decoded as hex, so a raw 32-byte ASCII key such as `0123456789abcdef0123456789abcdef`
+becomes a 16-byte key. Pass `key_format="raw"` to use the string bytes as-is, or
+`key_format="hex"` to require hex (an invalid hex key is then an error).
 
 ## Safety
 
