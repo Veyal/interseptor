@@ -29,6 +29,9 @@ type stepRun struct {
 	trusted map[string]bool // script hash -> trusted
 	caps    []string
 	flowIDs []int64
+	// jarCookies is true when the Cookie header comes from the jar (the
+	// request did not set one), so each redirect hop recomputes it.
+	jarCookies bool
 }
 
 // Step runs one request through the whole pipeline. The returned error is
@@ -267,6 +270,7 @@ func templateHash(m *RequestModel) string {
 func (x *stepRun) prepare(b *built, settings Settings) bool {
 	u, _ := url.Parse(b.URL)
 	if !hasHeader(b.Headers, "Cookie") {
+		x.jarCookies = true
 		if c := x.jar.Header(u, x.p.Clock()); c != "" {
 			b.Headers = append(b.Headers, varstore.KV{Key: "Cookie", Value: c})
 		}
@@ -441,12 +445,48 @@ func (x *stepRun) send(ctx context.Context, req sender.Request, settings Setting
 		if next.Options != nil {
 			next.Options.Guard = x.p.guardFor(policy, nu.Hostname())
 		}
+		if x.jarCookies {
+			// The 3xx may have set cookies and the target may differ in
+			// host, path or scheme (Secure): ask the jar again for this hop.
+			setHopCookie(&next, x.jar.Header(nu, x.p.Clock()))
+		}
 		req = next
 	}
 	if len(x.flowIDs) == 0 && flow.ID != 0 {
 		x.flowIDs = append(x.flowIDs, flow.ID)
 	}
 	return flow, true
+}
+
+// setHopCookie replaces any Cookie header on r with c ("" sends none), on the
+// raw ordered path when the request uses it.
+func setHopCookie(r *sender.Request, c string) {
+	for k := range r.Headers {
+		if strings.EqualFold(k, "Cookie") {
+			delete(r.Headers, k)
+		}
+	}
+	raw := r.Headers == nil && r.Options != nil && len(r.Options.RawHeaders) > 0
+	if r.Options != nil && len(r.Options.RawHeaders) > 0 {
+		kept := r.Options.RawHeaders[:0:0]
+		for _, h := range r.Options.RawHeaders {
+			if !strings.EqualFold(h.Name, "Cookie") {
+				kept = append(kept, h)
+			}
+		}
+		r.Options.RawHeaders = kept
+	}
+	if c == "" {
+		return
+	}
+	if raw {
+		r.Options.RawHeaders = append(r.Options.RawHeaders, sender.RawHeader{Name: "Cookie", Value: c})
+		return
+	}
+	if r.Headers == nil {
+		r.Headers = map[string][]string{}
+	}
+	r.Headers["Cookie"] = []string{c}
 }
 
 func (x *stepRun) storeCookies(rawURL string, f *store.Flow) {
