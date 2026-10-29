@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Notes have a View | Edit toggle.** Edit/Preview and the wide split layout are replaced by one toggle (Ctrl/Cmd+E, or double-click the rendered note to edit); a note with content opens in View, an empty one in Edit, and switching to View flushes pending edits. The "Promote to finding" button is removed (the findings API and MCP tools are unchanged). (`internal/control/ui/js/notes.js`, `internal/control/ui/js/notes-mode-model.js`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.21.0` release.
 
 ## [2.21.0] - 2026-10-28
