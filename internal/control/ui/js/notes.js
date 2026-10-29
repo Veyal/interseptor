@@ -128,6 +128,8 @@ export async function loadNotes(){
 
 export function scheduleNotesSave(){
   notesEditGeneration++;
+  // Typing pins the current mode, so the autosave echo reload never flips Edit to View.
+  notesState.chosen=true;
   const v=$('#notesEdit').value;
   if(v!==notesState.loaded)notesPreviewCache={src:'',html:''};
   notesAutosave.schedule(v);

@@ -1536,7 +1536,9 @@ let intrHLFrame=0;
 function intrPaintHL(){
   intrHLFrame=0;
   const ta=$('#intrTemplate'),hl=$('#intrTemplateHL');if(!ta||!hl)return;
-  hl.innerHTML=markersHighlightHTML(ta.value||'',POS_COLORS,{enabled:intrState.type!=='repeat'})+'\n';
+  // Sniper and Battering ram share one payload list, so every position takes its swatch colour.
+  const shared=intrState.type==='sniper'||intrState.type==='battering';
+  hl.innerHTML=markersHighlightHTML(ta.value||'',shared?POS_COLORS.slice(0,1):POS_COLORS,{enabled:intrState.type!=='repeat'})+'\n';
   hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
 }
 function intrRefreshHL(){

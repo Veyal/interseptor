@@ -62,3 +62,17 @@ func TestUINotesViewEditContract(t *testing.T) {
 	}
 	requireUIContains(t, readUIAsset(t, "js/app.js"), "activePanel()==='notes'&&isModShortcut(e,'e')", "toggleNotesMode()")
 }
+
+// Typing must pin the current mode: the autosave echo reloads notes, and an
+// unpinned reload of a non-empty note would flip Edit to View mid-typing.
+func TestUINotesTypingPinsModeAgainstAutosaveReload(t *testing.T) {
+	src := readUIAsset(t, "js/notes.js")
+	start := strings.Index(src, "export function scheduleNotesSave(){")
+	if start < 0 {
+		t.Fatal("scheduleNotesSave missing")
+	}
+	end := strings.Index(src[start:], "\n}\n")
+	if end < 0 || !strings.Contains(src[start:start+end], "notesState.chosen=true") {
+		t.Fatal("scheduleNotesSave must mark the mode as chosen so a save echo cannot switch Edit to View")
+	}
+}

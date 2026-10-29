@@ -142,3 +142,17 @@ func TestUIIntruderMarkerShortcutFollowsTheWrapButton(t *testing.T) {
 	// Ctrl/Cmd+Enter already starts the attack from the global dispatch.
 	requireUIContains(t, readUIAsset(t, "js/app.js"), "activePanel()==='intruder'&&isModShortcut(e,'Enter')")
 }
+
+// Sniper and Battering ram show one shared payload list (accent swatch), so the
+// template highlight must not give later positions other list colours.
+func TestUIIntruderSharedListModesUseOneHighlightColour(t *testing.T) {
+	src := readUIAsset(t, "js/tools.js")
+	start := strings.Index(src, "function intrPaintHL(){")
+	if start < 0 {
+		t.Fatal("intrPaintHL missing")
+	}
+	body := src[start : start+strings.Index(src[start:], "\n}\n")]
+	if !strings.Contains(body, "intrState.type==='sniper'||intrState.type==='battering'") || !strings.Contains(body, "POS_COLORS.slice(0,1)") {
+		t.Fatal("shared-list attack types must highlight every position in the shared swatch colour")
+	}
+}
