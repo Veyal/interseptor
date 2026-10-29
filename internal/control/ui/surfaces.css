@@ -203,7 +203,7 @@ details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--mot
 /* Fixed payload controls must not consume the stacked request editor's height. */
 @media (max-width: 720px) {
   .intr-config { flex: none; }
-  #intrTemplate { min-height: 180px; }
+  #intrTemplate, .intr-tpl-field { min-height: 180px; }
 }
 
 @media (max-width: 600px) {

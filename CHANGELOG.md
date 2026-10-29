@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Intruder template position highlighting.** Every `§…§` position in the request template is now tinted in the same colour as its payload-list swatch (delimiters stronger), while an empty `§§` or unpaired `§` shows a red wavy warning underline instead of a position. The tint sits on the shared Repeater overlay-editor pattern (transparent textarea over a scroll-synced backdrop), repaints once per frame, and is dropped in Race / repeat mode.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.21.0` release.

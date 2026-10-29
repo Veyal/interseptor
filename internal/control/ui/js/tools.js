@@ -1,4 +1,5 @@
 import { wireOverlayGutter } from './overlay-gutter.js';
+import { markersHighlightHTML } from './intruder-markers-model.js';
 import { renamedTabLabel, placeAfter, repeaterEscapeAction } from './repeater-tab-model.js';
 import { $, hasOpenModal, ctxMenuOpen, revealActiveTab, esc, escAttr, toast, toastError, copyText, api, apiBytes, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -1528,6 +1529,20 @@ function intrClearPayloadLines(slot){
   if(intrState.posFiles) intrState.posFiles[i]=null;
 }
 // Empty §§ pairs are not injection points, so they are never counted.
+// intrRefreshHL repaints the colored backdrop behind #intrTemplate. Coalesced to one
+// repaint per frame so typing in a very large template stays cheap. Race / repeat has
+// no injection points, so markers are shown as plain text there.
+let intrHLFrame=0;
+function intrPaintHL(){
+  intrHLFrame=0;
+  const ta=$('#intrTemplate'),hl=$('#intrTemplateHL');if(!ta||!hl)return;
+  hl.innerHTML=markersHighlightHTML(ta.value||'',POS_COLORS,{enabled:intrState.type!=='repeat'})+'\n';
+  hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
+}
+function intrRefreshHL(){
+  if(intrHLFrame)return;
+  intrHLFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(intrPaintHL):(intrPaintHL(),0);
+}
 function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]+§/g)||[]).map(s=>s.slice(1,-1));}
 
 /* ---- intruder tabs: each is a full saved attack config (mirrors Repeater) ---- */
@@ -1617,6 +1632,12 @@ export async function intrInit(){
   },true);
   $('#intrTarget')&&$('#intrTarget').addEventListener('input',intrTouch);
   $('#intrTemplate')&&$('#intrTemplate').addEventListener('input',()=>{intrTemplateChanged();intrTouch();});
+  {const ta=$('#intrTemplate'),hl=$('#intrTemplateHL');
+   if(ta&&hl){
+     ta.addEventListener('scroll',()=>{hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;});
+     wireOverlayGutter(ta,hl);
+     intrRefreshHL();
+   }}
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   {const bar=$('#intrBarrier');if(bar)bar.addEventListener('change',intrTouch);}
@@ -2090,6 +2111,7 @@ function updateIntrMode(){
   const rw=$('#intrRepeatWrap');if(rw)rw.style.display=repeat?'inline-flex':'none'; // "× N sends" only in Race
   const bw=$('#intrBarrierWrap');if(bw)bw.style.display=repeat?'inline-flex':'none'; // Barrier only in Race
   const mk=$('#intrWrap');if(mk){mk.style.opacity=repeat?'.4':'';mk.disabled=repeat;} // § markers irrelevant in Race
+  intrRefreshHL();
   renderPayloadInputs();
 }
 $('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -2137,7 +2159,7 @@ $('#intrTemplate').addEventListener('keydown',e=>{
 });
 // Re-derive the per-marker inputs whenever the template's § markers change. (Input
 // listeners for the editor fields are wired in intrInit so they also save to the tab.)
-function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
+function intrTemplateChanged(){intrRefreshHL();if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 const INTR_MAX_REQUESTS=2000;
