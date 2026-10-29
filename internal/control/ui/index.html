@@ -840,15 +840,14 @@ Content-Type: application/json
   <!-- Project notes (markdown notebook) -->
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
-      <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
+      <div class="seg" id="notesSeg" role="group" aria-label="Notes mode"><button type="button" data-m="view" aria-pressed="false" title="View rendered notes (Ctrl/Cmd+E)">View</button><button type="button" class="on" data-m="edit" aria-pressed="true" title="Edit notes (Ctrl/Cmd+E)">Edit</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
       <button type="button" class="btn" id="notesSaveRetry" hidden>Retry save</button>
-      <button type="button" class="btn findings-write" id="notesPromote" title="Create a draft finding from the selected text, or the current line">Promote to finding</button>
 
       <div class="spacer"></div>
     </div>
     <textarea id="notesEdit" class="notes-edit" aria-label="Engagement notes editor" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
-    <div id="notesPreview" class="md u-hidden"></div>
+    <div id="notesPreview" class="md u-hidden" aria-label="Rendered notes" role="region" tabindex="0"></div>
   </div>
 
   <!-- /region:notes -->

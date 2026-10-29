@@ -1,8 +1,7 @@
 /* desktop/panel-notes.css — the Notes panel in the desktop skin. Notes is a clean
    document: body text is --text-body (14/21) in the UI font, the writing column
-   stays near 72ch, and the toolbar is quiet. On wide windows (the side-by-side
-   layout) and below it, the panel has the standard pane header: the title, the
-   save status, then its actions.
+   stays near 72ch, and the toolbar is quiet. The panel has the standard pane header:
+   the title, the save status, then the View / Edit toggle.
    Every selector is scoped under html.desktop-app. */
 
 /* ---- the editor ---- */
@@ -10,23 +9,17 @@ html.desktop-app .notes-edit{padding:24px max(24px,calc(50% - 38ch));background:
 html.desktop-app .notes-edit::placeholder{color:var(--text-muted)}
 html.desktop-app #notesPreview{padding:24px max(24px,calc(50% - 38ch));background:var(--surface-1)}
 
-/* ---- the pane header: one 40px row in both layouts, like every panel: the
-   title "Notes" and the save status on the left; Edit/Preview (single-column
-   layout only: the wide layout shows both) and Promote to finding on the right. ---- */
+/* ---- the pane header: one 40px row, like every panel: the title "Notes" and
+   the save status on the left; the View / Edit toggle on the right. ---- */
 html.desktop-app #panel-notes>.toolbar{flex-wrap:nowrap;gap:8px;height:var(--toolbar-h);min-height:var(--toolbar-h);padding:0 var(--gutter);background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
 html.desktop-app #panel-notes>.toolbar::before{content:"Notes";order:-2;flex:none;font-size:var(--text-title);line-height:var(--lh-title);font-weight:600;color:var(--text-primary)}
 html.desktop-app #panel-notes>.toolbar>.notes-status{order:-1}
 html.desktop-app #panel-notes>.toolbar>.spacer{order:0;flex:1 1 0;min-width:0}
-html.desktop-app #panel-notes>.toolbar>:is(#notesSeg,#notesSaveRetry,#notesPromote){order:1;flex:none}
+html.desktop-app #panel-notes>.toolbar>:is(#notesSeg,#notesSaveRetry){order:1;flex:none}
 html.desktop-app #panel-notes>.toolbar .btn:not(.btn-primary){background:transparent;border-color:transparent;color:var(--text-secondary)}
 html.desktop-app #panel-notes>.toolbar .btn:not(.btn-primary):hover{background:var(--surface-hover);color:var(--text-primary)}
 html.desktop-app #panel-notes .notes-status{font-size:var(--text-ui);line-height:var(--lh-ui);font-weight:400;color:var(--text-muted)}
 html.desktop-app #panel-notes .notes-status[data-state="error"]{color:var(--danger)}
-html.desktop-app #panel-notes.notes-wide.active{grid-template-rows:auto auto minmax(0,1fr)}
-html.desktop-app #panel-notes.notes-wide>.toolbar{grid-row:1}
-html.desktop-app #panel-notes.notes-wide #notesLoadState{grid-row:2;grid-column:1/-1}
-html.desktop-app #panel-notes.notes-wide #notesEdit{grid-row:3;border-right:1px solid var(--border-subtle)}
-html.desktop-app #panel-notes.notes-wide #notesPreview,html.desktop-app #panel-notes.notes-wide #notesPreview.u-hidden{grid-row:3}
 
 /* ---- the rendered note: document rhythm, 14/21 ---- */
 html.desktop-app #notesPreview.md{font-size:var(--text-body);line-height:var(--lh-body);color:var(--text-primary)}

@@ -60,24 +60,6 @@ export function mergeNotes(base, remote, local) {
   return { text: l.replace(/\s*$/, '') + '\n\n' + CONFLICT_HEADING + '\n\n' + r, conflict: true };
 }
 
-const MAX_TITLE = 120;
-const MAX_DETAIL = 8000;
-
-// promoteRequest turns a note selection into a finding draft. The first
-// non-empty line (Markdown heading marks removed) is the title; the rest is the
-// detail. It uses the ordinary create endpoint, so the server owns readiness.
-export function promoteRequest(selection) {
-  const lines = String(selection == null ? '' : selection).split('\n');
-  const first = lines.findIndex((l) => l.trim());
-  if (first < 0) return null;
-  const title = lines[first].replace(/^\s*#{1,6}\s*/, '').replace(/^\s*[-*]\s+/, '').trim().slice(0, MAX_TITLE);
-  if (!title) return null;
-  const detail = lines.slice(first + 1).join('\n').trim().slice(0, MAX_DETAIL);
-  const body = { severity: 'Medium', status: 'needs_verification', source: 'human', title };
-  if (detail) body.detail = detail;
-  return { path: '/api/findings', method: 'POST', body };
-}
-
 // reloadClearsSaveStatus reports whether a clean reload should blank the save
 // status. A live-update echo of our own save brings back the text already shown,
 // so "Saved" must stay; only a reload that replaces the text resets it.

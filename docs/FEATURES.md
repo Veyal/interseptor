@@ -68,7 +68,7 @@ User-facing capabilities in the current release. For a tour of the menus, see th
   (stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
   [API & MCP](api-and-mcp.md).
 - **Notes** — the project's reference notebook (credentials and test accounts, data created on the
-  target for cleanup, the user access matrix, menu lists) in Markdown with Edit/Preview, image
+  target for cleanup, the user access matrix, menu lists) in Markdown with View/Edit modes, image
   paste, autosave, and save recovery.
   See [Workspace guide](workspace.md#notes).
 - **Activity** — inspect recorded agent actions, intent, results, and links to captured flows.

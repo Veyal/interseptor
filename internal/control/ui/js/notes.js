@@ -1,11 +1,14 @@
-import { $, requireFindingsEditing, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, flushOnClose, renderLoadError, openFlow, icon } from './core.js';
-import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, promoteRequest, mergeNotes, reloadClearsSaveStatus } from './notes-model.js';
+import { $, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, flushOnClose, renderLoadError, openFlow, icon } from './core.js';
+import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, mergeNotes, reloadClearsSaveStatus } from './notes-model.js';
+import { toggleMode, resolveLoadMode, caretForWord } from './notes-mode-model.js';
 registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
 // loaded/rev mirror the server notebook the local draft is based on; a save sends
 // rev so the server can refuse it when an agent or another tab changed the notes.
-export const notesState={loaded:'',rev:'',mode:'edit'};
+// mode is 'view' (rendered, read-only) or 'edit'; chosen flips once the user picks one,
+// after which a reload never changes it (see resolveLoadMode).
+export const notesState={loaded:'',rev:'',mode:'edit',chosen:false};
 let notesEditGeneration=0;
 let notesLoadGeneration=0;
 
@@ -85,7 +88,7 @@ async function mergeRemoteNotes(){
     ta.selectionStart=start;ta.selectionEnd=end;
   }
   notesPreviewCache={src:'',html:''};
-  if(notesState.mode==='preview'||notesPanelWide())showNotesPreview();
+  if(notesState.mode==='view')showNotesPreview();
   if(m.conflict)toast('Notes were changed elsewhere while you were editing. Both versions are kept: review the "Conflicting copy" section.','error');
   notesAutosave.schedule(m.text);
 }
@@ -110,7 +113,11 @@ export async function loadNotes(){
     if(preserveLocal){if(ta)notesAutosave.schedule(ta.value);}
     else{notesState.loaded=loaded;notesState.rev=d.rev||'';if(ta)ta.value=loaded;if(reloadClearsSaveStatus(current,loaded))setNotesStatus('');}
     if(loadState){loadState.textContent='';loadState.style.display='none';}
-    if(notesState.mode==='preview'||notesPanelWide())showNotesPreview();
+    // First load picks View for a note with content and Edit for an empty one, unless
+    // the user already typed or chose a mode; later reloads keep the current mode.
+    const next=preserveLocal?notesState.mode:resolveLoadMode({current:notesState.mode,userChosen:notesState.chosen,text:loaded});
+    if(next!==notesState.mode)applyNotesMode(next);
+    else if(next==='view')showNotesPreview();
   }catch(e){
     if(loadGeneration!==notesLoadGeneration)return;
     // Keep the current notebook visible; an error must never look like an empty
@@ -166,14 +173,31 @@ $('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
   };
   rd.readAsDataURL(file);
 });
-$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
-  const edit=notesState.mode==='edit';
-  // Rendering uses the local draft; a slow save must not own the selected view.
+/* ---- View / Edit mode ---- */
+// applyNotesMode shows exactly one of the editor and the rendered note. Switching to
+// View renders the local draft immediately and flushes pending edits through the
+// normal autosave path; a slow save never owns the selected mode.
+function applyNotesMode(mode,{focus=false,caret=null}={}){
+  const edit=mode==='edit';
+  notesState.mode=mode;
+  const seg=$('#notesSeg');
+  if(seg)seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.m===mode;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  const ta=$('#notesEdit'),box=$('#notesPreview');
   if(!edit)void flushNotesSave();
-  $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';
+  if(ta)ta.classList.toggle('u-hidden',!edit);
+  if(box)box.classList.toggle('u-hidden',edit);
   if(!edit)showNotesPreview();
-});
+  else if(focus&&ta){
+    ta.focus();
+    if(caret!=null)ta.setSelectionRange(caret,caret);
+  }
+}
+export function setNotesMode(mode,opts){
+  notesState.chosen=true;
+  applyNotesMode(mode,{focus:true,...opts});
+}
+export function toggleNotesMode(){setNotesMode(toggleMode(notesState.mode));}
+$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>setNotesMode(b.dataset.m));
 let notesPreviewCache={src:'',html:''};
 
 export function showNotesPreview(){
@@ -248,46 +272,10 @@ $('#notesPreview')&&$('#notesPreview').addEventListener('click',e=>{
   if(chip.dataset.kind==='finding'){location.hash='#finding-'+id+'/overview';return;}
   if(!openFlow(id,{source:'notes'}))toast('The flow view is not available yet');
 });
-
-/* ---- promote a note selection (or the current line) to a finding draft ---- */
-function noteSelectionText(){
-  const ta=$('#notesEdit');if(!ta)return '';
-  if(ta.selectionEnd>ta.selectionStart)return ta.value.slice(ta.selectionStart,ta.selectionEnd);
-  const at=ta.selectionStart||0;
-  const from=ta.value.lastIndexOf('\n',at-1)+1;
-  const to=ta.value.indexOf('\n',at);
-  return ta.value.slice(from,to<0?ta.value.length:to);
-}
-export async function promoteNoteSelection(){
-  if(!requireFindingsEditing())return;
-  const req=promoteRequest(noteSelectionText());
-  if(!req){toast('Select some text in the note to promote');return;}
-  const btn=$('#notesPromote');
-  if(btn){btn.disabled=true;btn.setAttribute('aria-busy','true');}
-  try{
-    const f=await api(req.path,{method:req.method,headers:{'content-type':'application/json'},body:JSON.stringify(req.body)});
-    toast('Draft finding F-'+(f&&f.id!=null?f.id:'')+' created from the note');
-    import('./project-state.js').then(m=>m.projectState.refresh({reason:'note-promote'})).catch(()=>{});
-  }catch(e){toast('promote failed: '+e.message,'error');}
-  finally{if(btn){btn.disabled=false;btn.removeAttribute('aria-busy');}}
-}
-$('#notesPromote')&&($('#notesPromote').onclick=promoteNoteSelection);
-
-/* ---- wide layout: editor and live preview side by side ---- */
-const notesWide=typeof matchMedia==='function'?matchMedia('(min-width: 1101px)'):null;
-let notesWideTimer=null;
-function notesPanelWide(){return !!(notesWide&&notesWide.matches);}
-function syncNotesWide(){
-  const on=!!(notesWide&&notesWide.matches);
-  $('#panel-notes')?.classList.toggle('notes-wide',on);
-  if(on)showNotesPreview();
-}
-if(notesWide){
-  notesWide.addEventListener?.('change',syncNotesWide);
-  $('#notesEdit')&&$('#notesEdit').addEventListener('input',()=>{
-    if(!notesWide.matches)return;
-    clearTimeout(notesWideTimer);
-    notesWideTimer=setTimeout(showNotesPreview,300);
-  });
-  syncNotesWide();
-}
+// Double-clicking the rendered note (outside links, chips and section headers) opens
+// the editor, with the caret at the double-clicked word when it can be found.
+$('#notesPreview')&&$('#notesPreview').addEventListener('dblclick',e=>{
+  if(e.target.closest&&e.target.closest('a,button,summary,input,.note-chip'))return;
+  const sel=typeof getSelection==='function'?getSelection():null;
+  setNotesMode('edit',{caret:caretForWord($('#notesEdit').value,sel?sel.toString():'')});
+});

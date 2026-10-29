@@ -104,7 +104,10 @@ See the [Findings guide](findings-and-reporting.md#read-and-edit-a-finding).
 ## Notes
 
 Open **Report → Notes** for the project notebook. **Edit** accepts Markdown and pasted images;
-**Preview** shows the formatted document. Watch the save status before leaving the project.
+**View** shows the formatted, read-only document (links and `#F-2` / `flow:123` references stay
+clickable). A note with content opens in View and an empty one in Edit. Switch with the View | Edit
+toggle, `Ctrl/Cmd+E`, or by double-clicking the rendered note. Leaving Edit saves pending changes.
+Watch the save status before leaving the project.
 
 The notebook is the engagement's reference sheet, not a testing log. Keep the facts you or a
 teammate will need to look up later:

@@ -44,7 +44,7 @@ func TestUIMapNotesActivityMarkupKeepsIdsAndAddsControls(t *testing.T) {
 		}
 	}
 	n := uiRegion(t, "notes")
-	for _, want := range []string{`id="notesEdit"`, `id="notesPreview"`, `id="notesSeg"`, `id="notesStatus"`, `aria-live="polite"`, `id="notesPromote"`} {
+	for _, want := range []string{`id="notesEdit"`, `id="notesPreview"`, `id="notesSeg"`, `id="notesStatus"`, `aria-live="polite"`} {
 		if !strings.Contains(n, want) {
 			t.Errorf("region:notes missing %s", want)
 		}
@@ -100,7 +100,6 @@ func TestUINotesChipsResolveOnlyExistingIdsAndNeverEditSavedText(t *testing.T) {
 		"api('/api/flows/'+id)",
 		"closest('code,pre,a,button')",
 		"document.createTextNode(t.text)",
-		"promoteRequest(noteSelectionText())",
 		"void decorateNoteRefs(box)",
 	)
 	// Status colour and visibility come from CSS, not inline style writes.
@@ -163,7 +162,7 @@ func TestUIPanelMiscStylesAreTokenOnlyAndMotionFree(t *testing.T) {
 	if strings.Contains(css, "style=") {
 		t.Error("panel-misc.css must not reference inline styles")
 	}
-	for _, want := range []string{".act-chip", ".act-day-h{position:sticky", ".note-chip", ".notes-wide", ".map-auth", ".map-pip", "max-width:720px", "pointer:coarse"} {
+	for _, want := range []string{".act-chip", ".act-day-h{position:sticky", ".note-chip", ".map-auth", ".map-pip", "max-width:720px", "pointer:coarse"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("panel-misc.css missing %q", want)
 		}

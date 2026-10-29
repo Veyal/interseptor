@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNoteRefs, collectRefIds, resolveRefs, promoteRequest, chipLabel, MAX_REFS, mergeNotes, CONFLICT_HEADING } from '../js/notes-model.js';
+import { parseNoteRefs, collectRefIds, resolveRefs, chipLabel, MAX_REFS, mergeNotes, CONFLICT_HEADING } from '../js/notes-model.js';
 
 test('finding and flow references become tokens', () => {
   const t = parseNoteRefs('See #F-02 and flow:123, also #F-7.');
@@ -32,18 +32,6 @@ test('unknown ids render as plain text, never as chips', () => {
 test('chipLabel is readable and names the kind', () => {
   assert.equal(chipLabel({ type: 'finding', id: 2 }), 'Finding F-2');
   assert.equal(chipLabel({ type: 'flow', id: 123 }), 'Flow #123');
-});
-
-test('promoteRequest derives a bounded draft from a selection', () => {
-  const r = promoteRequest('## Login bypass\nThe reset token is predictable.');
-  assert.equal(r.path, '/api/findings');
-  assert.equal(r.method, 'POST');
-  assert.equal(r.body.title, 'Login bypass');
-  assert.equal(r.body.status, 'needs_verification');
-  assert.equal(r.body.source, 'human');
-  assert.match(r.body.detail, /predictable/);
-  assert.equal(promoteRequest('   \n '), null);
-  assert.equal(promoteRequest('x'.repeat(500)).body.title.length <= 120, true);
 });
 
 test('mergeNotes carries a remote append onto the local draft', () => {

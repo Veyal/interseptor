@@ -10,7 +10,7 @@ import { repInit, intrInit, repSend, openNewRepeaterTab, sendToRepeater, sendToI
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadChromeStatus, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
-import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
+import { loadNotes, flushNotesSave, focusNotes, toggleNotesMode } from './notes.js';
 import { loadEngagementBrief } from './engagement.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
 import { loadFindings, handleAppHash, addFlowToFinding, pickFindingForSelection } from './findings.js';
@@ -644,6 +644,8 @@ document.addEventListener('keydown',e=>{
   if(isCommandPaletteOpen())return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
   if(workflowShortcutBlocked())return;
+  // Notes: Cmd/Ctrl+E switches View / Edit, including from inside the editor.
+  if(activePanel()==='notes'&&isModShortcut(e,'e')){e.preventDefault();toggleNotesMode();return;}
   // Repeater Send works while the request editor is focused (caret in textarea).
   if(activePanel()==='repeater'&&(isModSpace(e)||isModShortcut(e,'Enter'))){e.preventDefault();repSend();return;}
   if(activePanel()==='intruder'&&isModShortcut(e,'Enter')){e.preventDefault();intrStart();return;}

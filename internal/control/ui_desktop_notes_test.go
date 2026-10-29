@@ -28,7 +28,7 @@ func TestUIDesktopNotesHasTheStandardPaneHeader(t *testing.T) {
 		t.Error("the Notes header must be a real row with visible actions, not a hover overlay")
 	}
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"notesSeg", "notesStatus", "notesSaveRetry", "notesPromote", "notesEdit", "notesPreview"} {
+	for _, id := range []string{"notesSeg", "notesStatus", "notesSaveRetry", "notesEdit", "notesPreview"} {
 		if !strings.Contains(index, `id="`+id+`"`) {
 			t.Errorf("index.html lost #%s", id)
 		}

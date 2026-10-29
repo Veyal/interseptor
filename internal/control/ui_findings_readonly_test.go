@@ -227,7 +227,6 @@ func TestFindingsWritesAreGated(t *testing.T) {
 	// these named functions instead.
 	dynamic := map[string]string{
 		"ui/js/evidence-attach.js": "async function send(",
-		"ui/js/notes.js":           "export async function promoteNoteSelection(",
 		"ui/js/evidence-render.js": "async function attach(",
 	}
 	for file, marker := range dynamic {
@@ -351,7 +350,7 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 		t.Error("findings.css must hide .findings-write unless editing is on")
 	}
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"selAddFinding", "inspectAddFinding", "intrToFinding", "findDeletedOpen", "notesPromote", "evRenderAttach"} {
+	for _, id := range []string{"selAddFinding", "inspectAddFinding", "intrToFinding", "findDeletedOpen", "evRenderAttach"} {
 		m := regexp.MustCompile(`<button[^>]*\bid="` + id + `"[^>]*>`).FindString(index)
 		if m == "" {
 			t.Errorf("index.html lost #%s", id)

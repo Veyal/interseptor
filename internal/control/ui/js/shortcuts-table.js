@@ -38,6 +38,7 @@ export const LEGACY_SHORTCUTS = [
   L('Send and replay', 'repeater', 'Ctrl+Space', 'Send the current Repeater request', 'app.js', 'isModSpace(e)', { notMac: true }),
   L('Send and replay', 'intruder', 'Ctrl+Enter', 'Start the Intruder attack', 'app.js', "activePanel()==='intruder'"),
   L('Send and replay', 'intruder', 'Alt+M', 'Wrap the selected text in section-sign markers', 'tools.js', "e.code!=='KeyM'"),
+  L('Notes', 'notes', 'Ctrl+E', 'Switch Notes between View and Edit', 'app.js', "activePanel()==='notes'&&isModShortcut(e,'e')"),
   L('Intercept', 'intercept', 'f', 'Forward the selected held request (outside editors)', 'app.js', "isPlainShortcut(e,'f')"),
   L('Intercept', 'intercept', 'd', 'Drop the selected held request (outside editors)', 'app.js', "isPlainShortcut(e,'d')"),
   L('Intercept', 'intercept', 'Ctrl+Enter', 'Forward the held request (works in the editor)', 'app.js', "isModShortcut(e,'Enter')"),
