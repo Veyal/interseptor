@@ -149,6 +149,14 @@ function rawHTML(flow, side, deps) {
   if (typeof raw !== 'string') return '<p class="flow-note" role="status">Loading ' + label.toLowerCase() + '...</p>';
   const cut = raw.length > MAX_RENDER_BYTES;
   const text = cut ? raw.slice(0, MAX_RENDER_BYTES) : raw;
+  const mime = deps.mimeOf ? deps.mimeOf(detail, side) : '';
+  if (side === 'res' && deps.renderHTML && mime && /html/i.test(mime)) {
+    const view = flow.resView === 'render' ? 'render' : 'raw';
+    const seg = '<div class="seg fd-res-seg" role="group" aria-label="Response view">' +
+      [['raw', 'Raw'], ['render', 'Render']].map(([v, l]) => `<button type="button" data-fd-res-view="${v}" aria-pressed="${v === view}"${v === view ? ' class="on"' : ''}>${l}</button>`).join('') + '</div>';
+    if (view === 'render') return seg + deps.renderHTML(text, flowUrl(detail));
+    return seg + `<pre class="flow-raw">${deps.highlight ? deps.highlight(text, side) : escapeHTML(text)}</pre>` + (cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '');
+  }
   const body = deps.highlight ? deps.highlight(text, side) : escapeHTML(text);
   const notice = cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '';
   return `<pre class="flow-raw">${body}</pre>${notice}`;
@@ -156,7 +164,8 @@ function rawHTML(flow, side, deps) {
 
 // renderFlowBody(flow, tab, deps) -> HTML string. deps: highlight(raw, side),
 // downloadHref(id, side), mimeOf(detail, side), isBinaryMime(mime),
-// headerText(detail, side). Unknown tabs and missing flows render nothing.
+// headerText(detail, side), renderHTML(raw, url) (enables the HTML Response
+// Raw/Render toggle; flow.resView selects the view). Unknown tabs and missing flows render nothing.
 export function renderFlowBody(flow, tab, deps = {}) {
   if (!flow || !flow.detail) return '';
   switch (tab) {

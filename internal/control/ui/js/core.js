@@ -8,6 +8,7 @@
 
 import { placeFloatingSurface } from './surface-position.js';
 import { formatHexDump, hexLineFor } from './hexdump.js';
+import { withBaseHref } from './render-base.js';
 import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, flowPreviewPngURL, activeFlowTheme } from './copy-image.js';
 import { selectionToFocus } from './flow-focus-model.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
@@ -1531,10 +1532,12 @@ export function contentTypeFromRaw(raw){
 }
 // Shared passive HTML preview for captured responses. Headers stay outside the
 // document, and the empty sandbox grants no script or same-origin permissions.
-export function renderHTMLResponse(raw){
+// baseURL (the flow's absolute http(s) URL) becomes a <base href> so relative
+// CSS/images resolve against the captured origin, not the control UI.
+export function renderHTMLResponse(raw,baseURL){
   const separator=/\r?\n\r?\n/.exec(raw);
   const body=separator?raw.slice(separator.index+separator[0].length):'';
-  return `<iframe class="http-render-frame" sandbox="" title="Rendered HTML" referrerpolicy="no-referrer" srcdoc="${escAttr(body)}"></iframe>`;
+  return `<iframe class="http-render-frame" sandbox="" title="Rendered HTML" referrerpolicy="no-referrer" srcdoc="${escAttr(withBaseHref(body,baseURL))}"></iframe>`;
 }
 function highlightBody(body,pretty,mime){
   if(!pretty||body.length>PRETTY_MAX) return esc(body);

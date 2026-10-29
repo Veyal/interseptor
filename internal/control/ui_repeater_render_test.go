@@ -28,9 +28,10 @@ func TestUIRepeaterRenderOwnsResponseAndUsesSandbox(t *testing.T) {
 	core := readUIAsset(t, "js/core.js")
 	source := readUIAsset(t, "js/tools.js")
 	script := hexDumpTestJS(t) +
-		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
+		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw,baseURL)") +
 		repeaterRenderJS(t, source, "function repSyncResView(t)") +
 		repeaterRenderJS(t, source, "export async function renderRepResponse()") + `
+const withBaseHref=(b,u)=>/^https:/.test(u||'')?'<base href="'+u+'">'+b:b;
 const esc=String,escAttr=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
 const highlightHTTP=s=>s,prettify=s=>'pretty:'+s,contentTypeFromRaw=()=>'',highlightBodyText=String;
 const RENDER_CAP=2*1024*1024,fmtSize=String,flowBodyDownloadHref=id=>'/body/'+id,flowBodyDownloadName=()=> 'body.html';
@@ -41,8 +42,9 @@ let repResponseEpoch=0,active,api,apiBytes;
 const repCur=()=>active;
 const response=body=>'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n'+body;
 function tab(id=1,mime='text/html',view='render'){return {resId:id,resMime:mime,resView:view,resLen:40,sendPending:false,sendError:''};}
-active=tab();api=async()=>response('<h1 title="Greeting">Fixture</h1>');
+active=tab();active.url='https://example.com/page';api=async()=>response('<h1 title="Greeting">Fixture</h1>');
 await renderRepResponse();
+if(!pane.innerHTML.includes('&lt;base href=&quot;https://example.com/page&quot;>'))throw Error('Repeater Render did not pass the tab URL as the base');
 if(!pane.innerHTML.includes('sandbox=""')||!pane.innerHTML.includes('Fixture')||pane.innerHTML.includes('HTTP/1.1')||pane.innerHTML.includes('allow-scripts')||pane.innerHTML.includes('allow-same-origin'))throw Error('HTML preview is not isolated body-only markup');
 if(!renderHTMLResponse('HTTP/1.1 200 OK\n\n<p>LF body</p>').includes('LF body'))throw Error('LF header separator lost body');
 active=tab(2,'application/json');api=async()=>'{"ok":true}';await renderRepResponse();

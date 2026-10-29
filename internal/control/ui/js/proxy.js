@@ -1901,7 +1901,7 @@ export async function renderSide(side){
       el._rawText=raw;
       el._pretty=view==='pretty';
       if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
-        el.innerHTML=renderHTMLResponse(raw);
+        el.innerHTML=renderHTMLResponse(raw,flowUrl(detail));
         return;
       }
       let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);

@@ -20,11 +20,12 @@ func TestUIRepeaterResponseStates(t *testing.T) {
 		t.Fatal("Send must be released (and Cancel hidden) before a large response body is fetched and painted")
 	}
 	script := hexDumpTestJS(t) +
-		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw)") +
+		repeaterRenderJS(t, core, "export function renderHTMLResponse(raw,baseURL)") +
 		repeaterRenderJS(t, source, "function friendlySendError(raw)") +
 		repeaterRenderJS(t, source, "function repStatusLine(f)") +
 		repeaterRenderJS(t, source, "function repSyncResView(t)") +
 		repeaterRenderJS(t, source, "export async function renderRepResponse()") + `
+const withBaseHref=b=>b;
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;'),escAttr=esc;
 const highlightHTTP=s=>s,prettify=s=>s,contentTypeFromRaw=()=>'',highlightBodyText=String;
 const RENDER_CAP=2*1024*1024,fmtSize=n=>n+' B',fmtDur=ms=>ms+' ms',statusText=s=>({200:'OK',502:'Bad Gateway'}[s]||'');

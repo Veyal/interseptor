@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Intruder template position highlighting.** Every `§…§` position in the request template is now tinted in the same colour as its payload-list swatch (delimiters stronger), while an empty `§§` or unpaired `§` shows a red wavy warning underline instead of a position. The tint sits on the shared Repeater overlay-editor pattern (transparent textarea over a scroll-synced backdrop), repaints once per frame, and is dropped in Race / repeat mode.
 
+### Fixed
+
+- **Response Render view loads the page's CSS and images.** The sandboxed HTML preview (History inspector, Repeater) resolved relative URLs against the control UI instead of the captured site, so pages rendered unstyled with broken images. A `<base href>` of the flow URL is now injected (an absolute `<base>` already in the page still wins; the sandbox stays script-free). The Flow Drawer opened from Intruder and other tools gains a Raw/Render toggle for HTML responses using the same base.
+
 ### Changed
 
 - **Notes have a View | Edit toggle.** Edit/Preview and the wide split layout are replaced by one toggle (Ctrl/Cmd+E, or double-click the rendered note to edit); a note with content opens in View, an empty one in Edit, and switching to View flushes pending edits. The "Promote to finding" button is removed (the findings API and MCP tools are unchanged). (`internal/control/ui/js/notes.js`, `internal/control/ui/js/notes-mode-model.js`.)

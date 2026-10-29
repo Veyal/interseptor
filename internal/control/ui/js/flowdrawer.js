@@ -9,7 +9,7 @@
 // renderFlowBody in flowbody.js (shared with the Proxy inspector); raw text is
 // never requested for binary bodies or bodies above 1 MB.
 
-import { $, api, state, toastError, openModal, closeModal, registerHook, projectStorageKey, highlightHTTP, prettify, isBinaryMime, bodyMime, headerBlockText, flowBodyDownloadHref, copyText, mountFlowCopyPng } from './core.js';
+import { renderHTMLResponse, $, api, state, toastError, openModal, closeModal, registerHook, projectStorageKey, highlightHTTP, prettify, isBinaryMime, bodyMime, headerBlockText, flowBodyDownloadHref, copyText, mountFlowCopyPng } from './core.js';
 import { renderState } from './statepanel.js';
 import { readSingleKeyPref, isTypingTarget } from './keys.js';
 import { createFinder } from './finder.js';
@@ -74,9 +74,10 @@ const bodyDeps = {
   mimeOf: (detail, side) => bodyMime(detail, side),
   isBinaryMime,
   headerText: (detail, side) => headerBlockText(detail, side),
+  renderHTML: (raw, url) => renderHTMLResponse(raw, url),
 };
 const rawStore = () => (cur.variant === 'original' ? cur.rawOrig : cur.raw);
-const flowView = () => ({ id: cur.id, detail: cur.detail, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
+const flowView = () => ({ resView: cur.resView, id: cur.id, detail: cur.detail, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
 
 function paintBody() {
   const body = $('#fdBody');
@@ -87,6 +88,16 @@ function paintBody() {
   body.scrollTop = 0;
   if (finder.isOpen()) finder.refresh(); // marks died with the old markup
 }
+
+// The HTML Response Raw/Render toggle lives inside the body markup.
+$('#fdBody').addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('button[data-fd-res-view]');
+  if (!b || cur.tab !== 'response') return;
+  cur.resView = b.dataset.fdResView === 'render' ? 'render' : 'raw';
+  paintBody();
+  const again = $('#fdBody').querySelector(`button[data-fd-res-view="${cur.resView}"]`);
+  if (again) again.focus({ preventScroll: true });
+});
 
 function showError(err, retry, title) {
   const body = $('#fdBody');
@@ -461,7 +472,7 @@ export function openFlow(id, opts = {}) {
   } else if (opts.layout) {
     cur.layout = opts.layout;
   }
-  Object.assign(cur, { id: flowId, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, opts, tab: opts.tab || 'response' });
+  Object.assign(cur, { id: flowId, resView: 'raw', detail: null, raw: {}, rawOrig: {}, variant: 'current', ws: null, timeline: null, auth: null, opts, tab: opts.tab || 'response' });
   syncMode();
   updatePopupBtn();
   cur.open = true;

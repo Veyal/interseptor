@@ -131,3 +131,23 @@ test('linkedFindings finds findings referencing the flow through blocks or the f
   assert.deepEqual(out.map((f) => f.id), [1, 2]);
   assert.deepEqual(linkedFindings(null, 7), []);
 });
+
+test('renderFlowBody: HTML response gets a Raw/Render toggle and renders with the flow URL', () => {
+  const calls = [];
+  const deps = {
+    highlight: escapeHTML,
+    mimeOf: (d, side) => (side === 'res' ? 'text/html' : ''),
+    renderHTML: (raw, url) => { calls.push([raw, url]); return '<iframe></iframe>'; },
+  };
+  const flow = { id: 7, detail, raw: { res: '<p>x</p>' } };
+  const rawView = renderFlowBody(flow, 'response', deps);
+  assert.ok(rawView.includes('data-fd-res-view="render"') && rawView.includes('aria-pressed="true" class="on">Raw'));
+  assert.ok(rawView.includes('flow-raw') && calls.length === 0);
+  const rendered = renderFlowBody({ ...flow, resView: 'render' }, 'response', deps);
+  assert.ok(rendered.includes('<iframe></iframe>') && !rendered.includes('flow-raw'));
+  assert.deepEqual(calls, [['<p>x</p>', 'https://example.com/a?b=1']]);
+  // Not HTML, or no renderer injected: no toggle.
+  assert.ok(!renderFlowBody(flow, 'response', { ...deps, mimeOf: () => 'application/json' }).includes('data-fd-res-view'));
+  assert.ok(!renderFlowBody(flow, 'response', { highlight: escapeHTML, mimeOf: deps.mimeOf }).includes('data-fd-res-view'));
+  assert.ok(!renderFlowBody({ id: 7, detail, raw: { req: 'x' } }, 'request', deps).includes('data-fd-res-view'));
+});

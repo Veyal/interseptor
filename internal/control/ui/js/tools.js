@@ -850,7 +850,7 @@ export async function renderRepResponse(){
     // A tab switch during the fetch would otherwise paint this response into the
     // now-active tab's shared #repResView pane.
     if(!current())return;
-    $('#repResView').innerHTML=resView==='render'?renderHTMLResponse(raw):highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
+    $('#repResView').innerHTML=resView==='render'?renderHTMLResponse(raw,String(t.url||'').trim()):highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
   }catch(e){
     if(!current())return;
     // A restored or history response whose flow was since deleted is not an
