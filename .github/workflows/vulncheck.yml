@@ -25,8 +25,8 @@ jobs:
     # v0.57.0 -> v0.60.0) are fixed; then remove this line to make it blocking.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # go.mod pins the minimum language version; scan against the newest
