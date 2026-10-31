@@ -19,14 +19,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # gofmt_check.sh diffs against the base branch.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: gofmt (Go files changed on this branch)
@@ -49,11 +49,11 @@ jobs:
   ui-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: scripts/ui_smoke.sh
@@ -76,8 +76,8 @@ jobs:
             goarch: arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o interseptor ./cmd/interseptor
@@ -89,15 +89,15 @@ jobs:
   macos-app:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Keep tags available so CI exercises the `git describe` path; shallow
           # or no-tag builds fall back to internal/version for bundle metadata.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Test on macOS
@@ -121,7 +121,7 @@ jobs:
       # keeps the bundle structure and permissions intact inside the archive.
       - name: Archive bundle
         run: ditto -c -k --keepParent dist/macos/Interseptor.app dist/macos/Interseptor-app-unsigned.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: interseptor-macos-app-unsigned
           path: dist/macos/Interseptor-app-unsigned.zip
