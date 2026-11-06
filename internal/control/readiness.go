@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // readinessCheck is one row in the agent setup checklist.
@@ -71,6 +74,9 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	trafficOK := flowN > 0
 	add("traffic", trafficOK, flowCountDetail(flowN), "route the target through the proxy and browse the app")
 
+	capOK, capDetail, capFix := captureCheck(h.st.CaptureStats())
+	add("capture", capOK, capDetail, capFix)
+
 	inScopeOK := true
 	if includes > 0 {
 		inScopeOK = h.hasInScopeTraffic()
@@ -127,6 +133,24 @@ func flowCountDetail(n int64) string {
 		return "no flows captured"
 	}
 	return itoa64(n) + " flows captured"
+}
+
+// captureCheck turns the store's capture counters into the "capture" readiness
+// row. Any drop means History is missing traffic that went through the proxy,
+// so it is never reported as healthy.
+func captureCheck(c store.CaptureStats) (ok bool, detail, fix string) {
+	if !c.Lossy() {
+		return true, "no captured traffic dropped", ""
+	}
+	var parts []string
+	if c.FlowWritesDropped > 0 {
+		parts = append(parts, fmt.Sprintf("%d flow write(s)", c.FlowWritesDropped))
+	}
+	if c.WSFramesDropped > 0 {
+		parts = append(parts, fmt.Sprintf("%d WebSocket frame(s)", c.WSFramesDropped))
+	}
+	return false, strings.Join(parts, " and ") + " dropped since start: History is incomplete",
+		"capture fell behind under load; slow the client or narrow scope, then re-capture what you need as evidence"
 }
 
 func inScopeDetail(ok bool) string {

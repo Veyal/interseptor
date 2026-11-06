@@ -8,11 +8,14 @@ import (
 	"time"
 )
 
-// Flow capture from the proxy is write-behind: enqueue never waits on SQLite.
-// One flusher applies a FIFO buffer so a flow's insert lands before its update
-// and before a tag write for that same id. Direct InsertFlow / UpdateFlow
-// callers stay synchronous; reads and later mutations wait only when they
-// touch an id that is still queued.
+// Flow capture from the proxy is write-behind: enqueue does not wait on SQLite
+// while the buffer has room. One flusher applies a FIFO buffer so a flow's
+// insert lands before its update and before a tag write for that same id.
+// When the proxy outruns the flusher and the buffer is full, a capture waits up
+// to flowFullWait for the flusher to take the buffer — slowing the proxy to the
+// rate evidence can be saved — and only then drops a write, counted in
+// FlowsDropped. Direct InsertFlow / UpdateFlow callers stay synchronous; reads
+// and later mutations wait only when they touch an id that is still queued.
 
 const flowBufCap = 4096
 
@@ -32,6 +35,12 @@ var (
 	flowApplyDelayNS atomic.Int64
 	flowBatchFault   atomic.Int32
 )
+
+// flowFullWait bounds how long a capture waits for room in a full buffer. Long
+// enough to ride out one drain pass of a full buffer on a loaded machine
+// (measured at up to ~460 ms), short enough that a stuck flusher degrades the
+// proxy to slow rather than hung.
+var flowFullWait = time.Second
 
 const (
 	faultFlowBatchBegin  int32 = 1
@@ -62,6 +71,19 @@ type flowOp struct {
 	flow *Flow
 	id   int64
 	tags []string
+	// release holds the body hashes of snapshots this op replaced in place.
+	// Each finalized body carries one GC claim, released by the write that
+	// queued its hash; folding two writes into one must still release both
+	// sets, and only once the surviving write has committed.
+	release []string
+}
+
+func (op flowOp) bodyHashes() []string {
+	out := op.release
+	if f := op.flow; f != nil {
+		out = append(out[:len(out):len(out)], f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
+	}
+	return out
 }
 
 type flowCmd struct {
@@ -69,60 +91,159 @@ type flowCmd struct {
 	errc  chan error
 }
 
-// EnqueueInsertFlow assigns an id and queues a snapshot of f. It never waits
-// on SQLite. On a full buffer the oldest queued write is dropped and counted.
+// EnqueueInsertFlow assigns an id and queues a snapshot of f. It does not wait
+// on SQLite while the buffer has room; on a full buffer it waits (bounded) for
+// the flusher, then drops a write and counts it (see awaitFlowSpaceLocked).
 // The returned bool is false only when the queue is closed.
 func (s *Store) EnqueueInsertFlow(f *Flow) (bool, error) {
 	if f == nil {
 		return false, errors.New("nil flow")
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
-	dropped = s.dropOldestFlowLocked()
+	dropped := s.dropOldestFlowLocked()
 	if f.ID == 0 {
 		f.ID = s.allocFlowID()
 	} else {
 		s.noteFlowID(f.ID)
 	}
 	cp := cloneFlow(f)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpInsert, flow: cp, id: cp.ID})
-	s.bumpFlowPendingLocked(cp.ID)
+	s.appendFlowOpLocked(flowOp{kind: flowOpInsert, flow: cp, id: cp.ID})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
 }
 
-// EnqueueUpdateFlow queues a snapshot of f, keyed by f.ID. It never waits on
-// SQLite. A full buffer drops the oldest write. An update whose insert was
-// already dropped is discarded and its body protection is released.
+// EnqueueUpdateFlow queues a snapshot of f, keyed by f.ID. When the flow's
+// insert (or an earlier update) is still queued, the snapshot replaces it in
+// place: one SQLite write per flow instead of two, and no extra slot in a full
+// buffer. Otherwise a full buffer is handled as in EnqueueInsertFlow. An update
+// whose insert was already dropped is discarded and its body protection is
+// released.
 func (s *Store) EnqueueUpdateFlow(f *Flow) (bool, error) {
 	if f == nil || f.ID == 0 {
 		return false, errors.New("update requires a flow id")
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if _, void := s.flowVoid[f.ID]; void && s.flowPendingN[f.ID] == 0 {
+			s.flowMu.Unlock()
+			s.publishFlowBodies(f)
+			return true, nil
+		}
+		if op := s.queuedSnapshotLocked(f.ID); op != nil {
+			op.release = op.bodyHashes()
+			op.flow = cloneFlow(f)
+			s.flowMu.Unlock()
+			return true, nil
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
-	if _, void := s.flowVoid[f.ID]; void && s.flowPendingN[f.ID] == 0 {
-		s.flowMu.Unlock()
-		s.publishFlowBodies(f)
-		return true, nil
-	}
-	dropped = s.dropOldestFlowLocked()
+	dropped := s.dropOldestFlowLocked()
 	cp := cloneFlow(f)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpUpdate, flow: cp, id: cp.ID})
-	s.bumpFlowPendingLocked(cp.ID)
+	s.appendFlowOpLocked(flowOp{kind: flowOpUpdate, flow: cp, id: cp.ID})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
+}
+
+// appendFlowOpLocked queues op and records it as the newest snapshot of its
+// flow when it carries one.
+func (s *Store) appendFlowOpLocked(op flowOp) {
+	seq := s.flowBase + uint64(len(s.flowPending))
+	s.flowPending = append(s.flowPending, op)
+	s.bumpFlowPendingLocked(op.id)
+	if op.kind == flowOpInsert || op.kind == flowOpUpdate {
+		if s.flowLatest == nil {
+			s.flowLatest = map[int64]uint64{}
+		}
+		s.flowLatest[op.id] = seq
+	}
+}
+
+// queuedSnapshotLocked returns the still-queued insert or update that holds
+// id's newest snapshot, or nil when none is waiting (the flusher has taken it).
+func (s *Store) queuedSnapshotLocked(id int64) *flowOp {
+	seq, ok := s.flowLatest[id]
+	if !ok || seq < s.flowBase {
+		return nil
+	}
+	i := seq - s.flowBase
+	if i >= uint64(len(s.flowPending)) {
+		return nil
+	}
+	op := &s.flowPending[i]
+	if op.id != id || (op.kind != flowOpInsert && op.kind != flowOpUpdate) {
+		return nil
+	}
+	return op
+}
+
+// takeFlowPendingLocked hands the whole buffer to the caller and forgets the
+// in-place snapshot index: nothing taken may be modified any more. Captures
+// waiting for room are woken.
+func (s *Store) takeFlowPendingLocked() []flowOp {
+	batch := s.flowPending
+	s.flowPending = nil
+	s.flowBase += uint64(len(batch))
+	clear(s.flowLatest)
+	if s.flowSpace != nil {
+		close(s.flowSpace)
+		s.flowSpace = nil
+	}
+	return batch
+}
+
+// awaitFlowSpaceLocked is called with flowMu held by a capture about to append.
+// While the buffer is full it releases flowMu and waits until the flusher takes
+// the buffer, the shared deadline (flowFullWait from the first wait) passes, or
+// the flusher is stopped. It reports whether it released the lock, in which
+// case the caller re-checks its state before appending. A paused flusher (tests)
+// will not drain, so it never waits for one.
+func (s *Store) awaitFlowSpaceLocked(deadline *time.Time) bool {
+	if len(s.flowPending) < flowBufCap || s.flowPaused || flowFullWait <= 0 {
+		return false
+	}
+	now := time.Now()
+	if deadline.IsZero() {
+		*deadline = now.Add(flowFullWait)
+	}
+	wait := deadline.Sub(now)
+	if wait <= 0 {
+		return false
+	}
+	if s.flowSpace == nil {
+		s.flowSpace = make(chan struct{})
+	}
+	space := s.flowSpace
+	s.flowMu.Unlock()
+	timer := time.NewTimer(wait)
+	select {
+	case <-space:
+	case <-timer.C:
+	case <-s.flowStop:
+	}
+	timer.Stop()
+	s.flowMu.Lock()
+	return true
 }
 
 // EnqueueAddFlowTags queues a tag union for id. It never waits on SQLite.
@@ -131,23 +252,27 @@ func (s *Store) EnqueueAddFlowTags(id int64, tags []string) (bool, error) {
 	if id == 0 || len(tags) == 0 {
 		return true, nil
 	}
-	var dropped *Flow
 	s.flowMu.Lock()
-	if s.flowClosed || s.flowWake == nil {
-		s.flowMu.Unlock()
-		return false, errFlowsClosed
+	var deadline time.Time
+	for {
+		if s.flowClosed || s.flowWake == nil {
+			s.flowMu.Unlock()
+			return false, errFlowsClosed
+		}
+		if _, void := s.flowVoid[id]; void && s.flowPendingN[id] == 0 {
+			s.flowMu.Unlock()
+			return true, nil
+		}
+		if !s.awaitFlowSpaceLocked(&deadline) {
+			break
+		}
 	}
-	if _, void := s.flowVoid[id]; void && s.flowPendingN[id] == 0 {
-		s.flowMu.Unlock()
-		return true, nil
-	}
-	dropped = s.dropOldestFlowLocked()
+	dropped := s.dropOldestFlowLocked()
 	cp := append([]string(nil), tags...)
-	s.flowPending = append(s.flowPending, flowOp{kind: flowOpAddTags, id: id, tags: cp})
-	s.bumpFlowPendingLocked(id)
+	s.appendFlowOpLocked(flowOp{kind: flowOpAddTags, id: id, tags: cp})
 	s.wakeFlowLocked()
 	s.flowMu.Unlock()
-	s.publishFlowBodies(dropped)
+	s.publishBodies(dropped.bodyHashes()...)
 	return true, nil
 }
 
@@ -186,6 +311,29 @@ func (s *Store) FlushFlows() error {
 // buffer was full or shutdown gave up. Capture stays non-blocking.
 func (s *Store) FlowsDropped() uint64 {
 	return s.flowDropped.Load()
+}
+
+// CaptureStats is the capture pipeline's loss and backlog since this store was
+// opened. Non-zero drop counters mean History is missing traffic that went
+// through the proxy, so every operator-facing status surface reports them.
+type CaptureStats struct {
+	FlowWritesDropped uint64 `json:"flowWritesDropped"`
+	WSFramesDropped   uint64 `json:"wsFramesDropped"`
+	FlowQueue         int    `json:"flowQueue"`
+	FlowQueueCap      int    `json:"flowQueueCap"`
+}
+
+// Lossy reports whether any captured flow write or WebSocket frame was dropped.
+func (c CaptureStats) Lossy() bool { return c.FlowWritesDropped > 0 || c.WSFramesDropped > 0 }
+
+// CaptureStats snapshots the capture drop counters and the flow queue depth.
+func (s *Store) CaptureStats() CaptureStats {
+	return CaptureStats{
+		FlowWritesDropped: s.flowDropped.Load(),
+		WSFramesDropped:   s.wsDropped.Load(),
+		FlowQueue:         s.pendingLen(),
+		FlowQueueCap:      flowBufCap,
+	}
 }
 
 func (s *Store) allocFlowID() int64 {
@@ -281,18 +429,56 @@ func (s *Store) flowFlusher() {
 			if s.flowIsPaused() {
 				continue
 			}
+			if cmd, ok := s.lingerForBatch(); ok {
+				if s.runFlowCmd(cmd) {
+					return
+				}
+				continue
+			}
 			_ = s.drainUntilIdle(time.Time{})
 		case cmd := <-s.flowOpCh:
-			var deadline time.Time
-			if cmd.close {
-				deadline = time.Now().Add(flowDrainTimeout)
-			}
-			cmd.errc <- s.drainUntilIdle(deadline)
-			if cmd.close {
+			if s.runFlowCmd(cmd) {
 				return
 			}
 		}
 	}
+}
+
+// runFlowCmd serves a FlushFlows or Close request and reports whether the
+// flusher must exit.
+func (s *Store) runFlowCmd(cmd flowCmd) bool {
+	var deadline time.Time
+	if cmd.close {
+		deadline = time.Now().Add(flowDrainTimeout)
+	}
+	cmd.errc <- s.drainUntilIdle(deadline)
+	return cmd.close
+}
+
+// flowLinger is how long a wake-up waits for more writes before draining. The
+// proxy enqueues one write at a time; draining each on arrival paid a commit
+// per flow and could not keep up with the proxy, so the buffer filled and
+// capture dropped flows. Waiting a moment groups a trickle into one
+// transaction and lets a fast response coalesce into its still-queued insert.
+// Readers never see the delay: FlushFlows interrupts the linger.
+var flowLinger = 2 * time.Millisecond
+
+// lingerForBatch waits up to flowLinger while the buffer holds less than one
+// batch. A FlushFlows or Close arriving meanwhile is returned for the caller to
+// run at once.
+func (s *Store) lingerForBatch() (flowCmd, bool) {
+	if flowLinger <= 0 || s.pendingLen() >= flowBatchMax {
+		return flowCmd{}, false
+	}
+	timer := time.NewTimer(flowLinger)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-s.flowStop:
+	case cmd := <-s.flowOpCh:
+		return cmd, true
+	}
+	return flowCmd{}, false
 }
 
 // drainUntilIdle applies queued writes until the buffer is empty, the pass
@@ -332,8 +518,7 @@ func (s *Store) drainOnce() error {
 		return errFlowDrainTimeout
 	}
 	s.flowMu.Lock()
-	batch := s.flowPending
-	s.flowPending = nil
+	batch := s.takeFlowPendingLocked()
 	if len(batch) > 0 {
 		s.flowInFlight = true
 	}
@@ -408,11 +593,12 @@ func (s *Store) applyFlowBatchTx(batch []flowOp) bool {
 	}
 	s.flowTxs.Add(1)
 	defer tx.Rollback()
+	ex := &txStmts{tx: tx}
 	for _, op := range batch {
 		if s.flowIsVoid(op.id) {
 			continue // the insert this write belongs to was dropped
 		}
-		if err := s.applyFlowOpTx(tx, op); err != nil {
+		if err := s.applyFlowOpTx(ex, op); err != nil {
 			if errors.Is(err, errFlowOpSkipped) {
 				continue
 			}
@@ -428,6 +614,55 @@ func (s *Store) applyFlowBatchTx(batch []flowOp) bool {
 		return false
 	}
 	return true
+}
+
+// txStmts runs the flow writers' SQL inside one batch transaction, preparing
+// each distinct statement once per batch instead of once per write. A chunk
+// repeats the same three or four statements up to flowBatchMax times, and
+// re-parsing them was about a third of the flusher's cost. The statements are
+// owned by the transaction and closed when it commits or rolls back.
+type txStmts struct {
+	tx    *sql.Tx
+	stmts map[string]*sql.Stmt
+}
+
+func (t *txStmts) stmt(query string) (*sql.Stmt, error) {
+	if st, ok := t.stmts[query]; ok {
+		return st, nil
+	}
+	st, err := t.tx.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	if t.stmts == nil {
+		t.stmts = map[string]*sql.Stmt{}
+	}
+	t.stmts[query] = st
+	return st, nil
+}
+
+func (t *txStmts) Exec(query string, args ...any) (sql.Result, error) {
+	st, err := t.stmt(query)
+	if err != nil {
+		return nil, err
+	}
+	return st.Exec(args...)
+}
+
+func (t *txStmts) Query(query string, args ...any) (*sql.Rows, error) {
+	st, err := t.stmt(query)
+	if err != nil {
+		return nil, err
+	}
+	return st.Query(args...)
+}
+
+func (t *txStmts) QueryRow(query string, args ...any) *sql.Row {
+	st, err := t.stmt(query)
+	if err != nil {
+		return t.tx.QueryRow(query, args...) // carries the same error to Scan
+	}
+	return st.QueryRow(args...)
 }
 
 // applyFlowOpTx applies one queued write inside the caller's transaction.
@@ -497,6 +732,11 @@ func (s *Store) applyFlowOpsOneByOne(batch []flowOp) error {
 			log.Printf("store: persist flow: %v", err)
 		}
 		s.completeOp(op)
+		// applyFlowOp released op.flow's claims; the snapshots it replaced
+		// in place still hold theirs.
+		if len(op.release) > 0 {
+			s.publishBodies(op.release...)
+		}
 	}
 	return first
 }
@@ -540,16 +780,46 @@ func (s *Store) pauseApply() {
 	}
 }
 
-func (s *Store) dropOldestFlowLocked() *Flow {
+// dropOldestFlowLocked makes room in a full buffer and returns the discarded
+// write so the caller can release its body claims outside flowMu.
+//
+// The victim is the oldest queued insert, not simply the oldest write: an
+// insert has not reached SQLite yet, so dropping it loses one whole flow (its
+// later update and tags are discarded with it). Dropping the oldest write
+// instead usually hit the response update of a row already committed, leaving
+// that row stuck at status 0 ("pending") forever. Only a buffer holding no
+// insert at all falls back to the oldest write.
+func (s *Store) dropOldestFlowLocked() flowOp {
 	if len(s.flowPending) < flowBufCap {
-		return nil
+		return flowOp{}
 	}
-	op := s.flowPending[0]
+	victim := 0
+	for i := range s.flowPending {
+		if s.flowPending[i].kind == flowOpInsert {
+			victim = i
+			break
+		}
+	}
+	op := s.flowPending[victim]
+	if seq, ok := s.flowLatest[op.id]; ok && seq == s.flowBase+uint64(victim) {
+		delete(s.flowLatest, op.id)
+	}
+	// Close the gap by shifting the writes ahead of the victim up one slot,
+	// then trim the front. Those writes move one sequence number later, so
+	// their snapshot index entries move with them.
+	for i := victim; i > 0; i-- {
+		prev := s.flowPending[i-1]
+		if seq, ok := s.flowLatest[prev.id]; ok && seq == s.flowBase+uint64(i-1) {
+			s.flowLatest[prev.id] = seq + 1
+		}
+		s.flowPending[i] = prev
+	}
 	s.flowPending[0] = flowOp{}
 	s.flowPending = s.flowPending[1:]
+	s.flowBase++
 	n := s.flowDropped.Add(1)
 	if n == 1 || n%1024 == 0 {
-		log.Printf("store: flow buffer full, dropped %d oldest write(s)", n)
+		log.Printf("store: flow buffer full, dropped %d write(s)", n)
 	}
 	s.finishFlowPendingLocked(op.id)
 	if op.kind == flowOpInsert {
@@ -558,7 +828,7 @@ func (s *Store) dropOldestFlowLocked() *Flow {
 		}
 		s.flowVoid[op.id] = struct{}{}
 	}
-	return op.flow
+	return op
 }
 
 func (s *Store) bumpFlowPendingLocked(id int64) {
@@ -600,12 +870,18 @@ func (s *Store) completeOps(batch []flowOp) {
 		}
 	}
 	s.flowMu.Unlock()
+	if !batchHasBodies(batch) {
+		return // typical GET burst: no body claims, so leave bodyMu alone
+	}
 	// One bodyMu acquisition for the whole chunk. Capture takes that same lock
 	// for every finalized body, so releasing per write made the flusher queue
 	// behind the proxy up to flowBatchMax times per chunk — which is what
 	// actually limited capture throughput once the commits were batched.
 	s.bodyMu.Lock()
 	for _, op := range batch {
+		for _, sum := range op.release {
+			s.releasePendingBody(sum)
+		}
 		if op.flow == nil {
 			continue
 		}
@@ -617,10 +893,21 @@ func (s *Store) completeOps(batch []flowOp) {
 	s.bodyMu.Unlock()
 }
 
+func batchHasBodies(batch []flowOp) bool {
+	for _, op := range batch {
+		if hasAnyHash(op.release) {
+			return true
+		}
+		if f := op.flow; f != nil && (f.ReqBodyHash != "" || f.ResBodyHash != "" || f.OriginalReqBodyHash != "" || f.OriginalResBodyHash != "") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) abandonPending() int {
 	s.flowMu.Lock()
-	batch := s.flowPending
-	s.flowPending = nil
+	batch := s.takeFlowPendingLocked()
 	s.flowInFlight = false
 	for _, op := range batch {
 		s.finishFlowPendingLocked(op.id)
@@ -637,7 +924,7 @@ func (s *Store) abandonPending() int {
 
 func (s *Store) abandonOps(batch []flowOp) int {
 	for _, op := range batch {
-		s.publishFlowBodies(op.flow)
+		s.publishBodies(op.bodyHashes()...)
 	}
 	if len(batch) == 0 {
 		return 0

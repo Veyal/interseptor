@@ -2992,7 +2992,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("check_readiness",
-		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, tls_intercept (pinning/CA detection), OOB, auth identities, and login macro. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
+		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, capture (dropped flow writes or WS frames mean History is incomplete), tls_intercept (pinning/CA detection), OOB, auth identities, login macro. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			raw, err := s.apiGet("/api/readiness")

@@ -10,6 +10,105 @@ import (
 	"testing"
 )
 
+// TestBodyWriterEmptyBodyCreatesNoFile pins the empty-body fast path: a capture
+// that never receives a byte (every GET request body, every 204/304 response)
+// must not create, hash, rename or unlink a temp file, and reports "no body"
+// rather than the sha256 of the empty string.
+func TestBodyWriterEmptyBodyCreatesNoFile(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	for _, mk := range []func() (*BodyWriter, error){s.NewBodyWriter, s.NewFlowBodyWriter} {
+		w, err := mk()
+		if err != nil {
+			t.Fatalf("new writer: %v", err)
+		}
+		if _, err := w.Write(nil); err != nil {
+			t.Fatalf("empty write: %v", err)
+		}
+		if tmp, _ := filepath.Glob(filepath.Join(s.BodiesDir(), ".tmp-*")); len(tmp) != 0 {
+			t.Fatalf("empty capture created temp files %v", tmp)
+		}
+		hash, n, err := w.Finalize()
+		if err != nil || hash != "" || n != 0 {
+			t.Fatalf("Finalize = %q, %d, %v; want \"\", 0, nil", hash, n, err)
+		}
+		w.Abort() // safe after Finalize on the empty path
+	}
+	entries, err := os.ReadDir(s.BodiesDir())
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("bodies dir not empty after empty captures: %d entries", len(entries))
+	}
+	s.bodyMu.Lock()
+	pending := len(s.pendingBodies)
+	s.bodyMu.Unlock()
+	if pending != 0 {
+		t.Fatalf("empty capture left %d pending ownership record(s)", pending)
+	}
+}
+
+// TestFinalizeDoesNotHoldBodyLockDuringFileSystemWork pins the lock scope of
+// Finalize: once the hash is claimed, stat/rename/unlink run without bodyMu, so
+// one slow file system call cannot stall every other capture and enqueue.
+func TestFinalizeDoesNotHoldBodyLockDuringFileSystemWork(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	bodyCommitHook = func() { close(entered); <-release }
+	t.Cleanup(func() { bodyCommitHook = nil })
+
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	io.WriteString(w, "slow file system")
+	type result struct {
+		hash string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		h, _, err := w.Finalize()
+		done <- result{h, err}
+	}()
+	<-entered
+	locked := s.bodyMu.TryLock()
+	if locked {
+		pending := s.pendingBodies
+		claimed := len(pending)
+		s.bodyMu.Unlock()
+		if claimed != 1 {
+			t.Errorf("hash not claimed before the file system phase: %d pending", claimed)
+		}
+	}
+	bodyCommitHook = nil
+	close(release)
+	res := <-done
+	if !locked {
+		t.Fatal("Finalize held bodyMu during its file system phase")
+	}
+	if res.err != nil {
+		t.Fatalf("Finalize: %v", res.err)
+	}
+	rc, err := s.OpenBody(res.hash)
+	if err != nil {
+		t.Fatalf("OpenBody: %v", err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "slow file system" {
+		t.Fatalf("stored %q", b)
+	}
+}
+
 func TestFlowBodyWriterReleasesOwnershipWhenFinalizeFails(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -158,5 +257,31 @@ func TestBodyWriterConcurrentDedup(t *testing.T) {
 		if hashes[i] != hashes[0] {
 			t.Fatalf("goroutine %d: hash %s != %s", i, hashes[i], hashes[0])
 		}
+	}
+}
+
+// A failed lazy temp-file creation surfaces from Finalize with the true byte
+// count, while Write keeps reporting success so forwarding is unaffected.
+func TestBodyWriterCreateFailureSurfacesOnFinalize(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	if err := os.RemoveAll(s.bodiesDir); err != nil {
+		t.Fatal(err)
+	}
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chunk := range []string{"abc", "defg"} {
+		if n, err := w.Write([]byte(chunk)); n != len(chunk) || err != nil {
+			t.Fatalf("Write = %d, %v", n, err)
+		}
+	}
+	h, n, ferr := w.Finalize()
+	if ferr == nil || h != "" || n != 7 {
+		t.Fatalf("Finalize = %q, %d, %v; want empty hash, 7, error", h, n, ferr)
 	}
 }

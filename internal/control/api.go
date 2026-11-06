@@ -94,7 +94,7 @@ type apiRoute struct {
 }
 
 var apiRoutes = []apiRoute{
-	{"GET", "/api/project/readiness", "Engagement-strip aggregate (counts only): {scope:{enabled,in,out}, brief:{target,ok}, evidence:{flows,shots,ws}, findings:{total,ready,items:[{id,stage,gaps}] (max 200),truncated}, blockers[]}. Blocker codes are project-level (brief_target, scope) then server finding gap codes"},
+	{"GET", "/api/project/readiness", "Engagement-strip aggregate (counts only): {scope:{enabled,in,out}, brief:{target,ok}, evidence:{flows,shots,ws}, findings:{total,ready,items:[{id,stage,gaps}] (max 200),truncated}, blockers[], capture:{flowWritesDropped,wsFramesDropped}}. Non-zero capture counters mean History is missing traffic. Blocker codes are project-level (brief_target, scope) then server finding gap codes"},
 	{"GET", "/api/findings/readiness", "Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by severity, per-finding checks and final-gate issues {rule, field, capability, message}; filters statuses (default every status; hidden counts by status what a narrower filter left out) and tag"},
 	{"GET", "/api/finding-quality/{id}", "Final report-quality gate for one finding; same issues as the project-wide readiness entry"},
 	{"GET", "/api/findings/deleted", "List recoverable deleted findings"},
@@ -256,7 +256,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/authz/run", "Run authz test. Body: {flowId?, inScope?, maxFlows?, skipStatic?} — one of flowId/inScope required; maxFlows default 30 max 100. Response: {runs:[{flowId,method,host,path,baselineStatus,results}], summary:{endpoints,flagged}, runId} — runId addresses the persisted run (GET /api/authz/runs/{id}) and the matrix PNG"},
 	{"POST", "/api/authz/differential", "Differential auth test: replay ONE flow as anonymous + selected identities and classify each as auth_failure | authz_failure | validation_failure | success. Body: {flowId, identities?: [names], invalidBody?: string (probes whether auth runs before validation), sideEffectFlowId?: read-only state flow replayed before/after each context, attachToFinding?: findingId}. Response: typed evidence keeping every raw flowId: {contexts:[{name,outcome,status,flowId,sameAsBaseline,sideEffect}], invalidBodyProbe, authOrder, authNotEnforced, hypotheses, runId (the persisted run)}"},
 	{"POST", "/api/authz/cross-host-replay", "Replay a JWT-bearing endpoint to every unique in-scope host — detects cross-environment token confusion. Body: {flowId, jwtFlowId?, jwt?, mode?} — mode auto|bearer|path (default auto). Response: {flowId, method, path, mode, jwtSource, jwt (truncated preview), results:[{host,scheme,port,url,status,length,accepted,flowId}], runId (the persisted run)}"},
-	{"GET", "/api/readiness", "Aggregate pentest readiness checklist (proxy, traffic, scope, TLS interception, OOB, auth identities, login macro)"},
+	{"GET", "/api/readiness", "Aggregate pentest readiness checklist (proxy, traffic, capture drops, scope, TLS interception, OOB, auth identities, login macro)"},
 	{"GET", "/api/tls-diagnosis", "Diagnose whether HTTPS interception is working vs simply no traffic yet"},
 	{"GET", "/api/flows/{id}/analyze", "Compact AI-friendly summary of a flow"},
 	{"GET", "/api/flows/diff", "Diff two flows' responses (?a=&b=, optional maxBytes, format=text): status, length, headers, body"},
@@ -460,7 +460,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "list_scope", "desc": "List target-scope rules"},
 		{"name": "add_scope_rule", "desc": "Add an in/out-of-scope rule"},
 		{"name": "scope_from_url", "desc": "Add a target URL's host/scheme to scope (self-scope)"},
-		{"name": "check_readiness", "desc": "Structured pre-flight checklist (proxy, scope, traffic, tls_intercept, OOB, auth identities, login macro)"},
+		{"name": "check_readiness", "desc": "Structured pre-flight checklist (proxy, scope, traffic, capture drops, tls_intercept, OOB, auth identities, login macro)"},
 		{"name": "detect_ssl_pinning", "desc": "Diagnose SSL pinning / untrusted CA vs no traffic (mobile pentest)"},
 		{"name": "request_human_input", "desc": "Pause and ask the human a question (handoff gate)"},
 		{"name": "get_human_response", "desc": "Retrieve the human's answer to a request_human_input"},

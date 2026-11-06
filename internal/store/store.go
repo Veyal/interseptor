@@ -75,6 +75,15 @@ type Store struct {
 	flowCancelOnce sync.Once
 	flowPending    []flowOp
 	flowPendingN   map[int64]int
+	// flowLatest maps a flow id to the sequence number of its newest queued
+	// insert or update, so a later update can replace that snapshot in place
+	// instead of queueing a second write. flowBase is the sequence number of
+	// flowPending[0].
+	flowLatest     map[int64]uint64
+	flowBase       uint64
+	// flowSpace is closed (and cleared) when the flusher takes the buffer,
+	// waking captures that found it full.
+	flowSpace      chan struct{}
 	flowVoid       map[int64]struct{}
 	flowDropped    atomic.Uint64
 	flowInFlight   bool
@@ -660,7 +669,11 @@ func writeFlowUpdateExec(ex flowExec, f *Flow) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	if _, err := ex.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
+	// An FTS5 column update is a delete plus re-insert of the whole entry, and
+	// a proxied flow's path and method are already final at insert time, so
+	// only rewrite the entry when one of them actually changed.
+	if _, err := ex.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=? AND (path IS NOT ? OR method IS NOT ?)`,
+		f.Path, f.Method, f.ID, f.Path, f.Method); err != nil {
 		return err
 	}
 	return nil
