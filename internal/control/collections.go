@@ -54,9 +54,11 @@ func isAISource(r *http.Request) bool { return aiSourceFlag(r) != 0 }
 var errNotUISession = errors.New("script trust and capability grants require an interactive UI session; AI, MCP, API-key and agent callers can never approve scripts")
 
 // requireUISession allows only an interactive UI session: no AI/MCP source
-// marker, no bearer API key (keys are for agents and CLIs), and the anti-CSRF
-// marker the UI attaches to every mutation. It is the single gate for trust
-// and capability changes.
+// marker, no bearer API key (keys are for agents and CLIs), the anti-CSRF
+// marker the UI attaches to every mutation, and the per-process UI session
+// cookie that only the browser which loaded the UI holds (ui_session.go), so
+// the gate does not rest on headers a caller can choose. It is the single gate
+// for trust and capability changes.
 func requireUISession(r *http.Request) error {
 	if src := strings.TrimSpace(r.Header.Get("X-Interseptor-Source")); src != "" && !strings.EqualFold(src, "ui") {
 		return errNotUISession
@@ -66,6 +68,9 @@ func requireUISession(r *http.Request) error {
 	}
 	if !csrfHeaderOK(r) {
 		return errors.New("missing X-Interseptor-CSRF header")
+	}
+	if !hasUISessionCookie(r) {
+		return errUISessionStale
 	}
 	return nil
 }

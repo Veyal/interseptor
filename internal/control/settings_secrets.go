@@ -9,6 +9,31 @@ import (
 // that echoes it to an agent) reports only whether one is saved; a client
 // re-saving the masked upstream URL asks the server to keep the stored password.
 
+// redactProxyURL masks the password in a proxy URL's userinfo, keeping the
+// scheme, user and address so a reader can still see where traffic goes.
+func redactProxyURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	if _, ok := u.User.Password(); !ok {
+		return raw
+	}
+	return u.Redacted()
+}
+
+// maskUpstreamUserInfo renders raw exactly as GET /api/settings emits it for an
+// upstream proxy: the user, never the password. A caller that sends this value
+// straight back is echoing a mask, not asking to erase the stored password.
+func maskUpstreamUserInfo(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = url.User(u.User.Username())
+	return u.String()
+}
+
 // redactUpstreamPassword drops the password from a stored upstream proxy URL and
 // reports whether there was one. An unparseable value is returned unchanged so
 // the UI can still say it is invalid; it cannot carry a parsed password.

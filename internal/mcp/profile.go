@@ -273,6 +273,7 @@ func profileRefusal(name string, p Profile) error {
 func instructionSections() []string {
 	return []string{
 		sectionPreamble,
+		sectionUntrusted,
 		sectionGuide,
 		sectionSetup,
 		sectionAuth,

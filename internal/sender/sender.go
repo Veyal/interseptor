@@ -98,6 +98,7 @@ type Sender struct {
 	optCl optionClients // per-options client cache (options.go)
 
 	ownCheck atomic.Pointer[func(net.IP, int) bool] // refuses the tool's own listeners at dial time
+	ownPorts atomic.Pointer[func() []int]           // own listener ports, for the proxied hop
 
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
@@ -268,10 +269,19 @@ func New(st *store.Store, cap *capture.Capturer) *Sender {
 	return s
 }
 
-func (s *Sender) proxyForRequest(*http.Request) (*url.URL, error) {
+func (s *Sender) proxyForRequest(req *http.Request) (*url.URL, error) {
 	up := s.upstream.Load()
 	if up == nil || senderSOCKSUpstream(up) {
 		return nil, nil
+	}
+	// The upstream proxy resolves and connects on our behalf, so the dial-time
+	// own-listener guard never sees this destination: vet it before proxying.
+	port, _ := strconv.Atoi(req.URL.Port())
+	if port == 0 {
+		port = defaultPort(req.URL.Scheme)
+	}
+	if err := checkProxiedOwnPort(req.Context(), s.ownPortList(), nil, req.URL.Hostname(), port); err != nil {
+		return nil, err
 	}
 	return up, nil
 }

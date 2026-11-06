@@ -81,7 +81,7 @@ func TestExportFullFilePreservesDestinationOnArchiveFailure(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("known-good-backup"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	body, err := json.Marshal(map[string]string{"path": dest})
+	body, err := json.Marshal(map[string]any{"path": dest, "overwrite": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestExportFullFileReplacesDestinationAfterSuccess(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	body, err := json.Marshal(map[string]string{"path": dest})
+	body, err := json.Marshal(map[string]any{"path": dest, "overwrite": true})
 	if err != nil {
 		t.Fatal(err)
 	}

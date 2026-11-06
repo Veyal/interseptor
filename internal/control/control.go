@@ -153,6 +153,7 @@ type Hub struct {
 	iosTCPReachable  func(string, int) bool
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
+	tunnelHost      atomic.Value  // string: running tunnel's public hostname (trusted forwarder)
 	tunnelCloseOnce sync.Once
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
@@ -218,6 +219,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		gcBodiesFn:           st.GCBodies,
 	}
 	h.snd.SetOwnListenerCheck(h.isOwnDialTarget)
+	h.snd.SetOwnPorts(h.ownListenerPorts)
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
@@ -232,6 +234,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		return "9966"
 	})
 	h.tun.SetOnURL(func(url string) {
+		h.setTunnelHost(url)
 		h.broadcast(map[string]any{"type": "tunnel.update", "url": url})
 	})
 	h.wireSessionRefresh()
@@ -257,19 +260,9 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 
 // Handler returns the control-plane HTTP handler, wrapped in the loopback/CSRF
 // security guard (see securityGuard).
-func (h *Hub) Handler() http.Handler { return noFraming(h.securityGuard(h.mux)) }
-
-// noFraming stops other sites from framing the UI (clickjacking a same-origin
-// action such as "Replay now"). The public OOB catcher answers callers verbatim.
-func noFraming(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/oob/") {
-			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
-		}
-		next.ServeHTTP(w, r)
-	})
-}
+// securityHeaders owns framing protection (frame-ancestors 'none'), so it
+// replaces the older noFraming wrapper and also covers guard refusals.
+func (h *Hub) Handler() http.Handler { return securityHeaders(h.securityGuard(h.mux)) }
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.
@@ -971,6 +964,7 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
+	sandboxDownload(w) // the target's own Content-Type: never let it script our origin
 	if stream != nil {
 		defer stream.Close()
 		if _, err := io.Copy(w, stream); err != nil {
@@ -1615,6 +1609,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, upPasswordSet := redactUpstreamPassword(up)
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
+	passwordSet := proxyAuthPassword != ""
 	writeJSON(w, http.StatusOK, settingsJSON{
 		ProxyAddr: displayProxyAddrs(proxyAddrs), ProxyAddrs: proxyAddrs,
 		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
@@ -1625,7 +1620,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		FindingsUIEditing: findingsUIEditing == "1",
 		OriginTLSVerify:   originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
-		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPasswordSet: proxyAuthPassword != "",
+		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPasswordSet: passwordSet,
 		ProxyAuthPasswordMissing:     proxyAuthEnabled == "1" && proxyAuthPassword == "",
 		UpstreamProxyPasswordMissing: upPasswordRemoved == "1" && up != "" && !upPasswordSet,
 	})
@@ -1752,7 +1747,7 @@ func (u *settingsUpdate) hostList(p *[]string, key string, set func([]string)) {
 	}
 }
 
-func (h *settingsAPI) planSettingsUpdate(in *settingsPut) (*settingsUpdate, error) {
+func (h *settingsAPI) planSettingsUpdate(in *settingsPut, agentCaller bool) (*settingsUpdate, error) {
 	u := &settingsUpdate{values: map[string]string{}}
 	u.toggle(in.OobEnabled, "oob.enabled", nil)
 	u.toggle(in.CaptureScopeOnly, "capture.scopeOnly", h.SetCaptureScopeOnly)
@@ -1770,7 +1765,10 @@ func (h *settingsAPI) planSettingsUpdate(in *settingsPut) (*settingsUpdate, erro
 	if err := h.planUpstreamProxyCA(u, in.UpstreamProxyCA); err != nil {
 		return nil, err
 	}
-	if err := h.planUpstreamProxy(u, in.UpstreamProxy, in.UpstreamProxyKeepPassword); err != nil {
+	// The agent channel gets the masked upstream URL back and may replay it
+	// verbatim; that must never erase the stored password. The UI states its
+	// intent explicitly through upstreamProxyKeepPassword.
+	if err := h.planUpstreamProxy(u, in.UpstreamProxy, in.UpstreamProxyKeepPassword, agentCaller); err != nil {
 		return nil, err
 	}
 	if err := h.planProxyAddrs(u, in.ProxyAddrs, in.ProxyAddr); err != nil {
@@ -1853,7 +1851,7 @@ func (h *settingsAPI) planUpstreamProxyCA(u *settingsUpdate, raw *string) error 
 	return nil
 }
 
-func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string, keepPassword bool) error {
+func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string, keepPassword, preserveMasked bool) error {
 	if raw == nil {
 		return nil
 	}
@@ -1864,6 +1862,12 @@ func (h *settingsAPI) planUpstreamProxy(u *settingsUpdate, raw *string, keepPass
 	}
 	if keepPassword {
 		value = keepUpstreamPassword(value, previous)
+	}
+	// A masked read echoed straight back means "keep the stored credentials" —
+	// otherwise an agent replaying the settings it just read would erase the
+	// password. Only the exact emitted mask is treated this way.
+	if preserveMasked && value != previous && value == maskUpstreamUserInfo(previous) {
+		value = previous
 	}
 	u.values["upstream.proxy"] = value
 	u.values[upstreamPasswordRemovedKey] = "" // an explicit save settles the backup gap
@@ -2009,7 +2013,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
-	u, err := h.planSettingsUpdate(&in)
+	u, err := h.planSettingsUpdate(&in, isAISource(r) || bearerToken(r) != "")
 	if err == nil {
 		err = h.commitSettingsUpdate(u)
 	}
@@ -2058,6 +2062,9 @@ func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 	// The UI is embedded and changes with every build, and the modules have no
 	// version hash: writeUIAsset makes the browser revalidate every asset
 	// (no-cache + ETag, 304 when unchanged) and gzips text when accepted.
+	if name == "index.html" {
+		issueUISessionCookie(w, r) // human-only gate for trust/secret actions
+	}
 	writeUIAsset(w, r, name, asset)
 }
 

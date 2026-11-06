@@ -362,11 +362,16 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 			if up == nil || senderSOCKSUpstream(up) {
 				return nil, nil
 			}
+			port, _ := strconv.Atoi(req.URL.Port())
+			if port == 0 {
+				port = defaultPort(req.URL.Scheme)
+			}
+			// The proxy resolves and connects on our behalf, so the dial-time
+			// own-listener guard never runs for this destination: vet it here.
+			if err := checkProxiedOwnPort(req.Context(), s.ownPortList(), o.DNSOverride, req.URL.Hostname(), port); err != nil {
+				return nil, err
+			}
 			if o.Guard != nil {
-				port, _ := strconv.Atoi(req.URL.Port())
-				if port == 0 {
-					port = defaultPort(req.URL.Scheme)
-				}
 				if err := checkProxiedHost(req.Context(), o.Guard, o.DNSOverride, req.URL.Hostname(), port); err != nil {
 					return nil, err
 				}

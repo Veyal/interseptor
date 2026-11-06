@@ -95,11 +95,17 @@ func TestHandlerRefusesFraming(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9966"+path, nil)
 		rec := httptest.NewRecorder()
 		h.Handler().ServeHTTP(rec, req)
-		if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
-			t.Errorf("%s: X-Frame-Options = %q, want SAMEORIGIN", path, got)
+		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s: X-Frame-Options = %q, want DENY", path, got)
 		}
-		if got := rec.Header().Get("Content-Security-Policy"); got != "frame-ancestors 'self'" {
-			t.Errorf("%s: Content-Security-Policy = %q", path, got)
+		if got := rec.Header().Get("Content-Security-Policy"); got != controlCSP {
+			t.Errorf("%s: Content-Security-Policy = %q, want %q", path, got, controlCSP)
+		}
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options = %q, want nosniff", path, got)
+		}
+		if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
+			t.Errorf("%s: Referrer-Policy = %q, want same-origin", path, got)
 		}
 	}
 }

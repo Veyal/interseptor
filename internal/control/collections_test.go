@@ -41,7 +41,7 @@ func newCollFixture(t *testing.T) *collFixture {
 type hdrs map[string]string
 
 var (
-	asUI = hdrs{"X-Interseptor-CSRF": "1"}
+	asUI = hdrs{"X-Interseptor-CSRF": "1", "Cookie": uiSessionCookie + "=" + uiSessionSecret}
 	asAI = hdrs{"X-Interseptor-Source": "ai", "X-Interseptor-CSRF": "1"}
 )
 

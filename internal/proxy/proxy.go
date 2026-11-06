@@ -1790,13 +1790,19 @@ func (s *Server) teeBody(flow *proxyFlow, body io.Reader) (io.Reader, func() (st
 	return body, func() (string, int64, error) { return "", 0, nil }, nil
 }
 
-// isLoopbackName reports whether a bare hostname names the loopback interface.
+// isLoopbackName reports whether host names this machine: "localhost" (with a
+// trailing dot and any "*.localhost" subdomain), a loopback literal, or the
+// unspecified address (connecting to 0.0.0.0 / :: reaches a local listener on
+// most stacks). Brackets are tolerated so an edited request that writes "[::1]"
+// is still recognised.
 func isLoopbackName(host string) bool {
-	if strings.EqualFold(host, "localhost") {
+	host = strings.TrimSuffix(host, ".")
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
 }
 
 // recordRequest queues a flow the moment its request is sent upstream — before
