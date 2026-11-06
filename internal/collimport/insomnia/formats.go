@@ -2,6 +2,7 @@ package insomnia
 
 import (
 	"sort"
+	"strconv"
 
 	"github.com/Veyal/interseptor/internal/collimport/insomnia/impkit"
 )
@@ -14,9 +15,29 @@ func parseV4(root map[string]any) (*parsed, error) {
 	envs := map[string]*env{}
 	type link struct {
 		id, parent string
+		env        bool
 	}
 	var order []link
 	workspaces := map[string]string{}
+	synth := 0
+	// key gives a resource its index key: the export's _id when usable, else a
+	// unique synthetic one. Several malformed resources share _id "" (or a
+	// duplicate id); collapsing them lost a resource and emitted the surviving
+	// node twice with the same uid.
+	taken := func(k string) bool { return nodes[k] != nil || envs[k] != nil }
+	key := func(id string) (string, bool) {
+		if id != "" && !taken(id) {
+			return id, false
+		}
+		for {
+			synth++
+			k := "no-id:" + strconv.Itoa(synth)
+			if !taken(k) {
+				return k, true
+			}
+		}
+	}
+	synthetic := 0
 	for _, r := range res {
 		m, ok := r.(map[string]any)
 		if !ok {
@@ -30,6 +51,10 @@ func parseV4(root map[string]any) (*parsed, error) {
 				p.name = str(m, "name")
 			}
 		case "request_group", "request":
+			k, made := key(id)
+			if made {
+				synthetic++
+			}
 			n := &node{id: id, name: str(m, "name"), desc: str(m, "description"), folder: t == "request_group",
 				sortKey: num(m, "metaSortKey")}
 			if n.folder {
@@ -39,21 +64,32 @@ func parseV4(root map[string]any) (*parsed, error) {
 			} else {
 				fillRequest(n, m)
 			}
-			nodes[id] = n
-			order = append(order, link{id, parent})
+			nodes[k] = n
+			order = append(order, link{id: k, parent: parent})
 		case "environment":
-			envs[id] = &env{id: id, name: str(m, "name"), data: obj(m, "data"), private: boolean(m, "isPrivate"),
+			k, made := key(id)
+			if made {
+				synthetic++
+			}
+			envs[k] = &env{id: id, name: str(m, "name"), data: obj(m, "data"), private: boolean(m, "isPrivate"),
 				sortKey: num(m, "metaSortKey")}
-			order = append(order, link{"env:" + id, parent})
+			order = append(order, link{id: k, parent: parent, env: true})
 		default:
 			p.skipped[t]++
 		}
 	}
+	if synthetic > 0 {
+		p.notes = append(p.notes, impkit.Entry{Level: impkit.Degraded, Feature: "resource-id",
+			Message: strconv.Itoa(synthetic) + " resource(s) had a missing or duplicate _id; each was imported under a synthetic id so none was lost"})
+	}
 	for _, l := range order {
-		if len(l.id) > 4 && l.id[:4] == "env:" {
+		if l.env {
 			continue
 		}
 		n := nodes[l.id]
+		if n == nil {
+			continue // malformed export: a link without its node
+		}
 		if parent, ok := nodes[l.parent]; ok && parent.folder && parent != n {
 			parent.children = append(parent.children, n)
 		} else if _, isWS := workspaces[l.parent]; isWS || l.parent == "" {
@@ -75,7 +111,7 @@ func parseV4(root map[string]any) (*parsed, error) {
 		e := envs[id]
 		var parent string
 		for _, l := range order {
-			if l.id == "env:"+id {
+			if l.env && l.id == id {
 				parent = l.parent
 			}
 		}

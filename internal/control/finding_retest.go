@@ -83,6 +83,12 @@ type retestResult struct {
 	Flows       []retestObservation `json:"flows"`
 	// Status is the finding's status, unchanged. A retest never moves it.
 	Status string `json:"status"`
+	// Requested is how many attached evidence flows the finding has, Skipped how
+	// many the per-retest bound left out. A verdict over a subset must never read
+	// as if it covered every PoC the finding carries.
+	Requested int  `json:"requested"`
+	Skipped   int  `json:"skipped"`
+	Capped    bool `json:"capped"`
 }
 
 // retestFinding replays the finding's evidence and reports what happened.
@@ -109,7 +115,7 @@ func (h *findingsAPI) retestFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, "finding not found")
 		return
 	}
-	targets, err := retestTargets(f, in.FlowIDs)
+	targets, attachedTotal, err := retestTargets(f, in.FlowIDs)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -138,6 +144,13 @@ func (h *findingsAPI) retestFinding(w http.ResponseWriter, r *http.Request) {
 		out.Flows = append(out.Flows, obs)
 	}
 	out.Observation, out.Conclusion = summariseRetest(out.Flows)
+	out.Requested = attachedTotal
+	if len(targets) < attachedTotal {
+		out.Capped = true
+		out.Skipped = attachedTotal - len(targets)
+		out.Conclusion += fmt.Sprintf(" Replayed %d of %d attached evidence flows (limit %d): %d were not tested, so this verdict does not cover them.",
+			len(targets), attachedTotal, maxRetestFlows, out.Skipped)
+	}
 	h.broadcast(map[string]any{"type": "findings.update"})
 	writeJSON(w, http.StatusOK, out)
 }
@@ -149,7 +162,7 @@ func (h *findingsAPI) retestFinding(w http.ResponseWriter, r *http.Request) {
 // as evidence, so without this each retest would replay every previous retest as
 // well and one click would send more traffic at the target than the last. Naming
 // it in flowIds still replays it.
-func retestTargets(f *store.Finding, requested []int64) ([]int64, error) {
+func retestTargets(f *store.Finding, requested []int64) (targets []int64, attachedTotal int, err error) {
 	fromRetest := map[int64]bool{}
 	for _, bl := range f.Blocks {
 		if bl.Type == "flow" && bl.Role == "retest" && bl.FlowID > 0 {
@@ -177,16 +190,17 @@ func retestTargets(f *store.Finding, requested []int64) ([]int64, error) {
 		add(fl.FlowID, fl.Missing)
 	}
 	if len(requested) == 0 {
+		total := len(order)
 		if len(order) > maxRetestFlows {
 			order = order[:maxRetestFlows]
 		}
-		return order, nil
+		return order, total, nil
 	}
 	var picked []int64
 	seen := map[int64]bool{}
 	for _, flowID := range requested {
 		if !attached[flowID] {
-			return nil, fmt.Errorf("flow %d is not attached to this finding as retained evidence", flowID)
+			return nil, 0, fmt.Errorf("flow %d is not attached to this finding as retained evidence", flowID)
 		}
 		if !seen[flowID] {
 			seen[flowID] = true
@@ -194,9 +208,9 @@ func retestTargets(f *store.Finding, requested []int64) ([]int64, error) {
 		}
 	}
 	if len(picked) > maxRetestFlows {
-		return nil, fmt.Errorf("at most %d flows per retest", maxRetestFlows)
+		return nil, 0, fmt.Errorf("at most %d flows per retest", maxRetestFlows)
 	}
-	return picked, nil
+	return picked, len(picked), nil
 }
 
 // retestOneFlow replays one evidence flow and compares the two responses.

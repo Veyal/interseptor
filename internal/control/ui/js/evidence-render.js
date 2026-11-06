@@ -161,6 +161,24 @@ export function toolbarState({ runId, running, total, results } = {}) {
   return { ...base, enabled: true, note: base.timingRecorded ? '' : 'timing not recorded for this run: Timeline and Race fall back to a completion-ordered strip' };
 }
 
+// findingPickerList bounds the "+ Finding" picker to FINDING_CAP rows and says
+// how many it left out. The list used to be sliced silently and then reported as
+// "200 findings", so on a larger project an operator could not attach a render
+// to an older finding and nothing on screen explained why.
+export function findingPickerList(findings, cap = FINDING_CAP) {
+  const all = (Array.isArray(findings) ? findings : []).filter((f) => f && Number(f.id) > 0);
+  const limit = Math.max(0, Number(cap) || 0);
+  const list = all.slice(0, limit);
+  const label = (f) => '#' + f.id + ' ' + (f.title || 'Untitled') + (f.severity ? ' (' + f.severity + ')' : '');
+  return {
+    rows: list.map((f) => ({ id: Number(f.id), label: label(f) })),
+    hidden: all.length - list.length,
+    status: all.length > list.length
+      ? 'Showing the first ' + list.length + ' of ' + all.length + ' findings; older findings are not listed here.'
+      : list.length ? list.length + (list.length === 1 ? ' finding' : ' findings') : 'No findings yet. Create one from Findings first.',
+  };
+}
+
 export function decodeHeader(v) {
   if (v == null) return '';
   const s = String(v);
@@ -383,17 +401,17 @@ async function fillFindings(core) {
   st.textContent = 'Loading findings…';
   try {
     const d = await core.api('/api/findings');
-    const list = (d && d.findings || []).slice(0, FINDING_CAP);
+    const picker = findingPickerList(d && d.findings);
     sel.textContent = '';
-    list.forEach((f) => {
+    picker.rows.forEach((row) => {
       const o = document.createElement('option');
-      o.value = String(f.id);
-      o.textContent = '#' + f.id + ' ' + (f.title || 'Untitled') + (f.severity ? ' (' + f.severity + ')' : '');
+      o.value = String(row.id);
+      o.textContent = row.label;
       sel.appendChild(o);
     });
     findingsLoaded = true;
-    st.textContent = list.length ? list.length + (list.length === 1 ? ' finding' : ' findings') : 'No findings yet. Create one from Findings first.';
-    $id('evRenderPickGo').disabled = !list.length;
+    st.textContent = picker.status;
+    $id('evRenderPickGo').disabled = !picker.rows.length;
   } catch (e) {
     st.textContent = 'Could not load findings: ' + ((e && e.message) || 'request failed');
     $id('evRenderPickGo').disabled = true;

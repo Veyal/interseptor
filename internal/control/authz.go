@@ -63,6 +63,11 @@ type identitySource struct {
 	Path   string `json:"path,omitempty"`
 }
 
+// maxBulkAuthzFlows bounds one bulk authz run. It is a cost guard (each endpoint
+// is replayed once per identity), reported back as summary.capped so a partial
+// sweep is never presented as a complete one.
+const maxBulkAuthzFlows = 100
+
 // identity check verdicts (POST /api/authz/identities/{name}/check).
 const (
 	identityVerdictOK      = "ok"
@@ -307,6 +312,10 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var flows []*store.Flow
+	// requested / cappedEndpoints describe the bulk target bound so the summary can
+	// say "tested 100 of 300 asked for" instead of presenting a subset as complete.
+	requested := 1
+	cappedEndpoints := false
 	skipStatic := in.InScope
 	if in.SkipStatic != nil {
 		skipStatic = *in.SkipStatic
@@ -323,8 +332,13 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		if limit <= 0 {
 			limit = 30
 		}
-		if limit > 100 {
-			limit = 100
+		// The ceiling is a cost guard, but silently testing fewer endpoints than
+		// asked makes an untested endpoint indistinguishable from a clean one in an
+		// access-control result — so the response says what was actually tested.
+		requested = limit
+		if limit > maxBulkAuthzFlows {
+			limit = maxBulkAuthzFlows
+			cappedEndpoints = true
 		}
 		raw, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 			Limit:        limit * 5, // over-fetch; authzTargets dedupes + static filter
@@ -356,6 +370,9 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		"summary": map[string]any{
 			"endpoints": len(runs),
 			"flagged":   flagged,
+			"requested": requested,
+			"capped":    cappedEndpoints,
+			"maxFlows":  maxBulkAuthzFlows,
 		},
 	}
 	kind := authzRunKindBulk
@@ -468,8 +485,13 @@ func (h *authzAPI) authzTargets(flows []*store.Flow, skipStatic bool) []*store.F
 
 func applyIdentityHeaders(base map[string][]string, id identity) map[string][]string {
 	out := cloneHeaders(base)
+	// Always start from an anonymous request: the identity is what the replay
+	// claims to be. Keeping the captured Cookie/Authorization whenever the
+	// identity happened to set some other header replayed the victim's session
+	// (and then reported "same access"), which turns every endpoint into a false
+	// IDOR — or hides a real one.
+	stripAuthHeaders(out)
 	if strings.TrimSpace(id.Headers) == "" {
-		stripAuthHeaders(out)
 		return out
 	}
 	for _, line := range strings.Split(id.Headers, "\n") {

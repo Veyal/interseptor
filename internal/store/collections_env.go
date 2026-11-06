@@ -156,6 +156,55 @@ func (s *Store) UpdateEnvironment(e Environment) (*Environment, error) {
 	return &e, nil
 }
 
+// UpdateEnvironmentWithVariables updates an environment and, when vars is
+// non-nil, replaces its declared variables — both in one transaction. A
+// rejected variable set (empty/duplicate key, bad type, stale revision) must
+// leave the environment exactly as it was: the API answers 400/409, so nothing
+// that request asked for may have been applied.
+func (s *Store) UpdateEnvironmentWithVariables(e Environment, vars *[]Variable) (*Environment, error) {
+	if err := s.ensureCollections(); err != nil {
+		return nil, err
+	}
+	cur, err := s.GetEnvironment(e.UID)
+	if err != nil {
+		return nil, err
+	}
+	if e.Rev != 0 && e.Rev != cur.Rev {
+		return nil, ErrCollConflict
+	}
+	if strings.TrimSpace(e.Name) == "" {
+		return nil, fmt.Errorf("%w: name required", ErrCollInvalid)
+	}
+	seen, err := validVarSet(vars)
+	if err != nil {
+		return nil, err
+	}
+	e.Kind, e.CollectionUID = cur.Kind, cur.CollectionUID
+	e.Rev, e.TS = cur.Rev+1, nowMs()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE ix_environments SET name=?,bound_identity=?,base_target_pin=?,rev=?,ts=? WHERE uid=? AND rev=?`,
+		e.Name, e.BoundIdentity, e.BaseTargetPin, e.Rev, e.TS, e.UID, cur.Rev)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrCollConflict
+	}
+	if vars != nil {
+		if err := writeVariablesTx(tx, VarOwnerEnvironment, e.UID, *vars, seen); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
 // DeleteEnvironment removes an environment with its variables and current values.
 func (s *Store) DeleteEnvironment(uid string) error {
 	if _, err := s.GetEnvironment(uid); err != nil {
@@ -188,21 +237,43 @@ func (s *Store) SetVariables(ownerKind, ownerUID string, vars []Variable) error 
 	if !validVarOwner(ownerKind) {
 		return fmt.Errorf("%w: owner kind %q", ErrCollInvalid, ownerKind)
 	}
-	seen := map[string]bool{}
-	for _, v := range vars {
-		if v.Key == "" || seen[v.Key] {
-			return fmt.Errorf("%w: empty or duplicate variable key %q", ErrCollInvalid, v.Key)
-		}
-		seen[v.Key] = true
-		if v.Type != "" && v.Type != VarTypeDefault && v.Type != VarTypeSecret && v.Type != VarTypeAny {
-			return fmt.Errorf("%w: variable type %q", ErrCollInvalid, v.Type)
-		}
+	seen, err := validVarSet(&vars)
+	if err != nil {
+		return err
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := writeVariablesTx(tx, ownerKind, ownerUID, vars, seen); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// validVarSet checks a declared variable set and returns its keys. A nil set is
+// valid and means "leave existing variables alone".
+func validVarSet(vars *[]Variable) (map[string]bool, error) {
+	seen := map[string]bool{}
+	if vars == nil {
+		return seen, nil
+	}
+	for _, v := range *vars {
+		if v.Key == "" || seen[v.Key] {
+			return nil, fmt.Errorf("%w: empty or duplicate variable key %q", ErrCollInvalid, v.Key)
+		}
+		seen[v.Key] = true
+		if v.Type != "" && v.Type != VarTypeDefault && v.Type != VarTypeSecret && v.Type != VarTypeAny {
+			return nil, fmt.Errorf("%w: variable type %q", ErrCollInvalid, v.Type)
+		}
+	}
+	return seen, nil
+}
+
+// writeVariablesTx replaces one owner's variables inside an existing
+// transaction and drops current values whose key no longer exists.
+func writeVariablesTx(tx *sql.Tx, ownerKind, ownerUID string, vars []Variable, seen map[string]bool) error {
 	if _, err := tx.Exec(`DELETE FROM ix_variables WHERE owner_kind=? AND owner_uid=?`, ownerKind, ownerUID); err != nil {
 		return err
 	}
@@ -240,7 +311,7 @@ func (s *Store) SetVariables(ownerKind, ownerUID string, vars []Variable) error 
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func b2i(b bool) int {

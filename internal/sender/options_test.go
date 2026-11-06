@@ -2,11 +2,13 @@ package sender
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -216,5 +218,250 @@ func TestNextRedirectStripsCredentialsCrossHost(t *testing.T) {
 	}
 	if _, has := n.Headers["Authorization"]; has || n.Headers["X-Keep"] == nil || n.Headers["Content-Type"] != nil {
 		t.Fatalf("headers %v", n.Headers)
+	}
+}
+
+// SendOptions.Timeout is documented as the whole exchange: following redirects
+// must not restart it per hop, or a chain of slow hops runs for up to
+// MaxRedirects × Timeout instead of the budget the caller set.
+func TestOptionsTimeoutSpansRedirectChain(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		http.Redirect(w, r, "/hop", http.StatusFound)
+	}))
+	defer srv.Close()
+	snd := newOptSender(t)
+	start := time.Now()
+	f, err := snd.Send(Request{URL: srv.URL + "/start", Options: &SendOptions{
+		FollowRedirects: true, MaxRedirects: 5, Timeout: 200 * time.Millisecond,
+	}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 450*time.Millisecond {
+		t.Fatalf("redirect chain took %v with a 200ms timeout", elapsed)
+	}
+	if f.Status != http.StatusBadGateway || f.Error == "" {
+		t.Fatalf("final flow = %+v, want the timed-out hop recorded as a 502", f)
+	}
+}
+
+// startConnectProxy is a minimal HTTP CONNECT proxy: enough to exercise a
+// proxied HTTPS send without an external dependency.
+func startConnectProxy(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				req, err := http.ReadRequest(br)
+				if err != nil {
+					return
+				}
+				up, err := net.Dial("tcp", req.Host)
+				if err != nil {
+					return
+				}
+				defer up.Close()
+				if _, err := io.WriteString(c, "HTTP/1.1 200 Connection established\r\n\r\n"); err != nil {
+					return
+				}
+				go func() { _, _ = io.Copy(up, br) }()
+				_, _ = io.Copy(c, up)
+			}(c)
+		}
+	}()
+	return "http://" + ln.Addr().String()
+}
+
+// Through an upstream proxy net/http performs the origin TLS handshake itself
+// (after CONNECT), so the per-send TLS policy has to live on the transport too.
+// Before that, a proxied send to a self-signed origin — the normal pentest
+// target — failed verification even though VerifyTLS defaults to false.
+func TestOptionsProxiedHTTPSKeepsPermissiveTLS(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	defer origin.Close()
+	proxy := startConnectProxy(t)
+	snd := newOptSender(t)
+
+	f, err := snd.Send(Request{URL: origin.URL, Options: &SendOptions{ProxyURL: proxy}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if f.Status != http.StatusOK {
+		t.Fatalf("proxied HTTPS to a self-signed origin = %d %q; want 200 (VerifyTLS is off by default)", f.Status, f.Error)
+	}
+}
+
+// The other direction: an explicit VerifyTLS must still reject a self-signed
+// origin when the send goes through a proxy (the fix must not simply disable
+// verification everywhere).
+func TestOptionsProxiedHTTPSHonoursVerifyTLS(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	defer origin.Close()
+	proxy := startConnectProxy(t)
+	snd := newOptSender(t)
+
+	f, err := snd.Send(Request{URL: origin.URL, Options: &SendOptions{ProxyURL: proxy, VerifyTLS: true}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if f.Status != http.StatusBadGateway || !strings.Contains(f.Error, "certificate") {
+		t.Fatalf("VerifyTLS through a proxy = %d %q; want a certificate failure", f.Status, f.Error)
+	}
+}
+
+// The raw-headers wire path writes HTTP/1.1 bytes, so it must not offer "h2"
+// ALPN even when the HTTP2 option is set: a server that picks h2 answers with
+// binary frames that ReadResponse cannot parse.
+func TestOptionsRawHeadersStayHTTP11WithHTTP2(t *testing.T) {
+	seen := make(chan string, 1)
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Proto + "|" + r.Header.Get("X-Raw")
+		io.WriteString(w, "ok")
+	}))
+	origin.EnableHTTP2 = true
+	origin.StartTLS()
+	defer origin.Close()
+
+	snd := newOptSender(t)
+	f, err := snd.Send(Request{URL: origin.URL + "/x", Options: &SendOptions{
+		HTTP2: true, RawHeaders: []RawHeader{{"X-Raw", "1"}}}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if f.Status != http.StatusOK {
+		t.Fatalf("raw headers with HTTP2 = %d %q; the raw wire path must stay HTTP/1.1", f.Status, f.Error)
+	}
+	if got := <-seen; got != "HTTP/1.1|1" {
+		t.Fatalf("origin saw %q, want HTTP/1.1 with the raw header", got)
+	}
+	if f.HTTPVersion != "HTTP/1.1" {
+		t.Fatalf("recorded version = %q, want HTTP/1.1", f.HTTPVersion)
+	}
+}
+
+// An invalid ProxyURL must be rejected on the raw wire path too. Silently
+// ignoring it sends the request directly, bypassing the configured egress.
+func TestOptionsRawHeadersRejectInvalidProxy(t *testing.T) {
+	var direct atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		direct.Add(1)
+		io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+	snd := newOptSender(t)
+
+	f, err := snd.Send(Request{URL: srv.URL + "/x", Options: &SendOptions{
+		ProxyURL: "ftp://127.0.0.1:9", RawHeaders: []RawHeader{{"X-A", "1"}}}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if direct.Load() != 0 {
+		t.Fatal("invalid proxy was silently bypassed: the request went direct")
+	}
+	if f.Status != http.StatusBadGateway || !strings.Contains(f.Error, "proxy") {
+		t.Fatalf("raw send with an invalid proxy = %d %q; want a proxy error", f.Status, f.Error)
+	}
+}
+
+// A redirect that stays on the same host must keep the wire Host override: the
+// override selects a virtual host, and dropping it on the next hop silently
+// retargets the follow-up request at the default vhost.
+func TestOptionsRedirectKeepsHostOverrideOnSameHost(t *testing.T) {
+	var mu sync.Mutex
+	var hosts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hosts = append(hosts, r.Host)
+		mu.Unlock()
+		if r.URL.Path == "/a" {
+			http.Redirect(w, r, "/b", http.StatusFound)
+			return
+		}
+		io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+	snd := newOptSender(t)
+
+	f, err := snd.Send(Request{URL: srv.URL + "/a", Host: "vhost.example",
+		Options: &SendOptions{FollowRedirects: true}})
+	if err != nil || f.Status != http.StatusOK {
+		t.Fatalf("Send: %v %+v", err, f)
+	}
+	mu.Lock()
+	got := append([]string(nil), hosts...)
+	mu.Unlock()
+	if len(got) != 2 || got[0] != "vhost.example" || got[1] != "vhost.example" {
+		t.Fatalf("wire Host per hop = %v, want the override on both same-host hops", got)
+	}
+
+	// A redirect to a different hostname must still drop it. Two loopback
+	// servers share 127.0.0.1, so the redirect targets "localhost" instead.
+	var otherHost string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherHost = r.Host
+		io.WriteString(w, "ok")
+	}))
+	defer other.Close()
+	_, otherPort, _ := net.SplitHostPort(strings.TrimPrefix(other.URL, "http://"))
+	crossTarget := "http://localhost:" + otherPort + "/c"
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, crossTarget, http.StatusFound)
+	}))
+	defer srv2.Close()
+	if _, err := snd.Send(Request{URL: srv2.URL + "/a", Host: "vhost.example",
+		Options: &SendOptions{FollowRedirects: true}}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if strings.Contains(otherHost, "vhost.example") {
+		t.Fatalf("cross-host redirect leaked the Host override: %q", otherHost)
+	}
+}
+
+// The transport-level TLS policy must not cost the HTTP/2 path: a proxied HTTPS
+// send with HTTP2 still negotiates h2, and the ServerName override is honoured
+// for the origin verification (it used to be ignored once a proxy was set).
+func TestOptionsProxiedHTTPSHTTP2AndServerName(t *testing.T) {
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	origin.EnableHTTP2 = true
+	origin.StartTLS()
+	defer origin.Close()
+	proxy := startConnectProxy(t)
+	snd := newOptSender(t)
+
+	f, err := snd.Send(Request{URL: origin.URL, Options: &SendOptions{HTTP2: true, ProxyURL: proxy}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if f.Status != http.StatusOK || f.HTTPVersion != "HTTP/2.0" {
+		t.Fatalf("proxied HTTP2 = %d %q proto=%q; want 200 over HTTP/2.0", f.Status, f.Error, f.HTTPVersion)
+	}
+
+	// The httptest certificate covers 127.0.0.1; asking to verify a name it does
+	// not cover must fail, proving the override reached the origin handshake.
+	f2, err := snd.Send(Request{URL: origin.URL, Options: &SendOptions{
+		VerifyTLS: true, ServerName: "wrong.example", ProxyURL: proxy}})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if f2.Status != http.StatusBadGateway || !strings.Contains(f2.Error, "certificate") {
+		t.Fatalf("ServerName override through a proxy = %d %q; want a certificate failure", f2.Status, f2.Error)
 	}
 }

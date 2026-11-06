@@ -110,7 +110,11 @@ func runLoginMacroReq(parent context.Context, cl *http.Client, m LoginMacro) (in
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	_, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// Drain the body so the connection can be reused: only the headers carry the
+	// session, but a partially read body makes net/http close the connection, so
+	// every re-login against a response over the old 1 MB read cap cost a fresh
+	// connection. The macro timeout bounds how long this can take.
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode, ExtractSessionHeaders(resp), nil
 }
 

@@ -45,13 +45,21 @@ func OnScanIssue(h ScanIssueHook) {
 	mu.Unlock()
 }
 
+// invokeHook runs one hook with a panic guard: hooks are called from the capture
+// hot path under a best-effort contract, so a buggy extension must not take down
+// the proxy process (or skip the hooks registered after it).
+func invokeHook(hook func()) {
+	defer func() { _ = recover() }()
+	hook()
+}
+
 // EmitFlowCaptured invokes registered flow hooks outside any caller lock.
 func EmitFlowCaptured(flowID int64) {
 	mu.Lock()
 	hooks := append([]FlowHook(nil), flowHooks...)
 	mu.Unlock()
 	for _, h := range hooks {
-		h(flowID)
+		invokeHook(func() { h(flowID) })
 	}
 }
 
@@ -61,7 +69,7 @@ func EmitScanIssue(flowID int64, severity, title string) {
 	hooks := append([]ScanIssueHook(nil), issueHooks...)
 	mu.Unlock()
 	for _, h := range hooks {
-		h(flowID, severity, title)
+		invokeHook(func() { h(flowID, severity, title) })
 	}
 }
 

@@ -3,6 +3,8 @@
 package jwtextract
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/url"
 	"regexp"
@@ -89,7 +91,7 @@ func fromJSON(body []byte) (token, source string) {
 				if t, ok := fromPath(u.Path); ok {
 					return t, "json:login_url:path"
 				}
-				if t := jwtRe.FindString(u.String()); t != "" {
+				if t := findJWT(u.String()); t != "" {
 					return t, "json:login_url:embedded"
 				}
 			}
@@ -97,7 +99,7 @@ func fromJSON(body []byte) (token, source string) {
 		if looksLikeJWT(s) {
 			return s, "json:" + k
 		}
-		if t := jwtRe.FindString(s); t != "" {
+		if t := findJWT(s); t != "" {
 			return t, "json:" + k + ":embedded"
 		}
 	}
@@ -112,7 +114,7 @@ func fromPath(path string) (string, bool) {
 		if looksLikeJWT(seg) {
 			return seg, true
 		}
-		if t := jwtRe.FindString(seg); t != "" {
+		if t := findJWT(seg); t != "" {
 			return t, true
 		}
 	}
@@ -133,7 +135,7 @@ func fromQuery(raw string) (token, source string) {
 			if looksLikeJWT(v) {
 				return v, "query:" + k
 			}
-			if t := jwtRe.FindString(v); t != "" {
+			if t := findJWT(v); t != "" {
 				return t, "query:" + k + ":embedded"
 			}
 		}
@@ -160,7 +162,7 @@ func fromCookies(hdrs map[string][]string) (token, source string) {
 			if looksLikeJWT(v) {
 				return v, "cookie:" + k
 			}
-			if t := jwtRe.FindString(v); t != "" {
+			if t := findJWT(v); t != "" {
 				return t, "cookie:" + k + ":embedded"
 			}
 		}
@@ -168,9 +170,31 @@ func fromCookies(hdrs map[string][]string) (token, source string) {
 	return "", ""
 }
 
+// looksLikeJWT reports whether s is a JWT-shaped token: three dot-separated
+// segments whose header segment is base64url of a JSON object. Every JWT header
+// is a JSON object, so the decoded text starts with "{" — checking that, rather
+// than only the three-dot shape, keeps version strings ("v1.2.3") and asset
+// filenames ("app.min.js") from being read as tokens.
 func looksLikeJWT(s string) bool {
 	parts := strings.Split(s, ".")
-	return len(parts) == 3 && parts[0] != "" && parts[1] != "" && parts[2] != ""
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return false
+	}
+	hdr, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	return bytes.HasPrefix(bytes.TrimSpace(hdr), []byte("{"))
+}
+
+// findJWT returns the first JWT-shaped token inside s, or "".
+func findJWT(s string) string {
+	for _, cand := range jwtRe.FindAllString(s, 8) {
+		if looksLikeJWT(cand) {
+			return cand
+		}
+	}
+	return ""
 }
 
 func fmtString(v any) string {

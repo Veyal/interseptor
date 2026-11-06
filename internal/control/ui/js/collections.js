@@ -4,7 +4,7 @@
 // decided by the server (internal/collexec, internal/control/collections*.go).
 // Pure shaping lives in collections-model.js, varscope-model.js and scriptedit.js
 // (tested under node). Server strings are only ever inserted with textContent or esc().
-import { $, api, esc, toast, toastError, getHook, openCtxMenu, projectStorageKey, uiPrompt, uiConfirm } from './core.js';
+import { $, api, esc, toast, toastError, getHook, openCtxMenu, projectStorageKey, uiPrompt, uiConfirm, icon } from './core.js';
 import { registerCommand, listCommands, TAB_CHANGE_EVENT, getShellApi } from './shell-hooks.js';
 import { renderState } from './statepanel.js';
 import { createSplitPane } from './split.js';
@@ -100,8 +100,9 @@ function renderPicker() {
   S.collections.forEach((c) => sel.append(new Option(c.name || 'Untitled', c.uid)));
   sel.value = S.colUid;
   sel.disabled = !S.collections.length;
+  // Import lives inside this menu now, so it must open with no collection too.
   const more = $('#collMore');
-  if (more) more.disabled = !S.collections.length;
+  if (more) { more.disabled = false; more.setAttribute('aria-disabled', S.collections.length ? 'false' : 'true'); }
 }
 
 async function newCollection() {
@@ -125,21 +126,75 @@ const TOOL_COMMANDS = [
   ['Collections: Send item to Intruder (auto positions)', 'intruder'],
 ];
 
+/* -------------------------------------------------- one toolbar row ------ */
+
+// The bar held eleven controls and wrapped. The environment cluster (Variables,
+// New environment, Environments) and the collection's secondary actions
+// (Import, Export, Console) now live in two menus: #collEnvMenu next to Run and
+// the existing "…" menu. The original buttons stay in the DOM with their ids and
+// their listeners — every menu row presses the real button, so nothing is
+// reimplemented and the phone icon-only layout keeps working. css/panel-misc.css
+// hides the moved controls (only outside the desktop skin, whose own overflow
+// menu re-parents the same nodes).
+const COLL_MOVED = ['collEnvEdit', 'collEnvNew', 'collEnvManage', 'collImport', 'collExport', 'collConsoleBtn'];
+
+function pressToolbarButton(id) {
+  const b = document.getElementById(id);
+  if (b) b.click();
+}
+
+function openEnvMenu(trigger) {
+  const r = trigger.getBoundingClientRect();
+  openCtxMenu(r.left, r.bottom + 4, [{ head: 'ENVIRONMENT', items: [
+    { label: 'Manage environments…', icon: 'list', act: () => pressToolbarButton('collEnvManage') },
+    { label: 'Edit variables…', icon: 'storage', act: () => pressToolbarButton('collEnvEdit') },
+    { label: 'New environment', icon: 'plus', act: () => pressToolbarButton('collEnvNew') },
+  ] }], trigger);
+}
+
+function foldCollectionToolbar() {
+  const bar = $('#panel-collections .coll-bar');
+  if (!bar || $('#collEnvMenu')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn coll-env-menu';
+  btn.id = 'collEnvMenu';
+  btn.setAttribute('aria-label', 'Environments');
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('title', 'Manage environments, edit variables, or create an environment');
+  btn.innerHTML = icon('list') + '<span class="lbl-long">Environments</span>' + icon('chevron');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); openEnvMenu(e.currentTarget); });
+  const run = $('#collRun');
+  if (run && run.parentNode === bar) run.after(btn); else bar.append(btn);
+  COLL_MOVED.forEach((id) => { const el = document.getElementById(id); if (el) el.classList.add('coll-moved'); });
+}
+
 // The collection itself (not an item) can be renamed or deleted from the
 // actions menu next to the picker; the server owns what a delete cascades to.
+// The same menu now carries the collection's secondary toolbar actions
+// (Import / Export / Console): they were a second toolbar row's worth of
+// buttons, and the menu has room for them.
 function openCollectionMenu(trigger) {
-  if (!S.collection) { toast('Create or import a collection first'); return; }
   const r = trigger.getBoundingClientRect();
-  const cmds = listCommands();
-  const tools = TOOL_COMMANDS.map(([t, ic]) => {
-    const c = cmds.find((x) => x.t === t);
-    return c && { label: t.replace(/^Collections: /, ''), icon: ic, act: () => c.run() };
-  }).filter(Boolean);
-  const sections = [{ head: 'COLLECTION', items: [
-    { label: 'Rename collection', icon: 'edit', act: () => renameCollection() },
-    { label: 'Delete collection', icon: 'trash', danger: true, act: () => deleteCollection() },
-  ] }];
-  if (tools.length) sections.push({ head: 'TOOLS', items: tools });
+  const sections = [];
+  if (S.collection) {
+    const cmds = listCommands();
+    const tools = TOOL_COMMANDS.map(([t, ic]) => {
+      const c = cmds.find((x) => x.t === t);
+      return c && { label: t.replace(/^Collections: /, ''), icon: ic, act: () => c.run() };
+    }).filter(Boolean);
+    sections.push({ head: 'COLLECTION', items: [
+      { label: 'Rename collection', icon: 'edit', act: () => renameCollection() },
+      { label: 'Delete collection', icon: 'trash', danger: true, act: () => deleteCollection() },
+    ] });
+    if (tools.length) sections.push({ head: 'TOOLS', items: tools });
+  }
+  sections.push({ head: 'WORKSPACE', items: [
+    { label: 'Import', icon: 'download', act: () => pressToolbarButton('collImport') },
+    { label: 'Export', icon: 'archive', act: () => pressToolbarButton('collExport') },
+    { label: 'Console', icon: 'activity', act: () => pressToolbarButton('collConsoleBtn') },
+  ] });
   openCtxMenu(r.left, r.bottom + 4, sections, trigger);
 }
 
@@ -254,6 +309,10 @@ function boot() {
   X.loadCollection = loadCollection;
   X.repaintTree = repaintForScope;
   wire();
+  // The desktop skin re-parents the same buttons into its own overflow menu and
+  // sets html.desktop-app before this timer runs, so a browser tab is the only
+  // case that folds the bar here.
+  setTimeout(() => { if (!document.documentElement.classList.contains('desktop-app')) foldCollectionToolbar(); }, 0);
   if (panelActive()) onShow();
 }
 boot();

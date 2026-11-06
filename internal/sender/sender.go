@@ -150,6 +150,11 @@ func (s *Sender) macroToken(parent context.Context) (token, name, mode string) {
 	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// Only the first 1 MB is matched, but the remainder must still be read:
+	// closing with bytes left over makes net/http drop the connection, so every
+	// send would re-handshake against the macro endpoint. The macro timeout
+	// bounds how long the drain can take.
+	_, _ = io.Copy(io.Discard, resp.Body)
 	// Match over status line + headers + body so the token can come from anywhere
 	// (Set-Cookie, a header, or an HTML/JSON body).
 	var sb strings.Builder

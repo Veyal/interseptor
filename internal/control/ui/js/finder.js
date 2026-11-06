@@ -6,10 +6,29 @@
 
 export const MAX_HIGHLIGHTS = 5000;
 
-// findMatches is pure: literal or regex search over a string.
+const isHighSurrogate = (c) => c >= 0xd800 && c <= 0xdbff;
+const isLowSurrogate = (c) => c >= 0xdc00 && c <= 0xdfff;
+
+// widenOutOfSurrogate pulls a match boundary back onto a code-point boundary. A
+// pattern without the `u` flag matches UTF-16 code units, so "." over an emoji
+// reports two one-unit matches; wrapping either half in a <mark> splits the pair
+// into two lone surrogates, which render as U+FFFD and make the bar count one
+// character as two matches.
+function widenOutOfSurrogate(text, start, end) {
+  let s = start;
+  let e = end;
+  if (s > 0 && isLowSurrogate(text.charCodeAt(s)) && isHighSurrogate(text.charCodeAt(s - 1))) s--;
+  if (e < text.length && isHighSurrogate(text.charCodeAt(e - 1)) && isLowSurrogate(text.charCodeAt(e))) e++;
+  return { start: s, end: e };
+}
+
+// findMatches is pure: literal or regex search over a string. Every reported
+// range starts and ends on a code-point boundary, and a later match never starts
+// inside the previous one (widening two adjacent halves can collide).
 export function findMatches(text, query, { regex = false, caseSensitive = false, cap = MAX_HIGHLIGHTS } = {}) {
   const out = { matches: [], capped: false, error: '' };
   if (!query) return out;
+  const haystack = String(text == null ? '' : text);
   let re;
   try {
     const src = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -19,12 +38,42 @@ export function findMatches(text, query, { regex = false, caseSensitive = false,
     return out;
   }
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(haystack)) !== null) {
     if (m[0] === '') { re.lastIndex++; continue; }
+    const wide = widenOutOfSurrogate(haystack, m.index, m.index + m[0].length);
+    const prev = out.matches[out.matches.length - 1];
+    const start = prev && wide.start < prev.end ? prev.end : wide.start;
+    if (wide.end <= start) continue;
     if (out.matches.length >= cap) { out.capped = true; break; }
-    out.matches.push({ start: m.index, end: m.index + m[0].length });
+    out.matches.push({ start, end: wide.end });
   }
   return out;
+}
+
+// nextMarkIndex is the list advance next()/prev() perform: wrap around a non-empty match
+// list, and report -1 for an empty one so the caller does nothing at all. An empty list
+// means there is no match to activate — the bar keeps the count text the last run() wrote
+// instead of blanking it with "1 / 0".
+export function nextMarkIndex(current, count, dir) {
+  const n = Number(count) > 0 ? Math.floor(Number(count)) : 0;
+  if (!n) return -1;
+  const from = Number.isFinite(current) ? Math.floor(current) : -1;
+  const step = Number.isFinite(dir) ? Math.sign(dir) : 0;
+  return ((from + step) % n + n) % n;
+}
+
+// clearMarkState drops every mark reference and the active index together, which is what
+// clearMarks() owes the caller. Keeping the two lists in one place matters: state.marks is
+// the flat list of <mark> nodes clearMarks() unwraps, while state.matchMarks groups them
+// per match and is what next()/prev() walk. A reset that emptied only state.marks left the
+// grouped list pointing at detached nodes, so a step after clearing the query re-activated
+// a mark that was no longer in the document (the bar wrote "1 / N" and scrolled a detached
+// node). Exported so the reset is unit-testable without a DOM.
+export function clearMarkState(state) {
+  state.marks = [];
+  state.matchMarks = [];
+  state.active = -1;
+  return state;
 }
 
 // createFinder(container, {root, getText, regex, caseSensitive, doc, label})
@@ -34,7 +83,7 @@ export function findMatches(text, query, { regex = false, caseSensitive = false,
 export function createFinder(container, opts = {}) {
   const d = opts.doc || container.ownerDocument;
   const root = opts.root || container;
-  const state = { regex: !!opts.regex, caseSensitive: !!opts.caseSensitive, query: '', marks: [], active: -1, bar: null, timer: null };
+  const state = { regex: !!opts.regex, caseSensitive: !!opts.caseSensitive, query: '', marks: [], matchMarks: [], active: -1, bar: null, timer: null };
   const SVG = 'http://www.w3.org/2000/svg';
   const sprite = (name) => {
     const svg = d.createElementNS(SVG, 'svg');
@@ -119,8 +168,7 @@ export function createFinder(container, opts = {}) {
       p.removeChild(m);
       p.normalize();
     }
-    state.marks = [];
-    state.active = -1;
+    clearMarkState(state);
   }
   function run() {
     clearMarks();
@@ -164,15 +212,21 @@ export function createFinder(container, opts = {}) {
   }
   function activate(i) {
     const groups = state.matchMarks || [];
-    if (!groups.length) return;
+    const next = nextMarkIndex(i, groups.length, 0);
+    if (next < 0) { state.active = -1; return; }
     if (state.active >= 0 && groups[state.active]) groups[state.active].forEach((m) => m.classList.remove('is-active'));
-    state.active = (i + groups.length) % groups.length;
+    state.active = next;
     groups[state.active].forEach((m) => m.classList.add('is-active'));
     const first = groups[state.active][0];
     if (first && first.scrollIntoView) first.scrollIntoView({ block: 'nearest' });
     state.bar.count.textContent = `${state.active + 1} / ${groups.length}`;
   }
-  function step(delta) { if (state.matchMarks && state.matchMarks.length) activate(state.active + delta); }
+  function step(delta) {
+    // An empty list is the "cleared the query" case: nothing to activate, so nothing runs.
+    const next = nextMarkIndex(state.active, (state.matchMarks || []).length, delta);
+    if (next < 0) return;
+    activate(next);
+  }
   function open(initial) {
     if (!state.bar) build();
     state.bar.el.hidden = false;
@@ -183,7 +237,6 @@ export function createFinder(container, opts = {}) {
   }
   function close_() {
     clearMarks();
-    state.matchMarks = [];
     if (state.bar) { state.bar.el.hidden = true; state.bar.count.textContent = ''; }
     if (opts.onClose) opts.onClose();
   }

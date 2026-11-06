@@ -154,20 +154,9 @@ func (b *barrier) failed() bool {
 	return b.timedOut
 }
 
-// emitRunRecord hands the finished run to the sink, outside the lock.
-func (e *Engine) emitRunRecord() {
-	e.mu.Lock()
-	fn := e.sink
-	e.mu.Unlock()
-	if fn == nil {
-		return
-	}
-	st := e.State()
-	e.mu.Lock()
-	sp := e.spec
-	e.mu.Unlock()
-	fn(RunRecord{State: st, Spec: sp})
-}
+// The run record is emitted from run() itself: it must be snapshotted under the
+// lock that publishes running=false, because a new Start() can replace the log
+// and the spec the moment that flag is visible.
 
 // endpointOf extracts the method and query-free path from a raw request
 // template's request line. Unparseable input yields empty strings.

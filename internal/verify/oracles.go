@@ -33,9 +33,12 @@ var dbErrRe = regexp.MustCompile(`(?i)(SQL syntax|mysql_fetch|valid MySQL result
 // ReflectedMarkerHeld reports whether a unique marker is present in the payload
 // response but absent from the baseline — the reflected-XSS/injection oracle. The
 // marker must be non-empty; an empty marker never "reflects" (guards against a
-// vacuously-true match). Pure and directly testable.
+// vacuously-true match). Both exchanges must have completed: a baseline that
+// errored carries no body, so treating it as "marker absent" would confirm a
+// reflection the endpoint may already return on every request. Pure and
+// directly testable.
 func ReflectedMarkerHeld(baseline, payload Exchange, marker string) bool {
-	if marker == "" {
+	if marker == "" || !baseline.ok() || !payload.ok() {
 		return false
 	}
 	m := []byte(marker)
@@ -44,9 +47,10 @@ func ReflectedMarkerHeld(baseline, payload Exchange, marker string) bool {
 
 // ErrorSignatureHeld reports whether a DB/interpreter error signature appears in
 // the payload response but not in the baseline. Requiring absence in the baseline
-// avoids flagging an endpoint that always echoes such a string. Pure.
+// avoids flagging an endpoint that always echoes such a string; a baseline that
+// never completed cannot demonstrate absence, so it rejects too. Pure.
 func ErrorSignatureHeld(baseline, payload Exchange) bool {
-	if !payload.ok() {
+	if !baseline.ok() || !payload.ok() {
 		return false
 	}
 	return dbErrRe.Match(payload.Body) && !dbErrRe.Match(baseline.Body)

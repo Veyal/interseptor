@@ -3,6 +3,12 @@
 .findings-toolbar-title{gap:10px}
 .findings-toolbar-actions{margin-left:auto;gap:8px}
 .findings-toolbar .toolbar-divider{display:none}
+/* One primary, one overflow: Writing guide, Deleted and Report live in the overflow
+   menu. Their controls keep their ids and handlers inside #findHeaderFolded, but
+   nothing there is announced or tabbable — the menu rows are the visible path. */
+.find-header-folded{display:none}
+.find-header-more{min-width:34px;justify-content:center;gap:0}
+.find-header-more .icon{width:16px;height:16px}
 .find-browser{display:flex;flex-direction:column;width:300px;flex:none;min-width:0;min-height:0;border-right:1px solid var(--line);background:var(--bg1)}
 .find-browser-tools{padding:var(--sp-2) var(--sp-3);display:grid;gap:var(--sp-2);border-bottom:1px solid var(--line)}
 .find-toolbar-row{position:relative;display:flex;align-items:center;gap:var(--sp-2)}

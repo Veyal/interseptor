@@ -3,6 +3,12 @@
 // for node tests; the DOM wiring receives its helpers from tools.js (`deps`) so
 // this module never imports core.js and stays loadable without a browser.
 //
+// The response pane has one action row — Attach as evidence (primary), Diff,
+// Copy as and the overflow menu. Save as proof, Copy as PNG, Intruder, + Finding
+// and Copy cURL are folded into those two menus: their elements stay in the DOM
+// inside #repFolded with their ids and handlers, and the menu rows delegate to
+// them, so no click path or contract test loses its control.
+//
 // Nothing here changes how a request is built or sent: every action reads the
 // flow the existing send already captured (`t.resId`) and reuses the existing
 // evidence, copy and raw-flow endpoints.
@@ -173,12 +179,17 @@ export function wireRepeaterExtras(deps) {
   if (!group || !resPane || !work || !resView || $('#repAttach')) return null;
   const attachedFlows = new Set();
 
-  /* toolbar */
+  /* toolbar — one visible action row: Attach (primary), Diff, Copy as (menu),
+     the overflow, and the Attached chip when it applies. Save as proof,
+     Copy as PNG, Intruder, + Finding and Copy cURL leave the row and become
+     menu rows; their elements stay in the DOM (#repFolded) with their ids and
+     handlers, so every existing click path and contract test still resolves. */
   const attach = button(doc, { id: 'repAttach', icon: 'attach', text: 'Attach as evidence', cls: 'btn xs btn-primary' });
   const proof = button(doc, { id: 'repProof', icon: 'status-done', text: 'Save as proof' });
   const diff = button(doc, { id: 'repDiffBtn', icon: 'diff', text: 'Diff vs previous' });
   const copy = button(doc, { id: 'repCopyAs', icon: 'copy', text: 'Copy as', label: 'Copy the sent request in another format' });
   copy.setAttribute('aria-haspopup', 'menu');
+  copy.setAttribute('aria-expanded', 'false');
   const chip = doc.createElement('span');
   chip.id = 'repAttachedChip';
   chip.className = 'rep-attached';
@@ -190,7 +201,33 @@ export function wireRepeaterExtras(deps) {
   const pngMount = doc.createElement('span');
   pngMount.id = 'repCopyPng';
   pngMount.className = 'rep-copy-png';
-  group.prepend(attach, proof, diff, copy, pngMount, chip);
+  // The desktop skin (desktop-panel-repeater.js) re-parents this group into its
+  // status action row and owns an overflow with the same #repMore id, so the
+  // fold below is the web layout only: in a desktop host the group keeps the
+  // shape that skin was written against.
+  const desktopHost = doc.documentElement.classList.contains('desktop-app');
+  let more = null;
+  if (desktopHost) {
+    group.prepend(attach, proof, diff, copy, pngMount, chip);
+  } else {
+    more = button(doc, { id: 'repMore', icon: 'more', cls: 'btn xs rep-more', label: 'More response actions' });
+    more.setAttribute('aria-haspopup', 'menu');
+    more.setAttribute('aria-expanded', 'false');
+    more.setAttribute('aria-label', 'More response actions');
+    const folded = doc.createElement('div');
+    folded.id = 'repFolded';
+    folded.className = 'rep-folded';
+    folded.hidden = true;
+    folded.append(proof, pngMount);
+    // Intruder / + Finding / Copy cURL are painted by tools.js before this runs.
+    // Moving them here keeps their onclick properties (the menu delegates to
+    // them) and takes them out of the row without deleting anything.
+    for (const id of ['repToIntruder', 'repAddFinding', 'repCopyCurl']) {
+      const el = doc.getElementById(id);
+      if (el) folded.append(el);
+    }
+    group.prepend(attach, diff, copy, more, chip, folded);
+  }
 
   // pngFlowId is the sent exchange a picture can be made of: a captured flow,
   // not an in-flight send and not an unsent tab.
@@ -237,13 +274,39 @@ export function wireRepeaterExtras(deps) {
   attach.addEventListener('click', () => runAttach(false, attach));
   proof.addEventListener('click', () => runAttach(true, proof));
 
-  copy.addEventListener('click', async () => {
+  // The Copy as menu is the one copy surface: the request formats COPY_AS_KINDS
+  // already lists ("curl (bash)" is the cURL copy) plus one PNG group that holds
+  // every image variant, so no format appears twice.
+  async function openCopyMenu() {
     const t = repCur();
-    if (!t || !t.resId) return;
+    if (!t || !t.resId || t.sendPending) return;
     const { COPY_AS_KINDS, copyAs } = await import('./copyas.js');
+    const id = pngFlowId(t);
+    const png = id && flowPngMenuItems ? flowPngMenuItems(id) : [];
+    const sections = [{ head: 'Copy request as', items: COPY_AS_KINDS.map((k) => ({ label: k.label, act: () => copyAs(k.kind, [{ id: t.resId }]) })) }];
+    if (png.length) sections.push({ head: 'Copy exchange as PNG', items: png });
     const r = copy.getBoundingClientRect();
-    openCtxMenu(r.left, r.bottom, [{ head: 'Copy request as', items: COPY_AS_KINDS.map((k) => ({ label: k.label, act: () => copyAs(k.kind, [{ id: t.resId }]) })) }], copy);
-  });
+    openCtxMenu(r.left, r.bottom, sections, copy);
+  }
+  copy.addEventListener('click', () => { openCopyMenu(); });
+
+  // foldedRow turns a folded control into a menu row that delegates to it, so the
+  // element stays the single owner of the behaviour (and its enabled state).
+  const foldedRow = (el, label, iconName) => (el ? { label, icon: iconName, disabled: !!el.disabled, act: () => el.click() } : null);
+  // findings.css hides .findings-write (the + Finding button) unless editing is
+  // on; the menu row follows the same switch instead of offering a dead action.
+  const findingsWritable = () => doc.documentElement.dataset.findingsEditing === 'on';
+  function openResponseMoreMenu() {
+    if (!more) return;
+    const items = [
+      foldedRow(proof, 'Save as proof', 'status-done'),
+      foldedRow(doc.getElementById('repToIntruder'), 'Intruder', 'intruder'),
+      findingsWritable() ? foldedRow(doc.getElementById('repAddFinding'), '+ Finding', 'finding') : null,
+    ].filter(Boolean);
+    const r = more.getBoundingClientRect();
+    openCtxMenu(r.left, r.bottom, [{ head: 'RESPONSE', items }], more);
+  }
+  if (more) more.addEventListener('click', openResponseMoreMenu);
 
   /* inline diff (shared panel builder, also used by Intruder) */
   const diffPanel = buildDiffPanel(doc, { prefix: 'repDiff', title: 'Diff vs previous response', host: resPane, hide: [resView], api, toast, returnFocus: () => diff });

@@ -51,6 +51,28 @@ export function toggleAllIds(sel, ids) {
   return true;
 }
 
+// pruneSelection returns the part of `selected` that survives the active filters.
+// Rows and the bulk bar have to agree on what is actionable: an id a filter hides
+// would otherwise keep offering Delete/Tag/Repeater for a flow the operator cannot
+// see (History filters are a view, not a deletion). `flows` holds the flow objects
+// the selection is judged against — the outgoing page cache first, then the page
+// that replaced it, so later entries win and a refreshed flow is judged on its new
+// fields — and `matches` is the rows' own predicate (proxy.js passes
+// flowMatchesFilters). An id with no flow left to judge stays selected: selection
+// is id-keyed and outlives the loaded page, so pruning may only drop what it can
+// actually refute. Pure: `selected` is never mutated.
+export function pruneSelection(selected, flows, matches) {
+  const keep = new Set();
+  if (!selected || !selected.size) return keep;
+  const known = new Map();
+  for (const f of flows || []) if (f && f.id != null) known.set(f.id, f);
+  for (const id of selected) {
+    const flow = known.get(id);
+    if (!flow || !matches || matches(flow)) keep.add(id);
+  }
+  return keep;
+}
+
 export function chunkIds(ids, size = BULK_CHUNK) {
   const n = size > 0 ? Math.floor(size) : 1;
   const out = [];

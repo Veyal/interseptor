@@ -1,7 +1,10 @@
 package intercept
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -135,6 +138,29 @@ func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw 
 	}
 }
 
+// ErrBadEdit reports an edited message the proxy cannot parse. Returning it keeps
+// the item held so the operator can fix the edit instead of silently losing it.
+var ErrBadEdit = errors.New("intercept: the edited message could not be parsed")
+
+// validateRawResponse parses an edited raw response the same way the proxy will,
+// accepting CRLF or LF line endings. A head that does not parse (a retyped status
+// line, a body pasted above the blank line) would otherwise be dropped at forward
+// time with no error.
+func validateRawResponse(raw []byte) error {
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	head, _, _ := strings.Cut(text, "\n\n")
+	if strings.TrimSpace(head) == "" {
+		return errors.New("the response head is empty")
+	}
+	norm := strings.ReplaceAll(head, "\n", "\r\n")
+	resp, err := http.ReadResponse(bufio.NewReader(strings.NewReader(norm+"\r\n\r\n")), nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // ForwardResponse releases a held response (optionally replacing its raw bytes).
 func (e *Engine) ForwardResponse(id int64, editedRaw []byte) error {
 	e.mu.Lock()
@@ -146,6 +172,12 @@ func (e *Engine) ForwardResponse(id int64, editedRaw []byte) error {
 	raw := item.raw
 	edited := len(editedRaw) > 0
 	if edited {
+		// Refuse an edit the proxy cannot parse. It used to be discarded silently
+		// while this call returned success, so the operator's change never reached
+		// the client and nothing said so. The item stays held so it can be fixed.
+		if err := validateRawResponse(editedRaw); err != nil {
+			return fmt.Errorf("%w: %v", ErrBadEdit, err)
+		}
 		raw = editedRaw
 	}
 	seq, err := e.takeResponseForForward(id)

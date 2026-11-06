@@ -788,3 +788,50 @@ func TestNonHTTPEndpointAndTransportSkipped(t *testing.T) {
 		t.Fatalf("err=%v entries=%+v", err, res.Report.Entries)
 	}
 }
+
+// A value large enough to push the envelope past its size cap used to make the
+// generator drop everything from that line on without a report entry: the body
+// was cut (and left unbalanced) and the operator was never told.
+func TestBoundsEnvelopeSizeCutIsReported(t *testing.T) {
+	big := strings.Repeat("A", maxEnvelopeSize+1024)
+	schema := `elementFormDefault="qualified">` +
+		`<xs:element name="E"><xs:complexType><xs:sequence>` +
+		`<xs:element name="huge" type="xs:string" fixed="` + big + `"/>` +
+		`<xs:element name="after" type="xs:string"/>` +
+		`</xs:sequence></xs:complexType></xs:element>`
+	res, err := parseBytes(t, wsdlWith(schema, "E"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(res, Degraded, "envelope-truncated") {
+		t.Fatal("envelope cut at the size limit was not reported")
+	}
+}
+
+// A whitespace-only soap:body encodingStyle passes the "attribute is set" check
+// but holds no token; indexing the first field used to panic the whole import.
+func TestRPCWhitespaceEncodingStyleDoesNotPanic(t *testing.T) {
+	in := []byte(`<?xml version="1.0"?>
+<definitions name="Demo" targetNamespace="urn:demo" xmlns="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:tns="urn:demo">
+  <types><xsd:schema targetNamespace="urn:demo">
+    <xsd:element name="E" type="xsd:string"/>
+  </xsd:schema></types>
+  <message name="In"><part name="p" element="tns:E"/></message>
+  <portType name="PT"><operation name="Op"><input message="tns:In"/></operation></portType>
+  <binding name="B" type="tns:PT">
+    <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="Op"><soap:operation soapAction="urn:demo#Op"/>
+      <input><soap:body use="encoded" namespace="urn:demo" encodingStyle="   "/></input>
+    </operation>
+  </binding>
+  <service name="S"><port name="P" binding="tns:B"><soap:address location="http://t.example.com/s"/></port></service>
+</definitions>`)
+	res, err := parseBytes(t, in, Options{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if res.Report.Stats.Requests != 1 {
+		t.Fatalf("requests = %d, want 1", res.Report.Stats.Requests)
+	}
+}

@@ -159,3 +159,42 @@ func mustHex(s string) []byte {
 	}
 	return b
 }
+
+// side aliases must mean the same thing everywhere: TryDecode already accepted
+// "resp"/"response", but Decode looked up the request body for "resp" (so the
+// response side decoded the wrong payload) and Match handed the raw alias to the
+// script, which documents side as "req"|"res".
+func TestSideAliasesResolveConsistently(t *testing.T) {
+	c, err := Compile("sides", `
+def match(flow, side):
+    return side in ("req", "res")
+def decode(flow, side, raw):
+    return side + ":" + raw
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow := Flow{ReqBody: "REQ", ResBody: "RES"}
+	for _, side := range []string{"res", "resp", "response", "RES", " Response "} {
+		ok, err := c.Match(flow, side)
+		if err != nil || !ok {
+			t.Fatalf("Match(%q) = %v, %v; want a canonical side", side, ok, err)
+		}
+		r, err := c.Decode(flow, side)
+		if err != nil {
+			t.Fatalf("Decode(%q): %v", side, err)
+		}
+		if r.Plaintext != "res:RES" {
+			t.Fatalf("Decode(%q) = %q; want the response body", side, r.Plaintext)
+		}
+		if _, matched := TryDecode([]*Codec{c}, flow, side); !matched {
+			t.Fatalf("TryDecode(%q) did not match", side)
+		}
+	}
+	for _, side := range []string{"req", "request", ""} {
+		r, err := c.Decode(flow, side)
+		if err != nil || r.Plaintext != "req:REQ" {
+			t.Fatalf("Decode(%q) = %q, %v; want the request body", side, r.Plaintext, err)
+		}
+	}
+}

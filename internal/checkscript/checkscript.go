@@ -344,9 +344,11 @@ func queryParamGetter(path string) *starlark.Builtin {
 			return nil, err
 		}
 		if i := strings.IndexByte(path, '?'); i >= 0 {
-			if vals, err := url.ParseQuery(path[i+1:]); err == nil {
-				return starlark.String(vals.Get(name)), nil
-			}
+			// url.ParseQuery returns every valid pair alongside a decoding error;
+			// using the result even when err != nil keeps one malformed pair from
+			// hiding the others (flow.query_params already behaves this way).
+			vals, _ := url.ParseQuery(path[i+1:])
+			return starlark.String(vals.Get(name)), nil
 		}
 		return starlark.String(""), nil
 	})

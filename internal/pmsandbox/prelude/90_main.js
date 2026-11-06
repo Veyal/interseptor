@@ -42,11 +42,11 @@
   lazy('globals', () => scopes.globals.toObject());
   def('data', Object.assign({}, sd(scopes.iteration)));
   def('iteration', __in.info.iteration || 0);
-  def('request', { url: reqObj.url.toString(), method: reqObj.method, headers: reqObj.headers.toObject(), data: reqObj.body.toString(), name: reqObj.name, id: reqObj.id });
+  def('request', { url: reqObj.url.toString(), method: reqObj.method, headers: reqObj.headers.toObject(false, true), data: reqObj.body.toString(), name: reqObj.name, id: reqObj.id });
   if (respObj) {
     def('responseBody', respObj.text()); def('responseTime', respObj.responseTime);
     def('responseCode', { code: respObj.code, name: respObj.status, detail: respObj.status });
-    def('responseHeaders', respObj.headers.toObject());
+    def('responseHeaders', respObj.headers.toObject(false, true));
     def('responseCookies', respObj.cookies.toObject());
   }
   lazyUnsupported('_', 'lodash (global _)'); lazyUnsupported('moment', 'moment'); lazyUnsupported('tv4', 'tv4');

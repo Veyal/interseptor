@@ -151,3 +151,34 @@ test('renderFlowBody: HTML response gets a Raw/Render toggle and renders with th
   assert.ok(!renderFlowBody(flow, 'response', { highlight: escapeHTML, mimeOf: deps.mimeOf }).includes('data-fd-res-view'));
   assert.ok(!renderFlowBody({ id: 7, detail, raw: { req: 'x' } }, 'request', deps).includes('data-fd-res-view'));
 });
+
+// The Render view prints the same 1 MB cut as Raw, so a partial page is never
+// presented as the whole response (it used to show the prefix with no notice).
+// The cut path is reached when the fetched raw outgrows the cap even though the
+// flow's length metadata does not say so (an unknown/0 resLen); a body the
+// server already reports as oversized is not rendered at all.
+test('flowUrl brackets an IPv6 host so Render uses a valid base URL', () => {
+  assert.equal(flowUrl({ scheme: 'http', host: '::1', port: 8080, path: '/a?b=1' }), 'http://[::1]:8080/a?b=1');
+  assert.equal(flowUrl({ scheme: 'https', host: '2001:db8::1', port: 443, path: '/' }), 'https://[2001:db8::1]/');
+  // Bracketed input from a caller is left alone and never double-bracketed.
+  assert.equal(flowUrl({ scheme: 'http', host: '[::1]', port: 80, path: '/' }), 'http://[::1]/');
+});
+
+test('renderFlowBody: the Render view states the 1 MB truncation too', () => {
+  const deps = {
+    highlight: escapeHTML,
+    mimeOf: (d, side) => (side === 'res' ? 'text/html' : ''),
+    downloadHref: (id, side) => `/api/flows/${id}/body?side=${side}`,
+    renderHTML: (raw, url) => `<iframe data-src="${escapeHTML(url)}"></iframe>`,
+  };
+  const html = 'x'.repeat(MAX_RENDER_BYTES) + '<p>lost</p>';
+  const big = { id: 7, detail: { ...detail, resMime: 'text/html' }, raw: { res: html }, resView: 'render' };
+  const out = renderFlowBody(big, 'response', deps);
+  assert.ok(out.includes('<iframe'), out.slice(0, 80));
+  assert.ok(out.includes('Truncated at 1 MB'), 'the truncated Render view must say so');
+  assert.ok(out.includes('/api/flows/7/body?side=res'), 'and still offer the download');
+  assert.ok(!out.includes('<p>lost</p>'), 'the body past the cut is not rendered');
+  // A small page keeps its Render view clean.
+  const small = renderFlowBody({ ...big, raw: { res: '<p>x</p>' } }, 'response', deps);
+  assert.ok(small.includes('<iframe') && !small.includes('Truncated'));
+});

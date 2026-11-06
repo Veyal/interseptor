@@ -285,11 +285,26 @@ export function buildURL(base, params, hash = '') {
 
 // syncParamsFromURL re-derives enabled params from the URL text and keeps the
 // user's disabled rows after them (the URL cannot express a disabled param).
+// The URL text also cannot express a param's description or type, and the sheet
+// has no field for either, so editing the URL must not drop them: a row is
+// matched to the previous row with the same key and keeps what it carried.
 export function syncParamsFromURL(raw, prev) {
   const { query } = splitURL(raw);
   const live = parseQuery(query);
   const off = (prev || []).filter((p) => p.disabled);
-  return live.concat(off);
+  const byKey = new Map();
+  for (const p of prev || []) if (p && !byKey.has(p.key)) byKey.set(p.key, p);
+  const carry = (row) => {
+    const was = byKey.get(row.key);
+    if (!was) return row;
+    const out = { ...row };
+    if (was.description) out.description = was.description;
+    if (was.type) out.type = was.type;
+    if (was.contentType) out.contentType = was.contentType;
+    if (was.src) out.src = was.src;
+    return out;
+  };
+  return live.map(carry).concat(off);
 }
 
 // ---- editor model ----------------------------------------------------------
@@ -474,6 +489,10 @@ export function newRequestItem(collectionUid, parentUid, name = 'New request') {
 }
 
 // ---- send / response -------------------------------------------------------
+
+// The open/edit guard lives in collections-open-model.js to keep this module
+// under the embedded-UI line budget; re-exported so callers import one module.
+export { openGuard, isOpenItem } from './collections-open-model.js';
 
 // decideSend turns the editor state into a go/no-go for the Send button. The
 // server enforces everything; this only avoids pointless round trips and

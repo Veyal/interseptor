@@ -68,10 +68,21 @@ type SendOptions struct {
 	OnFlow func(*store.Flow, Meta)
 }
 
-// Send issues r and follows redirects when r.Options asks for it.
+// Send issues r and follows redirects when r.Options asks for it. The timeout is
+// one budget for the whole send: a redirect chain must not restart it per hop,
+// which would let MaxRedirects hops run far past the timeout the caller set.
 func (s *Sender) Send(r Request) (*store.Flow, error) {
-	flow, err := s.sendOne(r)
 	o := r.Options
+	if o != nil && o.Timeout > 0 && o.FollowRedirects {
+		ctx := r.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(ctx, o.Timeout)
+		defer cancel()
+		r.Context = ctx // inherited by every redirect hop via nextRedirect
+	}
+	flow, err := s.sendOne(r)
 	if err != nil || o == nil || !o.FollowRedirects {
 		return flow, err
 	}
@@ -110,7 +121,14 @@ func nextRedirect(r Request, flow *store.Flow) (Request, bool) {
 	}
 	n := r
 	n.URL = target.String()
-	n.Host = ""
+	// A Host override names a virtual host rather than a credential, so a
+	// redirect that stays on the same hostname keeps it: dropping it would
+	// silently retarget the next hop at the default vhost. It must never be
+	// carried to a different host.
+	sameVhost := strings.EqualFold(base.Hostname(), target.Hostname())
+	if !sameVhost {
+		n.Host = ""
+	}
 	n.retried401 = false
 	method := r.Method
 	if method == "" {
@@ -127,7 +145,10 @@ func nextRedirect(r Request, flow *store.Flow) (Request, bool) {
 	crossHost := !strings.EqualFold(base.Host, target.Host) || downgrade
 	skip := func(k string) bool {
 		c := http.CanonicalHeaderKey(k)
-		if c == "Host" || dropBody && (c == "Content-Length" || c == "Content-Type" || c == "Transfer-Encoding") {
+		if c == "Host" {
+			return !sameVhost
+		}
+		if dropBody && (c == "Content-Length" || c == "Content-Type" || c == "Transfer-Encoding") {
 			return true
 		}
 		return crossHost && (c == "Authorization" || c == "Cookie" || c == "Proxy-Authorization")
@@ -322,7 +343,8 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 			return nil, err
 		}
 	}
-	if _, err := s.tlsConfigFor(o, ""); err != nil {
+	tlsCfg, err := s.tlsConfigFor(o, "")
+	if err != nil {
 		return nil, err
 	}
 	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -352,6 +374,13 @@ func (s *Sender) newOptionsTransport(o *SendOptions) (*http.Transport, error) {
 			return up, nil
 		},
 		DialContext: dial,
+		// net/http performs the origin handshake itself when the request goes
+		// through a proxy (CONNECT, then addTLS with this config), so the
+		// per-send TLS policy has to live here as well as in DialTLSContext.
+		// Without it a proxied send verifies a self-signed origin and silently
+		// drops the ServerName/client-certificate overrides. The proxy hop
+		// itself is dialled by DialTLSContext, which builds its own config.
+		TLSClientConfig: tlsCfg,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			raw, err := dial(ctx, network, addr)
 			if err != nil {
@@ -399,6 +428,11 @@ type closeWith struct {
 func (c closeWith) Close() error { err := c.ReadCloser.Close(); c.extra(); return err }
 
 func (s *Sender) rawRoundTrip(req *http.Request, body []byte, o *SendOptions) (*http.Response, error) {
+	if o.ProxyURL != "" {
+		if _, err := parseUpstream(o.ProxyURL); err != nil {
+			return nil, err
+		}
+	}
 	up := s.effectiveUpstream(o)
 	if up != nil && !senderSOCKSUpstream(up) {
 		return nil, fmt.Errorf("raw headers are not supported through an HTTP(S) upstream proxy")
@@ -422,6 +456,10 @@ func (s *Sender) rawRoundTrip(req *http.Request, body []byte, o *SendOptions) (*
 			conn.Close()
 			return nil, err
 		}
+		// This path writes HTTP/1.1 bytes by hand, so never negotiate h2 here:
+		// a server that picks h2 answers with binary frames ReadResponse cannot
+		// parse. The HTTP2 option only applies to the net/http paths.
+		cfg.NextProtos = []string{"http/1.1"}
 		tc := tls.Client(conn, cfg)
 		if err := tc.HandshakeContext(ctx); err != nil {
 			conn.Close()

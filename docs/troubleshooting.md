@@ -111,6 +111,32 @@ Check network access to GitHub Releases and the installed Go version. Use `inter
 to separate update metadata problems from installation. A source build must use `CGO_ENABLED=0` and the
 Go version documented in [Getting started](getting-started.md).
 
+## Known limitations
+
+Deliberate behaviour, so you do not debug it as a fault. The proxy-side list (self-update tags, response
+trailers and `1xx` relay) is in [API and MCP](api-and-mcp.md#known-limitations); the operational ones are:
+
+- **Self-update falls back to a source build.** When the release has no prebuilt binary for your OS/arch,
+  `interseptor update` resolves the release tag to its commit and runs `go install` on that ref instead of
+  replacing the running binary. That needs `go` on `PATH`, installs into `$(go env GOPATH)/bin` (which
+  must be on `PATH`), and does not overwrite a binary running from another location — the old copy stays
+  until you remove it or put `GOPATH/bin` first. The installed binary is a source build: it reports the
+  tag's version, carries no release stamp, and the UI's one-click updater leaves it alone.
+- **A transformed request body does not carry its trailers.** The proxy syncs the client's request
+  trailers into the outbound request when the inbound body reaches EOF. A request-body match & replace
+  rule (or an intercept edit) replaces that stream with a buffered body, so those trailers are not
+  forwarded on that request. An untransformed request keeps its trailers; the response side has the
+  matching limitation described in [API and MCP](api-and-mcp.md#known-limitations).
+- **Interim 1xx responses are not relayed.** The MITM loop answers `Expect: 100-continue` itself and then
+  reads one response as final. An origin's interim response such as `103 Early Hints` is therefore not
+  passed to the client separately; treat it as unsupported through the proxy.
+- **Script allocations are capped per run.** A collection script's `Buffer`/`ArrayBuffer`/typed-array
+  allocations are limited (default 16 MiB per allocation, with string, array, source, console and
+  response caps alongside it), and heap growth is measured process-wide (default 256 MiB), so
+  concurrent script runs can trip each other's limit. A script that needs more fails with an allocation
+  or heap error rather than being allowed to grow. See [Collections](collections.md) for the list of
+  limits.
+
 ## Collecting a useful bug report
 
 Include Interseptor version, OS/architecture, exact command flags with secrets removed, the smallest

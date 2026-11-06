@@ -52,6 +52,43 @@ func TestRegistryInstallListRemove(t *testing.T) {
 	}
 }
 
+// Upgrading a pack must remove the checks the previous version owned and the
+// new version dropped. Otherwise the old check file stays active forever: the
+// new registry record no longer lists it, so `rules remove` cannot delete it.
+func TestRegistryUpgradeRemovesDroppedChecks(t *testing.T) {
+	root := t.TempDir()
+	checksDir := filepath.Join(root, "checks")
+	src := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(src, "checks"), 0o755))
+	must(t, os.WriteFile(filepath.Join(src, "checks", "keep.star"), []byte("def check(flow):\n    return []\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(src, "checks", "drop.star"), []byte("def check(flow):\n    return []\n"), 0o644))
+
+	reg := NewRegistry(root)
+	install := func(v string) {
+		var buf bytes.Buffer
+		if _, err := BuildPack(src, Manifest{Name: "p", Version: v}, &buf); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, "test", InstallOpts{AllowUnsigned: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	install("1.0.0")
+	must(t, os.Remove(filepath.Join(src, "checks", "drop.star")))
+	install("1.1.0")
+
+	if _, err := os.Stat(filepath.Join(checksDir, "drop.star")); !os.IsNotExist(err) {
+		t.Fatalf("a check dropped by the upgrade is still installed (stat err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(checksDir, "keep.star")); err != nil {
+		t.Fatalf("the kept check was removed: %v", err)
+	}
+	rec, ok, _ := reg.Get("p")
+	if !ok || len(rec.IDs) != 1 || rec.IDs[0] != "keep" {
+		t.Fatalf("registry ids = %+v, want [keep]", rec)
+	}
+}
+
 func TestRegistryUpgradeReplacesEntry(t *testing.T) {
 	root := t.TempDir()
 	checksDir := filepath.Join(root, "checks")

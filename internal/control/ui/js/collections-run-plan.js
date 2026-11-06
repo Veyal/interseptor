@@ -12,6 +12,8 @@
 // caller can escape it into a confirmation dialog. Strings are stripped of
 // angle brackets here rather than trusting each caller to escape.
 
+import { varNames } from './varscope-model.js';
+
 export const CONFIRM_PHRASE = 'RUN';
 
 // Methods that can change state on the target. A pentest collection run
@@ -150,6 +152,15 @@ export function buildRunPlan(items, opts = {}) {
           unresolvedPathReqs++;
           names.forEach((n) => unresolvedVars.add(plain(n)));
         } else if (r && r.value) full = r.value;
+        else if (!r) {
+          // No resolve result at all: the resolver call failed (or was never
+          // made), so nothing says these variables are defined. The server
+          // blocks an unresolved variable before it dials, so report the
+          // request the way the host branch does instead of promising it is
+          // sendable -- the review exists to warn before anything goes out.
+          unresolvedPathReqs++;
+          varNames(raw).forEach((n) => unresolvedVars.add(plain(n)));
+        }
       } else {
         h = r && !names.length ? hostOf(r.value) : '';
         if (!h) { unresolvedReqs++; unresolvedHosts.add(templateHostOf(raw)); continue; }
@@ -158,8 +169,11 @@ export function buildRunPlan(items, opts = {}) {
     }
     if (h) hosts.add(h);
     // A request with unresolved variables is blocked for that reason already;
-    // only the rest can be blocked by scope or the environment target pin.
-    if (blockCheck && !(r && (r.unresolved || []).length)) {
+    // only the rest can be blocked by scope or the environment target pin. A
+    // missing resolve result counts as unresolved here too: blockCheck would
+    // otherwise judge the raw {{template}} as if it were the destination.
+    const unresolvedVarsHere = raw.includes('{{') && (!r || (r.unresolved || []).length > 0);
+    if (blockCheck && !unresolvedVarsHere) {
       const why = blockCheck(full);
       if (why === 'base_target_pin') blockedPin++;
       else if (why === 'ip_guard') blockedGuard++;

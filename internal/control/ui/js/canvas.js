@@ -9,7 +9,7 @@
 // two panels visible: a visible panel still renders live events, a parked one
 // still pauses. The focused panel additionally carries `.is-focused`, which
 // activePanel()/keyboard shortcuts read.
-import { $, $$, projectStorageKey } from './core.js';
+import { $, $$, projectStorageKey, openCtxMenu } from './core.js';
 import * as M from './canvas-model.js';
 import { clampSplitSize, splitBounds, toPercent, fromPercent, splitKeyAction } from './layout-math.js';
 import { transitionView, prefersReducedMotion } from './motion.js';
@@ -223,6 +223,36 @@ function wireSplitButtons() {
   // Closes the document in the focused pane; the next open document is revealed.
   if (els.close) els.close.onclick = () => canvasCloseDoc(M.focusedDocId(state));
 }
+// The Flight Bar used to carry three unlabelled icon buttons (split left/right,
+// split top/bottom, close document). One labelled Layout menu keeps the same
+// actions and states while spending a third of the width; the buttons stay in
+// the DOM (hidden) so their ids, handlers and aria-pressed state keep working.
+function wirePaneMenu() {
+  if (!els.actions || els.actions.querySelector('#paneMenuBtn')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'paneMenuBtn';
+  btn.className = 'pane-btn';
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-label', 'Layout: split this view or close the document');
+  btn.title = 'Layout';
+  btn.innerHTML = '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg>';
+  els.actions.prepend(btn);
+  els.actions.classList.add('pane-menu');
+  const isOn = (el) => !!el && el.getAttribute('aria-pressed') === 'true';
+  btn.addEventListener('click', () => {
+    const r = btn.getBoundingClientRect();
+    // openCtxMenu owns aria-expanded on the trigger (true while open, false on
+    // any dismissal) and returns focus to it, so the rows just press the hidden
+    // buttons; aria-pressed on them stays the single source of layout truth.
+    openCtxMenu(r.left, r.bottom, [{ head: 'LAYOUT', items: [
+      { label: 'Split left / right', icon: 'columns', on: isOn(els.splitLr), act: () => els.splitLr && els.splitLr.click() },
+      { label: 'Split top / bottom', icon: 'panel-bottom', on: isOn(els.splitTb), act: () => els.splitTb && els.splitTb.click() },
+      { label: 'Close this document', icon: 'close', disabled: !els.close || els.close.hidden, act: () => els.close && els.close.click() },
+    ] }], btn);
+  });
+}
 function wirePaneFocus() {
   const focusFromEvent = (e) => {
     const pane = e.target.closest && e.target.closest('.canvas-pane');
@@ -286,6 +316,7 @@ export function initCanvas(options = {}) {
   if (!restore()) state = M.createCanvasState(opts.initialPanel || 'proxy');
   if (!built) {
     wireSplitButtons();
+    wirePaneMenu();
     wirePaneFocus();
     wireSash();
     narrowMq = window.matchMedia('(max-width:720px)');

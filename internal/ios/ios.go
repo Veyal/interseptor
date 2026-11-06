@@ -202,15 +202,21 @@ func physicalDeviceName(udid string) string {
 	return n
 }
 
-// AllDevices returns simulators then physical devices.
+// AllDevices returns simulators then physical devices. The two backends are
+// independent (simctl vs libimobiledevice), so a broken simulator backend — no
+// Xcode on a Mac that has xcrun, a wedged CoreSimulator service — must not hide
+// a connected iPhone, and vice versa. Only when nothing usable came back is the
+// backend error surfaced, so a machine with no devices still reports *why*.
 func AllDevices() ([]Device, error) {
-	sims, err := Simulators()
-	if err != nil {
-		return nil, err
-	}
-	phys, err := PhysicalDevices()
-	if err != nil {
-		return nil, err
+	sims, simErr := Simulators()
+	phys, physErr := PhysicalDevices()
+	if len(sims) == 0 && len(phys) == 0 {
+		if simErr != nil {
+			return nil, simErr
+		}
+		if physErr != nil {
+			return nil, physErr
+		}
 	}
 	return append(sims, phys...), nil
 }
@@ -254,6 +260,17 @@ func ResolveDevice(udid string, devices []Device) (Device, error) {
 	return Device{}, errors.New("no booted simulator or connected iPhone — boot a simulator or connect a device")
 }
 
+// simctlTarget returns the device argument for a simctl subcommand: the
+// device's UDID when known. "booted" is only a stand-in for "the one booted
+// simulator" — simctl refuses it as ambiguous when several are booted, which is
+// exactly when the operator has picked one by UDID.
+func simctlTarget(d Device) string {
+	if target := strings.TrimSpace(d.UDID); target != "" {
+		return target
+	}
+	return "booted"
+}
+
 // InstallCASimulator adds the Interseptor CA to a simulator trust store.
 func InstallCASimulator(d Device, certPEM []byte) error {
 	if !SimctlAvailable() {
@@ -264,10 +281,7 @@ func InstallCASimulator(d Device, certPEM []byte) error {
 		return err
 	}
 	defer os.Remove(path)
-	target := d.UDID
-	if target == "" || d.Booted {
-		target = "booted"
-	}
+	target := simctlTarget(d)
 	if _, err := simctlExec("keychain", target, "add-root-cert", path); err != nil {
 		return fmt.Errorf("simulator CA install: %w", err)
 	}
@@ -279,10 +293,7 @@ func OpenURL(d Device, rawURL string) error {
 	if !SimctlAvailable() {
 		return errors.New("Xcode simctl not available")
 	}
-	target := d.UDID
-	if target == "" || d.Booted {
-		target = "booted"
-	}
+	target := simctlTarget(d)
 	if _, err := simctlExec("openurl", target, rawURL); err != nil {
 		return fmt.Errorf("simulator openurl: %w", err)
 	}

@@ -168,11 +168,18 @@ func (s Subprocess) Run(ctx context.Context, in pmsandbox.Input) (out pmsandbox.
 
 	go sess.read(bufio.NewReaderSize(stdout, 64<<10))
 
-	wire := toRunWire(in, maxRSS)
-	b, _ := json.Marshal(wire)
-	if err := sess.write(FrameRun, b); err != nil {
-		kill(KindCrash, "script worker rejected the run request")
-	}
+	// Hand the request over from its own goroutine: a worker that never reads
+	// stdin (stopped, crashed before Serve, or not the worker at all) would
+	// otherwise block this goroutine inside the write — before the deadline
+	// timer below is even armed — and the wall-clock limit could not stop it.
+	// The deadline path kills the process, which unblocks the write with a
+	// closed pipe.
+	runWrite := make(chan error, 1)
+	go func() {
+		wire := toRunWire(in, maxRSS)
+		b, _ := json.Marshal(wire)
+		runWrite <- sess.write(FrameRun, b)
+	}()
 
 	deadline := time.NewTimer(effectiveTimeout(in) + grace)
 	defer deadline.Stop()
@@ -227,7 +234,22 @@ loop:
 	if errors.As(waitErr, &ee) && ee.ExitCode() == ExitMemory {
 		return failOutput(in, KindMemory, "script worker exceeded the memory limit")
 	}
+	if runFrameRejected(runWrite) {
+		return failOutput(in, KindCrash, "script worker rejected the run request")
+	}
 	return failOutput(in, KindCrash, "script worker exited without a result")
+}
+
+// runFrameRejected reports whether the run-frame write failed. The child is
+// dead and its stdin closed by the time it is called, so a write blocked on a
+// full pipe has already been unblocked; the wait only guards an exotic writer.
+func runFrameRejected(w <-chan error) bool {
+	select {
+	case err := <-w:
+		return err != nil
+	case <-time.After(time.Second):
+		return false
+	}
 }
 
 // waitBounded reaps the child, force-killing it if it lingers.

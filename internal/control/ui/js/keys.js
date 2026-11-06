@@ -64,7 +64,10 @@ function canonicalStep(mods, key) {
 function parseStep(spec) {
   const raw = String(spec).trim();
   if (!raw) throw new Error('keys: empty key step');
-  const pieces = raw.endsWith('+') && raw.length > 1 ? [...raw.slice(0, -2).split('+').filter(Boolean), '+'] : raw.split('+');
+  // A spec may name the literal '+' key itself. Strip exactly ONE trailing '+'
+  // (the separator before it), not two: slicing off two dropped the last letter
+  // of the modifier and turned "Mod++" into the nonsense modifier "Mo".
+  const pieces = raw === '+' ? ['+'] : raw.endsWith('+') ? [...raw.slice(0, -1).split('+').filter(Boolean), '+'] : raw.split('+');
   const mods = { mod: false, alt: false, shift: false };
   let key = pieces.pop();
   for (const m of pieces) {

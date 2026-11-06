@@ -63,3 +63,24 @@ func TestBuildIsStableAndMultiline(t *testing.T) {
 		t.Fatal("output not deterministic")
 	}
 }
+
+// `-H 'Name: '` is curl's "remove this header" form, so a captured header with
+// an empty value was replayed as a request that never sent it (and would even
+// suppress curl's own header of that name). curl's spelling for an empty-valued
+// header is `-H 'Name;'`.
+func TestBuildEmptyHeaderValueUsesCurlSemicolonForm(t *testing.T) {
+	out := Build("GET", "https://victim.test/a", http.Header{
+		"X-Empty":      {""},
+		"Content-Type": {""},
+		"X-Keep":       {"v"},
+	}, nil)
+	if !strings.Contains(out, "-H 'X-Empty;'") || !strings.Contains(out, "-H 'Content-Type;'") {
+		t.Fatalf("empty header values must use curl's ';' form:\n%s", out)
+	}
+	if strings.Contains(out, "X-Empty: ") || strings.Contains(out, "Content-Type: ") {
+		t.Fatalf("empty header value emitted in the remove form:\n%s", out)
+	}
+	if !strings.Contains(out, "-H 'X-Keep: v'") {
+		t.Fatalf("non-empty header lost:\n%s", out)
+	}
+}

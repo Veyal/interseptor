@@ -62,8 +62,12 @@ func TestPersistThirdStageKeepsHeadAndTailWithMarker(t *testing.T) {
 	if n == 0 || n >= 40000 {
 		t.Fatalf("expected a bounded head and tail, got %d", n)
 	}
-	if !strings.Contains(env.State.Error, "truncated") || !env.State.Capped {
-		t.Fatalf("truncation must be visible in the run state: error=%q capped=%v", env.State.Error, env.State.Capped)
+	if !strings.Contains(env.State.Note, "truncated") || !env.State.Capped {
+		t.Fatalf("truncation must be visible in the run state note: note=%q capped=%v", env.State.Note, env.State.Capped)
+	}
+	// Truncation is not a failure: State.Error drives the UI's error state.
+	if env.State.Error != "" {
+		t.Fatalf("truncation must not be reported as a run error: %q", env.State.Error)
 	}
 	if env.State.Results[0].Seq != 1 || env.State.Results[n-1].Seq != 40000 {
 		t.Fatalf("head and tail must be kept: first=%d last=%d", env.State.Results[0].Seq, env.State.Results[n-1].Seq)

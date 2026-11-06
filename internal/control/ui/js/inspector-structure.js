@@ -161,6 +161,34 @@ export function flattenJson(value, { maxNodes = 5000 } = {}) {
   return { rows, truncated };
 }
 
+// subtreeVisibility(rows, at, expand) → the hidden flags for the rows AFTER
+// `at` in a flat, depth-annotated row list (the inspector's JSON tree), so the
+// tree's fold buttons can be a pure function. rows[i] is {depth, container,
+// expanded}. Collapsing hides every descendant. Expanding reveals them again
+// EXCEPT under a container inside the subtree that is itself still folded — its
+// own aria-expanded=false has to keep carrying over, or a parent's expand would
+// silently unfold everything the user had closed below it. The array stops at
+// the first row that is not a descendant of rows[at]; the caller applies
+// flags[i] to rows[at + 1 + i] and leaves every other row alone.
+export function subtreeVisibility(rows, at, expand) {
+  const list = Array.isArray(rows) ? rows : [];
+  const base = list[at];
+  if (!base) return [];
+  const baseDepth = Number(base.depth) || 0;
+  const out = [];
+  const folded = []; // depths of the folded containers inside the toggled subtree
+  for (let i = at + 1; i < list.length; i++) {
+    const row = list[i] || {};
+    const depth = Number(row.depth) || 0;
+    if (!(depth > baseDepth)) break;
+    while (folded.length && depth <= folded[folded.length - 1]) folded.pop();
+    if (!expand || folded.length) { out.push(true); continue; }
+    out.push(false);
+    if (row.container && row.expanded === false) folded.push(depth);
+  }
+  return out;
+}
+
 // tryParseJson(text) returns {ok, value} without throwing.
 export function tryParseJson(text) {
   try { return { ok: true, value: JSON.parse(String(text == null ? '' : text)) }; }

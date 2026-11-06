@@ -9,12 +9,40 @@ export function renamedTabLabel(current, input) {
 }
 
 // placeAfter moves `tab` (already in `tabs`) to just after `anchor`, in place.
+// Dropping the tab out of the list and looking the anchor up again is what makes
+// the identity case special: with `anchor === tab` the anchor is gone after the
+// splice, so indexOf() returned -1 and the tab landed at the front of the strip
+// instead of staying where it already was.
 export function placeAfter(tabs, tab, anchor) {
   const from = tabs.indexOf(tab);
   if (from < 0 || tabs.indexOf(anchor) < 0) return tabs;
+  if (tab === anchor) return tabs;
   tabs.splice(from, 1);
   tabs.splice(tabs.indexOf(anchor) + 1, 0, tab);
   return tabs;
+}
+
+// mergeHistoryNewestFirst merges send-history rows from several sources into one
+// newest-first list (highest flow id first), de-duplicated by id.
+//
+// The order is load-bearing, not cosmetic: the History rail renders the list
+// as-is and previousHistoryEntry() resolves "the previous send" *positionally*
+// (the next entry). Concatenating a legacy-endpoint snapshot behind the tab's own
+// sends therefore put a flow captured after this tab's last send below an older
+// one, so "Diff vs previous" compared against a *newer* response and the diff's
+// removed/added sides came out reversed.
+export function mergeHistoryNewestFirst(...lists) {
+  const out = [];
+  const seen = new Set();
+  for (const list of lists) {
+    for (const entry of Array.isArray(list) ? list : []) {
+      const id = Number(entry && entry.id);
+      if (!Number.isSafeInteger(id) || id <= 0 || seen.has(id)) continue;
+      seen.add(id);
+      out.push(entry);
+    }
+  }
+  return out.sort((a, b) => Number(b.id) - Number(a.id));
 }
 
 // repeaterEscapeAction decides what Esc does in the Repeater, independent of

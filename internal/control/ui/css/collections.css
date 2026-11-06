@@ -49,6 +49,20 @@
 .coll-root{flex:1;min-height:0;display:grid;grid-template-columns:var(--split-size,280px) 1fr;overflow:hidden}
 .coll-root.split{display:grid}
 .coll-root[data-mode="stack"]{display:flex;flex-direction:column}
+/* Nothing to show beside the list: with an empty collection the tree's own
+   empty state is the whole answer, so the detail side is dropped instead of
+   standing there as two blank columns. With requests present but none open, the
+   editor's "Select a request" gets the full width and the response pane waits.
+   The desktop skin already collapses this way; the web surface now matches. */
+.coll-root:has(.coll-state .state-empty)>.coll-detail,
+.coll-root:has(.coll-state .state-empty)>.split-sash{display:none}
+.coll-root:has(.coll-state .state-empty){grid-template-columns:minmax(0,1fr)}
+.coll-root .coll-main:has(> .coll-editor > .state-empty){grid-template-columns:minmax(0,1fr)}
+.coll-root .coll-main:has(> .coll-editor > .state-empty)>.coll-response{display:none}
+/* The one remaining empty state takes the column it is the answer for: the
+   list gives up its stretch so the card is centred instead of pinned low. */
+.coll-root:has(.coll-state .state-empty) .coll-tree{flex:0 0 auto}
+.coll-root:has(.coll-state .state-empty) .coll-state{flex:1;display:flex;align-items:center;justify-content:center}
 .coll-tree-col{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg1);border-right:1px solid var(--line)}
 .coll-root[data-mode="stack"]>.coll-tree-col{flex:1;border-right:0}
 .coll-tree-head{flex:none;display:flex;gap:var(--sp-1);padding:var(--sp-2);border-bottom:1px solid var(--line)}

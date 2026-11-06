@@ -92,3 +92,79 @@
 @media (pointer:coarse){
   .map-ep,.map-tbl tr{min-height:44px}
 }
+
+/* ---- Map: one toolbar row, the secondary tier behind a Filters popover ---- */
+/* js/map.js folds .toolbar-secondary into #mapFiltersPop at boot (a browser tab;
+   the desktop skin keeps its own toolbar). The hidden row stays in the DOM so
+   every control keeps its id — only its box is gone. */
+.map-row-hidden{display:none}
+.map-filter-wrap{position:relative;flex:none;display:inline-flex}
+.map-filters-btn{display:inline-flex;align-items:center;gap:var(--sp-1);white-space:nowrap}
+.map-filters-btn .icon{width:14px;height:14px}
+.map-filters-btn.has-active{border-color:var(--accent);background:var(--accentDim);color:var(--fg)}
+/* Folding the second tier into the first makes the row wider than one line below
+   ~1100px. Wrap instead of letting .toolbar's overflow-x:auto hide the refresh
+   button off the right edge (app.css already wraps the phone toolbar at 480px). */
+@media (max-width:1100px){
+  #panel-map>.toolbar{flex-wrap:wrap;overflow-x:visible;row-gap:var(--sp-1)}
+}
+/* A body-level fixed panel: .toolbar scrolls horizontally (overflow-x:auto), and
+   an absolutely positioned child of a scroll container is clipped by it. */
+.map-filters-pop{position:fixed;z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(340px,calc(100vw - 16px));max-height:min(70dvh,520px);overflow:auto;padding:var(--sp-3);background:var(--bg1);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-3)}
+.map-filters-pop[hidden]{display:none}
+.map-filter-row{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+.map-filter-row>.map-filter-label{flex:0 0 4.5em}
+.map-filter-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;color:var(--fg2)}
+.map-filter-row>.ui-select,.map-filter-row>select{flex:1 1 auto;min-width:0}
+.map-filter-row[hidden]{display:none}
+.map-filter-switches{display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--line)}
+.map-filter-switches .uisw{justify-content:flex-start;width:100%;white-space:normal}
+.map-filter-switches .map-coverage{margin:0;order:9}
+.map-filter-discovery{padding-top:var(--sp-2);border-top:1px solid var(--line)}
+.map-filters-pop .map-discovery{padding:0;border:0;background:none}
+.map-filters-pop .map-discovery[hidden]{display:none}
+@media (max-width:480px){
+  /* The phone toolbar wraps; the popover is a full-width sheet-width panel. */
+  .map-filters-pop{width:calc(100vw - 16px)}
+}
+
+/* ---- Collections: one toolbar row — moved actions and the Environments menu ----
+   js/collections.js folds the environment cluster and the secondary actions
+   into #collEnvMenu and the existing "…" menu. The moved buttons stay in the
+   DOM (ids, listeners, labels) and are only boxed out here; the desktop skin
+   re-parents the same nodes into its own overflow menu, so this rule must not
+   apply there — hence :not(.desktop-app). */
+html:not(.desktop-app) .coll-bar .coll-moved{display:none}
+#collEnvMenu{display:inline-flex;align-items:center;gap:var(--sp-1)}
+#collEnvMenu>.icon{width:14px;height:14px}
+#collEnvMenu>.icon:last-of-type{width:12px;height:12px;color:var(--fg3)}
+
+/* ---- Identities: the detail's overflow menu (#identMore) ----
+   Five health actions used to stand in a row under the Health fields; they are
+   one opaque menu now, so the Overview keeps the profile, token, JWT and health
+   fields and nothing else. The menu is a plain popover in the detail pane (not a
+   portal): the pane scrolls it with the content, and the trigger owns
+   aria-expanded. Delete keeps the danger colour inside the menu. */
+.ident-actions{position:relative}
+.ident-more-trigger{min-width:var(--hit-min);justify-content:center;font-weight:700;letter-spacing:1px}
+.ident-more-trigger[aria-expanded="true"]{background:var(--bg3);border-color:var(--line2)}
+.ident-more-menu{position:absolute;z-index:var(--z-popover);top:calc(100% + 4px);left:0;display:flex;flex-direction:column;min-width:13rem;max-width:min(20rem,calc(100vw - 24px));padding:var(--sp-1);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);box-shadow:var(--elev-3)}
+.ident-more-menu[hidden]{display:none}
+/* .btn:not(input)… wins specificity over a bare class, so every row here is
+   scoped by the menu to keep the menu's own geometry (left-aligned, flat). */
+.ident-more-menu .ident-menu-item{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:var(--sp-2);width:100%;min-height:var(--hit-min);padding:0 var(--sp-2);border:0;border-radius:var(--r-sm);background:none;color:var(--fg);font-size:var(--fs-sm);font-weight:500;text-align:left;white-space:nowrap;flex:0 0 auto}
+.ident-more-menu .ident-menu-item:hover:not([disabled]){background:var(--bg3)}
+.ident-more-menu .ident-menu-item:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px}
+.ident-more-menu .ident-menu-item .icon{width:14px;height:14px;color:var(--fg3)}
+/* Delete stays visually dangerous inside the menu: red at rest, red fill on hover. */
+.ident-more-menu .ident-menu-item.danger{background:none;color:var(--red)}
+.ident-more-menu .ident-menu-item.danger .icon{color:var(--red)}
+.ident-more-menu .ident-menu-item.danger:hover:not([disabled]){background:var(--redDim);color:var(--red)}
+.ident-more-menu .ident-menu-item[disabled]{opacity:.55;cursor:not-allowed}
+@media (max-width:480px){
+  .ident-more-menu{left:auto;right:0;min-width:calc(100vw - 32px);max-width:calc(100vw - 32px)}
+}
+
+/* A filter row whose control is hidden (no tags yet) must not leave a label and
+   an empty line behind in the Filters popover. */
+.map-filters-pop .map-filter-row[hidden]{display:none}

@@ -602,7 +602,7 @@ func markdownBlocks(md string) []string {
 		if strings.HasPrefix(trim, "|") {
 			flushQuote()
 			closeList()
-			if strings.Contains(trim, "---") {
+			if isTableSeparator(trim) {
 				continue
 			}
 			tableRows = append(tableRows, splitTableRow(trim))
@@ -693,6 +693,40 @@ func splitTableRow(line string) []string {
 		out = append(out, strings.TrimSpace(p))
 	}
 	return out
+}
+
+// isTableSeparator reports whether a pipe row is the table's delimiter row
+// ("| --- | :--: |"), which is dropped instead of rendered. Only a row whose
+// every cell is made of dashes and colons qualifies: a data row that merely
+// contains "---" inside a cell (a shell flag, a URL path, a slug) is a row, and
+// dropping it silently removed evidence from the exported report.
+func isTableSeparator(line string) bool {
+	trim := strings.TrimSpace(line)
+	// A delimiter row is a closed pipe row. "|---" on its own is not one (and
+	// dropping it would lose a line for no reason).
+	if !strings.HasSuffix(trim, "|") {
+		return false
+	}
+	cells := splitTableRow(trim)
+	if len(cells) == 0 {
+		return false
+	}
+	dashes := 0
+	for _, cell := range cells {
+		if cell == "" {
+			return false
+		}
+		for _, r := range cell {
+			switch r {
+			case '-':
+				dashes++
+			case ':':
+			default:
+				return false
+			}
+		}
+	}
+	return dashes > 0
 }
 
 func inlineMD(s string) string {

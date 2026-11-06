@@ -49,15 +49,18 @@ test('filterFindings matches title, id and severity, case-insensitively', () => 
   assert.equal(filterFindings(items, 'zzz').length, 0);
 });
 
-test('readinessPips derives from server checks and never invents pass/fail', () => {
-  const p = readinessPips({ checks: [{ id: 'proof', ok: true }, { id: 'cvss', ok: false }] });
-  assert.deepEqual(p, { passed: 2 - 1, total: 2, label: '1 of 2 checks passed' });
+test('readinessPips reads the readiness payload the server actually sends', () => {
+  // The server lists only the OPEN checks (code/field/message, no `ok` flag) —
+  // see readiness-meter.js. An empty list means nothing is outstanding.
+  const p = readinessPips({ stage: 'draft', checks: [{ code: 'proof', message: 'Explain what each artifact proves.' }, { code: 'cvss', message: 'Provide a CVSS:4.0 vector.' }], gaps: ['proof', 'cvss'] });
+  assert.deepEqual(p, { passed: 0, total: 2, label: '2 checks open' });
+  assert.deepEqual(readinessPips({ stage: 'report_ready', checks: [], gaps: [] }), { passed: 0, total: 0, label: 'ready' });
   assert.deepEqual(readinessPips(null), { passed: 0, total: 0, label: 'readiness unknown' });
   assert.deepEqual(readinessPips({}), { passed: 0, total: 0, label: 'readiness unknown' });
 });
 
 test('findingOptionLabel is a plain-text accessible name', () => {
-  assert.equal(findingOptionLabel({ id: 3, title: 'XSS', severity: 'High', readiness: { checks: [{ ok: true }, { ok: false }] } }), '#3 XSS, High, 1 of 2 checks passed');
+  assert.equal(findingOptionLabel({ id: 3, title: 'XSS', severity: 'High', readiness: { stage: 'draft', checks: [{ code: 'proof' }, { code: 'cvss' }], gaps: ['proof', 'cvss'] } }), '#3 XSS, High, 2 checks open');
 });
 
 test('undoPlan: attach to an existing finding detaches only that flow; new finding deletes it', () => {

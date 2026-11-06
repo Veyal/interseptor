@@ -23,7 +23,7 @@ func TestClientFrameRoundTrip(t *testing.T) {
 	if enc[1]&0x80 == 0 {
 		t.Fatal("client frame must be masked")
 	}
-	op, payload, err := readFrame(bufio.NewReader(bytesReader(enc)))
+	_, op, payload, err := readFrame(bufio.NewReader(bytesReader(enc)))
 	if err != nil {
 		t.Fatalf("readFrame: %v", err)
 	}
@@ -101,13 +101,13 @@ func TestSendPingRespondsWithPong(t *testing.T) {
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acceptKey(hdr.Get("Sec-WebSocket-Key")))
 
 		// Read client text frame
-		_, _, _ = readFrame(br)
+		_, _, _, _ = readFrame(br)
 
 		// Send ping frame from server to client
 		conn.Write(encodeServerFrame(opPing, []byte("heartbeat-data")))
 
 		// Read client's reply frame
-		op, payload, err := readFrame(br)
+		_, op, payload, err := readFrame(br)
 		if err == nil && op == opPong && string(payload) == "heartbeat-data" {
 			pongReceived <- true
 		} else {
@@ -202,7 +202,7 @@ func wsEchoServer(t *testing.T) (addr string, stop func()) {
 			return
 		}
 		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acceptKey(hdr.Get("Sec-WebSocket-Key")))
-		op, payload, err := readFrame(br)
+		_, op, payload, err := readFrame(br)
 		if err != nil {
 			return
 		}
@@ -232,3 +232,64 @@ func (r *br) Read(p []byte) (int, error) {
 }
 
 func bytesReader(b []byte) *br { return &br{b: b} }
+
+// RFC 6455 §5.5.1: a server-initiated Close must be answered with a Close frame
+// before the TCP connection goes away. Without the answer the peer records an
+// abnormal closure (1006) and the closing handshake never completes.
+func TestSendAnswersServerClose(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	type answer struct {
+		op      int
+		payload string
+		err     error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		br := bufio.NewReader(conn)
+		tp := textproto.NewReader(br)
+		_, _ = tp.ReadLine()
+		hdr, err := tp.ReadMIMEHeader()
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acceptKey(hdr.Get("Sec-WebSocket-Key")))
+		_, _, _, _ = readFrame(br) // client message
+		// Close with status 1000 (normal closure).
+		_, _ = conn.Write(encodeServerFrame(opClose, []byte{0x03, 0xe8}))
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, op, payload, err := readFrame(br)
+		got <- answer{op: op, payload: string(payload), err: err}
+	}()
+
+	res, err := Send(Request{URL: "ws://" + ln.Addr().String() + "/", Message: "hi", ReadFor: 500 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if n := len(res.Frames); n == 0 || res.Frames[n-1].Opcode != opClose {
+		t.Fatalf("received close frame not recorded: %+v", res.Frames)
+	}
+	select {
+	case a := <-got:
+		if a.err != nil {
+			t.Fatalf("no close frame answered (peer saw %v)", a.err)
+		}
+		if a.op != opClose {
+			t.Fatalf("answered with opcode %d, want a close frame", a.op)
+		}
+		if a.payload != "\x03\xe8" {
+			t.Fatalf("close answer payload = %x, want the peer's status code 1000", a.payload)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for the close answer")
+	}
+}

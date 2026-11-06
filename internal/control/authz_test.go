@@ -578,3 +578,37 @@ func mustGetFlow(s *store.Store, id int64) *store.Flow {
 	}
 	return f
 }
+
+// A replay must send exactly the identity it claims to be: any credential the
+// identity does not set is removed, never inherited from the captured request.
+func TestApplyIdentityHeadersNeverInheritsCapturedCredentials(t *testing.T) {
+	base := map[string][]string{
+		"Cookie":        {"admin_session=ADMIN-SECRET"},
+		"Authorization": {"Bearer ADMIN-JWT"},
+		"Accept":        {"*/*"},
+	}
+	// Bearer-only identity: the admin cookie must not survive.
+	out := applyIdentityHeaders(base, identity{Name: "user-bearer", Headers: "Authorization: Bearer LOW-JWT"})
+	if got := out["Authorization"]; len(got) != 1 || got[0] != "Bearer LOW-JWT" {
+		t.Fatalf("Authorization = %v, want the identity's own", got)
+	}
+	if _, ok := out["Cookie"]; ok {
+		t.Fatalf("Cookie = %v, want it stripped — the captured admin session leaked into the replay", out["Cookie"])
+	}
+	// Cookie-only identity: the admin bearer token must not survive.
+	out = applyIdentityHeaders(base, identity{Name: "user-cookie", Headers: "Cookie: session=LOW"})
+	if _, ok := out["Authorization"]; ok {
+		t.Fatalf("Authorization = %v, want it stripped", out["Authorization"])
+	}
+	// A non-credential header must not smuggle the captured session through.
+	out = applyIdentityHeaders(base, identity{Name: "tenant", Headers: "X-Tenant: 2"})
+	if _, ok := out["Cookie"]; ok {
+		t.Fatalf("Cookie = %v, want it stripped for a tenant-only identity", out["Cookie"])
+	}
+	if _, ok := out["Authorization"]; ok {
+		t.Fatalf("Authorization = %v, want it stripped for a tenant-only identity", out["Authorization"])
+	}
+	if out["X-Tenant"][0] != "2" {
+		t.Fatal("the identity's own header should be applied")
+	}
+}

@@ -212,13 +212,14 @@ func urlRaw(u json.RawMessage) string {
 		return s
 	}
 	var o struct {
-		Raw   string `json:"raw"`
-		Query []row  `json:"query"`
+		Raw string `json:"raw"`
 	}
-	if json.Unmarshal(u, &o) != nil {
-		return ""
+	if json.Unmarshal(u, &o) == nil && o.Raw != "" {
+		return o.Raw
 	}
-	return o.Raw
+	// A structured URL without "raw" is still a URL: the store rebuilds it from
+	// protocol, host, port, path and query (disabled rows excluded).
+	return store.EffectiveURL(u)
 }
 
 func appendQuery(raw, q string) string {
@@ -316,13 +317,9 @@ func (e *exporter) body(it *store.Item, path string) (args []string, ct string) 
 		if b.Raw == "" {
 			return nil, ""
 		}
-		switch b.Options.Raw.Language {
-		case "json":
-			ct = "application/json"
-		case "xml":
-			ct = "application/xml"
-		}
-		return []string{"--data-raw " + q(b.Raw)}, ct
+		// The pipeline always derives a content type for a raw body; curl
+		// would send its own form default for --data-raw, so write it out.
+		return []string{"--data-raw " + q(b.Raw)}, rawContentType(b.Options.Raw.Language)
 	case "urlencoded":
 		for _, r := range b.URLEncoded {
 			if !r.off() {
@@ -395,3 +392,20 @@ func (e *exporter) formField(r row, path string) []string {
 
 // q single-quotes s for a POSIX shell.
 func q(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// rawContentType mirrors the pipeline's default content type for a raw body
+// language (collexec.defaultContentType): an exported command has to send the
+// same bytes with the same type, and curl's --data-raw default is a form type.
+func rawContentType(lang string) string {
+	switch strings.ToLower(lang) {
+	case "json":
+		return "application/json"
+	case "xml":
+		return "application/xml"
+	case "html":
+		return "text/html"
+	case "javascript":
+		return "application/javascript"
+	}
+	return "text/plain"
+}

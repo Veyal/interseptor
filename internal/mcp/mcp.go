@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -714,18 +715,11 @@ func argFindingBlocks(a map[string]any) (value any, raw string, present bool, er
 	return v, string(b), true, nil
 }
 
+// argInt reads an optional integer argument, falling back to def when it is
+// absent or not a whole number in int range (see intArg).
 func argInt(a map[string]any, key string, def int) int {
-	switch x := a[key].(type) {
-	case float64:
-		return int(x)
-	case int:
-		return x
-	case int64:
-		return int(x)
-	case string:
-		if n, err := strconv.Atoi(x); err == nil {
-			return n
-		}
+	if n, ok := intArg(a[key]); ok {
+		return n
 	}
 	return def
 }
@@ -945,25 +939,62 @@ func reqStr(a map[string]any, key string) (string, error) {
 	return s, nil
 }
 
-// reqInt returns a required integer argument or a helpful error. It accepts JSON
-// numbers, Go ints, and numeric strings (agents often quote numbers); anything
-// else is reported with both the expected type and the offending value.
+// intArg converts an integer-valued argument to int. ok is false for a value
+// that is not a whole number in int range: a fractional JSON number (2.5) must
+// not be truncated to a different id, and converting a NaN/±Inf/huge float64 to
+// int is implementation-defined in Go (it silently yields a garbage id). It
+// accepts JSON numbers, Go ints, json.Number, and numeric strings — agents
+// often quote numbers.
+func intArg(v any) (int, bool) {
+	const (
+		// 2^63 is exact in float64; the inclusive bounds of int64 are
+		// [-2^63, 2^63-1], which 2^63 itself rounds up past.
+		maxInt64Float = float64(1 << 63)
+		minInt64Float = -maxInt64Float
+	)
+	var n int64
+	switch x := v.(type) {
+	case int:
+		return x, true
+	case int64:
+		n = x
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) || x != math.Trunc(x) || x < minInt64Float || x >= maxInt64Float {
+			return 0, false
+		}
+		n = int64(x)
+	case json.Number:
+		i, err := x.Int64()
+		if err != nil {
+			return 0, false
+		}
+		n = i
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(x), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		n = i
+	default:
+		return 0, false
+	}
+	i := int(n)
+	if int64(i) != n { // int is 32 bits on some platforms
+		return 0, false
+	}
+	return i, true
+}
+
+// reqInt returns a required integer argument or a helpful error. Values that are
+// present but not a whole number (a string, 2.5, 1e300, NaN) are reported with
+// both the expected type and the offending value.
 func reqInt(a map[string]any, key string) (int, error) {
 	v, ok := a[key]
 	if !ok || v == nil {
 		return 0, fmt.Errorf("%s is required (an integer)", key)
 	}
-	switch x := v.(type) {
-	case float64:
-		return int(x), nil
-	case int:
-		return x, nil
-	case int64:
-		return int(x), nil
-	case string:
-		if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
-			return n, nil
-		}
+	if n, ok := intArg(v); ok {
+		return n, nil
 	}
 	return 0, fmt.Errorf("%s must be an integer (got %T %s)", key, v, describeValue(key, v))
 }
@@ -2421,7 +2452,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("intruder_state",
-		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId.",
+		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId. results is capped to the head of the run (partialResults=true when more exist); this tool is a status check, not a result export.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			out, err := s.apiGet("/api/intruder/state")

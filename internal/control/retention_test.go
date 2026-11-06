@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,5 +249,36 @@ func TestPurgeFlowsWildcardHost(t *testing.T) {
 	}
 	if n := flowCount(t, ts.URL+"/api/flows"); n != 1 {
 		t.Fatalf("remaining = %d, want 1", n)
+	}
+}
+
+// A blank host pattern must never purge, because hostpattern treats "" as
+// match-all: one empty line in a pasted list would wipe the whole history.
+func TestPurgeFlowsRejectsBlankHostPattern(t *testing.T) {
+	h, s, _ := newHub(t)
+	for i, host := range []string{"a.test", "b.test"} {
+		if _, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(int64(i + 1)), Method: "GET", Host: host, Path: "/"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, body := range []string{
+		`{"hosts":[""],"mode":"delete"}`,
+		`{"hosts":["a.test","  "],"mode":"delete"}`,
+	} {
+		resp, err := http.Post(ts.URL+"/api/flows/purge", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST purge: %v", err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("purge with a blank pattern = %d, want 400", resp.StatusCode)
+		}
+	}
+	if n := flowCount(t, ts.URL+"/api/flows"); n != 2 {
+		t.Fatalf("a rejected purge deleted data: %d flows remain, want 2", n)
 	}
 }

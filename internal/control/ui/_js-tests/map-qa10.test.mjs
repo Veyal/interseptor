@@ -52,6 +52,12 @@ test('endpoint URL does not repeat a port the host already carries', () => {
   assert.equal(endpointUrl({ scheme: 'http', host: '127.0.0.1:18753', port: 18753, path: '/a' }), 'http://127.0.0.1:18753/a');
 });
 
+test('endpoint URL brackets an IPv6 host and still appends its port', () => {
+  assert.equal(endpointUrl({ scheme: 'http', host: '::1', port: 8080, path: '/a' }), 'http://[::1]:8080/a');
+  assert.equal(endpointUrl({ scheme: 'http', host: '2001:db8::1', port: 80, path: '/a' }), 'http://[2001:db8::1]/a');
+  assert.equal(endpointUrl({ scheme: 'https', host: '[2001:db8::1]', port: 8443, path: '/a' }), 'https://[2001:db8::1]:8443/a');
+});
+
 test('params line flags a capped sample; count suffix explains collapsing', () => {
   assert.equal(paramsCountText({ flowsScanned: 2000, capped: true }), '2,000 flows · param miner · newest sample, hit counts are partial');
   assert.equal(paramsCountText({ flowsScanned: 12 }), '12 flows · param miner');

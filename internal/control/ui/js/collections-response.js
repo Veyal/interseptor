@@ -88,7 +88,10 @@ export function renderResponse(opts = {}) {
   host.textContent = '';
   if (opts.loading) { const h = el('div'); host.append(h); renderState(h, 'loading', { title: 'Sending request', rows: 4 }); return; }
   if (opts.error) { const h = el('div'); host.append(h); renderState(h, 'error', { title: 'Send failed', message: opts.error.message, status: opts.error.status, onRetry: () => sendCurrent() }); return; }
-  if (!S.ed) { const h = el('div'); host.append(h); renderState(h, 'empty-first', { title: 'No response yet', hint: 'Open a request and press Send.' }); return; }
+  // Nothing open: the tree (empty collection) or the editor ("Select a request")
+  // is already telling the operator what to do. A third card in this pane was
+  // the redundant one, so it stays blank until a request is open.
+  if (!S.ed) return;
   const sum = M.stepSummary(S.step);
   const bar = el('div', 'coll-resbar');
   if (sum.kind === 'none') {

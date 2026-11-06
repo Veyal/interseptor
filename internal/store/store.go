@@ -804,8 +804,12 @@ func (s *Store) QueryFlows(limit int) ([]*Flow, error) {
 	return out, rows.Err()
 }
 
-// FlowCount returns the total number of captured flows.
+// FlowCount returns the total number of captured flows. Queued write-behind
+// capture is drained first, like every other read path, so a count taken during
+// live traffic (report readiness, evidence summaries) matches the rows the store
+// has accepted instead of lagging the flusher.
 func (s *Store) FlowCount() (int64, error) {
+	s.syncFlows()
 	var n int64
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM flows`).Scan(&n)
 	return n, err

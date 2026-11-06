@@ -1,13 +1,13 @@
 import { wireOverlayGutter } from './overlay-gutter.js';
 import { markersHighlightHTML } from './intruder-markers-model.js';
-import { renamedTabLabel, placeAfter, repeaterEscapeAction } from './repeater-tab-model.js';
+import { renamedTabLabel, placeAfter, repeaterEscapeAction, mergeHistoryNewestFirst } from './repeater-tab-model.js';
 import { $, hasOpenModal, ctxMenuOpen, revealActiveTab, esc, escAttr, toast, toastError, copyText, api, apiBytes, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 import { binaryHandoff, repeaterLoadedText } from './intercept-model.js';
 import { wireListbox, focusOption } from './listbox.js';
 import { wireRepeaterExtras } from './repeater.js';
 import { wireIntruderPreview } from './evidence-render.js';
-import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm, intrRowTitle, intrRequestCount, intrRepeatError, intrCountLabel, intrNumbersError, intrProgressLabel, intrValidateRegex, intrValidateTarget, intrSortRows, INTR_MAX_DELAY_MS } from './intruder.js';
+import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm, intrRowTitle, intrRequestCount, intrRepeatError, intrCountLabel, intrNumbersError, intrProgressLabel, intrValidateRegex, intrValidateTarget, intrSortRows, mergeLiveHead, presetFromEditor, pollRebasesRunRows, intrCaptureRows, intrRowSelection, INTR_MAX_DELAY_MS, INTR_MAX_NUMBERS, INTR_MAX_REPEAT } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, mountHexDump } from './core.js';
 import { flowPngMenuItems, flowSelectionImageItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
 import { createListView, openFlow } from './core.js';
@@ -655,6 +655,10 @@ export function openNewRepeaterTab(){document.querySelector('.tab[data-tab="repe
 export function repNewTab(){repSaveEditor();const t=repTabs.create();if(!t)return null;repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
+  // A diff panel is tied to the response it was opened for; leaving it mounted
+  // across a tab switch hid #repResView while the status line described the new
+  // tab's response. closeDiff is a no-op when it is not open.
+  if(repExtras)repExtras.closeDiff();
   repResponseEpoch++;
   if(t.sendPending)setRepSendState('pending','Sending…');
   else if(t.sendError)setRepSendState('error','Send failed');
@@ -869,11 +873,12 @@ async function migrateLegacyRepHistory(t){
   t.historyMigrationPromise=(async()=>{
     try{
       const d=await api('/api/repeater/history?'+params.toString());
-      // A send can complete while this one-time snapshot is in flight. Keep
-      // those tab-owned rows first, merge the legacy endpoint rows behind them,
-      // and let normalization de-duplicate the result.
+      // A send can complete while this one-time snapshot is in flight, and the
+      // legacy endpoint answers for the whole endpoint (so it can hold a flow
+      // captured after this tab's last send). Merge by id, newest first: the rail
+      // and previousHistoryEntry() read the list positionally.
       const legacy=normalizeRepHistory(d.flows||[]);
-      t.history=normalizeRepHistory([...(t.history||[]),...legacy]);
+      t.history=mergeHistoryNewestFirst(t.history,legacy);
       await repStoreHistoryEntries(t,legacy);
       t.historyNeedsMigration=false;t.historyLegacyURL='';t.historyLoadError='';repPersist();return true;
     }catch(e){t.historyLoadError=e.message||'unknown error';return false;}
@@ -1411,7 +1416,7 @@ export function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
 
 // expandNumbers — client-side Numbers payload source (#15). Mirrors
 // internal/intruder.ExpandNumbers (sequence + random, optional pad/unique).
-export function expandNumbers(cfg, maxN=2000){
+export function expandNumbers(cfg, maxN=INTR_MAX_NUMBERS){
   const c=cfg||{};
   const start=Number(c.start), end=Number(c.end);
   let step=Number(c.step);
@@ -1445,32 +1450,38 @@ export function expandNumbers(cfg, maxN=2000){
   if(!count||!Number.isFinite(start)||!Number.isFinite(end)) return [];
   if(count>maxN) count=maxN;
   let lo=start,hi=end; if(lo>hi){const t=lo;lo=hi;hi=t;}
-  let lattice=null;
-  if(step){
-    const abs=Math.abs(step); lattice=[];
-    for(let n=lo;n<=hi;n+=abs){lattice.push(n);if(lattice.length>=maxN)break;}
-  }
+  // latticeCount is how many distinct values the range offers. It is computed,
+  // never materialised, so a wide range samples across the whole range — the
+  // same rule as internal/intruder/numbers.go (a materialised lattice only ever
+  // drew from its first maxN values).
+  const absStep=step?Math.abs(step):0;
+  const span=hi-lo+1;
+  const latticeCount=absStep>0?Math.floor((hi-lo)/absStep)+1:span;
+  if(!(latticeCount>0)) return [];
+  const at=k=>absStep>0?lo+k*absStep:lo+k;
   const out=[];
   if(c.unique){
-    if(!lattice){
-      const span=Math.min(hi-lo+1,maxN);
-      lattice=Array.from({length:span},(_,i)=>lo+i);
+    const n=Math.min(count,latticeCount);
+    if(latticeCount<=maxN){
+      // Partial Fisher-Yates over the index space: exact, no rejection stalls.
+      const pool=Array.from({length:latticeCount},(_,i)=>i);
+      for(let i=0;i<n;i++){
+        const j=i+Math.floor(Math.random()*(latticeCount-i));
+        const t=pool[i];pool[i]=pool[j];pool[j]=t;
+        out.push(fmt(at(pool[i])));
+      }
+      return out;
     }
-    const pool=lattice.slice();
-    const n=Math.min(count,pool.length);
-    for(let i=0;i<n;i++){
-      const j=i+Math.floor(Math.random()*(pool.length-i));
-      const t=pool[i];pool[i]=pool[j];pool[j]=t;
-      out.push(fmt(pool[i]));
+    const seen=new Set();
+    while(out.length<n){
+      const k=Math.floor(Math.random()*latticeCount);
+      if(seen.has(k)) continue;
+      seen.add(k);
+      out.push(fmt(at(k)));
     }
     return out;
   }
-  for(let i=0;i<count;i++){
-    let v;
-    if(lattice&&lattice.length) v=lattice[Math.floor(Math.random()*lattice.length)];
-    else v=lo+Math.floor(Math.random()*((hi-lo)+1));
-    out.push(fmt(v));
-  }
+  for(let i=0;i<count;i++) out.push(fmt(at(Math.floor(Math.random()*latticeCount))));
   return out;
 }
 function intrNumsFor(slot){
@@ -1587,7 +1598,7 @@ function normalizeIntruderTab(t){
   const posLines=Array.isArray(t.posLines)?t.posLines.map(items=>Array.isArray(items)?items.map(item=>persistedText(item)):null):[];
   const sniperSource=['list','numbers'].includes(t.sniperSource)?t.sniperSource:'list';
   return {tid:t.tid,target:persistedText(t.target),template:persistedText(t.template,INTR_TPL),type,
-    threads:persistedInteger(t.threads,1,1,64),delay:persistedInteger(t.delay,0,0,Number.MAX_SAFE_INTEGER),repeat:persistedInteger(t.repeat,20,1,2000),barrier:t.barrier===true,
+    threads:persistedInteger(t.threads,1,1,64),delay:persistedInteger(t.delay,0,0,Number.MAX_SAFE_INTEGER),repeat:persistedInteger(t.repeat,20,1,INTR_MAX_REPEAT),barrier:t.barrier===true,
     sniper:persistedText(t.sniper),pos:Array.isArray(t.pos)?t.pos.map(item=>persistedText(item)):[],sniperLines,posLines,
     sniperFile:typeof t.sniperFile==='string'?t.sniperFile:null,posFiles:Array.isArray(t.posFiles)?t.posFiles.map(item=>typeof item==='string'?item:null):[],
     sniperLarge:!!t.sniperLarge,sniperCount:persistedInteger(t.sniperCount,0,0,Number.MAX_SAFE_INTEGER),
@@ -1946,7 +1957,7 @@ function wireIntrNumbers(wrap){
       const stepEl=box.querySelector('input[data-k="step"]');
       if(countEl) countEl.style.display=rand?'':'none';
       if(uniqEl) uniqEl.style.display=rand?'':'none';
-      if(stepEl) stepEl.disabled=rand&&!intrNumsFor(slot).step;
+      if(stepEl) stepEl.disabled=rand; // random mode draws between start and end; Step does not apply
       updateIntrCount();
     };
     box.querySelectorAll('input,select').forEach(el=>{
@@ -1974,7 +1985,7 @@ function wireIntrNumbers(wrap){
 function renderPayloadInputs(){
   const wrap=$('#intrPayloadsWrap');if(!wrap)return;
   if(intrState.type==='repeat'){
-    wrap.innerHTML='<div class="hint">Race / repeat — no payload lists. The request above is sent verbatim <b>'+(intrRepeatError($('#intrRepeat').value)?'invalid repeat (1–2000)':'×'+Number($('#intrRepeat').value))+'</b> times across <b>'+(parseInt($('#intrThreads').value,10)||1)+'</b> threads.</div>';
+    wrap.innerHTML='<div class="hint">Race / repeat — no payload lists. The request above is sent verbatim <b>'+(intrRepeatError($('#intrRepeat').value)?'invalid repeat (1–'+INTR_MAX_REPEAT.toLocaleString()+')':'×'+Number($('#intrRepeat').value))+'</b> times across <b>'+(parseInt($('#intrThreads').value,10)||1)+'</b> threads.</div>';
     updateIntrCount();return;
   }
   if(intrState.type!=='pitchfork'&&intrState.type!=='cluster'){
@@ -2164,7 +2175,8 @@ $('#intrTemplate').addEventListener('keydown',e=>{
 function intrTemplateChanged(){intrRefreshHL();if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
-const INTR_MAX_REQUESTS=2000;
+// The Intruder has no request cap — payload lists run in full. A very large run
+// is confirmed once (needsLargeRunConfirm) instead of being refused.
 // Focus a runtime option, opening the collapsed Options disclosure first so the
 // field is actually reachable (it is hidden inside <details> at narrow heights).
 function focusIntrOption(sel){
@@ -2219,6 +2231,37 @@ export async function intrStart(){
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends','error');$('#intrTemplate').focus();return;}
+    // A Numbers source the panel marks invalid must stop Start: expandNumbers
+    // clamps, so an unusable range would otherwise silently send a different
+    // payload set than the one shown.
+    const numSlots=(intrState.type==='pitchfork'||intrState.type==='cluster')?mk.map((_,i)=>i):['s'];
+    for(const slot of numSlots){
+      if(intrSourceFor(slot)!=='numbers') continue;
+      const bad=intrNumbersError(intrNumsFor(slot));
+      if(bad){toast(`§${slot==='s'?1:Number(slot)+1} numbers: ${bad}`,'error');focusIntrPayloads(slot);return;}
+    }
+    // A list too large for the tab snapshot was not restored after a reload: the
+    // editor holds only its 40-line preview. Starting would silently send 40
+    // payloads instead of the thousands the operator loaded, so refuse until the
+    // file is loaded again or the field is edited/cleared.
+    const tabNow=intrTabs.cur();
+    const unrestored=(slot)=>{
+      if(intrSourceFor(slot)!=='list')return false;
+      if(slot==='s'){
+        if(!tabNow?.sniperLarge||intrState.sniperLines)return false;
+        return lines(intrState.sniper||'').length>0&&(intrState.sniper||'')===(tabNow.sniper||'');
+      }
+      const i=Number(slot);
+      if(!tabNow?.posCounts?.[i]||intrState.posLines?.[i])return false;
+      return lines(intrState.pos[i]||'').length>0&&(intrState.pos[i]||'')===(tabNow.pos?.[i]||'');
+    };
+    const lostSlot=(intrState.type==='pitchfork'||intrState.type==='cluster')
+      ?(mk.map((_,i)=>i).find(i=>unrestored(i))??null)
+      :(unrestored('s')?'s':null);
+    if(lostSlot!==null){
+      toast("this tab's large payload list was not restored after reload — Load it again (or Clear the field) before starting",'error');
+      focusIntrPayloads(lostSlot);return;
+    }
     if(intrState.type==='pitchfork'||intrState.type==='cluster'){
       body.payloads=mk.map((_,i)=>intrGetPayloadLines(i));
       const empty=body.payloads.findIndex(l=>!l.length);
@@ -2227,14 +2270,12 @@ export async function intrStart(){
       body.payloads=[intrGetPayloadLines('s')];
       if(!body.payloads[0].length){toast('add at least one payload','error');focusIntrPayloads('s');return;}
     }
-    // Refuse oversize Numbers/list combinations before the server caps them.
     const reqs=intrRequestCount(intrState.type,body.payloads.map(l=>l.length),mk.length);
-    if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
     if(!confirmed&&intrExtras&&needsLargeRunConfirm(reqs)){intrExtras.confirmLarge(reqs,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
-  intrLastResults=[];intrDisplayedResults=[];intrSelectedId=null;
+  intrLastResults=[];intrDisplayedResults=[];intrSelectedId=null;intrPageRunKey='';
   intrLastRunning=false;intrLastTotal=0;intrLastDone=0;intrLastRunId='';
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
@@ -2283,7 +2324,11 @@ function normalizeIntruderPreset(p){
   return {name:persistedText(p.name).slice(0,128),target:normalized.target,template:normalized.template,type:normalized.type,
     sniper:normalized.sniper,pos:normalized.pos,sniperSource:normalized.sniperSource,sniperNums:normalized.sniperNums,
     posSources:normalized.posSources,posNums:normalized.posNums,threads:normalized.threads,delay:normalized.delay,
-    repeat:normalized.repeat,grep:normalized.grep,extract:normalized.extract,proc:normalized.proc};
+    repeat:normalized.repeat,grep:normalized.grep,extract:normalized.extract,proc:normalized.proc,
+    // A list longer than the editor preview lives only in sniperLines/posLines;
+    // dropping them saved 40 of 1000 payloads and restored a silently short attack.
+    sniperLines:normalized.sniperLines,posLines:normalized.posLines,
+    sniperFile:normalized.sniperFile,posFiles:normalized.posFiles};
 }
 function normalizeIntruderPresets(value){
   if(!Array.isArray(value))return null;
@@ -2325,6 +2370,13 @@ function loadIntrPresets(fallback=null){
     const i=parseInt(sel.value,10);if(isNaN(i)||!list[i])return;
     const p=list[i];
     intrState.type=p.type||'sniper';intrState.sniper=p.sniper||'';intrState.pos=(p.pos||[]).slice();
+    // Replace the payload lists wholesale: intrGetPayloadLines reads sniperLines
+    // first, so a leftover array from the previous tab/preset would be what the
+    // attack actually sends while the editor shows the preset's own list.
+    intrState.sniperLines=Array.isArray(p.sniperLines)?p.sniperLines.slice():null;
+    intrState.posLines=Array.isArray(p.posLines)?p.posLines.map(a=>Array.isArray(a)?a.slice():null):[];
+    intrState.sniperFile=typeof p.sniperFile==='string'?p.sniperFile:null;
+    intrState.posFiles=Array.isArray(p.posFiles)?p.posFiles.map(f=>typeof f==='string'?f:null):[];
     intrState.sniperSource=p.sniperSource||'list';intrState.sniperNums={...(p.sniperNums||INTR_NUM_DEFAULT())};
     intrState.posSources=Array.isArray(p.posSources)?p.posSources.slice():[];
     intrState.posNums=Array.isArray(p.posNums)?p.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[];
@@ -2338,11 +2390,10 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   const snapshot=intrReadEditor();
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
   const list=readIntrPresetBrowserState()||[];
-  list.unshift({name,target:snapshot.target,template:snapshot.template,type:snapshot.type,
-    sniper:snapshot.sniper,pos:snapshot.pos.slice(),sniperSource:snapshot.sniperSource,sniperNums:{...snapshot.sniperNums},
-    posSources:snapshot.posSources.slice(),posNums:snapshot.posNums.map(n=>({...n})),
-    threads:snapshot.threads,delay:snapshot.delay,
-    repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
+  // presetFromEditor keeps the full payload lists: the tab serializer's
+  // localStorage cap would otherwise save a >500-line list as its 40-line
+  // preview, and loading the preset back would send the wrong attack.
+  list.unshift(presetFromEditor(snapshot,name));
   if(list.length>20)list.length=20;
   let storedLocally=true;
   const presetKey=intrPresetsKey();
@@ -2359,6 +2410,82 @@ let intrPollEpoch=0;
 let intrPollInFlight=false,intrPollQueued=false;
 export let intrTimer=null;
 const INTR_POLL_MS=400;
+// A state poll carries only the bounded live head of a run (the engine's
+// liveHeadCap), so the pane pages the remainder from /api/intruder/results. That
+// keeps a 500k-request run's poll a fixed size while every attempt stays
+// reachable, instead of the results list freezing at the head.
+const INTR_RESULT_PAGE=2000;
+// History keeps a bounded slice of each finished run: 30 entries x a 500k-row
+// run would pin gigabytes in the tab. The run id still resolves the full record.
+const INTR_HISTORY_RESULTS_MAX=5000;
+let intrPageRunKey='',intrPageInFlight=false,intrLastCapped=false;
+// intrPageOwnsPane: is the results pane still showing the run a page addresses?
+// The live view of the run's own attack tab is; a History view (or another attack
+// tab) is not, so a page that lands there is dropped instead of being spliced in.
+function intrPageOwnsPane(){
+  const activeId=intrTabs.cur()?.tid??null;
+  return pollRebasesRunRows(intrDisplayOwner,intrRunCfg?.tid==null||intrRunCfg.tid===activeId);
+}
+// intrPageResults streams the missing tail of the current run into the view.
+// Safe to call on every poll: it no-ops when a page is in flight or the view is
+// already complete, and stops on the first empty/erroring page.
+async function intrPageResults(target){
+  if(intrPageInFlight||intrDisplayOwner!=='live'||!intrLastRunId)return;
+  if(intrDisplayedResults.length>=(target||0))return;
+  intrPageInFlight=true;
+  // Offsets address one run's log. Name the run so the server can refuse a page
+  // when another client started a new run meanwhile, instead of concatenating
+  // rows from two runs into one view.
+  const wantRun=intrLastRunId;
+  let ok=true,abandon=false;
+  try{
+    const page=await api('/api/intruder/results?offset='+intrDisplayedResults.length+'&limit='+INTR_RESULT_PAGE+'&runId='+encodeURIComponent(wantRun));
+    if(wantRun!==intrLastRunId){abandon=true;ok=false;}
+    else if(page?.stale){ok=false;}
+    // Opening History (or switching attack tab) while the page was in flight
+    // moves the pane off this run: appending would splice the run's rows into
+    // another run's view — and then record that mixture as the run snapshot.
+    else if(!intrPageOwnsPane()){abandon=true;ok=false;}
+    else{
+      const rows=Array.isArray(page?.results)?page.results:[];
+      if(!rows.length)ok=false;
+      else{
+        intrDisplayedResults=intrDisplayedResults.concat(rows);
+        intrLastResults=intrDisplayedResults.slice();
+        renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+      }
+    }
+  }catch(e){
+    ok=false;
+  }finally{
+    intrPageInFlight=false;
+  }
+  // A page for a run this view has already left is dropped, not recorded: the
+  // rows belong to the old run but the state now names the new one.
+  if(abandon)return;
+  // An empty or stale page still finishes the paging pass, so History captures
+  // whatever arrived instead of waiting forever for a page that will not come.
+  if(ok&&intrDisplayedResults.length<(target||0))intrPageResults(target);
+  else intrCaptureHistory(!ok);
+}
+// intrCaptureHistory records the finished run once every result is in hand, so
+// a run whose head arrived first is not captured with only the head.
+function intrCaptureHistory(force){
+  if(!intrCapturePending||intrLastRunning||intrLastTotal<=0)return;
+  // History records the run's own attempts. While the History pane owns the view
+  // the displayed array is another run's rows (and its flagged count), so capture
+  // waits for the run's own view instead — returning to Live, or to the run's tab,
+  // retries it (see showIntrLiveResults and intrLoadTab).
+  const rows=intrCaptureRows(intrDisplayOwner,intrDisplayedResults,intrLastResults);
+  if(!rows)return;
+  // Wait for the paged tail; force records what arrived when a page fails, so a
+  // broken results endpoint cannot leave the run missing from History entirely.
+  if(!force&&intrDisplayedResults.length<intrLastDone)return;
+  intrCapturePending=false;
+  intrHistory.unshift({id:++intrHistorySeq,tid:intrRunCfg?.tid??intrRunTabId,ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,runId:intrLastRunId,total:intrLastTotal,flagged:rows.filter(r=>r.flagged).length,results:rows.slice(0,INTR_HISTORY_RESULTS_MAX),capped:intrLastCapped,cfg:intrRunCfg});
+  if(intrHistory.length>30)intrHistory.length=30;
+  renderIntrHistory();
+}
 // One poll timer: a burst of intruder.update events must not keep re-arming it,
 // or the 400 ms delay never elapses while results arrive faster than that.
 let intrTimerArmed=false;
@@ -2371,8 +2498,15 @@ function showIntrLiveResults(){
   intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:($('#intrTarget').value||'');
   renderIntrHistory();
   renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
+  // A run that finished while History owned the pane was not captured (capture
+  // never records another view's rows). Now that the run's own rows are back on
+  // screen, record it instead of leaving it missing from this tab's History.
+  if(belongsHere&&!intrLastRunning&&intrLastTotal>0&&intrCapturePending)intrCaptureHistory();
 }
 function intrLoadTab(t){
+  // The diff panel compares one attempt with the run's baseline; both belong to
+  // the attack tab that was open. Close it so the next tab does not inherit it.
+  intrExtras?.closeDiff?.();
   intrApply(t);
   if(intrDisplayedHistory?.tid!==t.tid){intrDisplayOwner='live';intrDisplayedHistory=null;}
   const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===t.tid;
@@ -2380,6 +2514,9 @@ function intrLoadTab(t){
   intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:(t.target||'');
   renderIntrHistory();
   renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
+  // Same for a tab switch: coming back to the run's own attack tab restores (and
+  // finally records) an uncaptured finished run.
+  if(belongsHere&&!intrLastRunning&&intrLastTotal>0&&intrCapturePending)intrCaptureHistory();
 }
 function invalidateIntrPoll(){
   clearTimeout(intrTimer);intrTimerArmed=false;
@@ -2432,8 +2569,10 @@ function intrApplyFilter(res){
 // a re-render nor a results copy; just keep polling.
 function intrPollUnchanged(st){
   if(!st||!st.running||st.error||intrPollError||!intrLastRunning)return false;
-  const res=Array.isArray(st.results)?st.results:[];
-  return (st.done||0)===intrLastDone&&(st.total||0)===intrLastTotal&&res.length===intrLastResults.length;
+  // Progress counters are the authoritative "nothing new" signal; the head
+  // length is fixed at the engine cap, so it cannot stand in for the row count
+  // now that pages are appended past it.
+  return (st.done||0)===intrLastDone&&(st.total||0)===intrLastTotal;
 }
 export function scheduleIntr(){
   if(intrPollInFlight){intrPollQueued=true;return;}
@@ -2468,26 +2607,35 @@ export function renderIntr(st,{authoritative=true}={}){
   if(authoritative){
     if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
     if(!st.pollFailed){
-      intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
+      intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;intrLastCapped=!!st.capped;
       if(st.runId)intrLastRunId=String(st.runId);
-      intrLastResults=res.slice();
       if(intrDisplayOwner==='live'&&liveBelongsHere){
-        intrDisplayedResults=res.slice();
+        // The state head is always a prefix of the run and is rewritten in place
+        // when the run finishes (derived flags land then), so merge it over the
+        // shown rows instead of only accepting a longer head; the paged tail is
+        // preserved. See mergeLiveHead().
+        const runKey=intrLastRunId||'';
+        const newRun=runKey!==intrPageRunKey;
+        if(newRun)intrPageRunKey=runKey;
+        intrDisplayedResults=mergeLiveHead(intrDisplayedResults,res,newRun);
         intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
       }
+      // intrLastResults is the active run's own row snapshot, never the pane's.
+      // While History owns the view (or the run belongs to another attack tab)
+      // the displayed array is another run's rows, so adopting it would make
+      // "Live / current run" show foreign attempts and the pager continue from a
+      // foreign offset. See pollRebasesRunRows().
+      if(pollRebasesRunRows(intrDisplayOwner,liveBelongsHere))intrLastResults=intrDisplayedResults.slice();
     }
     if(!running&&!intrStartPending)intrRunTabId=null;
     if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
-    if(!running&&total>0&&intrCapturePending){
-      intrCapturePending=false;
-      intrHistory.unshift({id:++intrHistorySeq,tid:intrRunCfg?.tid??intrRunTabId,ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,runId:st.runId?String(st.runId):intrLastRunId,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
-      if(intrHistory.length>30)intrHistory.length=30;
-      renderIntrHistory();
-    }
+    if(!running&&total>0&&intrCapturePending)intrCaptureHistory();
     if(running&&!st.pollFailed)scheduleIntr();
+    // Stream the results past the state's bounded head as the run progresses.
+    if(liveBelongsHere&&!st.pollFailed&&done>intrDisplayedResults.length)intrPageResults(done);
   }
   const displayRes=authoritative
-    ?(intrDisplayOwner==='live'?(liveBelongsHere?res:[]):intrDisplayedResults)
+    ?(intrDisplayOwner==='live'?(liveBelongsHere?intrDisplayedResults:[]):intrDisplayedResults)
     :(Array.isArray(st.results)?st.results:intrDisplayedResults);
   const displayState=intrDisplayOwner==='history'&&intrDisplayedHistory
     ?{running:false,total:intrDisplayedHistory.total||0,done:intrDisplayedHistory.total||0,capped:!!intrDisplayedHistory.capped}
@@ -2515,7 +2663,9 @@ export function renderIntr(st,{authoritative=true}={}){
   if(stats){
     let fl=0,int=0;
     for(const r of displayRes){if(r.flagged)fl++;if(intrIsInteresting(r))int++;}
-    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
+    const pending=intrDisplayOwner==='live'?Math.max(0,(displayState.done||0)-displayRes.length):0;
+    const kept=intrDisplayOwner==='history'&&displayState.total>displayRes.length?` · first ${displayRes.length.toLocaleString()} of ${displayState.total.toLocaleString()} kept`:'';
+    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${pending?' · '+pending.toLocaleString()+' loading':''}${kept}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
   }
   const box=$('#intrResults');
   if(st.error){intrSuspendListView();box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}

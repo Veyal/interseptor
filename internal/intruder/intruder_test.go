@@ -17,7 +17,9 @@ import (
 
 func waitDone(t *testing.T, e *Engine) State {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Generous: the suite runs packages in parallel and -race slows every send,
+	// so a 2300-request run legitimately takes several seconds under load.
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		st := e.State()
 		if !st.Running && st.Done >= st.Total && st.Total > 0 {
@@ -25,7 +27,10 @@ func waitDone(t *testing.T, e *Engine) State {
 		}
 		time.Sleep(15 * time.Millisecond)
 	}
-	t.Fatalf("attack did not finish: %+v", e.State())
+	st := e.State()
+	// Never dump the whole result set: at this run length it buries the failure.
+	t.Fatalf("attack did not finish within the deadline: running=%v done=%d total=%d error=%q",
+		st.Running, st.Done, st.Total, st.Error)
 	return State{}
 }
 

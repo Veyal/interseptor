@@ -139,6 +139,7 @@ function renderMatrix(body, m, timingDiffs) {
     wrap.append(h);
   }
   if (m.skipped?.length) wrap.append(el('p', 'cxm-note', 'Skipped (broken or no credentials): ' + m.skipped.join(', ')));
+  if (m.cappedIdentities?.length) wrap.append(el('p', 'cxm-note', 'Not tested (identity column limit): ' + m.cappedIdentities.join(', ')));
   if (m.warnings?.length) wrap.append(el('p', 'cxm-note', m.warnings.join(' · ')));
   const scroll = el('div', 'cxm-scroll');
   scroll.append(matrixTable(m));

@@ -2,9 +2,17 @@ package intruder
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 )
+
+// maxNumbersValues bounds one Numbers payload list. It is a materialisation
+// bound on the generated list, not a bound on the attack: the run itself has no
+// request cap. A range that would exceed it is refused with an explicit error
+// rather than silently truncated, so the payload count the user sees is the
+// payload count that is sent.
+const maxNumbersValues = 1_000_000
 
 // NumbersSpec describes a Numbers payload source (Burp-style start/end/step).
 type NumbersSpec struct {
@@ -17,7 +25,8 @@ type NumbersSpec struct {
 	Unique bool   // random: sample without replacement
 }
 
-// ExpandNumbers materializes a Numbers payload list. Caps at maxRequests.
+// ExpandNumbers materializes a Numbers payload list, refusing (never silently
+// truncating) a range larger than maxNumbersValues.
 func ExpandNumbers(spec NumbersSpec) ([]string, error) {
 	mode := spec.Mode
 	if mode == "" {
@@ -64,12 +73,18 @@ func expandSequence(spec NumbersSpec) ([]string, error) {
 	if (step > 0 && spec.Start > spec.End) || (step < 0 && spec.Start < spec.End) {
 		return nil, fmt.Errorf("numbers start/end inconsistent with step direction")
 	}
-	out := make([]string, 0, 64)
+	// Count the range up front (saturating, so extreme inputs cannot overflow) and
+	// refuse an oversized one instead of quietly stopping at a cap.
+	count := stepsBetween(spec.Start, spec.End, step)
+	if count <= 0 {
+		return nil, fmt.Errorf("numbers range is empty")
+	}
+	if count > maxNumbersValues {
+		return nil, fmt.Errorf("numbers range produces %d values; the maximum is %d — widen the step or narrow the range", count, maxNumbersValues)
+	}
+	out := make([]string, 0, count)
 	for n := spec.Start; ; n += step {
 		out = append(out, formatNumber(n, spec.Pad))
-		if len(out) >= maxRequests {
-			break
-		}
 		next := n + step
 		if step > 0 {
 			if next > spec.End {
@@ -84,96 +99,85 @@ func expandSequence(spec NumbersSpec) ([]string, error) {
 	return out, nil
 }
 
+// stepsBetween is the number of values from start to end inclusive at step,
+// computed without overflowing for extreme int64 inputs.
+func stepsBetween(start, end, step int64) int {
+	if step == math.MinInt64 {
+		return math.MaxInt // -step is not representable; treat as unbounded
+	}
+	var dist, stride uint64
+	if step > 0 {
+		dist = uint64(end) - uint64(start) // correct unsigned distance when end >= start
+		stride = uint64(step)
+	} else {
+		dist = uint64(start) - uint64(end)
+		stride = uint64(-step)
+	}
+	if stride == 0 {
+		return 0
+	}
+	steps := dist/stride + 1
+	if steps > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(steps)
+}
+
 func expandRandom(spec NumbersSpec, r *rand.Rand) ([]string, error) {
 	if spec.Count <= 0 {
 		return nil, fmt.Errorf("numbers random mode requires count > 0")
+	}
+	if spec.Count > maxNumbersValues {
+		return nil, fmt.Errorf("numbers random mode asks for %d values; the maximum is %d", spec.Count, maxNumbersValues)
 	}
 	lo, hi := spec.Start, spec.End
 	if lo > hi {
 		lo, hi = hi, lo
 	}
 	step := spec.Step
-	var lattice []int64
-	if step != 0 {
-		if step < 0 {
-			step = -step
-		}
-		for n := lo; n <= hi; n += step {
-			lattice = append(lattice, n)
-			if len(lattice) >= maxRequests {
-				break
-			}
-		}
-	} else {
-		span := hi - lo + 1
-		if span <= 0 {
-			return nil, fmt.Errorf("numbers range is empty")
-		}
+	if step < 0 {
+		step = -step
 	}
-
-	n := spec.Count
-	if n > maxRequests {
-		n = maxRequests
+	span := hi - lo + 1
+	if span <= 0 {
+		return nil, fmt.Errorf("numbers range is empty")
+	}
+	// latticeCount is how many distinct values the range offers (step 0 means every
+	// integer). It is computed, never materialised, so a wide range is sampled
+	// uniformly across the whole range instead of only from its first N values.
+	latticeCount := span
+	if step > 0 {
+		latticeCount = (hi-lo)/step + 1
 	}
 	if r == nil {
 		r = rand.New(rand.NewSource(rand.Int63()))
 	}
+	n := spec.Count
+	if int64(n) > latticeCount {
+		n = int(latticeCount)
+	}
+	// at maps a lattice index back to its value.
+	at := func(k int64) int64 {
+		if step > 0 {
+			return lo + k*step
+		}
+		return lo + k
+	}
 	out := make([]string, 0, n)
-
 	if spec.Unique {
-		if len(lattice) > 0 {
-			if n > len(lattice) {
-				n = len(lattice)
-			}
-			perm := r.Perm(len(lattice))
-			for i := 0; i < n; i++ {
-				out = append(out, formatNumber(lattice[perm[i]], spec.Pad))
-			}
-			return out, nil
-		}
-
-		span := hi - lo + 1
-		if span <= 0 {
-			return nil, fmt.Errorf("numbers range is empty")
-		}
-		if int64(n) > span {
-			n = int(span)
-		}
-		if span <= int64(maxRequests) {
-			pool := make([]int64, span)
-			for i := int64(0); i < span; i++ {
-				pool[i] = lo + i
-			}
-			perm := r.Perm(len(pool))
-			for i := 0; i < n; i++ {
-				out = append(out, formatNumber(pool[perm[i]], spec.Pad))
-			}
-			return out, nil
-		}
-
 		seen := make(map[int64]struct{}, n)
 		for len(out) < n {
-			v := lo + r.Int63n(span)
-			if _, ok := seen[v]; !ok {
-				seen[v] = struct{}{}
-				out = append(out, formatNumber(v, spec.Pad))
+			k := r.Int63n(latticeCount)
+			if _, ok := seen[k]; ok {
+				continue
 			}
+			seen[k] = struct{}{}
+			out = append(out, formatNumber(at(k), spec.Pad))
 		}
 		return out, nil
 	}
-
 	for i := 0; i < n; i++ {
-		var v int64
-		if len(lattice) > 0 {
-			v = lattice[r.Intn(len(lattice))]
-		} else {
-			span := hi - lo + 1
-			if span <= 0 {
-				return nil, fmt.Errorf("numbers range is empty")
-			}
-			v = lo + r.Int63n(span)
-		}
-		out = append(out, formatNumber(v, spec.Pad))
+		out = append(out, formatNumber(at(r.Int63n(latticeCount)), spec.Pad))
 	}
 	return out, nil
 }

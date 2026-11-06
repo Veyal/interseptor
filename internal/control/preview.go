@@ -41,8 +41,9 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Masking is for a preview copied into a ticket or chat; the attach-as-evidence
-	// path below never masks, so a finding keeps its credentials verbatim.
+	// A preview copied into a ticket or chat masks on request (maskHeaders=1). The
+	// attach-as-evidence path masks by default instead, because the image becomes
+	// part of the report and a PNG cannot be masked after the fact.
 	mask := preview.ParseBool(r.URL.Query().Get("maskHeaders"), false)
 	decode, err := parseDecodeMode(r.URL.Query().Get("decode"))
 	if err != nil {
@@ -82,6 +83,15 @@ type flowPreviewAttachInput struct {
 	Context   *int        `json:"context"`
 	Mode      string      `json:"mode"`
 	Decode    string      `json:"decode"`
+	// Mask credential header values in the stored image. Default true: an
+	// attached screenshot becomes report evidence, and the report's "mask
+	// credential headers" promise cannot reach into a PNG after the fact.
+	Mask *bool `json:"mask"`
+}
+
+// maskHeaders reports whether credential header values are masked (default true).
+func (in flowPreviewAttachInput) maskHeaders() bool {
+	return in.Mask == nil || *in.Mask
 }
 
 // attachOptions builds render options; a focused image also draws the caption.
@@ -156,7 +166,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	opts.Title = flowPreviewTitle(f)
-	result, decoded, err := h.renderFlowPreview(f, opts, false, decode)
+	result, decoded, err := h.renderFlowPreview(f, opts, in.maskHeaders(), decode)
 	if err != nil {
 		writePreviewError(w, err)
 		return

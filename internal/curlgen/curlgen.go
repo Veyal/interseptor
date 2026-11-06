@@ -40,6 +40,14 @@ func Build(method, url string, headers http.Header, body []byte) string {
 	sort.Strings(keys)
 	for _, k := range keys {
 		for _, v := range headers[k] {
+			// curl reads "Name:" (empty value) as "do not send Name" — it even
+			// suppresses the header curl would add itself. "Name;" is curl's
+			// spelling for a header sent with an empty value, so an empty value
+			// replayed in a capture has to use it.
+			if v == "" {
+				parts = append(parts, "-H '"+shellEscape(k+";")+"'")
+				continue
+			}
 			parts = append(parts, "-H '"+shellEscape(k+": "+v)+"'")
 		}
 	}

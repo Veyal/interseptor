@@ -199,6 +199,22 @@ func TestReproduceDifferentialStopsSending_when_ContextCancelledDuringAttempt(t 
 	}
 }
 
+// Gate 1 must not accept a candidate whose baseline request never completed:
+// with no baseline the oracle cannot tell a reflected marker or a DB error from
+// one the endpoint always returns, so a payload-only observation proves nothing.
+func TestReproduceDifferentialRejectsAFailedBaseline(t *testing.T) {
+	for _, class := range []VulnClass{ClassReflected, ClassError} {
+		s := newScriptedSender(map[string][]Exchange{
+			"base":    {{Status: 0, Err: errFake}},
+			"payload": {exFlow("MARK7 You have an error in your SQL syntax", 11)},
+		})
+		spec := DiffSpec{Class: class, Baseline: req("base"), Payload: req("payload"), Marker: "MARK7", N: 2}
+		if res := ReproduceDifferential(context.Background(), s, spec); res.Reproduced {
+			t.Fatalf("%s: a failed baseline must not reproduce, got %+v", class, res)
+		}
+	}
+}
+
 type cancelAfterFirstSend struct {
 	cancel context.CancelFunc
 	sent   int

@@ -164,6 +164,11 @@ shared by main navigation and Proxy's **Search in Map** action. Feature behavior
 feature module; `app.js` owns global navigation, shortcuts, SSE dispatch, and boot. No build step or
 bundler; the binary stays single and static.
 
+Toolbar and panel layout follows [UI declutter rules](ui-declutter.md): one primary action per pane,
+everything else in a single overflow, one `Filters` button per filter bar (with the active count), and
+one entry point per concept. The `js/desktop-panel-*.js` desktop skin is the reference implementation;
+the web surface is held to the same rules.
+
 Modules coordinate without importing each other through three layers, lightest first: the
 synchronous `bus.js` publish/subscribe bus (a module emits an intent — e.g. "reload History flows" —
 and whichever module owns that behaviour listens), the `core.js` `registerHook`/`getHook` mediator
@@ -273,6 +278,10 @@ math) that now backs Intruder results and the WebSocket frame list; `windowed-li
 "Convert" drawer reachable anywhere with `Cmd/Ctrl+J`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
 conversion, a promise-valued `ClipboardItem`, secure-context fallbacks). `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
+The Collections panel keeps its editor guard in the pure `collections-open-model.js` (`openGuard`,
+`isOpenItem`) next to `collections-model.js` and `collections-run-plan.js`, so "re-open the open
+request", "ask before discarding" and "Send only the request the editor shows" are one tested rule
+instead of three inline checks.
 
 Deliberate differences from the overhaul spec, recorded so they are not mistaken for gaps:
 

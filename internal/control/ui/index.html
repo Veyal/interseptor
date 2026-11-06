@@ -520,7 +520,7 @@
       <span class="intr-sep" aria-hidden="true"></span>
       <label class="intr-num" title="Max requests in flight at once"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-parallel"/></svg></span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
       <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span><input id="intrDelay" type="number" min="0" max="60000" step="50" value="0">ms</label>
-      <label class="intr-num u-hidden" id="intrRepeatWrap" title="How many times to send the same request (Race / repeat — no payloads)"><span>×</span><input id="intrRepeat" type="number" min="1" max="2000" value="20">sends</label>
+      <label class="intr-num u-hidden" id="intrRepeatWrap" title="How many times to send the same request (Race / repeat — no payloads)"><span>×</span><input id="intrRepeat" type="number" min="1" max="1000000" value="20">sends</label>
       <label class="intr-num intr-barrier u-hidden" id="intrBarrierWrap" title="Race / repeat: hold the first launch wave until every worker is ready so requests leave together. Separate connections, not single-packet sync."><input id="intrBarrier" type="checkbox">Barrier</label>
       <div class="spacer"></div>
       <span id="intrCount" class="hint"></span>
@@ -1854,7 +1854,7 @@ Content-Type: application/json
         <button type="button" data-m="scope" aria-pressed="false">All in-scope</button>
         <button type="button" data-m="crosshost" aria-pressed="false" title="Replay this endpoint to every in-scope host with its JWT — detects cross-environment token confusion">Cross-host JWT</button>
       </div>
-      <input id="authzMax" class="btn btn-field" data-init-hidden aria-label="Authz — max endpoints" placeholder="max endpoints (30)" title="Bulk mode only">
+      <input id="authzMax" class="btn btn-field" data-init-hidden aria-label="Authz — max endpoints" placeholder="max endpoints (30)" title="Bulk mode only — up to 100" min="1" max="100">
       <div id="authzScopePanel" class="panel-card" data-init-hidden></div>
       <div id="authzCookieHint" class="hint u-lh" data-init-hidden></div>
       <div id="authzIds"></div>

@@ -364,6 +364,11 @@ type FindingBlock struct {
 	// preserved; the UI/report surface that the evidence is gone.
 	Missing    bool `json:"missing,omitempty"`
 	RawMissing bool `json:"rawMissing,omitempty"`
+
+	// Omitted is set at export time when the image exists but was left out of the
+	// document to stay inside the report image budget. Distinct from Missing: the
+	// bytes are in the store, the report just cannot carry them inline.
+	Omitted string `json:"omitted,omitempty"`
 }
 
 // FindingFlow is one PoC flow attached to a finding, enriched with a compact flow

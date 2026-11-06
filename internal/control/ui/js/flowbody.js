@@ -76,7 +76,12 @@ export function stepSibling(ids, current, delta) {
 export function flowUrl(d) {
   if (!d || !d.host) return '';
   const def = (d.scheme === 'https' && d.port === 443) || (d.scheme === 'http' && d.port === 80);
-  return (d.scheme || 'http') + '://' + d.host + (d.port && !def ? ':' + d.port : '') + (d.path || '/');
+  // A captured IPv6 host is net/url's unbracketed Hostname() ("::1"); rebuild
+  // the authority with brackets or the Render view's <base href> is invalid.
+  const raw = String(d.host);
+  // More than one colon means an IPv6 literal, not host:port.
+  const host = raw.includes(':') && !raw.startsWith('[') && raw.split(':').length > 2 ? '[' + raw + ']' : raw;
+  return (d.scheme || 'http') + '://' + host + (d.port && !def ? ':' + d.port : '') + (d.path || '/');
 }
 
 const WS_OPCODES = { 0: 'cont', 1: 'text', 2: 'bin', 8: 'close', 9: 'ping', 10: 'pong' };
@@ -150,15 +155,17 @@ function rawHTML(flow, side, deps) {
   const cut = raw.length > MAX_RENDER_BYTES;
   const text = cut ? raw.slice(0, MAX_RENDER_BYTES) : raw;
   const mime = deps.mimeOf ? deps.mimeOf(detail, side) : '';
+  const notice = cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '';
   if (side === 'res' && deps.renderHTML && mime && /html/i.test(mime)) {
     const view = flow.resView === 'render' ? 'render' : 'raw';
     const seg = '<div class="seg fd-res-seg" role="group" aria-label="Response view">' +
       [['raw', 'Raw'], ['render', 'Render']].map(([v, l]) => `<button type="button" data-fd-res-view="${v}" aria-pressed="${v === view}"${v === view ? ' class="on"' : ''}>${l}</button>`).join('') + '</div>';
-    if (view === 'render') return seg + deps.renderHTML(text, flowUrl(detail));
-    return seg + `<pre class="flow-raw">${deps.highlight ? deps.highlight(text, side) : escapeHTML(text)}</pre>` + (cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '');
+    // The page shown in Render is cut at the same 1 MB, so it carries the same
+    // notice: a partial document must never look like the whole response.
+    if (view === 'render') return seg + deps.renderHTML(text, flowUrl(detail)) + notice;
+    return seg + `<pre class="flow-raw">${deps.highlight ? deps.highlight(text, side) : escapeHTML(text)}</pre>` + notice;
   }
   const body = deps.highlight ? deps.highlight(text, side) : escapeHTML(text);
-  const notice = cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '';
   return `<pre class="flow-raw">${body}</pre>${notice}`;
 }
 

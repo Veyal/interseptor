@@ -1289,6 +1289,10 @@ details.acc>summary.acc-h>*{margin:7px 0}
 .sse-status{align-items:center;gap:4px}
 .sse-dot{transition:background var(--motion-base) var(--motion-standard)}
 .sse-dot.reconnecting{background:var(--pendingFill);animation:ssePulse var(--motion-live) var(--motion-standard) infinite}
+/* connection.js emits 'sse-dot offline' once the stream gives up (EventSource
+   CLOSED, server restarting). Without this rule the dot kept the base
+   .sse-dot --accent (the healthy colour) while its label read "offline". */
+.sse-dot.offline{background:var(--red)}
 @keyframes ssePulse{50%{opacity:.4}}
 
 /* responsive: only extreme narrow windows (not the normal desktop layout) */

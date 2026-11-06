@@ -262,7 +262,6 @@ func (c *conv) children(d *dirNode) []child {
 		folders = append(folders, child{dir: nd, name: name, seq: seq})
 	}
 	sort.SliceStable(folders, func(i, j int) bool { return folders[i].seq < folders[j].seq })
-	out = append(out, folders...)
 	var reqs []child
 	for _, f := range d.files {
 		b := c.parseOrWarn(f)
@@ -286,7 +285,12 @@ func (c *conv) children(d *dirNode) []child {
 		}
 		return reqs[i].file.Path < reqs[j].file.Path
 	})
-	return append(out, reqs...)
+	// Bruno keeps one `seq` per sibling item and lists folders and requests in
+	// that one order, so the two groups must interleave. Ties keep folders
+	// first, matching the pre-seq ordering when no file carries a seq.
+	out = append(folders, reqs...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].seq < out[j].seq })
+	return out
 }
 
 func seqOf(m *block) (float64, bool) {

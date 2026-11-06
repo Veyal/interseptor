@@ -13,3 +13,18 @@ export function setupBootAction({ done, hasFlows, scopeRules }) {
   if (scopeRules == null) return 'skip';
   return scopeRules > 0 ? 'mark-done' : 'open';
 }
+
+// SETUP_LAST is the index of the final (done) step; the wizard shows SETUP_LAST+1 steps.
+export const SETUP_LAST = 4;
+
+// setupEnterAction names the control Enter presses on a step that has a text
+// input. It is the step's own primary action, never "Next": pressing Enter after
+// typing a host or a target used to advance the wizard, so the typed value was
+// dropped and the last step still reported the configuration as saved. The CA
+// step returns '' because its checkbox gates Next and Enter must not bypass it.
+export function setupEnterAction(step) {
+  if (step === 1) return '';
+  if (step === 2) return 'setupScopeAdd';
+  if (step === 3) return 'setupTargetSave';
+  return 'setupNext';
+}

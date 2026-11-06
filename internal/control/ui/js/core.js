@@ -1637,8 +1637,17 @@ export async function saveFile(blob,suggestedName,mimeType){
   return name;
 }
 
-const MAX_LIST_FILE = 16 * 1024 * 1024; // SecLists-scale wordlists
+// MAX_LIST_FILE is a browser-memory guard, not a feature limit: the whole list
+// becomes a JS string plus an array of strings, so a multi-hundred-megabyte file
+// would freeze the tab long before any Intruder cap applied. The attack engine
+// itself has no payload/request cap. Keep this comfortably under the server's
+// request-body limit so a loaded list can always be started.
+const MAX_LIST_FILE = 64 * 1024 * 1024; // wordlists up to tens of millions of lines
 export const LIST_PREVIEW_LINES = 40; // max payload lines shown in Intruder textareas
+
+// Wordlist extensions: a picker filtered to .txt only made a .dic/.lst/.wordlist
+// file unselectable, which reads as "this list cannot be loaded".
+const LIST_FILE_ACCEPT = '.txt,.lst,.list,.dic,.words,.wordlist,.payload,.payloads,.fuzz,.csv,text/plain';
 
 // normalizeListText converts CRLF/CR to LF for pasted or loaded list files.
 export function normalizeListText(text){
@@ -1666,7 +1675,7 @@ export function applyTextList(el, text, {append=false}={}){
 }
 
 // pickTextFile opens a native file picker and reads the chosen file as UTF-8 text.
-export function pickTextFile({accept='.txt,.lst,.csv,.words,text/plain',maxBytes=MAX_LIST_FILE}={}){
+export function pickTextFile({accept=LIST_FILE_ACCEPT,maxBytes=MAX_LIST_FILE}={}){
   return new Promise((resolve,reject)=>{
     const input=document.createElement('input');
     input.type='file';
@@ -1677,12 +1686,14 @@ export function pickTextFile({accept='.txt,.lst,.csv,.words,text/plain',maxBytes
       input.remove();
       if(!file){resolve(null);return;}
       if(file.size>maxBytes){
-        reject(new Error('file too large ('+fmtSize(file.size)+' — max '+fmtSize(maxBytes)+')'));
+        // Name the bound and the way forward: the tab, not the attack engine, is
+        // what runs out of memory here.
+        reject(new Error(file.name+' is '+fmtSize(file.size)+' — the editor loads up to '+fmtSize(maxBytes)+' of text at once. Split the list, or start the attack from the API/CLI for a larger one.'));
         return;
       }
       const reader=new FileReader();
       reader.onload=()=>resolve({text:String(reader.result||''),name:file.name,size:file.size});
-      reader.onerror=()=>reject(new Error('could not read file'));
+      reader.onerror=()=>reject(new Error('could not read '+file.name));
       reader.readAsText(file);
     };
     document.body.appendChild(input);
@@ -2374,12 +2385,18 @@ export function closeModal(modalEl){
   const entry=modalRegistry.get(modalEl);
   if(!entry){if(modalEl)modalEl.style.display='none';return;}
   const idx=modalStack.indexOf(entry);
-  const wasTop=idx===modalStack.length-1;
+  // 'wasTop' needs a real stack member: with an empty stack indexOf() returns -1
+  // and -1 === stack.length-1, so a close() on a dialog that was never opened
+  // looked like closing the top modal and ran the focus-restore branch below —
+  // stealing focus from the page (e.g. a sheet that starts at the non-modal peek
+  // detent calls closeModal to release a trap it never took).
+  const wasTop=idx>=0&&idx===modalStack.length-1;
   if(idx>=0)modalStack.splice(idx,1);
   modalEl.style.display='none';
   restoreModalZIndex(entry);
   syncModalZOrder();
   entry.onEscape=null;entry.onDismiss=null;entry.initialFocus=null;
+  if(idx<0){entry.previousFocus=null;return;}
   if(!wasTop){
     const above=idx>=0?modalStack[idx]:null;
     if(above&&entry.el.contains(above.previousFocus))above.previousFocus=entry.previousFocus;

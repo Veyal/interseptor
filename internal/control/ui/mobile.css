@@ -57,6 +57,19 @@
   .dock-badge{border:1px solid CanvasText}
 }
 
+/* ---- <=640px: Pause rides in the panel header, not in the History toolbar ----
+   The row above the panel carries the Proxy | Intercept switcher, so it is the
+   panel header a phone has. proxy.js moves the same #freezeBtn into it (state and
+   handler untouched); the switcher keeps the space it had and the button keeps a
+   44px tap target instead of taking a toolbar row of its own. */
+@media (max-width:640px){
+  .dock-seg #freezeBtn{flex:0 0 auto;min-width:72px;min-height:44px;padding:0 var(--sp-2);background:transparent;border:0;color:var(--fg2);font-size:var(--fs-sm);font-weight:600;gap:2px}
+  .dock-seg #freezeBtn:hover{color:var(--fg)}
+  .dock-seg #freezeBtn.on{color:var(--accent)}
+  .dock-seg #freezeBtn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+  .dock-seg #freezeBtn .filters-count{margin-left:0}
+}
+
 @media (prefers-reduced-motion:reduce){
   .dock-btn::after{transition:none}
 }

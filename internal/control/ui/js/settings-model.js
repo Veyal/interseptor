@@ -58,6 +58,16 @@ export function normalizeDensityChoice(raw) {
   return raw === 'compact' || raw === 'comfortable' ? raw : 'default';
 }
 
+// themeToggleLabel is the topbar theme toggle's accessible name and tooltip for
+// the theme that is applied right now — the same wording app.js writes at boot
+// (its literal is pinned by ui_review_a11y_test.go). Every other writer of the
+// theme (Settings → Appearance, the phone More sheet) must re-apply it too, or
+// the toggle keeps announcing the theme it showed before the switch.
+export function themeToggleLabel(theme) {
+  const t = theme === 'light' || theme === 'hc' ? theme : 'dark';
+  return 'Theme: ' + (t === 'hc' ? 'high contrast' : t) + '. Switch to ' + (t === 'dark' ? 'light' : 'dark') + '.';
+}
+
 export function readHintsPref(storage) {
   try { return (storage || globalThis.localStorage).getItem(HINTS_PREF) === 'on'; } catch (e) { return false; }
 }

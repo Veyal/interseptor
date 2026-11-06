@@ -12,18 +12,25 @@ import (
 // trailing whitespace, detects extra JSON values, and forces MaxBytesReader to
 // report padding that extends beyond the limit after an otherwise-valid value.
 func decodeLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
-	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, false)
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, false, "")
+}
+
+// decodeLimitedJSONTooLarge is decodeLimitedJSON with an endpoint-specific
+// explanation for a body over the limit, so a 413 says what to do about it
+// instead of the generic "request body too large".
+func decodeLimitedJSONTooLarge(w http.ResponseWriter, r *http.Request, limit int64, dst any, msg string) bool {
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, false, msg)
 }
 
 func decodeLimitedJSONDisallowUnknownFields(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
-	return decodeLimitedJSONWithOptions(w, r, limit, dst, true, false)
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, true, false, "")
 }
 
 func decodeOptionalLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
-	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, true)
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, true, "")
 }
 
-func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit int64, dst any, disallowUnknown, allowEmpty bool) bool {
+func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit int64, dst any, disallowUnknown, allowEmpty bool, tooLargeMsg string) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	if disallowUnknown {
 		dec.DisallowUnknownFields()
@@ -32,7 +39,7 @@ func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit 
 		if allowEmpty && err == io.EOF {
 			return true
 		}
-		writeJSONDecodeError(w, err)
+		writeJSONDecodeErrorWith(w, err, tooLargeMsg)
 		return false
 	}
 
@@ -41,7 +48,7 @@ func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit 
 		if err == nil {
 			httpErr(w, http.StatusBadRequest, "bad json")
 		} else {
-			writeJSONDecodeError(w, err)
+			writeJSONDecodeErrorWith(w, err, tooLargeMsg)
 		}
 		return false
 	}
@@ -49,9 +56,16 @@ func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit 
 }
 
 func writeJSONDecodeError(w http.ResponseWriter, err error) {
+	writeJSONDecodeErrorWith(w, err, "")
+}
+
+func writeJSONDecodeErrorWith(w http.ResponseWriter, err error, tooLargeMsg string) {
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
-		httpErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		if tooLargeMsg == "" {
+			tooLargeMsg = "request body too large"
+		}
+		httpErr(w, http.StatusRequestEntityTooLarge, tooLargeMsg)
 		return
 	}
 	httpErr(w, http.StatusBadRequest, "bad json")

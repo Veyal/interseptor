@@ -302,8 +302,12 @@ func (im *importer) wsdlOperation(w *wsdlCtx, bind, sb *node, v12 bool, bop, pt 
 		enc := ""
 		if encoded {
 			enc = nsSoapEnc
-			if body != nil && body.attr("encodingStyle") != "" {
-				enc = strings.Fields(body.attr("encodingStyle"))[0]
+			// A whitespace-only value passes the "is set" check but holds no
+			// token to take; keep the SOAP-ENC default instead of panicking.
+			if body != nil {
+				if f := strings.Fields(body.attr("encodingStyle")); len(f) > 0 {
+					enc = f[0]
+				}
 			}
 		}
 		tag := g.tag(ens, name)

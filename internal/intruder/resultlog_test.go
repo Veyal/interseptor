@@ -77,6 +77,15 @@ func TestResultLogMemoryModeFallback(t *testing.T) {
 	if got := l.readRange(2, 3); len(got) != 3 || got[0].ID != 3 {
 		t.Fatalf("readRange = %v", ids(got))
 	}
+	// An offset past the first chunk must index the buffer itself: buf holds
+	// every result, so chunk arithmetic (idx/chunkSize, idx%chunkSize) pointed
+	// back into the head and a page repeated rows instead of continuing.
+	if got := l.readRange(5, 2); len(got) != 2 || got[0].ID != 6 || got[1].ID != 7 {
+		t.Fatalf("readRange past chunk 0 = %v, want ids 6,7", ids(got))
+	}
+	if got := l.readRange(7, 2); len(got) != 0 {
+		t.Fatalf("readRange at end = %v, want empty", ids(got))
+	}
 }
 
 // Engine-level: results beyond what State returns live are reachable via the
@@ -107,9 +116,13 @@ func TestEngineResultsPagination(t *testing.T) {
 	}
 }
 
-func TestMaxRequestsRaisedForDiskBackedRunner(t *testing.T) {
-	if maxRequests < 20000 {
-		t.Fatalf("maxRequests = %d, want >= 20000 (disk-backed capacity)", maxRequests)
+// The runner has no request cap any more: capacity comes from the disk-backed
+// log plus the lazy job plan, not from a constant. Guard against the cap being
+// reintroduced under a new name.
+func TestRunnerHasNoRequestCap(t *testing.T) {
+	plan := planJobs(Spec{AttackType: "sniper", Payloads: [][]string{make([]string, 250000)}}, 1, []string{"b"})
+	if plan.total != 250000 {
+		t.Fatalf("plan total = %d, want 250000 — a payload list must not be capped", plan.total)
 	}
 }
 

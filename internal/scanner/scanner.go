@@ -68,8 +68,12 @@ var (
 	// stack traces (any status code — verbose-error only covers 5xx).
 	debugPageRe = regexp.MustCompile(`(?i)(Werkzeug Debugger|Traceback \(most recent call last\)|class="Whoops|Whoops\\Exception|Symfony\\Component\\[A-Za-z]+\\.{0,40}Exception|Action Controller: Exception caught|You're seeing this error because you have DEBUG = True|<title>\s*Runtime Error\s*</title>|Server Error in '/' Application|<b>Fatal error</b>|<b>Parse error</b>|Uncaught (?:Error|Exception|TypeError)|goroutine \d+ \[|\bat (?:System\.[A-Za-z]|java\.[a-z]+\.))`)
 
-	// cspWeakSourceRe matches a wildcard * in a script/default/object source directive.
-	cspWeakSourceRe = regexp.MustCompile(`(?:default|script|object)-src[^;]*\*`)
+	// cspWeakSourceRe matches a bare * source token in a script/default/object
+	// directive — the CSP wildcard that allows any origin. A path wildcard such
+	// as https://cdn.example.com/assets/* restricts the directive to one host and
+	// so is not a wildcard source. Directives are ';'-separated, and a
+	// comma-separated header can carry several policies, hence the [;,].
+	cspWeakSourceRe = regexp.MustCompile(`(?:^|[;,])\s*(?:default|script|object)-src(?:[^;]*\s)?\*(?:\s|;|,|$)`)
 	// hstsMaxAgeRe extracts the max-age seconds from an HSTS header.
 	hstsMaxAgeRe = regexp.MustCompile(`(?i)max-age\s*=\s*"?(\d+)`)
 
@@ -77,6 +81,18 @@ var (
 	formActionHTTPRe = regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["']?http://`)
 	// anchorTagRe extracts opening <a> tags for the reverse-tabnabbing check.
 	anchorTagRe = regexp.MustCompile(`(?i)<a\b[^>]*>`)
+	// anchorBlankTargetRe matches target=_blank; whitespace around "=" is legal
+	// HTML. The attribute name must start a token, so data-target= is not a
+	// target.
+	anchorBlankTargetRe = regexp.MustCompile(`(?i)(?:^|\s)target\s*=\s*["']?_blank\b`)
+	// anchorExternalHrefRe matches an <a href> pointing at an absolute http(s)
+	// URL. Whitespace around "=" is legal HTML, so it is allowed here; the name
+	// must start a token, so data-href= is not an href.
+	anchorExternalHrefRe = regexp.MustCompile(`(?i)(?:^|\s)href\s*=\s*["']?\s*https?://`)
+	// dirListingAnchorRe matches the first link of an auto-generated directory
+	// index. Tag/attribute names are case-insensitive HTML and whitespace around
+	// "=" is legal, so the gate may not look for the exact "<a href=" text.
+	dirListingAnchorRe = regexp.MustCompile(`(?i)<a\s+href\s*=`)
 	// insecureWSRe matches a plaintext (ws://) WebSocket URL.
 	insecureWSRe = regexp.MustCompile(`(?i)\bws://[a-z0-9.\-]`)
 	// jsIdentRe validates a JSONP callback value is a plain JS identifier/path.
@@ -245,12 +261,21 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 		}
 	}
 
-	// Verbose error disclosure.
+	// Verbose error disclosure. The markers are matched case-insensitively: a
+	// real 5xx spells them "Exception", "Stack" and "TraceId", and the shipped
+	// Starlark template (which lower-cases the body) already found those, so the
+	// Go check silently missed what its own override catches.
 	if on(checkVerboseError) {
-		if f.Status >= 500 && containsAny(resp, "traceId", "trace_id", "stacktrace", "stack", "exception", " at ") {
+		if f.Status >= 500 && verboseErrorDisclosed(resp) {
+			evidence := firstMatchFold(resp, "traceid", "trace_id", "exception", "stack")
+			if evidence == "" {
+				// The stack-frame regex matched without any marker word, so the
+				// frame itself is the evidence.
+				evidence = verboseStackFrameRe.FindString(resp)
+			}
 			add("Medium", "Verbose error discloses internal details",
 				"A server error response leaks internal diagnostics (trace identifiers / stack frames) that aid reconnaissance of the backend.",
-				trunc(firstMatch(resp, "traceId", "trace_id", "exception", "stack"), 80),
+				trunc(evidence, 80),
 				"Return a generic error to clients and keep trace identifiers and stack traces server-side in logs only.")
 		}
 	}
@@ -269,7 +294,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 		if f.Scheme == "https" && res.Get("Strict-Transport-Security") == "" {
 			missing = append(missing, "Strict-Transport-Security (HSTS)")
 		}
-		if isHTML(res, f.Mime) || containsAny(f.Mime, "javascript") {
+		if isHTML(res, f.Mime) || isJS(res, f.Mime) {
 			if !strings.Contains(strings.ToLower(res.Get("X-Content-Type-Options")), "nosniff") {
 				missing = append(missing, "X-Content-Type-Options: nosniff")
 			}
@@ -340,8 +365,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 	// Insecure cookies (missing Secure and/or HttpOnly).
 	if on(checkInsecureCookie) {
 		for _, c := range res.Values("Set-Cookie") {
-			lc := strings.ToLower(c)
-			if !strings.Contains(lc, "secure") || !strings.Contains(lc, "httponly") {
+			if !cookieHasAttr(c, "Secure") || !cookieHasAttr(c, "HttpOnly") {
 				add("Low", "Cookie set without Secure and HttpOnly",
 					"A cookie is set without both the Secure and HttpOnly attributes, exposing it to plaintext interception or theft via XSS.",
 					trunc(c, 80),
@@ -354,8 +378,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 	// Cookie missing SameSite.
 	if on(checkCookieSameSite) {
 		for _, c := range res.Values("Set-Cookie") {
-			lc := strings.ToLower(c)
-			if !strings.Contains(lc, "samesite") {
+			if !cookieHasAttr(c, "SameSite") {
 				add("Low", "Cookie missing SameSite attribute",
 					"A cookie is set without a SameSite attribute. Browsers that do not default to Lax will send it on cross-site requests, enabling CSRF attacks.",
 					trunc(c, 80),
@@ -483,7 +506,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Directory listing exposure.
 	if on(checkDirListing) {
-		if strings.Contains(resp, "<a href=") && dirListingRe.MatchString(resp) {
+		if dirListingAnchorRe.MatchString(resp) && dirListingRe.MatchString(resp) {
 			add("Low", "Directory listing enabled",
 				"The response appears to be an auto-generated directory index (e.g. Apache/nginx autoindex). Directory listings expose file and directory names, software paths, and may reveal sensitive files.",
 				trunc(dirListingRe.FindString(resp), 80),
@@ -523,7 +546,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Source-map reference exposed in a JS response.
 	if on(checkSourceMap) {
-		if (containsAny(f.Mime, "javascript") || containsAny(res.Get("Content-Type"), "javascript")) && sourceMapRe.MatchString(resp) {
+		if isJS(res, f.Mime) && sourceMapRe.MatchString(resp) {
 			add("Low", "Source map reference exposed",
 				"A JavaScript response references a sourceMappingURL. If the .map file is reachable it exposes original, unminified source (and sometimes comments/paths) to anyone.",
 				trunc(sourceMapRe.FindString(resp), 80),
@@ -567,12 +590,14 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Weak HSTS policy — present but with a short max-age. A short window means the
 	// browser stops enforcing HTTPS soon after the last visit, re-opening the SSL-
-	// strip surface. (Missing includeSubDomains alone is deliberately NOT flagged —
-	// it is extremely common and would drown the list; the fix still recommends it.)
+	// strip surface; max-age=0 is the extreme case (it clears the policy at once)
+	// and must be flagged too. (Missing includeSubDomains alone is deliberately NOT
+	// flagged — it is extremely common and would drown the list; the fix still
+	// recommends it.)
 	if on(checkWeakHSTS) {
 		if f.Scheme == "https" {
 			if hsts := res.Get("Strict-Transport-Security"); hsts != "" {
-				if secs := hstsMaxAge(hsts); secs > 0 && secs < 15552000 { // under 180 days
+				if secs, ok := hstsMaxAge(hsts); ok && secs < 15552000 { // under 180 days
 					add("Low", "Weak HSTS policy (short max-age)",
 						"Strict-Transport-Security is present but its max-age is short, so the browser stops enforcing HTTPS soon after the last visit — re-opening the SSL-strip / downgrade surface.",
 						trunc(hsts, 80),
@@ -619,8 +644,8 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 	// Cookie with SameSite=None but no Secure.
 	if on(checkSameSiteNone) {
 		for _, c := range res.Values("Set-Cookie") {
-			lc := strings.ToLower(c)
-			if strings.Contains(lc, "samesite=none") && !strings.Contains(lc, "secure") {
+			sameSite, ok := cookieAttr(c, "SameSite")
+			if ok && strings.EqualFold(sameSite, "None") && !cookieHasAttr(c, "Secure") {
 				add("Medium", "Cookie SameSite=None without Secure",
 					"A cookie is set with SameSite=None but without the Secure attribute. Browsers reject this combination (the cookie may be dropped), and it signals the cookie was intended for cross-site use without transport protection.",
 					trunc(c, 80),
@@ -632,7 +657,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// Insecure WebSocket (ws://) reference on an HTTPS page.
 	if on(checkInsecureWS) {
-		if f.Scheme == "https" && (isHTML(res, f.Mime) || containsAny(f.Mime, "javascript")) {
+		if f.Scheme == "https" && (isHTML(res, f.Mime) || isJS(res, f.Mime)) {
 			if m := insecureWSRe.FindString(resp); m != "" {
 				add("Low", "Insecure WebSocket (ws://) reference",
 					"An HTTPS page references a plaintext ws:// WebSocket endpoint. The WebSocket data is unencrypted and readable/modifiable by an on-path attacker (and browsers block ws:// from https pages).",
@@ -644,7 +669,7 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 
 	// JSONP endpoint reflecting a caller-supplied callback.
 	if on(checkJSONP) {
-		if containsAny(f.Mime, "javascript") || containsAny(res.Get("Content-Type"), "javascript") {
+		if isJS(res, f.Mime) {
 			if name, cb := jsonpCallback(f.Path, resp); cb != "" {
 				add("Low", "JSONP endpoint reflects callback",
 					"This endpoint returns JavaScript that wraps its data in a caller-supplied callback function ("+name+"). Any site can include it as a <script> and read the data cross-origin, bypassing the same-origin policy.",
@@ -762,33 +787,35 @@ func validSSN(s string) bool {
 	return true
 }
 
-// hstsMaxAge parses the max-age seconds from an HSTS header (0 if absent).
-func hstsMaxAge(h string) int {
+// hstsMaxAge parses the max-age seconds from an HSTS header. ok is false when
+// the header carries no max-age directive, so a caller can tell "absent" from a
+// present max-age=0 (which disables the policy and is the weakest value).
+func hstsMaxAge(h string) (int, bool) {
 	m := hstsMaxAgeRe.FindStringSubmatch(h)
 	if len(m) < 2 {
-		return 0
+		return 0, false
 	}
 	n := 0
 	for _, r := range m[1] {
 		n = n*10 + int(r-'0')
 		if n > 1<<30 { // clamp; anything this large is "strong" anyway
-			return 1 << 30
+			return 1 << 30, true
 		}
 	}
-	return n
+	return n, true
 }
 
 // findTabnabbingAnchor returns the first <a> tag that opens an external http(s)
 // link in a new tab without rel=noopener/noreferrer, or "".
 func findTabnabbingAnchor(html string) string {
 	for _, tag := range anchorTagRe.FindAllString(html, 64) {
+		if !anchorBlankTargetRe.MatchString(tag) {
+			continue
+		}
+		if !anchorExternalHrefRe.MatchString(tag) {
+			continue
+		}
 		lc := strings.ToLower(tag)
-		if !strings.Contains(lc, "target=") || !strings.Contains(lc, "_blank") {
-			continue
-		}
-		if !strings.Contains(lc, "href=\"http") && !strings.Contains(lc, "href='http") && !strings.Contains(lc, "href=http") {
-			continue
-		}
 		if strings.Contains(lc, "noopener") || strings.Contains(lc, "noreferrer") {
 			continue
 		}
@@ -816,15 +843,15 @@ func jsonpCallback(path, resp string) (name, cb string) {
 }
 
 // queryParam extracts a single query parameter value from a request path+query.
+// url.ParseQuery returns every valid pair alongside a decoding error, so the
+// valid pairs are used even when one unrelated pair is malformed — discarding
+// the whole query would silently hide the parameter from the check.
 func queryParam(path, key string) string {
 	i := strings.IndexByte(path, '?')
 	if i < 0 {
 		return ""
 	}
-	vals, err := url.ParseQuery(path[i+1:])
-	if err != nil {
-		return ""
-	}
+	vals, _ := url.ParseQuery(path[i+1:])
 	return vals.Get(key)
 }
 
@@ -935,6 +962,28 @@ func hasLetter(s string) bool {
 	return false
 }
 
+// cookieAttr returns the value of one Set-Cookie attribute and whether the
+// attribute is present. Only the ';'-separated segments after the name=value
+// pair are attributes, and only a whole attribute name matches, so a cookie
+// named "secure_session" or one whose value contains "secure" no longer reads
+// as carrying the Secure flag.
+func cookieAttr(cookie, attr string) (string, bool) {
+	parts := strings.Split(cookie, ";")
+	for _, part := range parts[1:] {
+		name, value, _ := strings.Cut(part, "=")
+		if strings.EqualFold(strings.TrimSpace(name), attr) {
+			return strings.TrimSpace(value), true
+		}
+	}
+	return "", false
+}
+
+// cookieHasAttr reports whether a Set-Cookie header carries the attribute.
+func cookieHasAttr(cookie, attr string) bool {
+	_, ok := cookieAttr(cookie, attr)
+	return ok
+}
+
 func clip(b []byte) string {
 	if len(b) > maxScanBytes {
 		b = b[:maxScanBytes]
@@ -942,9 +991,19 @@ func clip(b []byte) string {
 	return string(b)
 }
 
+// isHTML reports a text/html response. Media types are case-insensitive
+// (RFC 9110), so the Content-Type value and the recorded MIME are compared
+// without regard to case.
 func isHTML(h http.Header, mime string) bool {
-	ct := h.Get("Content-Type")
-	return strings.Contains(ct, "text/html") || strings.Contains(mime, "text/html")
+	return strings.Contains(strings.ToLower(h.Get("Content-Type")), "text/html") ||
+		strings.Contains(strings.ToLower(mime), "text/html")
+}
+
+// isJS reports a JavaScript response by its Content-Type or recorded MIME,
+// again case-insensitively.
+func isJS(h http.Header, mime string) bool {
+	return strings.Contains(strings.ToLower(h.Get("Content-Type")), "javascript") ||
+		strings.Contains(strings.ToLower(mime), "javascript")
 }
 
 func containsAny(s string, subs ...string) bool {
@@ -956,6 +1015,24 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
+// verboseErrorMarkers are the diagnostic words a 5xx response leaks: a trace
+// identifier, a stack trace, or an exception name. They are compared against the
+// lower-cased body so the capitalized spellings real pages use are found too.
+var verboseErrorMarkers = []string{"traceid", "trace_id", "stacktrace", "stack", "exception"}
+
+// verboseStackFrameRe matches a stack frame (" at java.lang.Thread.run(", " at
+// System.Web.Mvc...") in any casing, so a plain-English " at " in an error page
+// is not read as a leaked stack trace.
+var verboseStackFrameRe = regexp.MustCompile(`(?i)\bat (?:[a-z_$][a-z0-9_$]*\.)*[a-z_$][a-z0-9_$]*\s*\(`)
+
+// verboseErrorDisclosed reports whether a 5xx body leaks internal diagnostics.
+func verboseErrorDisclosed(body string) bool {
+	if containsAny(strings.ToLower(body), verboseErrorMarkers...) {
+		return true
+	}
+	return verboseStackFrameRe.MatchString(body)
+}
+
 func firstMatch(s string, subs ...string) string {
 	for _, sub := range subs {
 		if i := strings.Index(s, sub); i >= 0 {
@@ -965,6 +1042,26 @@ func firstMatch(s string, subs ...string) string {
 			}
 			return s[i:end]
 		}
+	}
+	return ""
+}
+
+// firstMatchFold is firstMatch for case-insensitive needles: it finds the
+// position in the folded text but returns the snippet from s, so the evidence
+// keeps the response's own spelling. A needle whose folded offset falls past
+// the end of s (lower-casing can grow a string) is skipped rather than sliced.
+func firstMatchFold(s string, subs ...string) string {
+	folded := strings.ToLower(s)
+	for _, sub := range subs {
+		i := strings.Index(folded, sub)
+		if i < 0 || i >= len(s) {
+			continue
+		}
+		end := i + 60
+		if end > len(s) {
+			end = len(s)
+		}
+		return s[i:end]
 	}
 	return ""
 }

@@ -288,6 +288,16 @@ func redactHeaderValue(name, value string) string {
 	return evidenceText(value, maxEvidenceValueRunes)
 }
 
+// evidenceValueText is the drawn form of a payload or extracted value: masked
+// over the whole value first (so the length and digest are the real ones), then
+// clipped to the evidence budget.
+func evidenceValueText(v string, mask bool) string {
+	if mask {
+		return clipText(maskedValue(v), maxEvidenceValueRunes)
+	}
+	return clipText(v, maxEvidenceValueRunes)
+}
+
 // maskedValue is the drawn form of a masked payload or extracted value: its
 // length and a short digest, so equal values stay comparable without showing a
 // single character of the secret (a 6-digit OTP must not leak half its digits).
@@ -1128,7 +1138,7 @@ func persistIntruderRun(st intruderRunStore, rec intruder.RunRecord) {
 		for keep := len(all) / 4; keep >= 1 && errors.Is(err, store.ErrIntruderRunTooLarge); keep /= 2 {
 			env.State.Results = append(append([]intruder.Result(nil), all[:keep]...), all[len(all)-keep:]...)
 			env.State.Capped = true
-			env.State.Error = fmt.Sprintf("run record truncated to the first and last %d of %d results to fit the %d MiB store limit", keep, len(all), 4)
+			env.State.Note = fmt.Sprintf("run record truncated to the first and last %d of %d results to fit the %d MiB store limit", keep, len(all), 4)
 			err = putIntruderEnvelope(st, env)
 		}
 	}

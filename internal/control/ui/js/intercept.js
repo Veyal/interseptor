@@ -3,7 +3,7 @@ import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection, focusOption } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, dropPath, dropPendingPath, createDropScheduler, forwardAllPlan, forwardPath, heldForwardBody, heldEditorBaseline, binaryNoteText, binaryTailWarning, previewableImage, heldReleasedText, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText, filterCheckboxChecked, filterErrorText } from './intercept-model.js';
+import { heldKey, dropPath, dropPendingPath, createDropScheduler, forwardAllPlan, forwardPath, heldForwardBody, heldEditorBaseline, binaryNoteText, binaryTailWarning, previewableImage, heldReleasedText, heldIsModified, createPrettyBridge, losslessBeautify, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally, contentLengthNote, contentLengthText, filterCheckboxChecked, filterErrorText, undoDropOutcome } from './intercept-model.js';
 import { applyDelta, snapshotSeq, deltaType, SEQ_UNKNOWN } from './intercept-delta.js';
 import { showDropToast } from './held-undo.js';
 import { wireOverlayGutter } from './overlay-gutter.js';
@@ -1064,7 +1064,10 @@ function scheduleDrop(){
   if(!dropScheduler.schedule(key,{side:sel.side,id:sel.id}))return;
   markDropPending({side:sel.side,id:sel.id},true);
   const t=showDropToast(dropToastText(sel.side),{
-    onUndo:()=>{dropToasts.delete(key);if(dropScheduler.undo(key)){markDropPending({side:sel.side,id:sel.id},false);toast(sel.side==='resp'?'response kept on hold':'request kept on hold','success');}},
+    onUndo:()=>{dropToasts.delete(key);
+      const outcome=undoDropOutcome({cancelled:dropScheduler.undo(key),held:!!heldItem(sel.id,sel.side)});
+      if(outcome==='kept'){markDropPending({side:sel.side,id:sel.id},false);toast(sel.side==='resp'?'response kept on hold':'request kept on hold','success');}
+      else if(outcome==='released')toast('that message has already left the hold queue — nothing to undo','warn');},
     onPause:()=>dropScheduler.pause(key),
     onResume:()=>dropScheduler.resume(key),
   });

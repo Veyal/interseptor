@@ -144,6 +144,20 @@ export function changeStarts(ops) {
   return starts;
 }
 
+// stepChange is the `n` / `N` cursor over the change blocks: `cursor` is -1 until
+// one is focused, which starts at the first block for a next step and at the LAST
+// block for a previous one. A bare `(cursor + delta + count) % count` started a
+// first previous step at count-2, so "n" on a fresh diff skipped the newest
+// change. Both directions wrap.
+export function stepChange(cursor, delta, count) {
+  const n = Math.floor(count) || 0;
+  if (n <= 0) return -1;
+  const c = Number.isFinite(cursor) ? Math.trunc(cursor) : -1;
+  const d = Math.trunc(Number(delta) || 0);
+  if (c < 0 || c >= n) return d < 0 ? n - 1 : 0;
+  return ((c + d) % n + n) % n;
+}
+
 // splitRows pairs deletions with additions for side-by-side rendering.
 export function splitRows(ops) {
   const rows = [];
@@ -316,7 +330,7 @@ export function createDiffView(container, { mode = 'unified', context = 3, doc }
   }
   function go(delta) {
     if (!state.changeEls.length) return;
-    state.cursor = (state.cursor + delta + state.changeEls.length) % state.changeEls.length;
+    state.cursor = stepChange(state.cursor, delta, state.changeEls.length);
     const target = state.changeEls[state.cursor];
     target.tabIndex = -1;
     target.focus({ preventScroll: true });

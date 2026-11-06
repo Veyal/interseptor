@@ -9,6 +9,7 @@
 import { getShellApi, TAB_CHANGE_EVENT } from './shell-hooks.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { openModal, projectStorageKey, setDensity, getDensity } from './core.js';
+import { themeToggleLabel } from './settings-model.js';
 import { watchSoftKeyboard } from './soft-keyboard.js';
 import {
   DOCK_DESTINATIONS, PANEL_LABELS, destinationForPanel, resolvePanel, rememberPanel, parseStoredLast,
@@ -146,7 +147,16 @@ function applyThemeChoice(choice) {
   } catch (e) { if (choice === 'system') effective = 'dark'; }
   const root = document.documentElement;
   if (effective === 'light' || effective === 'hc') root.setAttribute('data-theme', effective); else root.removeAttribute('data-theme');
-  $('themeToggle')?.querySelector('use')?.setAttribute('href', effective === 'light' ? '#i-sun' : '#i-moon');
+  // The topbar toggle carries the applied theme in its icon, name and tooltip;
+  // switching the theme from this sheet must re-label it too (app.js writes the
+  // same wording at boot and on its own toggle).
+  const toggle = $('themeToggle');
+  if (toggle) {
+    const label = themeToggleLabel(effective);
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+    toggle.querySelector('use')?.setAttribute('href', effective === 'light' ? '#i-sun' : '#i-moon');
+  }
 }
 
 function buildMore() {

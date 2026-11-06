@@ -58,10 +58,52 @@ func queryPeerFindings(peer *sql.DB) (*sql.Rows, error) {
 	}
 	query := fmt.Sprintf(`SELECT id, severity, status, source, title, target, detail,
 		evidence, fix, %s, %s, %s, %s, %s, %s, %s,
-		%s, %s, %s, %s, %s FROM findings`, optional("body"), optional("impact"), optional("why"),
+		%s, %s, %s, %s, %s, %s FROM findings`, optional("body"), optional("impact"), optional("why"),
 		optional("cwe"), optional("environment"), optional("cvss"), optional("verification_instructions"),
-		optional("summary"), optional("confidence"), optional("retest"), optional("targets"), optional("proof_review"))
+		optional("summary"), optional("confidence"), optional("retest"), optional("targets"), optional("proof_review"),
+		optional("structured"))
 	return peer.Query(query)
+}
+
+// peerFlowQuery builds the peer-flows SELECT used by merge and its preview. The
+// takeover/original-request columns were added after the first flows schema, so
+// a peer that predates them contributes empty values instead of failing.
+func peerFlowQuery(peer *sql.DB) (string, error) {
+	columns, err := peerTableColumns(peer, "flows")
+	if err != nil {
+		return "", err
+	}
+	optional := func(name string) string {
+		if columns[name] {
+			return name
+		}
+		return `''`
+	}
+	return `SELECT id, ts, method, scheme, host, port, path, http_version, status,
+		req_headers, res_headers, req_body_hash, res_body_hash, req_len, res_len, mime,
+		duration_ms, client_addr, error, flags, note,
+		` + optional("original_req_headers") + `, ` + optional("original_res_headers") + `,
+		` + optional("original_req_body_hash") + `, ` + optional("original_res_body_hash") + ` FROM flows`, nil
+}
+
+// scanPeerFlow decodes one peerFlowQuery row, including the pre-edit ("original")
+// request/response evidence a MITM edit leaves behind.
+func scanPeerFlow(rows *sql.Rows) (Flow, error) {
+	var f Flow
+	var tsMs int64
+	var reqH, resH, orh, osh string
+	if err := rows.Scan(&f.ID, &tsMs, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path,
+		&f.HTTPVersion, &f.Status, &reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
+		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &f.Note,
+		&orh, &osh, &f.OriginalReqBodyHash, &f.OriginalResBodyHash); err != nil {
+		return f, err
+	}
+	f.TS = time.UnixMilli(tsMs)
+	_ = json.Unmarshal([]byte(reqH), &f.ReqHeaders)
+	_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
+	_ = json.Unmarshal([]byte(orh), &f.OriginalReqHeaders)
+	_ = json.Unmarshal([]byte(osh), &f.OriginalResHeaders)
+	return f, nil
 }
 
 // peerTableColumns reads a table's schema without assuming that the peer was
@@ -126,9 +168,11 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		return stats, fmt.Errorf("index local flows: %w", err)
 	}
 	peerToLocal := map[int64]int64{}
-	rows, err := peer.Query(`SELECT id, ts, method, scheme, host, port, path, http_version, status,
-		req_headers, res_headers, req_body_hash, res_body_hash, req_len, res_len, mime,
-		duration_ms, client_addr, error, flags, note FROM flows`)
+	pflowQuery, err := peerFlowQuery(peer)
+	if err != nil {
+		return stats, fmt.Errorf("inspect peer flows: %w", err)
+	}
+	rows, err := peer.Query(pflowQuery)
 	if err != nil {
 		return stats, fmt.Errorf("read peer flows: %w", err)
 	}
@@ -139,19 +183,12 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 	}
 	var pending []pflow
 	for rows.Next() {
-		var f Flow
-		var tsMs int64
-		var reqH, resH, note string
-		if err := rows.Scan(&f.ID, &tsMs, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path,
-			&f.HTTPVersion, &f.Status, &reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
-			&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &note); err != nil {
+		f, err := scanPeerFlow(rows)
+		if err != nil {
 			rows.Close()
 			return stats, err
 		}
-		f.TS = time.UnixMilli(tsMs)
-		_ = json.Unmarshal([]byte(reqH), &f.ReqHeaders)
-		_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
-		pending = append(pending, pflow{f: f, peer: f.ID, note: note})
+		pending = append(pending, pflow{f: f, peer: f.ID, note: f.Note})
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -159,7 +196,11 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 	}
 	rows.Close()
 	for _, pf := range pending {
-		for _, bodyHash := range []string{pf.f.ReqBodyHash, pf.f.ResBodyHash} {
+		// Every body hash the row will reference — including the pre-edit
+		// "original" request/response captured when an operator rewrote the wire
+		// bytes — must have made it into this store, or the merged row would
+		// render as missing evidence.
+		for _, bodyHash := range []string{pf.f.ReqBodyHash, pf.f.ResBodyHash, pf.f.OriginalReqBodyHash, pf.f.OriginalResBodyHash} {
 			if bodyHash == "" {
 				continue
 			}
@@ -193,7 +234,10 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 	}
 
 	// 3. Union findings (append + remap PoC flow references, dedupe by signature).
-	seenFindings, err := s.findingSignatures(s.db)
+	// The signature→id index (not just presence) is what lets a peer finding's
+	// relatedFindings links resolve to the local row that represents their target,
+	// whether that row was created by this merge or already existed here.
+	localFindings, err := s.findingSignatureIDs(s.db)
 	if err != nil {
 		return stats, fmt.Errorf("index local findings: %w", err)
 	}
@@ -210,7 +254,7 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		var f Finding
 		if err := frows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss, &f.VerificationInstructions,
-			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
+			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}); err != nil {
 			frows.Close()
 			return stats, err
 		}
@@ -230,9 +274,22 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		return stats, fmt.Errorf("check peer finding tags: %w", err)
 	}
 
+	// A finding's structured relatedFindings links are stored by peer id, which
+	// means nothing here. They can only be remapped once every peer finding has
+	// a local id (a link may point forward, or at a peer row deduped onto an
+	// existing local finding), so the links are applied in a second pass after
+	// the rows exist.
+	type pendingRelations struct {
+		findingID int64
+		relations []FindingRelation
+	}
+	var relationPatches []pendingRelations
+	peerFindingToLocal := map[int64]int64{}
+
 	for _, pf := range pendingF {
 		sig := findingSig(pf.f)
-		if seenFindings[sig] {
+		if localID, ok := localFindings[sig]; ok {
+			peerFindingToLocal[pf.peerID] = localID
 			stats.FindingsSkipped++
 			continue
 		}
@@ -304,12 +361,39 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 
 		remapFindingTargets(&f, peerToLocal)
 		f.Body = remapBodyFlowIDs(markMissingMergedFlowBlocks(f.Body, peerToLocal), peerToLocal)
-		_, err = s.createFindingPreserving(&f)
+		// Clear the peer-id links before creation: createFinding validates them
+		// against local ids, which would either reject the merge or bind an
+		// unrelated finding that happens to share the peer id.
+		relations := f.RelatedFindings
+		f.RelatedFindings = nil
+		created, err := s.createFindingPreserving(&f)
 		if err != nil {
 			return stats, fmt.Errorf("insert merged finding: %w", err)
 		}
-		seenFindings[sig] = true
+		peerFindingToLocal[pf.peerID] = created
+		localFindings[sig] = created
 		stats.FindingsAdded++
+		if len(relations) > 0 {
+			relationPatches = append(relationPatches, pendingRelations{findingID: created, relations: relations})
+		}
+	}
+
+	// Apply the remapped relatedFindings links to the findings this merge
+	// created. Only new rows are patched: a deduped finding keeps the relations
+	// its own project already has.
+	for _, patch := range relationPatches {
+		relations := remapRelatedFindings(patch.relations, peerFindingToLocal, patch.findingID)
+		if len(relations) == 0 {
+			continue
+		}
+		err := s.UpdateFindingMetadata(patch.findingID, FindingMetadataPatch{
+			RelatedFindings: &relations,
+			Change: FindingChange{Actor: "merge", Source: "merge",
+				Reason: "related-finding links remapped from the merged project"},
+		})
+		if err != nil {
+			return stats, fmt.Errorf("remap merged finding relations: %w", err)
+		}
 	}
 
 	// 4. Union collections (scrubbed, scripts quarantined, caps default-deny).
@@ -343,7 +427,7 @@ func preflightPeerFindings(peer *sql.DB) error {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment,
-			&f.Cvss, &f.VerificationInstructions, &f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
+			&f.Cvss, &f.VerificationInstructions, &f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}); err != nil {
 			return err
 		}
 		if err := validateFindingEnvironment(f.Environment); err != nil {
@@ -703,20 +787,57 @@ func flowSig(f Flow) string {
 
 // findingSignatures returns the set of finding signatures already present in db.
 func (s *Store) findingSignatures(db *sql.DB) (map[string]bool, error) {
-	rows, err := db.Query(`SELECT title, target, severity, source, detail, targets FROM findings`)
+	bySig, err := s.findingSignatureIDs(db)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(bySig))
+	for sig := range bySig {
+		out[sig] = true
+	}
+	return out, nil
+}
+
+// findingSignatureIDs maps the dedup signature of every finding in db to its
+// row id — the identity merge matches a peer finding with, and the local row a
+// remapped relatedFindings link must point at.
+func (s *Store) findingSignatureIDs(db *sql.DB) (map[string]int64, error) {
+	rows, err := db.Query(`SELECT id, title, target, severity, source, detail, targets FROM findings`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]bool{}
+	out := map[string]int64{}
 	for rows.Next() {
 		var f Finding
-		if err := rows.Scan(&f.Title, &f.Target, &f.Severity, &f.Source, &f.Detail, &f.Targets); err != nil {
+		if err := rows.Scan(&f.ID, &f.Title, &f.Target, &f.Severity, &f.Source, &f.Detail, &f.Targets); err != nil {
 			return nil, err
 		}
-		out[findingSig(f)] = true
+		out[findingSig(f)] = f.ID
 	}
 	return out, rows.Err()
+}
+
+// remapRelatedFindings rewrites peer finding ids through peerToLocal. A link to
+// a peer finding this project never received (a dangling peer reference) or a
+// link that would make the finding relate to itself is dropped, since the store
+// rejects both.
+func remapRelatedFindings(relations []FindingRelation, peerToLocal map[int64]int64, selfID int64) []FindingRelation {
+	out := make([]FindingRelation, 0, len(relations))
+	seen := make(map[FindingRelation]bool, len(relations))
+	for _, r := range relations {
+		local, ok := peerToLocal[r.ID]
+		if !ok || local == selfID {
+			continue
+		}
+		r.ID = local
+		if seen[r] {
+			continue
+		}
+		seen[r] = true
+		out = append(out, r)
+	}
+	return out
 }
 
 // findingSig is the dedup signature for findings on merge.

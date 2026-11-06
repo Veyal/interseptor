@@ -26,17 +26,25 @@ const wsGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 // Opcodes (RFC 6455 §5.2).
 const (
-	opText   = 0x1
-	opBinary = 0x2
-	opClose  = 0x8
-	opPing   = 0x9
-	opPong   = 0xA
+	opContinuation = 0x0
+	opText         = 0x1
+	opBinary       = 0x2
+	opClose        = 0x8
+	opPing         = 0x9
+	opPong         = 0xA
 )
 
 // maxReplyBytes caps the total payload retained across all collected reply
-// frames. Each frame is already capped at 16 MB, but 64 frames could otherwise
-// buffer ~1 GB; this bounds one repeater action to a sane amount for display.
-const maxReplyBytes = 32 << 20
+// messages. Each frame is already capped at 16 MB, but 64 replies could
+// otherwise buffer ~1 GB; this bounds one repeater action to a sane amount for
+// display. maxReplyMessages caps how many whole replies are kept and
+// maxReplyFrames bounds the raw frames read, so a fragmented stream cannot loop
+// forever.
+const (
+	maxReplyBytes    = 32 << 20
+	maxReplyMessages = 64
+	maxReplyFrames   = 4096
+)
 
 // Request is one WebSocket send.
 type Request struct {
@@ -159,16 +167,16 @@ func Send(req Request) (*Result, error) {
 	}
 	res.Frames = append(res.Frames, Frame{Dir: "send", Opcode: int(opcode), Text: req.Message, Len: len(req.Message)})
 
-	// Collect response frames until the read window closes or the server closes.
+	// Collect reply messages until the read window closes or the server closes.
+	// A message may be split over continuation frames (RFC 6455 §5.4), so
+	// fragments are reassembled and one logical message is one reply; control
+	// frames may arrive between fragments and are still handled on sight.
 	conn.SetReadDeadline(time.Now().Add(readFor))
-	total := 0
-	for i := 0; i < 64; i++ {
-		op, payload, err := readFrame(br)
+	total, messages, msgOp := 0, 0, -1
+	var msg []byte
+	for frames := 0; messages < maxReplyMessages && frames < maxReplyFrames; frames++ {
+		fin, op, payload, err := readFrame(br)
 		if err != nil {
-			break
-		}
-		if op == opClose {
-			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: op, Text: "(close)", Len: len(payload)})
 			break
 		}
 		if op == opPing {
@@ -179,8 +187,40 @@ func Send(req Request) (*Result, error) {
 		if op == opPong {
 			continue
 		}
-		res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: op, Text: string(payload), Len: len(payload)})
-		if total += len(payload); total > maxReplyBytes {
+		if op == opClose {
+			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: op, Text: "(close)", Len: len(payload)})
+			// RFC 6455 §5.5.1: answer a server-initiated close so the closing
+			// handshake completes instead of looking like an abnormal closure
+			// (1006) to the peer. Only the status code is echoed: a control
+			// frame carries at most 125 bytes, and the received payload is not
+			// bounded by that.
+			_, _ = conn.Write(encodeClientFrame(opClose, closeReplyPayload(payload)))
+			break
+		}
+		if op != opContinuation && msgOp >= 0 {
+			// A new message started before the previous one finished: keep the
+			// payload collected so far instead of dropping it silently.
+			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
+			total += len(msg)
+			messages++
+			msg, msgOp = nil, -1
+		}
+		if msgOp < 0 {
+			msgOp = op
+		}
+		msg = append(msg, payload...)
+		if len(msg) > maxReplyBytes {
+			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
+			break
+		}
+		if !fin {
+			continue
+		}
+		res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
+		total += len(msg)
+		messages++
+		msg, msgOp = nil, -1
+		if total > maxReplyBytes {
 			break
 		}
 	}
@@ -299,17 +339,19 @@ func encodeClientFrame(opcode byte, payload []byte) []byte {
 	return out
 }
 
-// readFrame reads one frame (handles masked or unmasked). Control-frame and
-// fragmentation handling is intentionally minimal — enough for a repeater.
-func readFrame(br *bufio.Reader) (opcode int, payload []byte, err error) {
+// readFrame reads one frame (handles masked or unmasked) and reports whether it
+// is the final frame of its message. The caller reassembles continuation
+// frames; control frames may be interleaved with them.
+func readFrame(br *bufio.Reader) (fin bool, opcode int, payload []byte, err error) {
 	b0, err := br.ReadByte()
 	if err != nil {
-		return 0, nil, err
+		return false, 0, nil, err
 	}
 	b1, err := br.ReadByte()
 	if err != nil {
-		return 0, nil, err
+		return false, 0, nil, err
 	}
+	fin = b0&0x80 != 0
 	opcode = int(b0 & 0x0f)
 	masked := b1&0x80 != 0
 	n := uint64(b1 & 0x7f)
@@ -317,35 +359,45 @@ func readFrame(br *bufio.Reader) (opcode int, payload []byte, err error) {
 	case 126:
 		var ext [2]byte
 		if _, err = readFull(br, ext[:]); err != nil {
-			return 0, nil, err
+			return false, 0, nil, err
 		}
 		n = uint64(binary.BigEndian.Uint16(ext[:]))
 	case 127:
 		var ext [8]byte
 		if _, err = readFull(br, ext[:]); err != nil {
-			return 0, nil, err
+			return false, 0, nil, err
 		}
 		n = binary.BigEndian.Uint64(ext[:])
 	}
 	if n > 16<<20 {
-		return 0, nil, fmt.Errorf("frame too large: %d", n)
+		return false, 0, nil, fmt.Errorf("frame too large: %d", n)
 	}
 	var mask [4]byte
 	if masked {
 		if _, err = readFull(br, mask[:]); err != nil {
-			return 0, nil, err
+			return false, 0, nil, err
 		}
 	}
 	payload = make([]byte, n)
 	if _, err = readFull(br, payload); err != nil {
-		return 0, nil, err
+		return false, 0, nil, err
 	}
 	if masked {
 		for i := range payload {
 			payload[i] ^= mask[i%4]
 		}
 	}
-	return opcode, payload, nil
+	return fin, opcode, payload, nil
+}
+
+// closeReplyPayload returns the payload for the close frame that answers a
+// peer-initiated close: its status code when one was sent, otherwise an empty
+// close.
+func closeReplyPayload(payload []byte) []byte {
+	if len(payload) >= 2 {
+		return payload[:2]
+	}
+	return nil
 }
 
 func readFull(br *bufio.Reader, p []byte) (int, error) {

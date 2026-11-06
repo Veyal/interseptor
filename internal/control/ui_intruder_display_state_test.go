@@ -18,7 +18,9 @@ func TestUIIntruderHistoryOwnsDisplayedResultsSeparatelyFromActiveRun(t *testing
 		"intrDisplayedResults=belongsHere?intrLastResults.slice():[]",
 		"data-intr-live",
 		"if(intrDisplayOwner==='live'&&liveBelongsHere){",
-		"intrDisplayedResults=res.slice()",
+		// The head is merged (not only accepted when longer) so a finished run's
+		// derived flags replace the running head and the paged tail survives.
+		"intrDisplayedResults=mergeLiveHead(intrDisplayedResults,res,newRun)",
 		"const pool=intrApplyFilter(intrDisplayedResults)",
 		"const displayTarget=intrDisplayedTarget||$('#intrTarget').value||''",
 		"target:displayTarget",

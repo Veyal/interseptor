@@ -230,11 +230,27 @@ func (s *Server) dialOriginRaw(ctx context.Context, network, addr string) (net.C
 	return dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
 }
 
+// upstreamConnectTimeout bounds how long a TCP connect to an origin may take.
+// The request context carries no deadline (http.Server gives none, and the MITM
+// loop only cancels on client disconnect), so without this a SYN-filtered host
+// parks the request for the OS retry window (~75s macOS, ~130s Linux) instead of
+// failing fast. Same bound as the stdlib default transport and the raw paths.
+const upstreamConnectTimeout = 30 * time.Second
+
+// originTLSHandshakeTimeout bounds the TLS handshake with an origin (and with an
+// HTTPS chained upstream proxy) once TCP is established. dialContext's bound only
+// covers the connect: a peer that accepts the connection and then never speaks TLS
+// — a SYN-accepting firewall, a hung load balancer, a half-open middlebox — would
+// otherwise park the request, and its client, forever with nothing recorded. Same
+// bound as the stdlib default transport's TLSHandshakeTimeout. A var so tests can
+// exercise it quickly.
+var originTLSHandshakeTimeout = 30 * time.Second
+
 func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if up := s.upstream.Load(); up != nil && isSOCKSUpstream(up) {
 		return dialViaSOCKS(ctx, up, network, addr)
 	}
-	return (&net.Dialer{Control: s.refuseSelfDial}).DialContext(ctx, network, addr)
+	return s.selfDialer(upstreamConnectTimeout).DialContext(ctx, network, addr)
 }
 
 type originDialContextKey struct{}
@@ -280,7 +296,13 @@ func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.
 		return nil, err
 	}
 	tc := tls.Client(raw, cfg)
-	if err := tc.HandshakeContext(ctx); err != nil {
+	hsCtx := ctx
+	if originTLSHandshakeTimeout > 0 {
+		var cancel context.CancelFunc
+		hsCtx, cancel = context.WithTimeout(ctx, originTLSHandshakeTimeout)
+		defer cancel()
+	}
+	if err := tc.HandshakeContext(hsCtx); err != nil {
 		raw.Close()
 		if !isUpstreamProxyTLS && s.OriginTLSVerify() {
 			return nil, originTLSVerificationError(host, err)
@@ -568,6 +590,19 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 	if isUpgradeRequest(req.Header) {
 		s.tunnelUpgrade(conn, br, req, flow)
 		return false // the connection is now an opaque upgraded stream
+	}
+
+	// This raw loop owns the connection, so net/http's server machinery — which
+	// answers "Expect: 100-continue" when a handler first reads the body — is not
+	// in play. A client that sends Expect waits for the interim response before
+	// transmitting its body, so without this answer it stalls (and an intercept
+	// hold, whose editor must read the body, can never complete). Answer it here
+	// and drop the header so the origin does not send a second interim response.
+	if wantsContinue(req) {
+		if _, err := io.WriteString(conn, "HTTP/1.1 100 Continue\r\n\r\n"); err != nil {
+			return false
+		}
+		req.Header.Del("Expect")
 	}
 
 	// Unlike net/http's server, this loop owns the raw conn, so nothing cancels
@@ -1084,6 +1119,47 @@ func (s *Server) recordClientAbort(flow *proxyFlow) {
 	s.record(flow)
 }
 
+// wantsContinue reports whether r asks for an interim 100 Continue response
+// before the client transmits the request body. Like net/http's server, only
+// HTTP/1.1+ requests get an answer: an HTTP/1.0 client would misread the
+// interim head as its final response.
+func wantsContinue(r *http.Request) bool {
+	if r == nil || r.ContentLength == 0 || !r.ProtoAtLeast(1, 1) {
+		return false
+	}
+	for _, v := range r.Header.Values("Expect") {
+		for _, tok := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(tok), "100-continue") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// trailerSyncBody copies an inbound request's trailer values into the outbound
+// clone when the body reaches its end. Request.Clone snapshots the trailer map
+// before http.ReadRequest has read any trailing fields, so the clone otherwise
+// keeps empty placeholders and the transport writes "X-Foo:" with no value.
+type trailerSyncBody struct {
+	io.ReadCloser
+	src, dst http.Header
+	synced   bool
+}
+
+func (b *trailerSyncBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && !b.synced {
+		b.synced = true
+		for k, vv := range b.src {
+			if len(vv) > 0 {
+				b.dst[k] = append([]string(nil), vv...)
+			}
+		}
+	}
+	return n, err
+}
+
 // gateAndForward runs the intercept gate + match-&-replace, tees the request
 // body, forwards upstream, and finalizes the request side of flow. It returns
 // (resp, false, nil) on success, (nil, true, nil) if the request was dropped,
@@ -1094,6 +1170,13 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 	out.URL.Scheme = flow.Scheme
 	out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 	removeHeaders(out.Header, hopRequestHeaders)
+	// Request trailer values are only filled in once the inbound body reaches
+	// EOF, which happens after Clone snapshotted the (still empty) trailer map.
+	// Sync them across at that point so the transport writes the client's real
+	// trailer values instead of bare "X-Foo:" placeholders.
+	if out.Body != nil && len(out.Trailer) > 0 {
+		out.Body = &trailerSyncBody{ReadCloser: out.Body, src: r.Trailer, dst: out.Trailer}
+	}
 
 	// Intercept gate (Burp-style hold) — only for in-scope, non-self requests
 	// that are not covered by an enabled background-traffic suppression policy.
@@ -1123,6 +1206,12 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 			out = d.Request
 			out.RequestURI = ""
 			out.URL.Scheme = flow.Scheme
+			// The edited request was re-parsed verbatim from the operator's raw
+			// bytes, so it can carry the hop-by-hop and proxy-only headers the
+			// clone above stripped — most importantly Proxy-Authorization, which
+			// authenticates this proxy and must never reach an origin (the upgrade
+			// path enforces the same rule).
+			removeHeaders(out.Header, hopRequestHeaders)
 			if d.Edited {
 				if flow.OriginalReqHeaders == nil {
 					flow.OriginalReqHeaders = cloneHeaders(flow.ReqHeaders)
@@ -1223,22 +1312,28 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 	return resp, false, nil
 }
 
+// bodylessStatus reports whether an HTTP status code must not carry a message
+// body according to RFC 9112 Section 6.3 (1xx, 204, or 304).
+func bodylessStatus(code int) bool {
+	if code >= 100 && code < 200 {
+		return true
+	}
+	return code == http.StatusNoContent || code == http.StatusNotModified
+}
+
+// isHeadRequest reports whether resp answers a HEAD request (its body is empty
+// on the wire while the headers describe the representation).
+func isHeadRequest(resp *http.Response) bool {
+	return resp != nil && resp.Request != nil && strings.EqualFold(resp.Request.Method, http.MethodHead)
+}
+
 // isBodylessResponse reports whether the HTTP response must not contain a message body
 // according to RFC 9112 Section 6.3 (1xx, 204, 304, or any response to a HEAD request).
 func isBodylessResponse(resp *http.Response) bool {
 	if resp == nil {
 		return false
 	}
-	if resp.StatusCode >= 100 && resp.StatusCode < 200 {
-		return true
-	}
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
-		return true
-	}
-	if resp.Request != nil && strings.EqualFold(resp.Request.Method, http.MethodHead) {
-		return true
-	}
-	return false
+	return bodylessStatus(resp.StatusCode) || isHeadRequest(resp)
 }
 
 // writeResponseHTTP streams the upstream response to an http.ResponseWriter
@@ -1282,10 +1377,28 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	fw := newFlushWriter(w)
 	fw.flush()
 
-	if resTee, resFinalize, err := s.teeBody(flow, resp.Body); err == nil && resTee != nil {
+	resTee, resFinalize, err := s.teeBody(flow, resp.Body)
+	if err != nil {
+		// Capture is best-effort: when the body cannot even be recorded (unwritable
+		// bodies dir, ENOSPC, EMFILE) the response must still reach the client.
+		// Skipping the copy here would send the origin's Content-Length header with
+		// zero bytes of body — the client hangs or reports a truncation. Same
+		// degradation as writeResponseConn: forward, flag, record nothing.
+		flow.Flags |= store.FlagCaptureError
+		flow.Error = "capture resp: " + err.Error()
+		resTee = resp.Body
+		resFinalize = func() (string, int64, error) { return "", 0, nil }
+	}
+	if resTee != nil {
 		_, cerr := io.Copy(fw, resTee)
-		h, n, _ := resFinalize()
+		h, n, ferr := resFinalize()
 		flow.ResBodyHash, flow.ResLen = h, n
+		if ferr != nil {
+			// The client already has its response; the capture did not commit.
+			// Flag it instead of recording an empty body as the whole thing.
+			flow.Flags |= store.FlagCaptureError
+			flow.Error = "capture resp: " + ferr.Error()
+		}
 		if cerr != nil {
 			// Client aborted mid-stream: the stored body is whatever was
 			// tee'd before the write failed. Flag it so history/replay don't
@@ -1293,9 +1406,6 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 			flow.Flags |= store.FlagCaptureError
 			flow.Error = "stream resp: " + cerr.Error()
 		}
-	} else if err != nil {
-		flow.Flags |= store.FlagCaptureError
-		flow.Error = "capture resp: " + err.Error()
 	}
 	// Now that the body is fully read, resp.Trailer holds the trailer values —
 	// forward them using http.TrailerPrefix so net/http writes them on the wire.
@@ -1353,7 +1463,12 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 		resp.TransferEncoding = []string{"chunked"}
 	}
 
-	resTee, resFinalize, err := s.teeBody(flow, upstream)
+	// Tee resp.Body, not the upstream body captured before the intercept probe:
+	// when a response is too large to buffer for rules/hold, maybeInterceptResponse
+	// has already read a prefix and restored the whole stream into resp.Body. Teeing
+	// the stale reader would drop that prefix (the client gets the tail of a body
+	// whose Content-Length still announces the whole response).
+	resTee, resFinalize, err := s.teeBody(flow, resp.Body)
 	if err == nil && resTee != nil {
 		resp.Body = io.NopCloser(resTee)
 	} else if err != nil {
@@ -1363,8 +1478,20 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 	}
 
 	werr := resp.Write(conn)
-	h, n, _ := resFinalize()
+	h, n, ferr := resFinalize()
 	flow.ResBodyHash, flow.ResLen = h, n
+	if ferr != nil {
+		flow.Flags |= store.FlagCaptureError
+		flow.Error = "capture resp: " + ferr.Error()
+	}
+	if werr != nil {
+		// The write stopped early, so the tee only saw part of the origin's body:
+		// the stored bytes are a fragment, not the response. Flag it the same way
+		// writeResponseHTTP does, or History/replay present a truncated body as the
+		// whole thing (same status, no error, short length).
+		flow.Flags |= store.FlagCaptureError
+		flow.Error = "stream resp: " + werr.Error()
+	}
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
 	s.record(flow)
 	return werr
@@ -1467,18 +1594,41 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		}
 		if d.Edited {
 			if nst, nh, nb, err := parseRawResponse(d.Raw); err == nil {
+				// Keep the origin's pre-edit headers and body as evidence, the same
+				// way an edited held request keeps OriginalReqHeaders/BodyHash. The
+				// caller sets flow.ResHeaders only after this returns, so it is nil
+				// here: use the snapshots taken above, or History's "original"
+				// response view silently falls back to the edited bytes.
 				if flow.OriginalResHeaders == nil {
-					flow.OriginalResHeaders = cloneHeaders(flow.ResHeaders)
+					flow.OriginalResHeaders = cloneHeaders(originalHeaders)
+				}
+				if flow.OriginalResBodyHash == "" {
+					flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
 				}
 				st, h, b = nst, nh, nb
 				flow.Flags |= store.FlagResponseEdited
 			}
 		}
 	}
-	// Keep framing consistent with the (possibly edited) body. HEAD, 1xx, 204
-	// and 304 carry no body, so their Content-Length (if any) describes the
-	// representation and must be passed through as the origin sent it.
-	if !isBodylessResponse(resp) {
+	// Keep framing consistent with the status and body that will actually be
+	// sent — the operator may have edited the status line, so the origin's
+	// status is not the last word. A bodyless final status (1xx, 204, 304) must
+	// not put body bytes on the wire: on the raw MITM tunnel the client would
+	// read them as the head of the next response. Conversely a status edited
+	// from bodyless to body-carrying needs explicit framing, or the client waits
+	// for a terminator that never comes. HEAD keeps the origin's
+	// Content-Length, which describes the representation (no body on the wire).
+	bodyless := bodylessStatus(st) || isHeadRequest(resp)
+	if bodyless {
+		b = nil
+	}
+	switch {
+	case st >= 100 && st < 200 || st == http.StatusNoContent:
+		// RFC 9110 §8.6: never send Content-Length on 1xx or 204.
+		h.Del("Content-Length")
+	case bodyless:
+		// 304/HEAD: an existing Content-Length describes the representation.
+	default:
 		h.Set("Content-Length", strconv.Itoa(len(b)))
 	}
 	h.Del("Transfer-Encoding")

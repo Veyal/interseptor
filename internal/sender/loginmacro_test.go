@@ -3,6 +3,8 @@ package sender
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -236,5 +238,80 @@ func TestReauthOn401RetriesOnce(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("expected 2 /api hits (401 + retry), got %d", hits)
+	}
+}
+
+// The login response body is not used, but reading only the first megabyte of it
+// left the rest unread, so net/http dropped the connection: every re-login
+// against a large login page opened a new one. Draining keeps it reusable.
+func TestLoginMacroDrainsLargeResponseForConnectionReuse(t *testing.T) {
+	big := make([]byte, 2<<20)
+	for i := range big {
+		big[i] = 'A'
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "sid=fresh; Path=/")
+		_, _ = w.Write(big)
+	}))
+	var opened atomic.Int32
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			opened.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+
+	snd := &Sender{cl: srv.Client()}
+	if err := snd.SetLoginMacro(LoginMacro{Enabled: true, Target: srv.URL,
+		Request: "GET /login HTTP/1.1\r\nHost: example.com\r\n\r\n"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := snd.RunLoginMacroNow(); err != nil {
+			t.Fatalf("login %d: %v", i, err)
+		}
+	}
+	if got := opened.Load(); got != 1 {
+		t.Fatalf("3 logins opened %d connections; the 2 MB login response was not drained", got)
+	}
+}
+
+// The token macro keeps its 1 MB match window, but must drain the rest of the
+// response: an unread remainder makes net/http drop the connection, so every
+// send pays a fresh TCP+TLS handshake to the macro endpoint.
+func TestMacroResponseDrainedForConnectionReuse(t *testing.T) {
+	big := make([]byte, 2<<20)
+	for i := range big {
+		big[i] = 'A'
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/macro" {
+			io.WriteString(w, "tok=abc")
+			_, _ = w.Write(big)
+			return
+		}
+		io.WriteString(w, "ok")
+	}))
+	var opened atomic.Int32
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			opened.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+
+	snd := newOptSender(t)
+	snd.SetSessionScope(func(string, string, int, string) bool { return true })
+	snd.SetMacro(Macro{Enabled: true, Target: srv.URL, Request: "GET /macro HTTP/1.1\r\nHost: x\r\n\r\n",
+		Extract: `tok=(\w+)`, InjectMode: "header", InjectName: "X-Tok"})
+	for i := 0; i < 3; i++ {
+		if f, err := snd.Send(Request{URL: srv.URL + "/api"}); err != nil || f.Status != http.StatusOK {
+			t.Fatalf("send %d: %v %+v", i, err, f)
+		}
+	}
+	if got := opened.Load(); got != 1 {
+		t.Fatalf("3 sends with a 2 MB macro response opened %d connections; the macro body was not drained", got)
 	}
 }

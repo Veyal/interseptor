@@ -51,16 +51,17 @@ func Serve(r io.Reader, w io.Writer, cfg WorkerConfig) error {
 	defer cancel()
 	ep := &endpoint{w: w, pending: map[uint64]chan replyWire{}}
 
-	var readErr error
-	readDone := make(chan struct{})
+	// The reader goroutine outlives the run (the parent keeps stdin open until
+	// it has the output), so a plain error variable would be read/written
+	// without synchronization. One buffered send is race-free and non-blocking.
+	readErr := make(chan error, 1)
 	go func() { // demux replies and cancellation; EOF means the parent is gone
-		defer close(readDone)
 		defer cancel()
 		for {
 			t, p, err := ReadFrame(br)
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					readErr = err
+					readErr <- err
 				}
 				ep.failAll()
 				return
@@ -75,7 +76,7 @@ func Serve(r io.Reader, w io.Writer, cfg WorkerConfig) error {
 				ep.failAll()
 				return
 			default:
-				readErr = fmt.Errorf("%w: unexpected 0x%02x from parent", ErrBadFrame, t)
+				readErr <- fmt.Errorf("%w: unexpected 0x%02x from parent", ErrBadFrame, t)
 				ep.failAll()
 				return
 			}
@@ -122,10 +123,12 @@ func Serve(r io.Reader, w io.Writer, cfg WorkerConfig) error {
 		return err
 	}
 	cancel()
-	if readErr != nil {
-		return readErr
+	select {
+	case err := <-readErr:
+		return err
+	default:
+		return nil
 	}
-	return nil
 }
 
 // endpoint is the worker's RPC client to the parent.

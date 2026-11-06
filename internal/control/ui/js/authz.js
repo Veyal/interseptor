@@ -390,7 +390,7 @@ function renderAuthzResults(d){
   }
   const sum=d.summary||{};
   const toggleHtml=`<div class="row u-gap-2 u-mb-2">
-    <span class="hint">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged</span>
+    <span class="hint">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged${sum.capped&&sum.requested?` · capped from ${sum.requested} requested (max ${sum.maxFlows})`:''}</span>
     <div class="spacer"></div>
     <button class="btn${authzViewMode==='list'?' on':''} xs" id="authzViewList"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"/></svg> List</button>
     <button class="btn${authzViewMode==='matrix'?' on':''} xs" id="authzViewMatrix"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"/></svg> Matrix</button>

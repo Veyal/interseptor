@@ -38,7 +38,14 @@ export function endpointUrl(e) {
   const scheme = e.scheme || 'http';
   const port = Number(e.port) || 0;
   const def = (scheme === 'https' && port === 443) || (scheme === 'http' && port === 80);
-  return scheme + '://' + e.host + (port && !def && !/:\d+$/.test(e.host) ? ':' + port : '') + (e.path || '/');
+  const raw = String(e.host || '');
+  // Captured IPv6 hosts are stored unbracketed (net/url Hostname()). More than
+  // one colon means an IPv6 literal, not host:port; bracket it and never mistake
+  // "::1" for a host that already carries a port.
+  const ipv6 = raw.includes(':') && !raw.startsWith('[') && raw.split(':').length > 2;
+  const host = ipv6 ? '[' + raw + ']' : raw;
+  const hasPort = !ipv6 && (/:\d+$/.test(raw) || /^\[[^\]]+\]:\d+$/.test(raw));
+  return scheme + '://' + host + (port && !def && !hasPort ? ':' + port : '') + (e.path || '/');
 }
 
 // paramsCountText is the Params view's status line; it says when the miner saw
@@ -52,4 +59,33 @@ export function paramsCountText(d) {
 // count other controls (Domain filter, Expand all) report.
 export function mapCountSuffix(shown, raw) {
   return raw > shown ? ` (${raw.toLocaleString('en-US')} before collapsing)` : '';
+}
+
+// MAP_FILTER_DEFAULTS is the rest state of the controls that live inside the
+// Map Filters popover: 403/404-only hiding and identical collapsing are on,
+// "Without evidence" is off. Domain and search are NOT counted: they stay in
+// the toolbar row where their state is already visible.
+export const MAP_FILTER_DEFAULTS = { hideNoise: true, collapseIdentical: true, onlyUnlinked: false };
+
+// mapFilterCount is the badge on the Filters button: how many popover filters
+// are away from their default. Purely derived, so the button label, the badge
+// and the tests all read the same number. `filterState` is a mapState-shaped
+// object (method, statusClass, tag, hideNoise, collapseIdentical, onlyUnlinked).
+export function mapFilterCount(filterState) {
+  const f = filterState || {};
+  let n = 0;
+  if (String(f.method || '').trim()) n++;
+  if (Number(f.statusClass) > 0) n++;
+  if (String(f.tag || '').trim()) n++;
+  if (f.hideNoise === false) n++;
+  if (f.collapseIdentical === false) n++;
+  if (f.onlyUnlinked === true) n++;
+  return n;
+}
+
+// mapFiltersLabel is the button's visible text: plain "Filters" at rest, and
+// "Filters · N" once something inside the popover is active.
+export function mapFiltersLabel(n) {
+  const count = Number(n) > 0 ? Math.floor(Number(n)) : 0;
+  return count ? `Filters · ${count}` : 'Filters';
 }

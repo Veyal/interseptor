@@ -107,7 +107,11 @@ func DecompressReaderLimit(contentEncoding string, body io.Reader, max int) ([]b
 		return nil, false, false
 	}
 	out, err := io.ReadAll(io.LimitReader(current, int64(max)+1))
-	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 {
+	// io.ErrUnexpectedEOF means the compressed stream ended before its frame
+	// did (truncated capture, failed transfer). That is not a complete decode:
+	// report failure so callers fall back to the raw body instead of presenting
+	// a prefix as if it were the whole payload.
+	if err != nil || len(out) == 0 {
 		return nil, false, false
 	}
 	if len(out) > max {
@@ -211,7 +215,9 @@ func decompressOneLimit(enc string, body []byte, max int) ([]byte, bool, bool) {
 	if closer != nil {
 		_ = closer.Close()
 	}
-	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 {
+	// See DecompressBodyLimit: a truncated compressed stream is a failed decode,
+	// not a short success.
+	if err != nil || len(out) == 0 {
 		return nil, false, false
 	}
 	if len(out) > max {

@@ -120,37 +120,80 @@ func parseDevices(output string) []Device {
 	return devs
 }
 
+// deviceStates are the state tokens `adb devices` reports, longest first so
+// "no permissions" is matched whole rather than as "no".
+var deviceStates = []string{
+	"no permissions", "unauthorized", "authorizing", "recovering", "sideload",
+	"bootloader", "offline", "device", "host",
+}
+
+// stateAtStart returns the connection state at the start of rest (the text
+// following the serial). It prefers a known multi-word token; an unknown state
+// falls back to its first field so a future adb state is not dropped.
+func stateAtStart(rest string) string {
+	for _, s := range deviceStates {
+		if rest == s || strings.HasPrefix(rest, s+" ") || strings.HasPrefix(rest, s+"\t") {
+			return s
+		}
+	}
+	if fields := strings.Fields(rest); len(fields) > 0 {
+		return fields[0]
+	}
+	return ""
+}
+
+// stateTokenIndex returns the index of the first " <state>" occurrence in line
+// that is followed by end-of-line or whitespace (so "device" does not match
+// inside "device-farm-01"), or -1.
+func stateTokenIndex(line, state string) int {
+	needle := " " + state
+	for offset := 0; offset < len(line); {
+		i := strings.Index(line[offset:], needle)
+		if i < 0 {
+			return -1
+		}
+		idx := offset + i
+		if end := idx + len(needle); end == len(line) || line[end] == ' ' || line[end] == '\t' {
+			return idx
+		}
+		offset = idx + 1
+	}
+	return -1
+}
+
 // parseDeviceLine parses one row from `adb devices` / `adb devices -l`.
 // Serials may contain spaces (e.g. MuMu's "(no serial number)"); state is a
 // known token after whitespace, not simply fields[1].
 func parseDeviceLine(line string) (Device, bool) {
-	if idx := strings.Index(line, "\t"); idx >= 0 {
-		serial := strings.TrimSpace(line[:idx])
-		rest := strings.TrimSpace(line[idx+1:])
-		if serial == "" || rest == "" {
+	mk := func(serial, state string) (Device, bool) {
+		serial, state = strings.TrimSpace(serial), strings.TrimSpace(state)
+		if serial == "" || state == "" {
 			return Device{}, false
 		}
-		state := strings.Fields(rest)[0]
 		return Device{Serial: serial, State: state, Model: modelFromDeviceLine(line), TransportID: transportFromDeviceLine(line)}, true
 	}
-	for _, state := range []string{"no permissions", "unauthorized", "authorizing", "offline", "device"} {
-		needle := " " + state
-		if !strings.HasSuffix(line, state) {
-			if idx := strings.Index(line, needle+" "); idx >= 0 {
-				serial := strings.TrimSpace(line[:idx])
-				if serial != "" {
-					return Device{Serial: serial, State: state, Model: modelFromDeviceLine(line), TransportID: transportFromDeviceLine(line)}, true
-				}
-			}
-			if strings.HasSuffix(line, needle) {
-				serial := strings.TrimSpace(strings.TrimSuffix(line, needle))
-				if serial != "" {
-					return Device{Serial: serial, State: state, Model: modelFromDeviceLine(line), TransportID: transportFromDeviceLine(line)}, true
-				}
-			}
+	// Normal adb format: the serial and the state are tab-separated.
+	if idx := strings.Index(line, "\t"); idx >= 0 {
+		return mk(line[:idx], stateAtStart(strings.TrimSpace(line[idx+1:])))
+	}
+	// Fallback: whitespace-separated. The serial is everything before the
+	// earliest state token that stands on its own, so a row that ends at the
+	// token (no product:/model: fields) parses just like one that has them.
+	bestIdx, bestState := -1, ""
+	for _, state := range deviceStates {
+		idx := stateTokenIndex(line, state)
+		if idx < 0 {
+			continue
+		}
+		// Earliest match wins; ties go to the longer token, declared first.
+		if bestIdx < 0 || idx < bestIdx {
+			bestIdx, bestState = idx, state
 		}
 	}
-	return Device{}, false
+	if bestIdx < 0 {
+		return Device{}, false
+	}
+	return mk(line[:bestIdx], bestState)
 }
 
 func transportFromDeviceLine(line string) int {
@@ -360,8 +403,14 @@ func enableProxy(d Device, host string, port int, reverse bool) error {
 }
 
 // DisableProxy clears the device global proxy and removes adb reverse for port.
+// Clearing the proxy is the part that matters (it is what restores the device's
+// networking), so its failure is reported. Removing the reverse listener stays
+// best-effort: adb errors when there is no such listener, which is the normal
+// case for a device that never had one.
 func DisableProxy(d Device, port int) error {
-	_, _ = runDev(d, true, "shell", "settings", "put", "global", "http_proxy", ":0")
+	if _, err := runDev(d, true, "shell", "settings", "put", "global", "http_proxy", ":0"); err != nil {
+		return fmt.Errorf("clear global http_proxy: %w", err)
+	}
 	if port > 0 && port <= 65535 {
 		_, _ = runDev(d, true, "reverse", "--remove", "tcp:"+strconv.Itoa(port))
 	}
@@ -495,7 +544,13 @@ func Setup(d Device, certPEM []byte, opts SetupOpts) (*SetupResult, error) {
 	if opts.Port <= 0 || opts.Port > 65535 {
 		return nil, fmt.Errorf("invalid proxy port %d", opts.Port)
 	}
+	// Validate both modes before the first adb command: Setup rewrites the
+	// device's global proxy, so rejecting a bad mode afterwards would leave the
+	// device pointed at the proxy with no CA installed.
 	caMode := resolveCAMode(d, opts.CAMode)
+	if caMode != "system" && caMode != "user" {
+		return nil, fmt.Errorf("unknown ca mode %q", caMode)
+	}
 	res := &SetupResult{Serial: d.Serial, CAMode: caMode}
 
 	proxyMode := strings.ToLower(strings.TrimSpace(opts.ProxyMode))
@@ -513,12 +568,14 @@ func Setup(d Device, certPEM []byte, opts SetupOpts) (*SetupResult, error) {
 		}
 		res.Proxy = host + ":" + strconv.Itoa(opts.Port)
 		res.Steps = append(res.Steps, "wifi global proxy set to "+res.Proxy)
-	default:
+	case "usb":
 		if err := EnableProxyUSB(d, opts.Port); err != nil {
 			return nil, err
 		}
 		res.Proxy = "127.0.0.1:" + strconv.Itoa(opts.Port)
 		res.Steps = append(res.Steps, "usb reverse + global proxy set to "+res.Proxy)
+	default:
+		return nil, fmt.Errorf("unknown proxy mode %q — use usb or wifi", opts.ProxyMode)
 	}
 
 	switch caMode {
@@ -535,8 +592,6 @@ func Setup(d Device, certPEM []byte, opts SetupOpts) (*SetupResult, error) {
 		res.Steps = append(res.Steps, "user CA install prompt opened")
 		res.NeedsUserAction = true
 		res.Message = "Proxy active — confirm the CA install prompt on the device (PIN/fingerprint). Most apps on Android 7+ ignore user CAs."
-	default:
-		return nil, fmt.Errorf("unknown ca mode %q", caMode)
 	}
 	return res, nil
 }

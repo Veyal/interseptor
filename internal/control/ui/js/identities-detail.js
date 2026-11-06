@@ -1,9 +1,9 @@
 // identities-detail.js — the right-hand detail of the Identities panel: the
-// Overview (profile, provenance, token, JWT claims, health and actions), Auth
-// flow (source flow, events, usage, the inline login timeline) and Access
-// results (runs that include the identity and their matrix) tabs. Every server
-// string is set with textContent; secrets render only behind the per-identity
-// Reveal toggle. Pure shaping lives in identities-model.js.
+// Overview (profile, token, JWT claims, health and actions), Auth flow (source
+// flow, events, usage, the inline login timeline) and Access results (runs that
+// include the identity and their matrix) tabs. Every server string is set with
+// textContent; secrets render only behind the per-identity Reveal toggle. Pure
+// shaping lives in identities-model.js.
 import { $, api, esc, toast, toastError, copyText, uiConfirm, uiPrompt } from './core.js';
 import { renderState } from './statepanel.js';
 import { wireListbox } from './listbox.js';
@@ -11,6 +11,8 @@ import * as M from './identities-model.js';
 import { S, X, jsend, enc, el, btn, byName, selectedFlowId, selectedFlow, flowLink, setStatus } from './identities-core.js';
 
 const TABS = [['overview', 'Overview'], ['flow', 'Auth flow'], ['access', 'Access results']];
+// The detail's overflow menu (#identMore opens it, the buttons live inside it).
+const MENU_ITEMS = 'identMoreMenu';
 
 /* ------------------------------------------------------------------ shell */
 
@@ -55,6 +57,9 @@ export function renderDetail() {
   if (!host) return;
   const active = document.activeElement;
   const keepId = active && host.contains(active) && active.id ? active.id : '';
+  // A menu choice repaints the pane from scratch: focus goes back to the menu's
+  // trigger instead of landing on <body> (or on a now-hidden menu item).
+  const focusId = active && active.closest && active.closest('#identMoreMenu') ? 'identMore' : keepId;
   host.textContent = '';
   const identity = byName(S.sel);
   if (!identity) {
@@ -106,7 +111,7 @@ export function renderDetail() {
   else renderAccessTab(pane, identity);
   panes.append(pane);
   host.append(head, tabs, panes);
-  if (keepId) { const again = document.getElementById(keepId); if (again && host.contains(again)) again.focus({ preventScroll: true }); }
+  if (focusId) { const again = document.getElementById(focusId); if (again && host.contains(again)) again.focus({ preventScroll: true }); }
 }
 
 export function setTab(key, focus = false) {
@@ -137,8 +142,7 @@ function renderOverview(pane, identity, { summary, jwt, exp, status }) {
   const d = S.detailFor === identity.name ? S.detail : null;
 
   // Profile
-  const prof = section('Profile');
-  const dl = el('dl', 'ident-kv');
+  const prof = section('Profile'), dl = el('dl', 'ident-kv');
   kv(dl, 'Name', identity.name);
   kv(dl, 'Role', identity.role);
   kv(dl, 'Notes', identity.notes, 'ident-notes');
@@ -147,21 +151,14 @@ function renderOverview(pane, identity, { summary, jwt, exp, status }) {
   const edit = btn('Edit', () => X.openEdit?.({ mode: 'edit', name: identity.name, opener: edit }), 'btn', 'edit');
   edit.id = 'identEditBtn';
   pa.append(edit);
+  const more = btn('', null, 'btn ident-more-trigger', 'more', 'More identity actions');
+  more.id = 'identMore'; more.title = 'More identity actions';
+  more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false'); more.setAttribute('aria-controls', MENU_ITEMS);
+  const menu = moreMenu(identity);
+  more.addEventListener('click', (e) => { e.stopPropagation(); toggleMoreMenu(more, menu); });
+  wireMoreMenu(more, menu);
+  pa.append(more, menu);
   prof.append(pa);
-
-  // Provenance
-  const prov = section('Provenance');
-  const p = M.provenance(identity);
-  const line = el('p', 'ident-prov', p.lead + (p.kindText ? ' ' + p.kindText : ''));
-  prov.append(line);
-  if (p.flowId) {
-    const row = el('p', 'ident-prov ident-prov-flow');
-    row.append(document.createTextNode('From flow '));
-    row.append(flowLink(p.flowId, '#' + p.flowId));
-    if (p.target) row.append(el('span', 'ident-mono', ' ' + p.target));
-    prov.append(row);
-  }
-  if (identity.updatedAt) prov.append(el('p', 'hint ident-prov', 'Last written ' + (M.relTime(identity.updatedAt) || identity.updatedAt) + (identity.owner ? ' by ' + identity.owner : '')));
 
   // Token
   const tok = section('Token');
@@ -259,29 +256,86 @@ function renderOverview(pane, identity, { summary, jwt, exp, status }) {
     if (lc.note) kv(hdl, 'Note', lc.note);
   } else kv(hdl, 'Last check', 'Never checked');
   health.append(hdl);
-  const ha = el('div', 'ident-actions');
-  const busy = !!S.busy;
-  // The running action keeps focus (aria-disabled, not disabled) so a repaint
-  // does not drop it to <body>; act() ignores a second press.
-  const mk = (id, label, run, icon, cls = 'btn') => { const b = btn(label, run, cls, icon); b.id = id; if (S.busy === id) { b.setAttribute('aria-busy', 'true'); b.setAttribute('aria-disabled', 'true'); } else b.disabled = busy; return b; };
-  ha.append(
-    mk('identCheck', 'Check now', () => checkNow(identity.name), 'refresh'),
-    mk('identRefresh', 'Refresh from flow…', () => refreshFromFlow(identity.name), 'download'),
-    mk('identBroken', identity.broken ? 'Unmark broken' : 'Mark broken', () => toggleBroken(identity.name), 'alert'),
-    mk('identDup', 'Duplicate', () => duplicate(identity.name), 'copy'),
-    mk('identDelete', 'Delete', () => remove(identity.name), 'trash', 'btn danger'),
-  );
-  health.append(ha);
   const hint = el('p', 'hint ident-hint');
   hint.textContent = sourceFlowId() ? 'Check now replays the source flow as this identity.' : 'Check now and Refresh from flow use the flow selected in History.';
   health.append(hint);
 
-  pane.append(prof, prov, tok, jwtSec, health);
+  pane.append(prof, tok, jwtSec, health);
 }
 
+/* ---- the detail's overflow menu (#identMore) --------------------------------
+   Five health actions beside Edit pushed the token, JWT and health fields off a
+   390px pane and weighed as much as the one action people actually press (Edit).
+   They now live behind one overflow menu next to Edit. The buttons are the same
+   nodes with the same ids and handlers: only their container and their menu-item
+   chrome changed, so Delete keeps its danger colour inside the menu. */
+let currentMoreMenu = null;
+const menuButtons = (menu) => [...menu.querySelectorAll('[role="menuitem"]')].filter((b) => !b.disabled);
+function moreMenu(identity) {
+  const busy = !!S.busy;
+  // The running action keeps focus (aria-disabled, not disabled) so a repaint does
+  // not drop it to <body>; act() ignores a second press.
+  const mk = (id, label, run, icon, cls = '') => {
+    const b = btn(label, run, ('btn ident-menu-item' + (cls ? ' ' + cls : '')).trim(), icon);
+    b.id = id;
+    b.setAttribute('role', 'menuitem');
+    b.tabIndex = -1;
+    if (S.busy === id) { b.setAttribute('aria-busy', 'true'); b.setAttribute('aria-disabled', 'true'); } else b.disabled = busy;
+    return b;
+  };
+  const menu = el('div', 'ident-more-menu');
+  menu.id = MENU_ITEMS; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Identity actions'); menu.hidden = true;
+  menu.append(
+    mk('identCheck', 'Check now', () => checkNow(identity.name), 'refresh'),
+    mk('identRefresh', 'Refresh from flow…', () => refreshFromFlow(identity.name), 'download'),
+    mk('identBroken', identity.broken ? 'Unmark broken' : 'Mark broken', () => toggleBroken(identity.name), 'alert'),
+    mk('identDuplicate', 'Duplicate', () => duplicate(identity.name), 'copy'),
+    mk('identDelete', 'Delete', () => remove(identity.name), 'trash', 'danger'),
+  );
+  return menu;
+}
+function closeMoreMenu({ focus = false } = {}) {
+  if (!currentMoreMenu) return;
+  const { trigger, menu } = currentMoreMenu;
+  currentMoreMenu = null;
+  menu.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  // A repaint can detach the pair between the click and this call; focusing a
+  // detached trigger is meaningless (and would blur the fresh menu's own focus).
+  if (focus && trigger.isConnected) trigger.focus({ preventScroll: true });
+}
+function openMoreMenu(trigger, menu) {
+  if (currentMoreMenu && currentMoreMenu.menu !== menu) closeMoreMenu();
+  currentMoreMenu = { trigger, menu };
+  menu.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  menuButtons(menu)[0]?.focus({ preventScroll: true });
+}
+function toggleMoreMenu(trigger, menu) { if (menu.hidden) openMoreMenu(trigger, menu); else closeMoreMenu({ focus: true }); }
+function wireMoreMenu(trigger, menu) {
+  menu.addEventListener('keydown', (e) => {
+    const items = menuButtons(menu);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMoreMenu({ focus: true }); return; }
+    if (e.key === 'Tab') { closeMoreMenu(); return; } // Tab leaves the menu, so the menu closes with it
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement);
+    const n = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[n]?.focus({ preventScroll: true });
+  });
+  // An item runs its own handler first (the button's listener), then the menu
+  // closes; the repaint that follows returns focus to the trigger.
+  menu.addEventListener('click', () => closeMoreMenu({ focus: true }));
+}
+// One menu at a time and one document listener: the menu is rebuilt on every
+// repaint, so per-instance outside-click listeners would pile up.
+document.addEventListener('pointerdown', (e) => {
+  if (!currentMoreMenu || currentMoreMenu.menu.contains(e.target) || currentMoreMenu.trigger.contains(e.target)) return;
+  closeMoreMenu();
+}, true);
+
 const sourceFlowId = () => {
-  const d = S.detailFor === S.sel ? S.detail : null;
-  const t = d && d.timeline && d.timeline.source;
+  const d = S.detailFor === S.sel ? S.detail : null, t = d && d.timeline && d.timeline.source;
   if (t && Number(t.flowId) > 0) return Number(t.flowId);
   const i = byName(S.sel);
   return i && i.source && Number(i.source.flowId) > 0 ? Number(i.source.flowId) : 0;
@@ -361,7 +415,7 @@ async function duplicate(name) {
   const identity = byName(name);
   if (!identity) return;
   const copy = M.duplicateName(name, S.ids.map((i) => i.name));
-  await act('identDup', name, async () => {
+  await act('identDuplicate', name, async () => {
     try {
       await jsend('POST', '/api/authz/identity', { name: copy, headers: identity.headers || '', role: identity.role || '', notes: identity.notes || '' });
       setStatus('Duplicated as ' + copy);

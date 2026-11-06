@@ -82,11 +82,16 @@ func CredentialHeaders(raw string) string {
 	var out strings.Builder
 	out.Grow(len(raw))
 	rest, first, folding := raw, true, false
+	prevTerm := ""
 	for rest != "" {
 		line, term, more := cutLine(rest)
 		rest = more
-		if line == "" && !first {
-			// The empty line ends the header block; the body follows verbatim.
+		if line == "" && !first && term == prevTerm && (term == "\r\n" || term == "\n") {
+			// The header block ends at a real blank line — CRLF CRLF (or LF LF);
+			// the body follows verbatim. A blank line produced by a bare CR is
+			// not that: renderers split on CR, so "GET / HTTP/1.1" + CR + CRLF
+			// would otherwise pass for the end of the headers and every header
+			// after it would be drawn unmasked on a line of its own.
 			out.WriteString(term)
 			out.WriteString(rest)
 			return out.String()
@@ -107,6 +112,7 @@ func CredentialHeaders(raw string) string {
 			out.WriteString(masked)
 		}
 		out.WriteString(term)
+		prevTerm = term
 	}
 	return out.String()
 }

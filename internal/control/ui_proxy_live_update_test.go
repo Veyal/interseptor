@@ -225,7 +225,10 @@ eq(diffVisibleRows([4,3,2,1],[4,2,3,1]).reusable,false,'a swap inside the window
 func TestUIHistoryLiveUpdateKeepsKeyedReconciliationWiring(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{
-		"const fire=()=>{liveRenderQueued=false;if(!reconcileVirtualRows())renderRows();}",
+		// The rebuild closure keeps its keyed-reconcile path and also honours the
+		// freeze gate, so a rebuild queued a frame before Pause cannot repaint a
+		// paused list (resume reconciles the same window).
+		"const fire=()=>{liveRenderQueued=false;if(liveFrozen)return;if(!reconcileVirtualRows())renderRows();}",
 		"const plan=diffVisibleRows(mounted.map(r=>Number(r.dataset.id)),slice.map(f=>f.id))",
 		"if(!plan.reusable)return false",
 		"if(top.dataset.vpad!=='top'||bottom.dataset.vpad!=='bottom')return false",

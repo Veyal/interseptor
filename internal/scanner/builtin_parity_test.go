@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -197,6 +198,29 @@ func TestOpenRedirectTemplateMatchesTheGoCheck(t *testing.T) {
 			}(),
 			want: false,
 		},
+		{
+			// The Go check compares the parsed Location host, not a substring of
+			// the URL: example.com.evil.net is off-host even though it contains
+			// the request host. The template must not accept it either.
+			name: "suffix domain does not count as our host",
+			flow: redirect(7, "/go?next=https://example.com.evil.net/", "https://example.com.evil.net/"),
+			want: true,
+		},
+		{
+			name: "our host in the query does not count as on-host",
+			flow: redirect(8, "/go?next=https://evil.net/?r=example.com", "https://evil.net/?r=example.com"),
+			want: true,
+		},
+		{
+			name: "same host with an explicit port and trailing dot",
+			flow: redirect(9, "/go?next=https://EXAMPLE.com.:8443/home", "https://EXAMPLE.com.:8443/home"),
+			want: false,
+		},
+		{
+			name: "subdomain is on-host",
+			flow: redirect(10, "/go?next=https://app.example.com/x", "https://app.example.com/x"),
+			want: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -223,6 +247,50 @@ func TestTemplatesUseTheParameterEnumerationAttribute(t *testing.T) {
 		if !strings.Contains(src, "flow.query_params") {
 			t.Errorf("the %q template does not enumerate flow.query_params", id)
 		}
+	}
+}
+
+// The weak-CSP template must separate a wildcard source from a path glob, and
+// the tabnabbing template must require an external link: saving either override
+// must not change what the Go check reports.
+func TestWeakCSPAndTabnabbingTemplatesMatchTheGoCheck(t *testing.T) {
+	page := func(headers http.Header) *store.Flow {
+		return &store.Flow{
+			ID: 1, Method: "GET", Scheme: "https", Host: "app.example.com", Path: "/",
+			Status: 200, Mime: "text/html", ResHeaders: map[string][]string(headers),
+		}
+	}
+	cspPage := func(csp string) *store.Flow {
+		return page(http.Header{"Content-Type": {"text/html"}, "Content-Security-Policy": {csp}})
+	}
+	cases := []struct {
+		name, id string
+		flow     *store.Flow
+		body     string
+		want     bool
+	}{
+		{"csp path glob is not a wildcard", checkWeakCSP,
+			cspPage("script-src 'self' https://cdn.example.com/assets/*"), "", false},
+		{"csp bare wildcard", checkWeakCSP, cspPage("default-src *"), "", true},
+		{"external link without noopener", checkTabnabbing,
+			page(http.Header{"Content-Type": {"text/html"}}),
+			`<a href = "http://evil.example/" target="_blank">x</a>`, true},
+		{"internal link is not tabnabbing", checkTabnabbing,
+			page(http.Header{"Content-Type": {"text/html"}}),
+			`<a href="/settings" target="_blank">x</a>`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			title := builtinByID[tc.id].Title
+			star := hasTitle(runTemplate(t, tc.id, tc.flow, "", tc.body), title)
+			goSide := hasTitle(onlyCheck(tc.flow, nil, []byte(tc.body), tc.id), title)
+			if star != tc.want {
+				t.Errorf("Starlark template found = %v, want %v", star, tc.want)
+			}
+			if goSide != tc.want {
+				t.Errorf("Go check found = %v, want %v", goSide, tc.want)
+			}
+		})
 	}
 }
 

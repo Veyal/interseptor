@@ -244,12 +244,14 @@ PATCH  /api/findings/{id}                    partial update (blocks or legacy bo
 POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof?, position?}
 DELETE /api/findings/{id}/flows/{flowId}     detach a flow
 POST   /api/findings/{id}/images             attach {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}
-POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG (focus params as below)
+POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG (focus params as below; mask defaults to true)
 GET    /api/flows/{id}/preview.png           ?side=&pretty=&layout=&theme=&maskHeaders=&focus=&regex=&focusSide=&lines=&context=&caption=&mode=&decode=
 GET    /api/intruder/attacks                 recent recorded Intruder runs (last 20 kept)
 GET    /api/intruder/attacks/{id}            one recorded run by runId; survives the next start and restarts
 GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip&width=&unmask=1&expected=N&format=json&png=1 evidence render PNG (unattached; X-Render-Alt/X-Render-Summary headers)
 GET    /api/intruder/attacks/{id}/render     alias of render.png (MCP render_intruder_preview)
+GET    /api/intruder/state                   current run progress; results is at most the run's 2000-row head, partialResults=true when more exist
+GET    /api/intruder/results                 ?offset=&limit=&runId= page a run's results from the disk-backed log; answers stale=true with the current runId when the named run is no longer current
 GET    /api/evidence-render                  ?kind=...&runId|flowIdA,flowIdB|flowIds|findingIds&includeBody=1 single-endpoint render PNG (MCP render_evidence)
 POST   /api/findings/{id}/evidence-render    render and attach {kind, runId?|flowIds?|..., caption?, role?, proof?, position?}
 GET    /api/findings/report                  md (default), html, or json export
@@ -397,6 +399,12 @@ An attached focused image keeps `source=flow_preview` and `sourceFlowId`, gains
 `sourceRef=flow:<id>:focus:<text|regex|lines>`, and its default caption records the focus texts and ranges.
 MCP `render_flow_preview` reports the same match counts and not-found notes in its text result.
 
+Masking differs by destination, because the two paths have different lifetimes. `GET
+/api/flows/{id}/preview.png` masks only on request (`maskHeaders=1`): it is a preview copied into a ticket
+or chat. `POST /api/findings/{id}/flow-preview` masks credential header values **by default** (`mask`,
+default true, `mask:false` to opt out): the image is stored as report evidence, and a PNG cannot be masked
+after the fact. Body content is not redacted by either path.
+
 ### Decoded bodies in flow images
 
 By default (`decode=auto`) a flow image shows each side's body readable instead of as the encoded bytes.
@@ -462,7 +470,8 @@ What is and is not recorded:
   like the flow store: payloads, extracted values and rate-limit headers are not redacted, and it travels in
   full-project archives (it is not part of portable JSON export or peer merge). Only the renders redact.
   Runs over the 4 MiB record cap drop payloads, then rate-limit headers and error text, then keep a head
-  and tail with a `truncated` marker in the stored run state.
+  and tail with `capped=true` and a `note` explaining the cut in the stored run state (`error` is reserved
+  for a run that failed, so a bounded record never renders as an error). A run itself has no request cap.
 
 Provenance: `evidence_render` is generated. It never satisfies the real-visual-proof check, and reports
 label it "generated evidence render from recorded data; not browser proof". `sourceRef` is stamped
@@ -473,3 +482,27 @@ from `generated_image`, and the run id lives in `sourceRef` (`intruder:<runId>`)
 tEXt marker; the store refuses to attach a marked PNG as `browser_screenshot`, `device_screenshot` or
 `operator_upload`. Attach a real screenshot with `add_finding_image` when a
 finding makes a visual claim.
+
+## Known limitations
+
+Engine behaviours to plan around. They are recorded here so neither an operator nor an agent has to
+rediscover them from a failure.
+
+- **Self-update has no tag-based `go install` fallback.** When a release carries no prebuilt binary for the
+  running platform (for example `linux/arm`), `interseptor update` cannot install it with
+  `go install …/cmd/interseptor@vX.Y.Z`: go.mod declares `github.com/Veyal/interseptor` with no `/v2`
+  suffix while releases are tagged `v2.x`, so the toolchain refuses with "module path must match major
+  version" before any build starts. The updater therefore resolves the release tag to its commit through
+  the GitHub API (`GET /repos/Veyal/interseptor/commits/<tag>`) and installs `@<commit>`, the ref the
+  toolchain does accept (it derives a `v1.x` pseudo-version for this path). If that lookup or the build
+  fails, it prints the `git clone --branch <tag>` plus `CGO_ENABLED=0 go build -o interseptor ./cmd/interseptor`
+  commands and the release page instead of a bare `go install: exit status 1`. A binary installed that way
+  is a source build: it reports the version baked into that tag, carries no release stamp, and the UI's
+  one-click updater leaves it alone. Platforms that do have a prebuilt asset are unaffected — that path
+  still downloads, verifies and installs the release archive.
+- **Response trailers and origin `1xx` responses do not survive the proxy.** When a body rule transforms a
+  response body (a Starlark rule rewrites it, or it is decoded and re-encoded), the relayed response is
+  sent without its trailer section: values the origin declared in `Trailer` never reach the client even
+  though the flow records them. Origin interim `1xx` responses (`103 Early Hints`) are not relayed at all —
+  the client sees only the final response. Neither is a setting; treat "what the client received" and
+  "what the flow recorded" as separate facts in evidence.

@@ -5,7 +5,7 @@
 import { $, esc, escAttr, state, toast, toastError, api, openModal, closeModal, copyText, projectStorageKey, renderLoadError } from './core.js';
 import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
 import { projectState } from './project-state.js';
-import { setupBootAction } from './setup-model.js';
+import { setupBootAction, setupEnterAction } from './setup-model.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
@@ -390,10 +390,14 @@ $('#setupNext').onclick = () => {
 $('#setupBack').onclick = () => { if (setupActionBusy) return; if (step > 0) { step--; renderStep(); } };
 $('#setupSkip').onclick = () => { if (setupActionBusy) return; try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {} requestCloseSetup(); };
 $('#setupBody').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.tagName === 'INPUT' && step !== 1) {
-    // Enter in a text input advances (except on the CA-checkbox step).
-    if (!$('#setupNext').disabled) { e.preventDefault(); $('#setupNext').click(); }
-  }
+  if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox') return;
+  // Enter presses the step's own action (Add to scope, Set target), never Next:
+  // advancing past a step whose input was typed drops that input, and the last
+  // step then still says the configuration was saved.
+  const control = $('#' + setupEnterAction(step));
+  if (!control || control.disabled) return;
+  e.preventDefault();
+  control.click();
 });
 
 // Show on first boot unless the user already completed/skipped. Existing traffic

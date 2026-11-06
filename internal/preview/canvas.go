@@ -430,8 +430,16 @@ func niceTicks(lo, hi float64, target int) []float64 {
 	start := math.Floor(lo/step+1e-9) * step
 	end := math.Ceil(hi/step-1e-9) * step
 	var out []float64
-	for v := start; v <= end+step*1e-6; v += step {
+	for v := start; v <= end+step*1e-6; {
 		out = append(out, math.Round(v/step)*step)
+		next := v + step
+		// A step below float resolution at this offset (a large lo with a small
+		// span) leaves v unchanged, which used to spin here forever and hang the
+		// render with no output. Stop instead: the ticks would be one value.
+		if !(next > v) || len(out) > 4*target+16 {
+			break
+		}
+		v = next
 	}
 	return out
 }

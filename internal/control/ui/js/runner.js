@@ -115,9 +115,19 @@ function renderDetail(host, r, onAddHost, added) {
   }
 }
 
+// pollErrorText is the run panel's non-blocking poll-error line: '' when the last poll
+// succeeded (the line stays hidden), else one line naming the failure. A failed poll is
+// transient -- the run keeps its last known state, the progress rows below keep their place,
+// and the next successful poll clears the line -- so the message is collapsed to one status
+// row instead of a block, and it sits next to a Retry action.
+export function pollErrorText(message) {
+  const text = String(message == null ? '' : message).replace(/\s+/g, ' ').trim();
+  return text ? 'Poll failed: ' + text : '';
+}
+
 export function mountRunner(host, opts = {}) {
   const uid = ++seq;
-  const st = { addedHosts: new Set(), live: newLive(), busy: false, filter: 'all', sel: -1, itemUids: opts.itemUids || [], timer: 0, polling: false, closed: false };
+  const st = { addedHosts: new Set(), live: newLive(), busy: false, filter: 'all', sel: -1, itemUids: opts.itemUids || [], timer: 0, polling: false, closed: false, error: '' };
 
   host.textContent = '';
   host.classList.add('runner-view');
@@ -148,13 +158,24 @@ export function mountRunner(host, opts = {}) {
   actions.append(runBtn, pauseBtn, resumeBtn, abortBtn, rerunBtn, filterBtn);
 
   const live = el('div', 'statusline'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
+  // A failed poll is its own quiet line, not a replacement for the progress rows: it says
+  // what broke, it disappears when the next poll succeeds, and Retry polls again now
+  // instead of waiting for the next tick of the timer.
+  const pollErr = el('div', 'statusline');
+  pollErr.hidden = true;
+  pollErr.setAttribute('role', 'status');
+  pollErr.setAttribute('aria-live', 'polite');
+  const pollErrTextEl = el('span');
+  const pollErrRetry = mkBtn('btn xs', 'Retry');
+  pollErrRetry.addEventListener('click', () => { clearTimeout(st.timer); st.timer = 0; poll(); });
+  pollErr.append(pollErrTextEl, document.createTextNode(' '), pollErrRetry);
   const progress = el('progress', 'run-progress'); progress.max = 1; progress.value = 0; progress.hidden = true;
   progress.setAttribute('aria-label', 'Run progress');
   const ask = el('section', 'run-persist-ask'); ask.hidden = true; ask.setAttribute('role', 'group');
   ask.setAttribute('aria-label', 'Variable changes made by scripts');
   const body = el('div', 'run-body');
   const detail = el('div', 'run-detail');
-  host.append(title, form, actions, live, progress, ask, body, detail);
+  host.append(title, form, actions, live, pollErr, progress, ask, body, detail);
 
   function renderRows() {
     body.textContent = '';
@@ -235,7 +256,15 @@ export function mountRunner(host, opts = {}) {
     rerunBtn.disabled = (st.busy && !l.finished) || !failedItemUids(l.rows).length;
   }
 
-  function render() { renderRows(); renderAsk(); renderStatus(); }
+  // The poll error line: hidden while the last poll succeeded, one line while it did not.
+  // It never touches the rows, the progress bar or the run controls.
+  function renderPollError() {
+    const text = pollErrorText(st.error);
+    pollErr.hidden = !text;
+    pollErrTextEl.textContent = text;
+  }
+
+  function render() { renderRows(); renderAsk(); renderStatus(); renderPollError(); }
 
   function toggleFilter() {
     st.filter = st.filter === 'all' ? 'problems' : 'all';
@@ -317,6 +346,7 @@ export function mountRunner(host, opts = {}) {
     if (!(await opts.confirmRun(payload))) { live.textContent = 'Run not confirmed; nothing was sent.'; return null; }
     st.busy = true;
     st.live = newLive();
+    st.error = '';
     st.sel = -1;
     detail.textContent = '';
     render();

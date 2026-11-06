@@ -35,13 +35,29 @@ export function normalizeRefs(kind, refs) {
   return out;
 }
 
+// attachTargetId is the finding an attach writes to: an id the caller or the
+// picker supplied, or 0 when the target is "create a new finding" (it has no id
+// yet). The id is validated here because building a path with NaN silently
+// produced "/api/findings/NaN/images" and the write failed with a 404 the UI
+// reported as an attach failure.
+export function attachTargetId(target) {
+  const id = Number(target && target.id);
+  return Number.isSafeInteger(id) && id > 0 ? id : 0;
+}
+
+function requireFindingId(findingId, what) {
+  const id = attachTargetId({ id: findingId });
+  if (!id) throw new Error('choose a finding first' + (what ? ' to ' + what : ''));
+  return id;
+}
+
 // ws and note evidence are attached through the owning flow with a describing
 // note, because the API has no separate frame or note evidence block.
 export function flowAttachRequest(findingId, flowId, { note, proof } = {}) {
   const body = { flowId: Number(flowId), role: 'result' };
   if (note) body.note = String(note);
   if (proof) body.proof = String(proof);
-  return { path: '/api/findings/' + Number(findingId) + '/flows', method: 'POST', body };
+  return { path: '/api/findings/' + requireFindingId(findingId) + '/flows', method: 'POST', body };
 }
 
 export function validateAltText(alt) {
@@ -52,7 +68,7 @@ export function validateAltText(alt) {
 export function imageAttachRequest(findingId, { data, mime, alt }) {
   const v = validateAltText(alt);
   if (!v.ok) throw new Error('alt text is required for a screenshot');
-  return { path: '/api/findings/' + Number(findingId) + '/images', method: 'POST', body: { data, mime, caption: v.text, role: 'result', source: 'operator_upload' } };
+  return { path: '/api/findings/' + requireFindingId(findingId, 'attach a screenshot') + '/images', method: 'POST', body: { data, mime, caption: v.text, role: 'result', source: 'operator_upload' } };
 }
 
 export function newFindingRequest(flowIds, { title, target } = {}) {
@@ -74,11 +90,21 @@ export function filterFindings(items, query) {
   return list.filter((f) => String(f.title || '').toLowerCase().includes(q) || String(f.severity || '').toLowerCase() === q || String(f.id) === q);
 }
 
+// readinessPips summarises the server-owned readiness of one finding.
+//
+// The server lists only the checks that are still OPEN: an entry carries
+// code/field/message and never an `ok` flag (readiness-meter.js records the
+// same discovery for the meter). Counting `ok === true` therefore read
+// "0 of N checks passed" for every finding that had a gap and — because a
+// report-ready finding has an empty check list — "readiness unknown" for a
+// finding the server itself calls ready.
 export function readinessPips(readiness) {
-  const checks = readiness && Array.isArray(readiness.checks) ? readiness.checks : [];
-  if (!checks.length) return { passed: 0, total: 0, label: 'readiness unknown' };
-  const passed = checks.filter((c) => c && c.ok === true).length;
-  return { passed, total: checks.length, label: `${passed} of ${checks.length} checks passed` };
+  if (!readiness || typeof readiness !== 'object') return { passed: 0, total: 0, label: 'readiness unknown' };
+  const listed = Array.isArray(readiness.checks) ? readiness.checks.filter((c) => c && typeof c === 'object').length : 0;
+  const gaps = Array.isArray(readiness.gaps) ? readiness.gaps.filter((g) => typeof g === 'string' && g).length : 0;
+  const open = Math.max(listed, gaps);
+  if (open) return { passed: 0, total: open, label: open + (open === 1 ? ' check open' : ' checks open') };
+  return { passed: 0, total: 0, label: readiness.stage ? 'ready' : 'readiness unknown' };
 }
 
 export function findingOptionLabel(f) {
@@ -191,28 +217,44 @@ async function performAttach(core, spec, target) {
   const kind = spec.kind;
   if (kind === 'shot') {
     const shots = normalizeRefs('shot', spec.refs);
+    if (!shots.length) { core.toast('nothing to attach'); return { attached: 0 }; }
+    let findingId = attachTargetId(target);
+    let created = false;
+    // The picker's first row creates a finding; a screenshot has no flow to
+    // carry it, so the finding must exist before the image is written. Without
+    // this the write went to "/api/findings/NaN/images" and every screenshot of
+    // a new finding failed with a 404.
+    if (!findingId && target.create) {
+      const f = await createFinding(core, [], spec).catch((e) => { core.toastError('Could not create finding', e); return null; });
+      if (!f) return { attached: 0 };
+      findingId = attachTargetId(f); created = true;
+      await refreshState('attach');
+    }
+    if (!findingId) { core.toastError('Could not attach screenshot', new Error('choose a finding first')); return { attached: 0 }; }
     let done = 0;
     for (const shot of shots) {
       const alt = await askAlt(core, shot);
       if (alt == null) break;
-      try { await send(core, imageAttachRequest(target.id, { ...shot, alt })); done++; } catch (e) { core.toastError('Could not attach screenshot', e); }
+      try { await send(core, imageAttachRequest(findingId, { ...shot, alt })); done++; } catch (e) { core.toastError('Could not attach screenshot', e); }
     }
-    if (done) { core.toast(`attached ${done} screenshot${done === 1 ? '' : 's'} to #${target.id}`, 'success'); await refreshState('attach'); }
-    return { attached: done, findingId: target.id };
+    if (done) { core.toast(`attached ${done} screenshot${done === 1 ? '' : 's'} to #${findingId}`, 'success'); await refreshState('attach'); }
+    if (created) undoToast(`finding #${findingId} created with ${done} screenshot${done === 1 ? '' : 's'}`, () => runUndo(core, undoPlan({ created, findingId, flowIds: [] }), 'create'));
+    return { attached: done, findingId, created };
   }
   const ids = normalizeRefs(kind, spec.refs);
   if (!ids.length) { core.toast('nothing to attach'); return { attached: 0 }; }
   const note = spec.note || (kind === 'ws' ? 'WebSocket traffic' : '');
-  let findingId = target.id;
+  let findingId = attachTargetId(target);
   let created = false;
   if (target.create) {
     const f = await createFinding(core, ids, spec).catch((e) => { core.toastError('Could not create finding', e); return null; });
     if (!f) return { attached: 0 };
-    findingId = f.id; created = true;
+    findingId = attachTargetId(f); created = true;
     await refreshState('attach');
     undoToast(`finding #${findingId} created with ${ids.length} item${ids.length === 1 ? '' : 's'}`, () => runUndo(core, undoPlan({ created, findingId, flowIds: ids }), 'create'));
     return { attached: ids.length, findingId, created };
   }
+  if (!findingId) { core.toastError('Could not attach evidence', new Error('choose a finding first')); return { attached: 0 }; }
   const { attached, failed } = await attachFlows(core, findingId, ids, { note });
   await refreshState('attach');
   if (failed.length && !attached.length) { core.toastError('Could not attach evidence', failed[0].error); return { attached: 0, failed, findingId }; }

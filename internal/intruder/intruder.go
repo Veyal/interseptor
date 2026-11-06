@@ -12,8 +12,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,17 +27,22 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
-// maxRequests bounds a single attack so a huge payload list cannot run away.
-// Results stream to disk in chunks (resultLog), so this is no longer limited by
-// how many results fit in memory.
-const maxRequests = 20000
-
+// An attack has no request cap. Payload lists and repeat counts are unbounded:
+// jobs are generated lazily (jobPlan) instead of being materialised, results
+// stream to disk in chunks (resultLog), and the anomaly accumulator keeps a
+// bounded sample of lengths. The only limit on a run is the user stopping it.
+//
 // resultChunkSize is how many results fill one on-disk chunk; liveHeadCap is how
-// many of the earliest results State() returns while a run is still in flight
-// (the rest are read on demand via Results / the results API).
+// many of the earliest results State() returns at most (while running and after
+// finishing) — the rest are read on demand via Results / the results API, so a
+// state poll stays a fixed-size response no matter how long the run was.
 const (
 	resultChunkSize = 1000
 	liveHeadCap     = 2000
+	// recordResultCap bounds the result set materialised into the persisted run
+	// record. The store rejects a record over 4 MiB, so a million-request run
+	// must not marshal a quarter-gigabyte JSON document only to have it refused.
+	recordResultCap = 12000
 )
 
 const maxDispatchDelayMs = int64(1<<63-1) / int64(time.Millisecond)
@@ -113,6 +120,15 @@ type State struct {
 	Results []Result `json:"results"`
 	Error   string   `json:"error"`
 	Capped  bool     `json:"capped"`
+	// PartialResults is true when Results is only the bounded head of the run
+	// while Done rows exist. That is the normal case for a run larger than the
+	// live head: a state poll stays a fixed-size response at any run length, and
+	// the client pages the rest from /api/intruder/results.
+	PartialResults bool `json:"partialResults,omitempty"`
+	// Note explains a bounded record ("the first and last N results are kept").
+	// It is not an error: the run finished. Error is reserved for a run that
+	// failed, because clients render it as a failure state.
+	Note string `json:"note,omitempty"`
 
 	RunID      string `json:"runId,omitempty"`
 	StartedTs  int64  `json:"startedTs,omitempty"` // unix ms, wall clock, display only
@@ -325,19 +341,55 @@ func (e *Engine) fireNotify() {
 func (e *Engine) State() State {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.stateLocked()
+}
+
+// stateLocked is State for callers already holding e.mu.
+func (e *Engine) stateLocked() State {
+	return e.snapshotLocked(false)
+}
+
+// recordStateLocked is the snapshot persisted as a finished run's record. It
+// carries far more results than a state poll (the evidence renders need the
+// run's shape) but is still bounded, and says so when it had to be.
+func (e *Engine) recordStateLocked() State {
+	return e.snapshotLocked(true)
+}
+
+// snapshotLocked builds a State. In state mode Results is the bounded live head
+// and PartialResults says whether more exist; in record mode it is the bounded
+// record set (head and tail of a very large run) for persistence.
+func (e *Engine) snapshotLocked(record bool) State {
 	out := State{Running: e.running, Total: e.total, Done: e.done, Error: e.errMsg, Capped: e.capped,
 		RunID: e.runID, StartedTs: e.startedTs, Attack: e.attack, Threads: e.threads,
 		DelayMs: e.delayMs, Repeat: e.repeat, TargetHost: e.targetHost, Barrier: e.barrier}
-	if e.log != nil {
-		// While running, return only the bounded live head (flags are derived at
-		// finish); once finished, return the full, flagged result set. Large runs
-		// stream the remainder through Results / the results API.
-		if e.running {
-			out.Results = e.log.snapshotHead()
-		} else {
-			out.Results = e.log.all()
-		}
+	if e.log == nil {
+		return out
 	}
+	n := e.log.count()
+	if record {
+		// readRange applies the derived flags; a finished log is finalised.
+		if n <= recordResultCap {
+			out.Results = e.log.readRange(0, 0)
+		} else {
+			half := recordResultCap / 2
+			head := e.log.readRange(0, half)
+			tail := e.log.readRange(n-half, half)
+			out.Results = append(head, tail...)
+			out.Capped = true
+			out.Note = fmt.Sprintf("run record keeps the first and last %d of %d results to stay within the store limit", half, n)
+		}
+		out.PartialResults = n > len(out.Results)
+		return out
+	}
+	// A running log has no derived flags yet, so the cheap in-memory head is the
+	// right read; once finished, read the head back so flags are applied.
+	if e.running {
+		out.Results = e.log.snapshotHead()
+	} else {
+		out.Results = e.log.readRange(0, liveHeadCap)
+	}
+	out.PartialResults = n > len(out.Results)
 	return out
 }
 
@@ -354,6 +406,15 @@ func (e *Engine) Results(offset, limit int) ([]Result, int) {
 		return nil, 0
 	}
 	return log.readRange(offset, limit), log.count()
+}
+
+// RunID returns the current/last run's identity. A client paging results uses
+// it to detect that another run started and its offsets no longer address the
+// same log.
+func (e *Engine) RunID() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.runID
 }
 
 // Close permanently stops the engine, cancels an active attack, and waits for
@@ -457,8 +518,8 @@ func (e *Engine) Start(spec Spec) error {
 		baselines[i] = strings.TrimPrefix(strings.TrimSuffix(p, "§"), "§")
 	}
 
-	jobs, capped := buildJobs(spec, len(positions), baselines)
-	if len(jobs) == 0 {
+	plan := planJobs(spec, len(positions), baselines)
+	if plan.total == 0 {
 		return errors.New("attack produced no requests")
 	}
 
@@ -475,10 +536,10 @@ func (e *Engine) Start(spec Spec) error {
 	e.running = true
 	e.log.cleanup() // remove the previous run's on-disk chunks
 	e.log = newRunLog(resultChunkSize, liveHeadCap)
-	e.total = len(jobs)
+	e.total = intSat(plan.total)
 	e.done = 0
 	e.errMsg = ""
-	e.capped = capped
+	e.capped = false // nothing is truncated any more; kept for API compatibility
 	e.pauseUntil = time.Time{}
 	e.runID = newRunID()
 	e.startedTs = time.Now().UnixMilli()
@@ -490,7 +551,7 @@ func (e *Engine) Start(spec Spec) error {
 		e.repeat = spec.Repeat
 	}
 	e.targetHost = hostOnly(spec.Target)
-	e.barrier = spec.Barrier && spec.AttackType == "repeat" && e.threads > 1 && len(jobs) > 1
+	e.barrier = spec.Barrier && spec.AttackType == "repeat" && e.threads > 1 && plan.total > 1
 	method, path := endpointOf(spec.Template)
 	e.spec = SpecSummary{Attack: e.attack, Target: e.targetHost, Threads: e.threads, DelayMs: spec.DelayMs,
 		Method: method, Path: path, Repeat: e.repeat, Barrier: e.barrier, GrepMatch: spec.GrepMatch, GrepExtract: spec.GrepExtract,
@@ -501,35 +562,68 @@ func (e *Engine) Start(spec Spec) error {
 	e.mu.Unlock()
 	e.fireNotify()
 
-	go e.run(ctx, spec, jobs)
+	go e.run(ctx, spec, plan)
 	return nil
 }
 
-func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, capped bool) {
-	// add enforces the request cap DURING accumulation: a huge spec.Repeat or a
-	// template with thousands of §markers × payloads would otherwise materialize
-	// billions of jobs (OOM) before any post-loop truncation. add returns false
-	// once the cap is hit so each loop can stop immediately.
-	add := func(j job) bool {
-		if len(jobs) >= maxRequests {
-			capped = true
-			return false
-		}
-		jobs = append(jobs, j)
-		return true
+// jobPlan is an attack's request schedule: how many requests it will send, plus
+// a generator that emits them one at a time. Materialising every job (the old
+// buildJobs) made the request count a memory limit, which is why a payload list
+// was capped. A plan costs constant memory, so a list of any length runs.
+type jobPlan struct {
+	total int64
+	each  func(yield func(job) bool)
+}
+
+// mulSat multiplies two job counts, saturating at math.MaxInt64 instead of
+// overflowing: a Cluster bomb over several long lists exceeds any real total,
+// and a wrapped negative would make the run look empty.
+func mulSat(a, b int64) int64 {
+	if a <= 0 || b <= 0 {
+		return 0
 	}
+	if a > math.MaxInt64/b {
+		return math.MaxInt64
+	}
+	return a * b
+}
+
+// intSat narrows a job count to int for the public State, saturating on 32-bit
+// builds rather than wrapping negative.
+func intSat(v int64) int {
+	if v > int64(math.MaxInt) {
+		return math.MaxInt
+	}
+	if v < 0 {
+		return 0
+	}
+	return int(v)
+}
+
+// planJobs builds the request schedule for spec. Nothing is materialised: each
+// attack type closes over the payload lists and computes the next job on demand.
+func planJobs(spec Spec, nPositions int, baselines []string) jobPlan {
 	switch spec.AttackType {
 	case "repeat":
 		// N identical sends of the template (markers, if any, keep their value).
-		for k := 0; k < spec.Repeat; k++ {
-			if !add(job{label: "#" + strconv.Itoa(k+1), payloads: append([]string(nil), baselines...)}) {
-				break
-			}
+		n := spec.Repeat
+		if n < 0 {
+			n = 0
 		}
+		return jobPlan{total: int64(n), each: func(yield func(job) bool) {
+			for k := 0; k < n; k++ {
+				if !yield(job{label: "#" + strconv.Itoa(k+1), payloads: append([]string(nil), baselines...)}) {
+					return
+				}
+			}
+		}}
 	case "pitchfork":
 		lists := spec.Payloads
 		if len(lists) > nPositions {
 			lists = lists[:nPositions]
+		}
+		if len(lists) == 0 {
+			return jobPlan{}
 		}
 		n := len(lists[0])
 		for _, list := range lists {
@@ -537,35 +631,43 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 				n = len(list)
 			}
 		}
-		for k := 0; k < n; k++ {
-			payloads := make([]string, nPositions)
-			labels := make([]string, 0, nPositions)
-			for i := 0; i < nPositions; i++ {
-				if i < len(lists) {
-					orig := lists[i][k]
-					payloads[i] = processPayload(orig, spec.ProcessRules) // sent value (transformed)
-					labels = append(labels, orig)                         // label shows the original
-				} else {
-					payloads[i] = baselines[i]
-					labels = append(labels, baselines[i])
+		return jobPlan{total: int64(n), each: func(yield func(job) bool) {
+			for k := 0; k < n; k++ {
+				payloads := make([]string, nPositions)
+				labels := make([]string, 0, nPositions)
+				for i := 0; i < nPositions; i++ {
+					if i < len(lists) {
+						orig := lists[i][k]
+						payloads[i] = processPayload(orig, spec.ProcessRules) // sent value (transformed)
+						labels = append(labels, orig)                         // label shows the original
+					} else {
+						payloads[i] = baselines[i]
+						labels = append(labels, baselines[i])
+					}
+				}
+				if !yield(job{label: strings.Join(labels, " · "), payloads: payloads}) {
+					return
 				}
 			}
-			if !add(job{label: strings.Join(labels, " · "), payloads: payloads}) {
-				break
-			}
-		}
+		}}
 	case "battering", "batteringram":
 		// Same payload at every § marker simultaneously (Burp Battering ram).
-		for _, pl := range spec.Payloads[0] {
-			processed := processPayload(pl, spec.ProcessRules)
-			payloads := make([]string, nPositions)
-			for i := range payloads {
-				payloads[i] = processed
-			}
-			if !add(job{label: pl, payloads: payloads}) {
-				break
-			}
+		var list []string
+		if len(spec.Payloads) > 0 {
+			list = spec.Payloads[0]
 		}
+		return jobPlan{total: int64(len(list)), each: func(yield func(job) bool) {
+			for _, pl := range list {
+				processed := processPayload(pl, spec.ProcessRules)
+				payloads := make([]string, nPositions)
+				for i := range payloads {
+					payloads[i] = processed
+				}
+				if !yield(job{label: pl, payloads: payloads}) {
+					return
+				}
+			}
+		}}
 	case "cluster", "clusterbomb":
 		// Cartesian product of payload lists (Burp Cluster bomb).
 		lists := spec.Payloads
@@ -579,52 +681,61 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 		} else if len(lists) > nPositions {
 			lists = lists[:nPositions]
 		}
-		idx := make([]int, len(lists))
-		for {
-			payloads := make([]string, nPositions)
-			labels := make([]string, 0, nPositions)
-			for i := 0; i < nPositions; i++ {
-				orig := lists[i][idx[i]]
-				payloads[i] = processPayload(orig, spec.ProcessRules)
-				labels = append(labels, orig)
-			}
-			if !add(job{label: strings.Join(labels, " · "), payloads: payloads}) {
-				break
-			}
-			// advance odometer
-			carried := true
-			for i := len(idx) - 1; i >= 0; i-- {
-				idx[i]++
-				if idx[i] < len(lists[i]) {
-					carried = false
-					break
-				}
-				idx[i] = 0
-			}
-			if carried {
-				break
-			}
+		total := int64(1)
+		for _, l := range lists {
+			total = mulSat(total, int64(len(l)))
 		}
+		if total == 0 {
+			return jobPlan{}
+		}
+		return jobPlan{total: total, each: func(yield func(job) bool) {
+			idx := make([]int, len(lists))
+			for {
+				payloads := make([]string, nPositions)
+				labels := make([]string, 0, nPositions)
+				for i := 0; i < nPositions; i++ {
+					orig := lists[i][idx[i]]
+					payloads[i] = processPayload(orig, spec.ProcessRules)
+					labels = append(labels, orig)
+				}
+				if !yield(job{label: strings.Join(labels, " · "), payloads: payloads}) {
+					return
+				}
+				// advance odometer
+				carried := true
+				for i := len(idx) - 1; i >= 0; i-- {
+					idx[i]++
+					if idx[i] < len(lists[i]) {
+						carried = false
+						break
+					}
+					idx[i] = 0
+				}
+				if carried {
+					return
+				}
+			}
+		}}
 	default: // sniper: vary one position at a time, others keep their baseline
-		for pos := 0; pos < nPositions; pos++ {
-			capHit := false
-			for _, pl := range spec.Payloads[0] {
-				payloads := append([]string(nil), baselines...)
-				payloads[pos] = processPayload(pl, spec.ProcessRules)
-				if !add(job{label: pl, payloads: payloads}) {
-					capHit = true
-					break
+		var list []string
+		if len(spec.Payloads) > 0 {
+			list = spec.Payloads[0]
+		}
+		return jobPlan{total: mulSat(int64(nPositions), int64(len(list))), each: func(yield func(job) bool) {
+			for pos := 0; pos < nPositions; pos++ {
+				for _, pl := range list {
+					payloads := append([]string(nil), baselines...)
+					payloads[pos] = processPayload(pl, spec.ProcessRules)
+					if !yield(job{label: pl, payloads: payloads}) {
+						return
+					}
 				}
 			}
-			if capHit {
-				break
-			}
-		}
+		}}
 	}
-	return jobs, capped
 }
 
-func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
+func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 	base := strings.TrimRight(spec.Target, "/")
 	threads := clampThreads(spec.Threads) // bounded so a race test can't exhaust sockets/goroutines
 	runStart := time.Now()                // monotonic origin for StartUs/EndUs
@@ -636,8 +747,8 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	barrierN := 0
 	if useBarrier {
 		barrierN = threads
-		if len(jobs) < barrierN {
-			barrierN = len(jobs)
+		if plan.total < int64(barrierN) {
+			barrierN = int(plan.total)
 		}
 		bar = newBarrier(barrierN)
 	}
@@ -706,33 +817,38 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 		slots <- i
 	}
 	var wg sync.WaitGroup
-dispatch:
-	for i, j := range jobs {
+	// The plan emits jobs one at a time, so an attack of any length runs in
+	// constant memory. Returning false from the yield stops dispatch: there is no
+	// job slice to break out of any more.
+	i := 0
+	plan.each(func(j job) bool {
 		if spec.DelayMs > 0 && i > 0 { // throttle: wait between dispatching each request
 			timer := time.NewTimer(time.Duration(spec.DelayMs) * time.Millisecond)
 			select {
 			case <-timer.C:
 			case <-ctx.Done():
 				timer.Stop()
-				break dispatch
+				return false
 			}
 		}
 		if ctx.Err() != nil {
-			break
+			return false
 		}
 		var slot int
 		select {
 		case slot = <-slots:
 		case <-ctx.Done():
-			break dispatch
+			return false
 		}
 		// Adaptive pacing: once a worker slot is free, hold off launching while a
 		// 429/503 backoff is active (checked here, after the slot handoff, so a
 		// pause set by the just-finished request is already visible).
 		if !e.waitBackoff(ctx) {
 			slots <- slot
-			break dispatch
+			return false
 		}
+		idx := i
+		i++
 		wg.Add(1)
 		go func(idx, slot int, j job) {
 			defer wg.Done()
@@ -787,8 +903,9 @@ dispatch:
 				}
 			}
 			e.appendResult(res)
-		}(i, slot, j)
-	}
+		}(idx, slot, j)
+		return true
+	})
 	wg.Wait()
 
 	e.log.finalize() // derive anomaly thresholds so reads can flag results
@@ -802,10 +919,18 @@ dispatch:
 	e.cancel = nil
 	done := e.doneCh
 	close(done)
+	// Snapshot the record under this same lock, before running=false is published.
+	// A Start() the moment the UI sees running=false replaces e.log and e.spec, and
+	// reading them afterwards emitted this run's record under the next run's id
+	// with an empty result set (the old run then vanished from the history).
+	record := RunRecord{State: e.recordStateLocked(), Spec: e.spec}
+	sink := e.sink
 	e.mu.Unlock()
 	cancel()
 	e.fireNotify()
-	e.emitRunRecord()
+	if sink != nil {
+		sink(record)
+	}
 }
 
 // median returns the median of a slice of int64 values without modifying the
@@ -814,18 +939,11 @@ func median(vals []int64) int64 {
 	if len(vals) == 0 {
 		return 0
 	}
-	// Insertion sort is fine here: attack results are bounded by maxRequests (2000).
+	// O(n log n): a run is unbounded, so the sample can be large (the insertion
+	// sort this replaced was quadratic and would hang on a long run).
 	sorted := make([]int64, len(vals))
 	copy(sorted, vals)
-	for i := 1; i < len(sorted); i++ {
-		x := sorted[i]
-		j := i
-		for j > 0 && sorted[j-1] > x {
-			sorted[j] = sorted[j-1]
-			j--
-		}
-		sorted[j] = x
-	}
+	sort.Slice(sorted, func(a, b int) bool { return sorted[a] < sorted[b] })
 	n := len(sorted)
 	if n%2 == 1 {
 		return sorted[n/2]

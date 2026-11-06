@@ -11,10 +11,17 @@
 .rep-diff-ignore{display:inline-flex;align-items:center;gap:6px}
 .rep-diff-note{flex:none;margin:0;padding:var(--sp-1) var(--sp-3)}
 .rep-diff-body{flex:1;min-height:0;overflow:auto}
-#repAttach,#repProof,#repDiffBtn,#repCopyAs,#intrAttach,#intrDiffBtn,
+#repAttach,#repProof,#repDiffBtn,#repCopyAs,#repMore,#intrAttach,#intrDiffBtn,
 .rep-diff-head .btn,.intr-confirm .btn,.rep-phone-seg button,.intr-stepper button{min-height:var(--hit-min)}
 
 /* ---- Repeater ---- */
+/* One response action row: Attach, Diff, Copy as (menu) and the overflow. The
+   controls those menus open stay in the DOM inside #repFolded — ids, handlers and
+   enabled state intact — so nothing inside it is announced or tabbable; the menu
+   rows are their only visible path. */
+.rep-folded{display:none}
+.rep-more{flex:none}
+.rep-more .icon{width:16px;height:16px}
 .rep-attached{display:inline-flex;align-items:center;gap:var(--sp-1);height:24px;padding:0 var(--sp-2);border:1px solid var(--rd-pass);border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;color:var(--fg)}
 .rep-attached[hidden]{display:none}
 .rep-attached .icon{color:var(--rd-pass)}
@@ -85,6 +92,9 @@ html:not(.desktop-app) .intr-row .ext{flex:0 1000 auto;min-width:0;overflow:hidd
   #panel-repeater .rep-line{position:sticky;top:0;z-index:var(--z-sticky)}
   #repSend{min-height:48px}
   .rep-res>.pane-head{position:sticky;top:0;z-index:var(--z-sticky);background:var(--bg1)}
-  .rep-actions{flex-wrap:wrap}
+  /* Attach, Diff, Copy as and the overflow stay on one line at 390 without
+     pushing the pane wider; they only wrap when the width demands it. */
+  .rep-actions{flex-wrap:wrap;min-width:0;gap:2px}
+  .rep-actions>.btn{flex:0 0 auto;padding:0 5px}
   .rep-diff-head .btn{flex:1 1 40%}
 }

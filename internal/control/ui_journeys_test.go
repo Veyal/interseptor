@@ -364,10 +364,33 @@ func TestUIJourneyIntruderValidatesNumericLimitsBeforeStart(t *testing.T) {
 		t.Fatal("Intruder start handler is missing")
 	}
 	section := tools[start:]
+	intr := readUIAsset(t, "js/intruder.js")
 	if !strings.Contains(section, "threads must be between 1 and 64") ||
 		!strings.Contains(section, "intrRepeatError(") ||
-		!strings.Contains(readUIAsset(t, "js/intruder.js"), "repeat must be between 1 and 2000") {
+		!strings.Contains(intr, "export const INTR_MAX_REPEAT = ") ||
+		!strings.Contains(intr, "repeat must be between 1 and ${INTR_MAX_REPEAT.toLocaleString()}") {
 		t.Fatal("Intruder must reject out-of-range numeric inputs before starting an attack")
+	}
+}
+
+// The Intruder has no request cap: a payload list longer than the old 2000-entry
+// ceiling must run in full, not be refused. The only guard is the one-shot
+// large-run confirmation.
+func TestUIJourneyIntruderHasNoRequestCap(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	if strings.Contains(tools, "INTR_MAX_REQUESTS") {
+		t.Fatal("Intruder must not cap the request count — payload lists are unbounded")
+	}
+	start := strings.Index(tools, "export async function intrStart()")
+	if start < 0 {
+		t.Fatal("Intruder start handler is missing")
+	}
+	section := tools[start:]
+	if strings.Contains(section, "too many requests") {
+		t.Fatal("Intruder start must not refuse a large payload list")
+	}
+	if !strings.Contains(section, "needsLargeRunConfirm(reqs)") {
+		t.Fatal("Intruder start must confirm a large run instead of refusing it")
 	}
 }
 
@@ -549,4 +572,45 @@ func TestUIJourneyToolsAndScannerAsyncActionContracts(t *testing.T) {
 
 	// Scanner controls expose their selection and target to assistive tech.
 	requireUIContains(t, index, `aria-label="Scanner target host"`, `aria-selected="false"`)
+}
+
+// The engine's state poll carries only the bounded head of a run (2000 rows), so
+// the pane must stream the rest from the paginated results API. Without this a
+// 5000-payload run showed "2000 sent" while the progress bar said 2920/5000.
+func TestUIJourneyIntruderPagesResultsPastTheStateHead(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"const INTR_RESULT_PAGE=",
+		"async function intrPageResults(",
+		"/api/intruder/results?offset=",
+		"intrDisplayedResults.length>=(target||0)",
+		// A page is tied to the run it addresses: if another run started, the
+		// offsets would mix two runs' rows into one table.
+		"'&runId='+encodeURIComponent(wantRun)",
+		"if(page?.stale",
+		"if(wantRun!==intrLastRunId){abandon=true;ok=false;}",
+	)
+	// A state poll must merge, not overwrite: replacing the view with the head
+	// every 400 ms is exactly the freeze this fixes.
+	if !strings.Contains(tools, "intrDisplayedResults=mergeLiveHead(intrDisplayedResults,res,newRun);") {
+		t.Fatal("a state poll must merge its head over the results already paged in")
+	}
+	// History capture waits for the full set instead of storing the head.
+	if !strings.Contains(tools, "if(!force&&intrDisplayedResults.length<intrLastDone)return;") {
+		t.Fatal("history capture must wait until every paged result is in hand")
+	}
+}
+
+// A payload list too large for the tab snapshot is not restored after a reload,
+// leaving only its 40-line preview. Starting then would send 40 payloads while
+// the operator believes the whole wordlist is loaded, so Start refuses until the
+// list is loaded again or the field is cleared.
+func TestUIJourneyIntruderRefusesStartOnUnrestoredLargeList(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"const unrestored=(slot)=>{",
+		"if(!tabNow?.sniperLarge||intrState.sniperLines)return false",
+		"if(lostSlot!==null){",
+		"large payload list was not restored after reload",
+	)
 }

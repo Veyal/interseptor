@@ -8,7 +8,7 @@ import { readSingleKeyPref } from './keys.js';
 import { setSingleKeyShortcuts, SINGLE_KEY_EVENT } from './keyboard.js';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
-  readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref,
+  readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref, themeToggleLabel,
 } from './settings-model.js';
 
 const root = document.documentElement;
@@ -20,13 +20,20 @@ export function currentThemeChoice() { return normalizeThemeChoice(storedTheme()
 function applyThemeChoice(choice) {
   const attr = themeAttribute(choice, prefersLight());
   if (attr) root.setAttribute('data-theme', attr); else root.removeAttribute('data-theme');
-  setToggleIcon(attr === 'light' ? 'sun' : 'moon');
+  setToggleIcon(attr === 'light' || attr === 'hc' ? attr : 'dark');
 }
 
-// The topbar toggle shows the sun in light theme and the moon otherwise.
-function setToggleIcon(name) {
+// The topbar toggle shows the sun in light theme and the moon otherwise. Its
+// accessible name and tooltip say which theme is applied, so this is the one
+// place a theme change from Settings re-labels it; app.js's boot/toggle path
+// writes the same wording (its literal is pinned by ui_review_a11y_test.go).
+function setToggleIcon(theme) {
   const toggle = $('#themeToggle');
   if (!toggle) return;
+  const name = theme === 'light' ? 'sun' : 'moon';
+  const label = themeToggleLabel(theme);
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'icon');

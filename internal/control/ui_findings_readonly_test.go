@@ -64,7 +64,7 @@ func TestFindingsReadOnlyGate(t *testing.T) {
 	// Mode chip.
 	for _, want := range []string{
 		`id="findModeChip"`, `<button type="button" class="btn xs find-mode-chip"`,
-		`href="#i-lock"`, `href="#i-lock-open"`, "Agent-maintained", "Editing on",
+		`href="#i-lock"`, `href="#i-lock-open"`, "Agent-maintained", "Writing enabled",
 		"aria-label=", "EVENTS.SETTINGS_OPEN_SECTION, 'project'",
 	} {
 		if !strings.Contains(js, want) {

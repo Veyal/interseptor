@@ -181,6 +181,13 @@ func (s *Store) mergeCollBundle(b CollectionsBundle, scrub bool) (CollectionMerg
 				if _, err := s.UpdateCollection(upd); err != nil {
 					return st, nil, err
 				}
+				// Keep the peer's revision number so "higher rev wins" converges:
+				// UpdateCollection only advances the local rev by one, so without
+				// this a peer several revisions ahead would be re-applied on every
+				// merge instead of being skipped.
+				if _, err := s.db.Exec(`UPDATE ix_collections SET rev=? WHERE uid=? AND rev<?`, pc.Rev, lc.UID, pc.Rev); err != nil {
+					return st, nil, fmt.Errorf("merge collection %q: record revision: %w", pc.Name, err)
+				}
 				st.CollectionsUpdated++
 			} else {
 				st.CollectionsSkipped++
@@ -200,10 +207,18 @@ func (s *Store) mergeCollBundle(b CollectionsBundle, scrub bool) (CollectionMerg
 		if strings.TrimSpace(nc.Name) == "" {
 			nc.Name = "Imported collection"
 		}
-		if _, err := s.CreateCollection(nc); err != nil {
+		created, err := s.CreateCollection(nc)
+		if err != nil {
 			return st, nil, fmt.Errorf("merge collection %q: %w", pc.Name, err)
 		}
-		collMap[pc.UID] = nc.UID
+		// A new local copy starts at rev 1; adopt the peer's revision so a later
+		// merge of the same peer sees the collection as already current.
+		if pc.Rev > created.Rev {
+			if _, err := s.db.Exec(`UPDATE ix_collections SET rev=? WHERE uid=? AND rev<?`, pc.Rev, created.UID, pc.Rev); err != nil {
+				return st, nil, fmt.Errorf("merge collection %q: record revision: %w", pc.Name, err)
+			}
+		}
+		collMap[pc.UID] = created.UID
 		st.CollectionsAdded++
 	}
 

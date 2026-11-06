@@ -3,6 +3,7 @@ package intruder
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -127,6 +128,14 @@ func (l *resultLog) readRange(off, limit int) []Result {
 		chunk := idx / l.chunkSize
 		data := l.chunkData(chunk)
 		within := idx % l.chunkSize
+		if l.dir == "" {
+			// Memory-only mode (the temp dir could not be created): buf holds
+			// every result, not one chunk-sized slice, so an offset must index
+			// buf directly. Using idx%chunkSize here returned the first rows of
+			// the buffer for any offset past zero — a page repeated the head.
+			within = idx
+			data = l.buf
+		}
 		for within < len(data) && idx < end {
 			r := data[within]
 			if l.finalized {
@@ -184,11 +193,18 @@ func (l *resultLog) cleanup() {
 
 // ---- anomaly statistics -----------------------------------------------------
 
+// anomalySampleCap bounds the response lengths kept for the median. A run has no
+// request cap, so keeping every length would grow without bound (8 bytes each);
+// a uniform reservoir sample of this size gives a stable median instead.
+const anomalySampleCap = 10000
+
 // anomalyAcc accumulates the signals flagging needs without holding every
-// result: modal status, the length distribution, and the grep-match majority.
+// result: modal status, a bounded sample of the length distribution, and the
+// grep-match majority.
 type anomalyAcc struct {
 	statusCount map[int]int
-	lengths     []int64
+	lengths     []int64 // reservoir sample, at most anomalySampleCap entries
+	seen        int64   // results offered to the reservoir (for its stride)
 	matched     int
 	valid       int
 }
@@ -203,11 +219,26 @@ func (a *anomalyAcc) add(r Result) {
 		a.statusCount = map[int]int{}
 	}
 	a.statusCount[r.Status]++
-	a.lengths = append(a.lengths, r.Length)
+	a.offerLength(r.Length)
 	if r.Matched {
 		a.matched++
 	}
 	a.valid++
+}
+
+// offerLength adds a length to the bounded reservoir: the first
+// anomalySampleCap values are kept, and after that each value replaces a random
+// earlier one with probability cap/seen. Uniform, single pass, no allocation
+// growth.
+func (a *anomalyAcc) offerLength(n int64) {
+	a.seen++
+	if len(a.lengths) < anomalySampleCap {
+		a.lengths = append(a.lengths, n)
+		return
+	}
+	if j := rand.Int63n(a.seen); j < int64(anomalySampleCap) {
+		a.lengths[j] = n
+	}
 }
 
 func (a *anomalyAcc) stat() flagStat {

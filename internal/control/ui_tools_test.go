@@ -117,7 +117,7 @@ func TestUIToolsIntruderContracts(t *testing.T) {
 		"wireIntruderExtras({", "intrExtras.onRender(", "chipsHTML(r,intrBaseline,esc)",
 		"needsLargeRunConfirm(reqs)", "needsLargeRunConfirm(repeatValue)",
 		"export async function intrStart()", "threads must be between 1 and 64", "intrRepeatError(",
-		"mark at least one § injection point", "too many requests",
+		"mark at least one § injection point", "intrRequestCount(intrState.type",
 		`data-evidence-flow="${fid}"`,
 	)
 }

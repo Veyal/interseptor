@@ -130,6 +130,19 @@ export function sheetRows(vars, { reveal = false } = {}) {
   });
 }
 
+// retypeRow switches a sheet row between default and secret. A secret's current
+// value never reaches the sheet (the row only ever held a mask), so turning one
+// into a plain variable must not present that mask as if it were the value: the
+// cell starts empty again and the placeholder still says a value is stored.
+export function retypeRow(row, type) {
+  const next = type === 'secret' ? 'secret' : 'default';
+  const wasSecret = !!row.secret;
+  row.type = next;
+  row.secret = next === 'secret';
+  if (wasSecret && !row.secret && row.current === SECRET_MASK) row.current = '';
+  return row;
+}
+
 // diffRows reports which rows changed since the sheet loaded, for the Save
 // action and the "unsaved" state.
 export function changedKeys(before, after) {

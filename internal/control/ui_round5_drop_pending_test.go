@@ -14,7 +14,10 @@ func TestUIPendingDropWinsOverBulkRelease(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/intercept.js"))
 	requireUIContains(t, src,
 		"markDropPending({side:sel.side,id:sel.id},true);",
-		"onUndo:()=>{dropToasts.delete(key);if(dropScheduler.undo(key)){markDropPending({side:sel.side,id:sel.id},false);",
+		// Undo reports the hold it actually has: still held -> clear the pending
+		// mark and say "kept"; released elsewhere meanwhile -> say so instead.
+		"const outcome=undoDropOutcome({cancelled:dropScheduler.undo(key),held:!!heldItem(sel.id,sel.side)});",
+		"if(outcome==='kept'){markDropPending({side:sel.side,id:sel.id},false);",
 		"dropScheduler.takeAll(",
 		"if(state.intercept.enabled)await commitPendingDrops('req');",
 		"if(state.intercept.responseEnabled)await commitPendingDrops('resp');",

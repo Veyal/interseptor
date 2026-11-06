@@ -109,11 +109,14 @@ func (r *request) addHeader(v string) bool {
 // data-urlencode|json.
 func (r *request) addData(kind, v string) {
 	switch kind {
-	case "data-raw", "json":
+	case "data-raw":
+		// --data-raw is the one form where a leading "@" is literal text.
 		r.data = append(r.data, dataPart{dkText, v})
 	case "data-urlencode":
 		r.data = append(r.data, urlencodePart(v))
 	default:
+		// -d/--data, --data-ascii, --data-binary and --json all read "@file"
+		// (and "@-" for stdin) from the local filesystem.
 		switch {
 		case v == "@-":
 			r.data = append(r.data, dataPart{dkStdin, ""})

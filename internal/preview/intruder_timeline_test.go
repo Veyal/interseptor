@@ -109,7 +109,9 @@ func TestTimelineBurstAndCapped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Summary, "(capped at 2000)") || !strings.Contains(r.Alt, "burst") && !strings.Contains(r.Alt, "Throttling") {
+	// The note must say the record was truncated, never assert a fixed row count:
+	// the engine has no request cap, so a hard-coded number would be a lie.
+	if !strings.Contains(r.Summary, "truncated") || !strings.Contains(r.Alt, "burst") && !strings.Contains(r.Alt, "Throttling") {
 		t.Fatalf("%q / %q", r.Summary, r.Alt)
 	}
 }

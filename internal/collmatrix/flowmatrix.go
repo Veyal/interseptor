@@ -64,7 +64,7 @@ func (s *Service) RunFlowMatrix(ctx context.Context, rp FlowReplayer, req FlowMa
 	if len(req.FlowIDs) == 0 {
 		return nil, errNoFlows
 	}
-	run, _, skipped, err := s.resolveIdentities(MatrixRequest{Identities: req.Identities})
+	run, _, skipped, capped, err := s.resolveIdentities(MatrixRequest{Identities: req.Identities})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,11 @@ func (s *Service) RunFlowMatrix(ctx context.Context, rp FlowReplayer, req FlowMa
 	}
 	m := &Matrix{
 		ID: newID(), StartedMs: s.d.Now().UnixMilli(),
-		Baseline: pickBaseline(run, req.Baseline), Skipped: skipped, Runs: map[string]string{}, Expect: map[string]string{},
+		Baseline: pickBaseline(run, req.Baseline), Skipped: skipped, CappedIdentities: capped,
+		Runs: map[string]string{}, Expect: map[string]string{},
+	}
+	if len(capped) > 0 {
+		m.Warnings = append(m.Warnings, identityCapWarning(len(run), capped))
 	}
 	for _, id := range run {
 		m.Identities = append(m.Identities, id.Name)
@@ -88,7 +92,7 @@ func (s *Service) RunFlowMatrix(ctx context.Context, rp FlowReplayer, req FlowMa
 			m.Warnings = append(m.Warnings, fmt.Sprintf("more than %d flows; extra rows dropped", MaxRows))
 			break
 		}
-		cells := make([]Cell, len(run))
+		cells := notRunCells(len(run))
 		for ci, id := range run {
 			if ctx.Err() != nil {
 				m.Partial = true

@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -62,9 +64,17 @@ type harHeader struct {
 	Value string `json:"value"`
 }
 type harPostData struct {
-	MimeType string `json:"mimeType"`
-	Text     string `json:"text"`
-	Encoding string `json:"encoding,omitempty"`
+	MimeType string     `json:"mimeType"`
+	Params   []harParam `json:"params,omitempty"`
+	Text     string     `json:"text"`
+	Encoding string     `json:"encoding,omitempty"`
+}
+type harParam struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	// HAR 1.2 spells params without name/value semantics _name/_value.
+	UnderscoreName  string `json:"_name,omitempty"`
+	UnderscoreValue string `json:"_value,omitempty"`
 }
 type harContent struct {
 	Size     int    `json:"size"`
@@ -155,12 +165,34 @@ func Parse(data []byte) ([]Entry, error) {
 			TS: ts, DurationMs: int64(e.Time),
 		}
 		if e.Request.PostData != nil {
-			en.ReqBody = decodeBody(e.Request.PostData.Text, e.Request.PostData.Encoding)
+			en.ReqBody = postDataBody(*e.Request.PostData)
 		}
 		en.ResBody = decodeBody(e.Response.Content.Text, e.Response.Content.Encoding)
 		out = append(out, en)
 	}
 	return out, nil
+}
+
+// postDataBody returns the request body a HAR entry describes. HAR 1.2 makes
+// postData.text optional: an emitter that only lists postData.params (its own
+// parsable form) would otherwise import a POST with no body at all, losing the
+// form values the entry carries. params are re-serialised in their listed order.
+func postDataBody(pd harPostData) []byte {
+	if pd.Text != "" || len(pd.Params) == 0 {
+		return decodeBody(pd.Text, pd.Encoding)
+	}
+	parts := make([]string, 0, len(pd.Params))
+	for _, p := range pd.Params {
+		name, value := p.Name, p.Value
+		if name == "" && p.UnderscoreName != "" {
+			name = p.UnderscoreName
+		}
+		if value == "" && p.UnderscoreValue != "" {
+			value = p.UnderscoreValue
+		}
+		parts = append(parts, url.QueryEscape(name)+"="+url.QueryEscape(value))
+	}
+	return []byte(strings.Join(parts, "&"))
 }
 
 // bodyField renders a body for a HAR text field. UTF-8-safe bodies pass through
@@ -211,10 +243,15 @@ func headers(h map[string][]string) []harHeader {
 	return out
 }
 
+// headerMap builds a header map with canonical keys. HARs captured from HTTP/2
+// carry lower-case header names, and the scanner reads them through
+// http.Header.Get (which canonicalizes only the lookup key) — so a verbatim
+// "content-security-policy" key was invisible to every header-based passive
+// check, making an imported scan come back clean.
 func headerMap(hs []harHeader) map[string][]string {
 	m := map[string][]string{}
 	for _, h := range hs {
-		m[h.Name] = append(m[h.Name], h.Value)
+		m[http.CanonicalHeaderKey(h.Name)] = append(m[http.CanonicalHeaderKey(h.Name)], h.Value)
 	}
 	return m
 }

@@ -38,7 +38,9 @@ type TimelineInput struct {
 
 const (
 	timelineBuckets = 20
-	timelineCapNote = "(capped at 2000)"
+	// timelineCapNote is drawn only when the record itself was truncated by the
+	// run store. The engine no longer caps a run, so this is never a fixed count.
+	timelineCapNote = "(this record was truncated — see the run's note)"
 	tlMaxSeqLanes   = 60 // lanes by Seq when under this many rows
 	tlMaxWorkLanes  = 64
 	tlLabelW        = 52

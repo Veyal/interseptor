@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,7 +71,7 @@ func TestQueryPeerFindingsSupportsLegacySchemaWithoutEnvelopeColumns(t *testing.
 	if err := rows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 		&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe,
 		&f.Environment, &f.Cvss, &f.VerificationInstructions, &f.Summary,
-		&f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
+		&f.Confidence, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}); err != nil {
 		t.Fatalf("scan legacy finding: %v", err)
 	}
 	if f.Title != "Legacy issue" || f.Body != "" || f.Impact != "" || f.Why != "" || f.Cwe != "" || f.Environment != "" || f.Cvss != "" || f.VerificationInstructions != "" || f.Summary != "" || f.Confidence != "" || f.Retest != "" {
@@ -1329,5 +1330,152 @@ func TestCreateFindingStillEnforcesCVSSAfterMergePath(t *testing.T) {
 	defer s.Close()
 	if _, err := s.CreateFinding(&Finding{Title: "x", Cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}); err == nil {
 		t.Fatal("normal CreateFinding must still reject CVSS 3.1")
+	}
+}
+
+// Merging a project must carry the evidence-first structured envelope: per-claim
+// verdicts (with their flow evidence remapped to the new local ids) and the
+// optional CVSS v3.1 vector. Losing them silently downgrades a peer's audited
+// claims to prose.
+func TestMergeFromCarriesStructuredClaims(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	seedFlow(t, peer, "claims.test", "/first", "one", 1000)
+	evidenceFlow := seedFlow(t, peer, "claims.test", "/second", "two", 2000)
+	peerFinding := &Finding{
+		Title:  "claim carrier",
+		Target: "https://claims.test/second",
+		Detail: "the second endpoint is injectable",
+		Cvss:   "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+		Claims: []FindingClaim{{
+			ID:        "c1",
+			Statement: "the second endpoint is injectable",
+			Verdict:   "confirmed",
+			Evidence:  []FindingEvidenceReference{{FlowID: evidenceFlow}},
+		}},
+		CvssV3: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+	}
+	if _, err := peer.CreateFinding(peerFinding); err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peerBodiesDir(peer)
+	peer.Close()
+
+	// Two local flows so the merged evidence flow gets an id that differs from
+	// the peer's, proving the claim reference is remapped rather than copied.
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	seedFlow(t, local, "local.test", "/one", "l1", 500)
+	seedFlow(t, local, "local.test", "/two", "l2", 600)
+
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+	findings, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatalf("ListFindings: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 merged finding, got %d", len(findings))
+	}
+	got, err := local.GetFinding(findings[0].ID)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	if len(got.Claims) != 1 || got.Claims[0].ID != "c1" || got.Claims[0].Verdict != "confirmed" {
+		t.Fatalf("merge dropped structured claims: %+v", got.Claims)
+	}
+	if got.CvssV3 != peerFinding.CvssV3 {
+		t.Fatalf("merge dropped cvssV3: %q", got.CvssV3)
+	}
+	evidence := got.Claims[0].Evidence
+	if len(evidence) != 1 {
+		t.Fatalf("claim evidence = %+v, want one reference", evidence)
+	}
+	if evidence[0].Missing {
+		t.Fatalf("claim evidence was marked missing after merge: %+v", evidence[0])
+	}
+	var localID int64
+	if err := local.db.QueryRow(`SELECT id FROM flows WHERE host='claims.test' AND path='/second'`).Scan(&localID); err != nil {
+		t.Fatalf("find merged evidence flow: %v", err)
+	}
+	if evidence[0].FlowID != localID {
+		t.Fatalf("claim evidence flow = %d, want remapped local id %d", evidence[0].FlowID, localID)
+	}
+}
+
+// A MITM edit leaves the pre-edit bytes in the original_* columns. Merging the
+// peer must carry that evidence (and the body blob it references), or the local
+// copy silently claims the rewritten request is all that was ever sent.
+func TestMergeFromCarriesOriginalRequestEvidence(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	bw, err := peer.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	if _, err := bw.Write([]byte("ORIGINAL-REQUEST-BODY")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	origHash, _, err := bw.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	peer.publishBodies(origHash)
+	if _, err := peer.InsertFlow(&Flow{
+		TS: time.UnixMilli(1000), Method: "POST", Scheme: "https", Host: "edit.test", Port: 443,
+		Path: "/rewritten", Status: 200,
+		OriginalReqHeaders:  map[string][]string{"X-Original": {"yes"}},
+		OriginalReqBodyHash: origHash,
+	}); err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peerBodiesDir(peer)
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+	flows, err := local.QueryFlowsFilter(FlowFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryFlowsFilter: %v", err)
+	}
+	if len(flows) != 1 {
+		t.Fatalf("expected 1 merged flow, got %d", len(flows))
+	}
+	got := flows[0]
+	if got.OriginalReqBodyHash != origHash {
+		t.Fatalf("original request body hash = %q, want %q", got.OriginalReqBodyHash, origHash)
+	}
+	if len(got.OriginalReqHeaders["X-Original"]) == 0 {
+		t.Fatalf("original request headers dropped: %+v", got.OriginalReqHeaders)
+	}
+	rc, err := local.OpenBody(got.OriginalReqBodyHash)
+	if err != nil {
+		t.Fatalf("original body blob unreadable after merge: %v", err)
+	}
+	defer rc.Close()
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read original body: %v", err)
+	}
+	if string(body) != "ORIGINAL-REQUEST-BODY" {
+		t.Fatalf("original body = %q", body)
 	}
 }

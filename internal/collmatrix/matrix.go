@@ -124,8 +124,11 @@ type Matrix struct {
 	Summary       Summary           `json:"summary"`
 	Runs          map[string]string `json:"runs,omitempty"` // identity -> run uid
 	Skipped       []string          `json:"skipped,omitempty"`
-	Warnings      []string          `json:"warnings,omitempty"`
-	Partial       bool              `json:"partial,omitempty"`
+	// CappedIdentities are identities left out by the MaxIdentities column cap —
+	// distinct from Skipped, which means "no usable credentials".
+	CappedIdentities []string `json:"cappedIdentities,omitempty"`
+	Warnings         []string `json:"warnings,omitempty"`
+	Partial          bool     `json:"partial,omitempty"`
 	// Hypotheses are inferences, not proof; reproduce before reporting.
 	Hypotheses []string `json:"hypotheses,omitempty"`
 }
@@ -169,7 +172,7 @@ func looksLikeLogin(loc string) bool {
 
 // resolveIdentities picks the runnable identities in order, always ending with
 // anonymous unless the caller listed identities without it.
-func (s *Service) resolveIdentities(req MatrixRequest) (run, known []Identity, skipped []string, err error) {
+func (s *Service) resolveIdentities(req MatrixRequest) (run, known []Identity, skipped, capped []string, err error) {
 	var saved []Identity
 	if s.d.Identities != nil {
 		saved = s.d.Identities.Identities()
@@ -197,7 +200,7 @@ func (s *Service) resolveIdentities(req MatrixRequest) (run, known []Identity, s
 		seen[k] = true
 		id, ok := byName[k]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("collmatrix: unknown identity %q", n)
+			return nil, nil, nil, nil, fmt.Errorf("collmatrix: unknown identity %q", n)
 		}
 		if id.Broken {
 			skipped = append(skipped, id.Name)
@@ -210,12 +213,36 @@ func (s *Service) resolveIdentities(req MatrixRequest) (run, known []Identity, s
 		run = append(run, id)
 	}
 	if len(run) == 0 {
-		return nil, nil, skipped, errNoIdentity
+		return nil, nil, skipped, nil, errNoIdentity
 	}
 	if len(run) > MaxIdentities {
+		// A role that was not tested is indistinguishable from a role with no
+		// finding, so identities past the column cap are reported by name (the row
+		// cap already reports itself the same way). They are NOT "skipped" — that
+		// label means the identity has no usable credentials.
+		for _, id := range run[MaxIdentities:] {
+			capped = append(capped, id.Name)
+		}
 		run = run[:MaxIdentities]
 	}
-	return run, known, skipped, nil
+	return run, known, skipped, capped, nil
+}
+
+// identityCapWarning words the MaxIdentities column cap so a matrix never
+// looks like it tested an identity it dropped.
+func identityCapWarning(tested int, capped []string) string {
+	return fmt.Sprintf("%d of %d identities tested (limit %d): %s",
+		tested, tested+len(capped), MaxIdentities, strings.Join(capped, ", "))
+}
+
+// notRunCells returns one cell per identity, all classed not_run, so a row that
+// was only partly filled never carries an empty (unknown) class.
+func notRunCells(n int) []Cell {
+	cells := make([]Cell, n)
+	for i := range cells {
+		cells[i] = Cell{Class: ClassNotRun}
+	}
+	return cells
 }
 
 func pickBaseline(run []Identity, want string) string {
@@ -239,14 +266,17 @@ func (s *Service) RunMatrix(ctx context.Context, req MatrixRequest) (*Matrix, er
 	if strings.TrimSpace(req.CollectionUID) == "" {
 		return nil, errNoCollection
 	}
-	run, known, skipped, err := s.resolveIdentities(req)
+	run, known, skipped, capped, err := s.resolveIdentities(req)
 	if err != nil {
 		return nil, err
 	}
 	scen := s.scenarios(req, run)
 	m := &Matrix{
 		ID: newID(), CollectionUID: req.CollectionUID, EnvUID: req.EnvUID, StartedMs: s.d.Now().UnixMilli(),
-		Baseline: pickBaseline(run, req.Baseline), Skipped: skipped, Runs: map[string]string{}, Expect: map[string]string{},
+		Baseline: pickBaseline(run, req.Baseline), Skipped: skipped, CappedIdentities: capped, Runs: map[string]string{}, Expect: map[string]string{},
+	}
+	if len(capped) > 0 {
+		m.Warnings = append(m.Warnings, identityCapWarning(len(run), capped))
 	}
 	if objectMode(scen) {
 		m.ObjectParam = req.ObjectParam
@@ -369,6 +399,7 @@ func (s *Service) runAs(ctx context.Context, req MatrixRequest, id Identity, kno
 func (s *Service) assemble(m *Matrix, run []Identity, scen []scenario, reports [][]*collrun.Report) {
 	object := objectMode(scen)
 	rowIdx := map[string]int{}
+	dropped := false // the row cap is reported once, not once per dropped row
 	for ci := range run {
 		for si, rep := range reports[ci] {
 			if rep == nil {
@@ -386,15 +417,15 @@ func (s *Service) assemble(m *Matrix, run []Identity, scen []scenario, reports [
 				ri, ok := rowIdx[key]
 				if !ok {
 					if len(m.Rows) >= MaxRows {
-						m.Warnings = append(m.Warnings, fmt.Sprintf("more than %d requests; extra rows dropped", MaxRows))
+						if !dropped {
+							dropped = true
+							m.Warnings = append(m.Warnings, fmt.Sprintf("more than %d requests; extra rows dropped", MaxRows))
+						}
 						continue
 					}
 					ri = len(m.Rows)
 					rowIdx[key] = ri
-					cells := make([]Cell, len(run))
-					for i := range cells {
-						cells[i] = Cell{Class: ClassNotRun}
-					}
+					cells := notRunCells(len(run))
 					row := Row{ItemUID: it.ItemUID, Name: s.scrub(it.Name), Method: it.Method, URL: s.scrub(it.URL), Cells: cells}
 					if sc.owner != "" {
 						row.Owner = sc.owner

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -256,8 +257,15 @@ func (c *collectionsAPI) runOptions(w http.ResponseWriter, r *http.Request, in r
 			return opt, false
 		}
 	}
+	// maxItems is a hard ceiling, not a value to clamp: silently running fewer
+	// requests than the client asked for would report a partial run as the
+	// requested one. Refuse the out-of-range value instead.
+	if in.MaxItems > maxRunItems {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("maxItems must be at most %d", maxRunItems))
+		return opt, false
+	}
 	limit := in.MaxItems
-	if limit <= 0 || limit > maxRunItems {
+	if limit <= 0 {
 		limit = maxRunItems
 	}
 	_, items, err := c.backend().Load(in.CollectionUID)
@@ -280,7 +288,7 @@ func (c *collectionsAPI) runOptions(w http.ResponseWriter, r *http.Request, in r
 		return opt, false
 	}
 	if len(plan) > limit {
-		httpErr(w, http.StatusBadRequest, "run would exceed the item limit; narrow the selection or raise maxItems (max 1000)")
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("run would exceed the item limit: %d requests selected, at most %d may run; narrow the selection with folders or item ids", len(plan), limit))
 		return opt, false
 	}
 	return collrun.Options{

@@ -36,7 +36,7 @@ func markdownToJiraWiki(md string) string {
 		}
 		switch {
 		case strings.HasPrefix(trim, "|"):
-			if strings.Contains(trim, "---") {
+			if isTableSeparator(trim) {
 				continue
 			}
 			sep := "|"

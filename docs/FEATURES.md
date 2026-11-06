@@ -14,7 +14,9 @@ User-facing capabilities in the current release. For a tour of the menus, see th
 - **Intruder** — Sniper / Battering (one value in every marker) / Pitchfork (one payload list per `§` marker,
   zipped) / Cluster (all combinations) / **Repeat** (no-payload concurrent resends for race
   conditions, with a race-window chart), with thread + delay controls, payload processing (url/base64/…),
-  **grep-match/extract**, anomaly flagging, attack tabs and run history.
+  **grep-match/extract**, anomaly flagging, attack tabs and run history. A run has **no request cap**:
+  payload lists of any length are scheduled lazily and results stream to disk, so the only limit is the
+  machine (and the 128 MiB control-request body that carries the list).
 - **Authorization testing** — replay a request as each saved identity (role) and diff for broken
   access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner & OOB when you have a tunnel or public URL).
 - **External agent orchestration** — MCP exposes deterministic capture, replay, mutation, scope,

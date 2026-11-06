@@ -136,8 +136,11 @@ func parseMeta(id string, d *starlark.Dict) Meta {
 	return m
 }
 
-// Match reports whether this codec applies to the flow/side.
+// Match reports whether this codec applies to the flow/side. side accepts the
+// same aliases as Decode/TryDecode ("req"/"request", "res"/"resp"/"response");
+// the script always sees the canonical "req" or "res".
 func (c *Codec) Match(flow Flow, side string) (bool, error) {
+	side = normalizeSide(side)
 	thread := &starlark.Thread{Name: "match:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
 	v, err := starlark.Call(thread, c.fnM, starlark.Tuple{flowValue(flow), starlark.String(side)}, nil)
@@ -152,6 +155,7 @@ func (c *Codec) Match(flow Flow, side string) (bool, error) {
 
 // Decode runs decode(flow, side, raw) where raw is the body for that side.
 func (c *Codec) Decode(flow Flow, side string) (Result, error) {
+	side = normalizeSide(side)
 	raw := bodyFor(flow, side)
 	thread := &starlark.Thread{Name: "decode:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
@@ -164,6 +168,7 @@ func (c *Codec) Decode(flow Flow, side string) (Result, error) {
 
 // Encode rebuilds a wire body from edited plaintext.
 func (c *Codec) Encode(flow Flow, side, plaintext string) (string, error) {
+	side = normalizeSide(side)
 	if c.fnE == nil {
 		return "", fmt.Errorf("codec %q has no encode()", c.Meta.ID)
 	}
@@ -232,7 +237,7 @@ func sortedKeys(m map[string]string) []string {
 }
 
 func bodyFor(f Flow, side string) string {
-	if side == "res" || side == "response" {
+	if normalizeSide(side) == "res" {
 		return f.ResBody
 	}
 	return f.ReqBody

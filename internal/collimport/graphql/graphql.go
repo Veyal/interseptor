@@ -183,6 +183,13 @@ func build(s *schemaDef, opt Options) *Result {
 			if strings.HasPrefix(f.name, "__") {
 				continue
 			}
+			if f.name == "" {
+				// A malformed introspection result can carry a field with no
+				// name: there is no query to build for it, and slicing its name
+				// would panic.
+				b.add(impkit.NeedsReview, r.folder, "", "unnamed-field", "a root field without a name was skipped; the schema document is malformed", "")
+				continue
+			}
 			if b.reqs >= MaxRequests {
 				total++
 				continue

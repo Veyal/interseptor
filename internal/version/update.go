@@ -46,9 +46,12 @@ type releaseInfo struct {
 }
 
 // Update checks GitHub for a newer (or requested) release and installs it.
-// It prefers a prebuilt binary asset for the current OS/arch; if none is
-// attached to the release it falls back to `go install` when the Go toolchain
-// is available.
+// It prefers a prebuilt binary asset for the current OS/arch. When the release
+// carries no asset for this platform it falls back to a source install through
+// `go install`, resolving the release tag to its commit first — a v2.x tag
+// cannot be installed for this module path (see installRefFor). When even that
+// is impossible it returns build-from-source guidance instead of a bare
+// `go install` exit status.
 func Update(ctx context.Context, opts UpdateOptions) error {
 	out := opts.Out
 	if out == nil {
@@ -166,16 +169,29 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		return nil
 	}
 
-	prog.step("No prebuilt binary for %s/%s — running go install…", runtime.GOOS, runtime.GOARCH)
-	if err := goInstall(ctx, ver, out); err != nil {
-		return fmt.Errorf("%w\n\ninstall manually: https://github.com/%s/releases/tag/v%s", err, Repo, ver)
+	// No prebuilt asset for this platform. `go install …@vX.Y.Z` cannot work for
+	// this module (v2.x tags, no /v2 in the module path), so resolve the tag to
+	// its commit and install that ref; when the commit cannot be resolved, say
+	// what to do instead of surfacing a bare `go install: exit status 1`.
+	prog.step("No prebuilt binary for %s/%s — falling back to a source install…", runtime.GOOS, runtime.GOARCH)
+	commit, shaErr := releaseCommitSHA(ctx, rel.Tag)
+	if shaErr != nil {
+		prog.step("Could not resolve %s to a commit: %v", rel.Tag, shaErr)
 	}
-	gopath, _ := exec.LookPath("go")
-	_ = gopath
+	dec := installRefFor(runtime.GOOS, runtime.GOARCH, rel.Tag, installModulePath, commit)
+	if dec.Ref == "" {
+		return errors.New(dec.guidance(rel.Tag, runtime.GOOS, runtime.GOARCH))
+	}
+	if dec.Kind == installByCommit {
+		prog.step("Installing %s at %s (built from source, not the prebuilt release)…", installPackagePath, shortSHA(dec.Commit))
+	}
+	if err := goInstallRef(ctx, dec.Ref, runtime.GOOS, runtime.GOARCH, out); err != nil {
+		return fmt.Errorf("%w\n\n%s", err, dec.guidance(rel.Tag, runtime.GOOS, runtime.GOARCH))
+	}
 	if bin, err := goInstallBin(); err == nil {
-		prog.done("Installed interseptor v%s via go install → %s", ver, bin)
+		prog.done("Installed interseptor v%s from source → %s", ver, bin)
 	} else {
-		prog.done("Installed interseptor v%s via go install (ensure $(go env GOPATH)/bin is on your PATH)", ver)
+		prog.done("Installed interseptor v%s from source (ensure $(go env GOPATH)/bin is on your PATH)", ver)
 	}
 	return nil
 }
@@ -856,19 +872,51 @@ exit /b 1
 `, newPath, dest, bat, logPath, legacyPath, legacyBlock)
 }
 
-func goInstall(ctx context.Context, version string, out io.Writer) error {
+// goInstallRef runs `go install <ref>` for the requested platform. ref comes
+// from installRefFor, so it is never a tag the toolchain would reject.
+func goInstallRef(ctx context.Context, ref, goos, goarch string, out io.Writer) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go toolchain not found in PATH")
 	}
-	mod := "github.com/Veyal/interseptor/cmd/interseptor@v" + strings.TrimPrefix(version, "v")
-	cmd := exec.CommandContext(ctx, "go", "install", mod)
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	cmd := exec.CommandContext(ctx, "go", "install", ref)
+	cmd.Env = goInstallEnv(os.Environ(), goos, goarch)
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go install: %w", err)
+		return fmt.Errorf("go install %s: %w", ref, err)
 	}
 	return nil
+}
+
+// goInstallEnv returns base with CGO_ENABLED=0 (this project is pure Go) and,
+// when the target platform is known, GOOS/GOARCH pinned to it — inherited values
+// are replaced so a source install never silently builds for the host.
+func goInstallEnv(base []string, goos, goarch string) []string {
+	replace := map[string]string{"CGO_ENABLED": "0"}
+	if goos = strings.TrimSpace(goos); goos != "" {
+		replace["GOOS"] = goos
+	}
+	if goarch = strings.TrimSpace(goarch); goarch != "" {
+		replace["GOARCH"] = goarch
+	}
+	out := make([]string, 0, len(base)+len(replace))
+	for _, kv := range base {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			out = append(out, kv)
+			continue
+		}
+		if _, ok := replace[name]; ok {
+			continue
+		}
+		out = append(out, kv)
+	}
+	for _, name := range []string{"CGO_ENABLED", "GOOS", "GOARCH"} {
+		if v, ok := replace[name]; ok {
+			out = append(out, name+"="+v)
+		}
+	}
+	return out
 }
 
 func goInstallBin() (string, error) {

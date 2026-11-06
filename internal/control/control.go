@@ -766,7 +766,10 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		f.RequireFlags |= store.FlagAI
 		f.IncludeFlags = store.FlagAI
 	case showManual && !showAI:
-		f.WithoutFlags = store.FlagAI
+		// OR, not assign: the hideTlsFailed bit above must survive. Assigning
+		// dropped it, so unticking the AI source resurrected the TLS-failure rows
+		// the user had explicitly hidden.
+		f.WithoutFlags |= store.FlagAI
 	}
 	// Collection-sent flows are History traffic by default (FlagCollection, a
 	// COLL chip in the UI). collection=0 hides them, collection=only shows
@@ -1420,6 +1423,10 @@ func (h *interceptAPI) dropIntercept(w http.ResponseWriter, r *http.Request) {
 func forwardErrStatus(err error) int {
 	if errors.Is(err, intercept.ErrDropPending) {
 		return http.StatusConflict
+	}
+	// An unparseable edit leaves the item held, so the operator can correct it.
+	if errors.Is(err, intercept.ErrBadEdit) {
+		return http.StatusUnprocessableEntity
 	}
 	return http.StatusBadRequest
 }

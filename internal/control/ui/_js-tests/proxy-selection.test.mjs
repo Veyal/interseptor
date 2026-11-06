@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rangeBetween, applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, LONG_PRESS_MS, LONG_PRESS_SLOP,
+  rangeBetween, applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, LONG_PRESS_MS, LONG_PRESS_SLOP, pruneSelection,
 } from '../js/proxy-selection.js';
 
 const ids = [10, 9, 8, 7, 6, 5];
@@ -63,6 +63,46 @@ test('bulkProgressText is plain announcement text', () => {
   assert.equal(bulkProgressText('Deleting', 200, 450), 'Deleting 200 of 450');
   assert.equal(bulkProgressText('Deleting', 450, 450), 'Deleting 450 of 450');
 });
+
+test('pruneSelection drops the ids a filter now hides and keeps the rest', () => {
+  const flows = [
+    { id: 1, host: 'a.example.com' },
+    { id: 2, host: 'b.example.com' },
+    { id: 3, host: 'a.example.com' },
+  ];
+  const onlyA = (f) => f.host === 'a.example.com';
+  const sel = new Set([1, 2, 3]);
+  const keep = pruneSelection(sel, flows, onlyA);
+  // #2 is no longer visible, so the bulk bar must not offer Delete/Tag for it.
+  assert.deepEqual([...keep], [1, 3]);
+  assert.deepEqual([...sel], [1, 2, 3], 'the input Set is not mutated');
+  assert.ok(keep instanceof Set);
+});
+
+test('pruneSelection keeps ids it cannot judge (paged out of the cache)', () => {
+  // Selection is id-keyed and outlives the loaded page; pruning may only drop
+  // what the predicate can actually refute.
+  const keep = pruneSelection(new Set([7, 8]), [{ id: 8, ok: false }], (f) => f.ok !== false);
+  assert.deepEqual([...keep], [7]);
+  assert.deepEqual([...pruneSelection(new Set([7]), [], () => false)], [7]);
+});
+
+test('pruneSelection lets the fresher flow win when an id appears twice', () => {
+  // loadFlows passes the outgoing page cache first and the page that replaced it
+  // second: a flow whose status changed must be judged on its new fields.
+  const stale = { id: 4, status: 302 };
+  const fresh = { id: 4, status: 200 };
+  const only200 = (f) => f.status === 200;
+  assert.deepEqual([...pruneSelection(new Set([4]), [stale, fresh], only200)], [4]);
+  assert.deepEqual([...pruneSelection(new Set([4]), [fresh, stale], only200)], []);
+});
+
+test('pruneSelection on an empty or missing selection is a no-op', () => {
+  assert.equal(pruneSelection(new Set(), [{ id: 1 }], () => false).size, 0);
+  assert.equal(pruneSelection(undefined, [{ id: 1 }], () => true).size, 0);
+  assert.deepEqual([...pruneSelection(new Set([1]), [{ id: 1 }])], [1], 'no predicate: keep everything');
+});
+
 
 test('long press fires after 500ms, cancels on movement beyond 8px or release', () => {
   assert.equal(LONG_PRESS_MS, 500);

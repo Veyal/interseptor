@@ -9,6 +9,11 @@
 .proxy-filters-pop{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
 .proxy-filters-row{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .proxy-filters-pop .flow-search-disc textarea{width:100%;max-width:100%}
+/* The scope group proxy.js folds in (first child of the popover). It keeps its own
+   class, not .proxy-filters-row, so the desktop layout's "first row" lookup still
+   lands on the source pills; there it fills its own row and this one stays empty. */
+.proxy-filters-scope{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-1) 0}
+.proxy-filters-scope:empty{display:none}
 .proxy-filters-pop :focus-visible,.proxy-toolbar :focus-visible,.sel-bar :focus-visible,.tr-more:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 /* ---- bulk bar ---- */
@@ -79,6 +84,61 @@
   #panel-proxy #rows .trow .tr-more{grid-area:more;width:auto;height:auto;opacity:1;min-height:var(--hit-min);min-width:var(--hit-min)}
 }
 .coach-tip{display:inline-flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-1) var(--sp-2);border:1px dashed var(--line2);border-radius:var(--r-md);font-size:var(--fs-xs)}
+
+/* ---- <=640px: two toolbar rows, everything else in the Filters sheet ----
+   Row A is the shell's panel switcher; row B is the search field plus the one
+   Filters button. The controls that used to follow (method, status, in scope,
+   Edit scope, Views, Pause, Cols, chips) move into #filtersSheet — see proxy.js
+   "the History filter bar". They are re-parented, never copied, so only the
+   layout changes here. #proxyFiltersBtn exists at every width and is only shown
+   in the phone shape (it is a duplicate trigger above 640px, where #filtersBtn
+   opens the popover). */
+#proxyFiltersBtn{display:none}
+@media (max-width:640px){
+  #panel-proxy.phone-filters .proxy-toolbar{flex-wrap:nowrap;overflow:visible;gap:var(--sp-2);row-gap:0}
+  #panel-proxy.phone-filters .proxy-toolbar>.spacer{display:none}
+  #panel-proxy.phone-filters .proxy-toolbar .search{flex:1 1 auto;min-width:0;max-width:none}
+  /* The popover's own button and the chip line are not on screen: the sheet owns
+     both, and an empty secondary tier would cost the row the sheet just saved. */
+  #panel-proxy.phone-filters #filtersBtn{display:none}
+  #panel-proxy.phone-filters #activeFilterBar{display:none!important}
+  #proxyFiltersBtn{display:inline-flex;flex:0 0 auto;align-items:center;gap:var(--sp-1);min-height:var(--hit-min)}
+  #proxyFiltersBtn .icon{width:16px;height:16px}
+  /* One line for the verdict banner: the label gives way, Details and dismiss stay. */
+  #tlsDiagBanner .tls-diag-head{flex-wrap:nowrap}
+  #tlsDiagBanner .tls-diag-head>.u-bold{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  #tlsDiagBanner .tls-diag-head>.btn{flex:0 0 auto}
+}
+
+/* ---- the Filters sheet body (built by proxy.js, hosted by #filtersSheet) ---- */
+/* Between openings the host waits here: off the page, out of the a11y tree. */
+#phoneFiltersPark{display:none}
+.phone-filters{display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
+.phone-filters-group{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-width:0}
+/* The pickers stack full width: three 30px selects side by side are unreadable at 390. */
+.phone-filters [data-g="selects"]{flex-direction:column;align-items:stretch;gap:var(--sp-2)}
+.phone-filters [data-g="selects"] .ui-select{width:100%}
+.phone-filters [data-g="selects"] .ui-select-trigger{width:100%;min-height:var(--hit-min)}
+/* The chip line stays in the sheet's DOM (ids, handlers, the badge's mutation
+   source) but is not painted there: every control those chips summarise is already
+   on screen in the same sheet, so a summary above its own controls repeated the
+   state twice. One "Clear all" at the bottom replaces #chipsClear here; the
+   desktop chip row above the table is unchanged. */
+.phone-filters [data-g="active"]{display:none}
+.phone-filters [data-g="sources"]{flex-direction:column;align-items:stretch;gap:var(--sp-2)}
+.phone-filters [data-g="sources"] .flow-search-disc{width:100%}
+.phone-filters [data-g="sources"] .flow-search-disc[open]{flex:1 1 auto}
+.phone-filters .flow-search-disc textarea{width:100%;max-width:100%}
+.phone-filters #tagBar:empty{display:none}
+.phone-filters [data-g="actions"] .btn{flex:1 1 auto;justify-content:center;min-height:var(--hit-min)}
+/* The sheet's one Clear all: last row of the sheet body, full width, separated from
+   the controls. It is sticky to the bottom of the scrolling body — sheet.js caps the
+   body at the half detent, so a plain last row would hide below the fold — and the
+   solid shadow strip covers the body's own bottom padding under it, so no content
+   peeks past the bar. */
+.phone-filters [data-g="clear"]{position:sticky;bottom:0;padding:var(--sp-2) 0 calc(var(--sp-2) + var(--safe-b));border-top:1px solid var(--line);background:var(--bg1);z-index:1;box-shadow:0 var(--sp-4) 0 var(--bg1)}
+.phone-filters-clear{width:100%;justify-content:center;min-height:var(--hit-min)}
+.phone-filters .coach-tip{flex:1 1 100%}
 
 /* Copy as PNG mounts hold one button each; they must not add a flex item of their own. */
 #inspectCopyPng,#fdCopyPng{display:contents}

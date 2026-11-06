@@ -1,7 +1,7 @@
 import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey, openFlow, getHook, openCtxMenu, ctxMenuOpen, icon } from './core.js';
 import { linkedIndex, endpointLinked, coveragePips, coverageSummary, authState } from './map-coverage.js';
 import { renderState } from './statepanel.js';
-import { wheelZoomFactor, zoomAround, gestureZoom, endpointUrl, paramsCountText, mapCountSuffix } from './map-model.js';
+import { wheelZoomFactor, zoomAround, gestureZoom, endpointUrl, paramsCountText, mapCountSuffix, mapFilterCount, mapFiltersLabel } from './map-model.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
@@ -286,6 +286,10 @@ export function fillMapTags(){
   const sel = $('#mapTag'); if(!sel) return;
   const tags = state.tags || [];
   sel.style.display = tags.length ? '' : 'none';
+  // The row itself must go too: the enhanced select's wrapper would otherwise
+  // leave a label and an empty line in the Filters popover.
+  const row = sel.closest('.map-filter-row');
+  if(row) row.hidden = !tags.length;
   if(mapState.tag && !tags.some(t => t.tag === mapState.tag)) mapState.tag = '';
   sel.innerHTML = '<option value="">All tags</option>'
     + tags.map(t => `<option value="${escAttr(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
@@ -738,6 +742,7 @@ function mapPerfNote(eps){
 
 export function renderMap(){
   initMapDesktop();
+  syncMapFiltersButton();
   // A skeleton or error panel from the loading phase must not leave busy state behind.
   ['#mapTree', '#mapTable', '#mapParams'].forEach(sel => { const h = $(sel); if(h){ h.removeAttribute('aria-busy'); delete h.dataset.state; } });
   if(mapState.view === 'params') return;
@@ -952,6 +957,23 @@ function renderMapVirtualTable(box, sorted, showHost, head){
 }
 function mapEpKey(e){ return (e.host || '') + '|' + (e.method || '') + '|' + (e.path || ''); }
 function mapVtTopInset(vt){ return vt.tbody.parentElement.tHead ? vt.tbody.parentElement.tHead.getBoundingClientRect().height : 0; }
+// mapTabStopIndex is the row that carries the table's single Tab stop when no mounted row
+// already has it: the first row the operator can actually see below the sticky <thead>.
+// Rows start `inset` px down — the header covers the top of the scroller — so that row is
+// ceil((scrollTop + inset) / rowH), the same inset mapVtKey() and revealScrollTop() honour
+// and the same formula ensureTabStop() (windowed-list.js) uses for a pinned header. Without
+// it the stop was ceil(scrollTop / rowH), a row at the top of the scroller that the header
+// covers completely: Tab moved focus to a row nobody could see, and the list did not scroll,
+// because the browser already considered that row inside the scroller's content box.
+// The result is clamped into the mounted window [start, end), because only a mounted row can
+// take focus, and is -1 when nothing is mounted (the caller then sets no tab stop at all).
+export function mapTabStopIndex({ scrollTop, rowH, inset, start, end }){
+  const last = Number(end) - 1;
+  if(!(last >= 0)) return -1;
+  const h = Number(rowH) > 0 ? Number(rowH) : 1;
+  const visible = Math.ceil(((Number(scrollTop) || 0) + (Number(inset) || 0)) / h);
+  return Math.max(0, Math.min(last, Math.max(visible, Number(start) || 0)));
+}
 function paintMapVt(vt){
   if(mapVt !== vt || !vt.scrollEl.isConnected) return;
   const active = document.activeElement;
@@ -968,9 +990,12 @@ function paintMapVt(vt){
   // An empty table row still takes a line box, so a zero pad is removed from layout entirely.
   pads[0].hidden = !win.topPad; pads[0].firstElementChild.style.height = win.topPad + 'px';
   pads[1].hidden = !win.bottomPad; pads[1].firstElementChild.style.height = win.bottomPad + 'px';
+  // The tab stop must land on a row the operator can see: below the sticky header, and
+  // inside the window that was just mounted. This only runs when no mounted row has the
+  // stop, so the header height is not measured on every scroll frame.
   if(!vt.tbody.querySelector('tr[data-i][tabindex="0"]')){
-    const first = Math.min(win.end - 1, Math.ceil(vt.scrollEl.scrollTop / vt.rowH));
-    vt.tbody.querySelector(`tr[data-i="${first}"]`)?.setAttribute('tabindex', '0');
+    const first = mapTabStopIndex({ scrollTop: vt.scrollEl.scrollTop, rowH: vt.rowH, inset: mapVtTopInset(vt), start: win.start, end: win.end });
+    if(first >= 0) vt.tbody.querySelector(`tr[data-i="${first}"]`)?.setAttribute('tabindex', '0');
   }
   if(!vt.calibrated){
     vt.calibrated = true;
@@ -1615,5 +1640,178 @@ setMapView(mapState.view);
   const body=det.querySelector(':scope > .map-body[data-lazy-key]');
   if(body)hydrateMapTreeNode(body);
 },true);}
+/* ---- one toolbar row: the secondary tier folds into the Filters popover ----
+   The Map header was two tiers: the domain/search/view row and a second row of
+   filters and actions. The second tier now lives behind #mapFiltersBtn, so the
+   header is one row and every control keeps its id, its listener and its
+   wording — the nodes are MOVED, never recreated. The popover is a body-level
+   fixed surface: .toolbar scrolls horizontally (overflow-x:auto), which would
+   clip an absolutely positioned descendant. */
+let mapFiltersInited = false;
+
+function mapFilterCountNow(){
+  // Purely derived from mapState, so the badge cannot drift from the filters.
+  return mapFilterCount({
+    method: mapState.method, statusClass: mapState.statusClass, tag: mapState.tag,
+    hideNoise: mapState.hideNoise, collapseIdentical: mapState.collapseIdentical, onlyUnlinked: mapState.onlyUnlinked,
+  });
+}
+
+// syncMapFiltersButton repaints the button label ("Filters" / "Filters · 2") and
+// its accessible name. renderMap calls it, so any filter change updates it.
+export function syncMapFiltersButton(){
+  const btn = $('#mapFiltersBtn');
+  if(!btn) return 0;
+  const n = mapFilterCountNow();
+  const label = btn.querySelector('.map-filter-label');
+  if(label) label.textContent = mapFiltersLabel(n);
+  btn.setAttribute('aria-label', n ? 'Filters, ' + n + ' active' : 'Filters');
+  btn.classList.toggle('has-active', n > 0);
+  return n;
+}
+
+const mapFiltersOpen = () => { const p = $('#mapFiltersPop'); return !!p && !p.hidden; };
+
+function placeMapFiltersPop(){
+  const pop = $('#mapFiltersPop'), btn = $('#mapFiltersBtn');
+  if(!pop || !btn) return;
+  const wasHidden = pop.hidden;
+  pop.hidden = false;
+  pop.style.visibility = 'hidden';
+  const b = btn.getBoundingClientRect();
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  const left = Math.min(Math.max(8, b.left), Math.max(8, vw - w - 8));
+  const below = b.bottom + 6;
+  const top = below + h > vh - 8 ? Math.max(8, b.top - h - 6) : below;
+  pop.style.left = Math.round(left) + 'px';
+  pop.style.top = Math.round(top) + 'px';
+  pop.style.visibility = '';
+  if(wasHidden) pop.hidden = true;
+}
+
+function setMapFiltersOpen(open, { restoreFocus = false } = {}){
+  const pop = $('#mapFiltersPop'), btn = $('#mapFiltersBtn');
+  if(!pop || !btn) return;
+  if(open) placeMapFiltersPop();
+  pop.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if(open){
+    syncMapFiltersButton();
+    const first = pop.querySelector('.ui-select-trigger') || pop.querySelector('button:not([aria-hidden="true"]),input,select');
+    if(first) first.focus({ preventScroll: true });
+  } else if(restoreFocus) btn.focus({ preventScroll: true });
+}
+
+function mapFilterFieldRow(labelText, sel){
+  const native = $(sel);
+  // An enhanced select is drawn by its .ui-select wrapper, which stays visible
+  // even when fillMapTags hides the native one — the row shows what the operator
+  // has always seen, so the control set is unchanged by the move.
+  const control = native ? (native.closest('.ui-select') || native) : null;
+  if(!control) return null;
+  const row = document.createElement('div');
+  row.className = 'map-filter-row';
+  const label = document.createElement('span');
+  label.className = 'map-filter-label';
+  label.textContent = labelText;
+  row.append(label, control);
+  return row;
+}
+
+function buildMapFiltersPopover(){
+  if(mapFiltersInited) return;
+  // A desktop host builds its own single-row toolbar (desktop-panel-map.js):
+  // never fold the browser-tab toolbar under it.
+  if(isDesktopSkin()) return;
+  const bar = $('#panel-map > .toolbar:not(.toolbar-secondary)');
+  const second = $('#panel-map > .toolbar-secondary');
+  if(!bar || !second) return;
+  mapFiltersInited = true;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn map-filters-btn';
+  btn.id = 'mapFiltersBtn';
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-controls', 'mapFiltersPop');
+  btn.setAttribute('aria-label', 'Filters');
+  btn.innerHTML = icon('filter') + '<span class="map-filter-label">Filters</span>';
+
+  const pop = document.createElement('div');
+  pop.className = 'map-filters-pop';
+  pop.id = 'mapFiltersPop';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Map filters');
+  pop.hidden = true;
+
+  [['Method', '#mapMethod'], ['Status', '#mapStatus'], ['Tag', '#mapTag']].forEach(([t, sel]) => {
+    const row = mapFilterFieldRow(t, sel);
+    if(row) pop.append(row);
+  });
+
+  // The three switches keep their own labels and their aria-pressed state; the
+  // coverage readout ("Linked to a finding N/M") travels with them.
+  const switches = document.createElement('div');
+  switches.className = 'map-filter-switches';
+  ['#mapHideNoise', '#mapCollapseIdentical', '#mapUnlinked', '#mapCoverage'].forEach((sel) => {
+    const n = $(sel); if(n) switches.append(n);
+  });
+  pop.append(switches);
+
+  // Discovery: the button and the command panel it toggles move in together, so
+  // its commands open inside the popover instead of behind it.
+  const discovery = document.createElement('div');
+  discovery.className = 'map-filter-row map-filter-discovery';
+  const dHelp = $('#mapDiscoveryHelp');
+  if(dHelp) discovery.append(dHelp);
+  pop.append(discovery);
+  const dPanel = $('#mapDiscoveryPanel');
+  if(dPanel) pop.append(dPanel);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'map-filter-wrap';
+  wrap.append(btn);
+
+  const spacer = bar.querySelector('.spacer');
+  if(spacer){ bar.insertBefore(wrap, spacer); } else { bar.append(wrap); }
+  // Expand all / Fit / rebuild stay in the row: they are actions, not filters.
+  ['#mapExpand', '#mapFit', '#mapRefresh'].forEach((sel) => {
+    const n = $(sel); if(!n) return;
+    if(spacer) bar.insertBefore(n, spacer); else bar.append(n);
+  });
+
+  second.hidden = true;
+  second.classList.add('map-row-hidden');
+  document.body.append(pop);
+
+  btn.addEventListener('click', (e) => { e.stopPropagation(); setMapFiltersOpen(!mapFiltersOpen()); });
+  // Toggling a filter inside the popover must not close it: the handler that
+  // changed the state has already run by the time these bubble here.
+  pop.addEventListener('change', () => syncMapFiltersButton());
+  pop.addEventListener('click', () => syncMapFiltersButton());
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key !== 'Escape' || !mapFiltersOpen()) return;
+    // An open select menu owns Escape first (core.js closes it and keeps focus).
+    if(document.querySelector('.ui-select-menu:not([hidden])')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    setMapFiltersOpen(false, { restoreFocus: true });
+  }, true);
+  document.addEventListener('pointerdown', (e) => {
+    if(!mapFiltersOpen()) return;
+    if(e.target.closest && e.target.closest('#mapFiltersPop,#mapFiltersBtn')) return;
+    setMapFiltersOpen(false);
+  });
+  window.addEventListener('resize', () => { if(mapFiltersOpen()) placeMapFiltersPop(); });
+  document.addEventListener('interseptor:tabchange', () => { if(mapFiltersOpen()) setMapFiltersOpen(false); });
+  syncMapFiltersButton();
+}
+
 // Desktop skin: rebuild the toolbar once the host class is set (app.js adds it after the imports run).
 setTimeout(initMapDesktop,0);
+// Browser tab: fold the second toolbar tier into the Filters popover (the same
+// tick, so html.desktop-app is already set when this decides).
+setTimeout(buildMapFiltersPopover,0);

@@ -45,14 +45,22 @@ def check(flow):
     return []
 `,
 	checkVerboseError: `# Verbose 5xx errors (built-in override).
+#
+# Markers are compared against the lower-cased body, so the capitalized
+# spellings real error pages use ("Exception", "Stack", "TraceId") count. A
+# stack frame needs the "(" that follows it, so a plain-English " at " in an
+# error page is not read as a leaked trace.
 def check(flow):
     if flow.status < 500:
         return []
     body = flow.res_body.lower()
-    for needle in ("traceid", "trace_id", "stacktrace", "stack", "exception", " at "):
+    for needle in ("traceid", "trace_id", "stacktrace", "stack", "exception"):
         if needle in body:
             return [finding("medium", "Verbose error discloses internal details",
                 fix="Return generic errors to clients; log diagnostics server-side only.")]
+    if re_search('(?i)\\bat (?:[a-z_$][a-z0-9_$]*\\.)*[a-z_$][a-z0-9_$]*\\s*\\(', flow.res_body):
+        return [finding("medium", "Verbose error discloses internal details",
+            fix="Return generic errors to clients; log diagnostics server-side only.")]
     return []
 `,
 	checkSecurityHeaders: `# Missing security response headers (built-in override).
@@ -240,8 +248,34 @@ def check(flow):
 # parameter value of at least 8 characters that either looks like a URL or
 # carries a known redirect parameter name, where the Location is absolute and
 # does not point back at the request host.
+#
+# "Points back at the host" is decided on the parsed hostname, never by looking
+# for the host name inside the URL: example.com.evil.net and https://evil.net/?r=example.com
+# are both off-host, while app.example.com (a subdomain) is on-host.
 _REDIRECT_NAMES = ("next", "redirect", "redirect_uri", "return", "returnto",
                    "url", "goto", "continue", "dest", "destination", "target")
+
+def _host_of(url):
+    u = url.split("://", 1)[1] if "://" in url else url[2:]
+    for sep in ("/", "?", "#"):
+        i = u.find(sep)
+        if i >= 0:
+            u = u[:i]
+    u = u.rsplit("@", 1)[-1]          # drop any userinfo
+    if u.startswith("["):             # IPv6 literal
+        j = u.find("]")
+        if j >= 0:
+            u = u[1:j]
+    elif ":" in u:                    # strip :port
+        u = u.rsplit(":", 1)[0]
+    return u.rstrip(".").lower()
+
+def _host_matches(host, location):
+    th = _host_of("//" + host)        # the request host may carry a port
+    lh = _host_of(location)
+    if not th:
+        return False
+    return lh == th or lh.endswith("." + th)
 
 def _candidates(flow):
     out = []
@@ -264,7 +298,7 @@ def check(flow):
     low = location.lower()
     if not low.startswith("http") and not low.startswith("//"):
         return []
-    if flow.host.lower() in low:
+    if _host_matches(flow.host.lower(), location):
         return []
     for name, value in _candidates(flow):
         if len(value) < 8:
@@ -284,7 +318,7 @@ def check(flow):
 `,
 	checkDirListing: `# Directory listing (built-in override).
 def check(flow):
-    if "<a href=" in flow.res_body and re_search("(?i)<title>\\s*index of /", flow.res_body):
+    if re_search('(?i)<a\\s+href\\s*=', flow.res_body) and re_search("(?i)<title>\\s*index of /", flow.res_body):
         return [finding("low", "Directory listing enabled",
             fix="Disable autoindex in the web server config.")]
     return []
@@ -330,6 +364,9 @@ def check(flow):
     return []
 `,
 	checkWeakCSP: `# Weak Content-Security-Policy (built-in override).
+#
+# A wildcard *source* is a bare "*" token; a path wildcard such as
+# https://cdn.example.com/assets/* only restricts the directive to that host.
 def check(flow):
     csp = (flow.res_header("Content-Security-Policy") or "").lower()
     if not csp:
@@ -339,7 +376,7 @@ def check(flow):
         weak.append("unsafe-inline")
     if "unsafe-eval" in csp:
         weak.append("unsafe-eval")
-    if re_search('(?:default|script|object)-src[^;]*\\*', csp):
+    if re_search('(?:^|[;,])\\s*(?:default|script|object)-src(?:[^;]*\\s)?\\*(?:\\s|;|,|$)', csp):
         weak.append("wildcard source")
     if weak:
         return [finding("medium", "Weak Content-Security-Policy", evidence=", ".join(weak),
@@ -369,12 +406,16 @@ def check(flow):
     return []
 `,
 	checkTabnabbing: `# Reverse tabnabbing (built-in override).
+#
+# Only an external http(s) link that opens in a new tab exposes window.opener;
+# whitespace around "=" is legal HTML, so it must not hide the href.
 def check(flow):
     ct = (flow.res_header("Content-Type") or "").lower()
     if "html" not in ct and "html" not in (flow.mime or "").lower():
         return []
-    m = re_search('(?i)<a\\b[^>]*target\\s*=\\s*["\']?_blank[^>]*>', flow.res_body)
-    if m and "noopener" not in m.lower() and "noreferrer" not in m.lower():
+    m = re_search('(?i)<a\\b[^>]*\\starget\\s*=\\s*["\']?_blank[^>]*>', flow.res_body)
+    if m and re_search('(?i)(?:^|\\s)href\\s*=\\s*["\']?\\s*https?://', m) \
+            and "noopener" not in m.lower() and "noreferrer" not in m.lower():
         return [finding("low", "Reverse tabnabbing (target=_blank without noopener)", evidence=m[:80],
             fix="Add rel=\"noopener noreferrer\" to target=_blank links.")]
     return []

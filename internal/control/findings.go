@@ -506,7 +506,11 @@ func (h *findingsAPI) enrichFindingReportImages(fs []store.Finding) {
 				continue
 			}
 			if len(data) > reportImageEmbedCap || total+len(data) > reportImageEmbedTotalCap {
+				// The bytes exist; the inline budget is what ran out. Say so in the
+				// document instead of rendering a caption as if that were the evidence.
 				bl.URL = ""
+				bl.Omitted = fmt.Sprintf("Screenshot omitted from this export (report image budget %d MiB, this image %d MiB) — open the finding in Interseptor to view it.",
+					reportImageEmbedTotalCap>>20, len(data)>>20)
 				continue
 			}
 			mime := store.SanitizeNotesImageMIME(bl.Mime)

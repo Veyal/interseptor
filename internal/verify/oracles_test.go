@@ -57,6 +57,26 @@ func TestErrorSignatureHeld(t *testing.T) {
 	}
 }
 
+// A baseline exchange that never completed is not evidence that the marker (or
+// the error signature) was absent: with no baseline there is nothing to compare
+// against, so the oracle must not hold.
+func TestReflectedMarkerHeldRejectsIncompleteBaseline(t *testing.T) {
+	failed := Exchange{Status: 0, Err: errFake}
+	if ReflectedMarkerHeld(failed, ex("MARK present"), "MARK") {
+		t.Fatal("an incomplete baseline must not count as 'marker absent'")
+	}
+	if ReflectedMarkerHeld(ex("clean"), Exchange{Status: 0, Err: errFake, Body: []byte("MARK")}, "MARK") {
+		t.Fatal("an incomplete payload must not count as reflecting")
+	}
+}
+
+func TestErrorSignatureHeldRejectsIncompleteBaseline(t *testing.T) {
+	failed := Exchange{Status: 0, Err: errFake}
+	if ErrorSignatureHeld(failed, ex("You have an error in your SQL syntax near")) {
+		t.Fatal("an incomplete baseline must not count as 'error absent'")
+	}
+}
+
 // body returns a body of the given length made of repeated 'x'.
 func body(n int) string {
 	b := make([]byte, n)

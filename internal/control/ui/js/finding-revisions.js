@@ -3,6 +3,16 @@ let restoring = false;
 registerProjectSwitchGuard(() => restoring ? 'Wait for the finding restoration to finish.' : '');
 const when = ts => new Date(ts).toLocaleString();
 const value = v => v == null ? '—' : typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+// REVISION_DIFF_LIMIT bounds one pane of the diff. The cut is always stated:
+// a silently clipped pane showed two identical prefixes and read as "no change"
+// when the actual edit sat past the cut.
+const REVISION_DIFF_LIMIT = 200000;
+function revisionText(v){
+  const text = value(v);
+  if (text.length <= REVISION_DIFF_LIMIT) return text;
+  return text.slice(0, REVISION_DIFF_LIMIT)
+    + `\n\n… ${(text.length - REVISION_DIFF_LIMIT).toLocaleString()} more characters not shown (${text.length.toLocaleString()} total) — the change may be in the hidden part.`;
+}
 // Shared failure component (app.css .state-error): an alerted message plus an
 // optional Retry, instead of a bare sentence assigned as textContent.
 function showErrorState(host, message, retry) {
@@ -49,7 +59,7 @@ export function bindFindingRevisions(root, findingId, { canRestore, restored }) 
             if (!item.isConnected || owner !== epoch) return;
             loaded = true;
             const canWrite = findingsEditable();
-            detail.innerHTML = `<p class="hint">${esc(revision.actor)} · ${esc(revision.source)}${revision.reason ? ' · ' + esc(revision.reason) : ''}</p>${diff.map(d => `<details class="find-revision-field"><summary>${esc(d.field)}</summary><div class="find-revision-diff"><section><h4>Before</h4><pre>${esc(value(d.before).slice(0, 12000))}</pre></section><section><h4>After</h4><pre>${esc(value(d.after).slice(0, 12000))}</pre></section></div></details>`).join('')}${canWrite ? `<button class="btn" type="button" data-restore aria-label="Restore this version — ${escAttr(revision.action)} from ${escAttr(when(revision.ts))}">Restore this version</button>` : ''}`;
+            detail.innerHTML = `<p class="hint">${esc(revision.actor)} · ${esc(revision.source)}${revision.reason ? ' · ' + esc(revision.reason) : ''}</p>${diff.map(d => `<details class="find-revision-field"><summary>${esc(d.field)}</summary><div class="find-revision-diff"><section><h4>Before</h4><pre>${esc(revisionText(d.before))}</pre></section><section><h4>After</h4><pre>${esc(revisionText(d.after))}</pre></section></div></details>`).join('')}${canWrite ? `<button class="btn" type="button" data-restore aria-label="Restore this version — ${escAttr(revision.action)} from ${escAttr(when(revision.ts))}">Restore this version</button>` : ''}`;
             const restoreButton = detail.querySelector('[data-restore]');
             if (restoreButton) restoreButton.onclick = () => restoreFindingRevision(findingId, revision.id, restoreButton, canRestore, restored);
           } catch (error) { if (item.isConnected) showErrorState(detail, error.message + ' Close and reopen to retry.'); }

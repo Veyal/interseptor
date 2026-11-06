@@ -130,6 +130,29 @@ const encName = (e) => { const n = ENCS[String(e || 'utf8').toLowerCase()]; if (
 function hexToBytes(hex) { const n = hex.length / 2; checkAlloc(n); const u = new Uint8Array(n); for (let i = 0; i < n; i++) u[i] = parseInt(hex.substr(i * 2, 2), 16); return u; }
 function bytesToHex(u) { let h = ''; for (let i = 0; i < u.length; i++) h += (u[i] < 16 ? '0' : '') + u[i].toString(16); return h; }
 class Buffer extends Uint8Array {
+  // `super` is the intrinsic Uint8Array captured when this class was defined,
+  // so an unchecked `new Buffer(n)` (Buffer is a global a script may call)
+  // would allocate past the typed-array length guard. Size it here, first.
+  constructor(arg) {
+    if (typeof arg === 'number') {
+      checkAlloc(arg);
+      super(arg);
+      return;
+    }
+    if (arg instanceof ArrayBuffer) {
+      checkAlloc(arg.byteLength);
+      super(arg.byteLength);
+      this.set(new Uint8Array(arg));
+      return;
+    }
+    if (arg && typeof arg.length === 'number') {
+      checkAlloc(arg.length);
+      super(arg.length);
+      this.set(arg);
+      return;
+    }
+    super(0);
+  }
   static from(v, enc) {
     let u;
     if (typeof v === 'string') u = hexToBytes(conv(encName(enc), 'hex', v));

@@ -1,6 +1,9 @@
 package store
 
 import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"path/filepath"
 	"testing"
 )
@@ -113,5 +116,53 @@ func TestAttachGlobalKeysMigratesArmedStateWithoutLiveKeys(t *testing.T) {
 	hasKeys, err := reopened.HasAPIKeys()
 	if err != nil || hasKeys {
 		t.Fatalf("armed state must not synthesize a live key: hasKeys=%v err=%v", hasKeys, err)
+	}
+}
+
+// A default project created before the api_keys table grew its scope/expires
+// columns is still a valid migration source: the key that authenticated a remote
+// client must keep working after the switch to global keys. Reading the modern
+// column list unconditionally failed on such a project, and the caller swallowed
+// the error, so the key (and the armed-auth flag) silently never migrated.
+func TestAttachGlobalKeysMigratesFromLegacyDefaultSchema(t *testing.T) {
+	global := t.TempDir()
+	legacyPath := filepath.Join(global, currentDBName)
+	legacy, err := sql.Open("sqlite", "file:"+legacyPath)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	if _, err := legacy.Exec(`CREATE TABLE api_keys (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT, prefix TEXT NOT NULL,
+		hash TEXT NOT NULL, created INTEGER NOT NULL);
+	CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	token := "ick_0123456789abcdef0123456789abcdef0123456789abcdef"
+	sum := sha256.Sum256([]byte(token))
+	hash := hex.EncodeToString(sum[:])
+	if _, err := legacy.Exec(`INSERT INTO api_keys (label, prefix, hash, created) VALUES (?,?,?,?)`,
+		"laptop", token[:12], hash, int64(1)); err != nil {
+		t.Fatalf("insert legacy key: %v", err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO settings (key, value) VALUES (?, '1')`, apiKeyAuthArmedSetting); err != nil {
+		t.Fatalf("arm legacy auth: %v", err)
+	}
+	legacy.Close()
+
+	named, err := Open(filepath.Join(global, "projects", "eng"))
+	if err != nil {
+		t.Fatalf("Open named: %v", err)
+	}
+	defer named.Close()
+	if err := named.AttachGlobalKeys(global); err != nil {
+		t.Fatalf("AttachGlobalKeys: %v", err)
+	}
+	ok, scope, err := named.VerifyAPIKeyScope(token)
+	if err != nil || !ok || scope != ScopeFull {
+		t.Fatalf("legacy key did not migrate: ok=%v scope=%q err=%v", ok, scope, err)
+	}
+	required, err := named.APIKeyAuthRequired()
+	if err != nil || !required {
+		t.Fatalf("legacy armed state did not migrate: required=%v err=%v", required, err)
 	}
 }

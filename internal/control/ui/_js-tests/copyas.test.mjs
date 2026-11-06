@@ -152,6 +152,15 @@ test('copyAs fetches the full flow when a list row has no headers', async () => 
   assert.ok(/^Content-Type: application\/json/m.test(copied[1]));
 });
 
+test('IPv6 flow hosts are bracketed in the URL and the raw Host header', () => {
+  const v6 = { ...flow, scheme: 'http', host: '::1', port: 8080, path: '/v6', httpVersion: 'HTTP/1.1' };
+  assert.equal(flowURL(v6), 'http://[::1]:8080/v6');
+  assert.ok(buildCopyAs('curl', [v6]).text.includes("'http://[::1]:8080/v6'"));
+  assert.ok(buildCopyAs('raw', [v6]).text.startsWith('POST /v6 HTTP/1.1\r\nHost: [::1]:8080\r\n'));
+  // A bracketed host (already valid authority input) is not double-bracketed.
+  assert.equal(flowURL({ ...v6, host: '[::1]' }), 'http://[::1]:8080/v6');
+});
+
 test('HAR startedDateTime comes from the flow ts (unix ms) when startedAt is absent', () => {
   const { text } = buildCopyAs('har', [{ ...flow, ts: 1792389462825 }]);
   assert.equal(JSON.parse(text).startedDateTime, '2026-10-19T05:57:42.825Z');

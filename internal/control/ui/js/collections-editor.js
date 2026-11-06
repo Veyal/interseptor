@@ -11,18 +11,24 @@ import { paintEnvDot, renderScriptsChip, updateBadge } from './collections-env.j
 // Functions sibling modules call through X (see collections-core.js).
 Object.assign(X, { deleteIsUndoable, deleteItemUndoable, focusEditorUrl, openItem, paintPane, paintSentOver, saveForSend, scheduleResolve });
 
+// One empty state per situation, in the pane that can act on it: an empty
+// collection is explained by the tree (New request / Import), so the editor stays
+// blank; with requests present the editor asks for a selection.
 export function renderEmptyEditor() {
   S.ed = null;
   S.edBase = null;
   const host = $('#collEditor');
-  renderState(host, S.collection ? 'empty-first' : 'empty-first', S.collection
-    ? { title: 'Select a request', hint: 'Choose a request in the tree, or add one.', actionLabel: 'New request', onAction: () => X.addItem('request', '') }
-    : { title: 'No collection selected', hint: 'Import a file or create a collection to start.', actionLabel: 'Import a file', onAction: () => X.openImportSheet() });
+  if (!(S.collection && (S.items || []).length)) { host.textContent = ''; X.renderResponse(); return; }
+  renderState(host, 'empty-first', { title: 'Select a request', hint: 'Choose a request in the tree, or add one.', actionLabel: 'New request', onAction: () => X.addItem('request', '') });
   X.renderResponse();
 }
 
 export async function openItem(uid, { focusTree = true } = {}) {
-  if (S.dirty && S.ed && S.ed.uid !== uid) {
+  // Re-opening the request that is already open must not re-fetch it: that would
+  // drop unsaved edits silently. A different request asks first.
+  const guard = M.openGuard({ dirty: S.dirty, openUid: S.ed ? S.ed.uid : '', nextUid: uid });
+  if (guard === 'keep') { X.selectRow(uid, false); if (focusTree) X.focusRow(uid); return; }
+  if (guard === 'confirm') {
     const ok = await uiConfirm('Discard unsaved changes', 'The open request has unsaved changes. Discard them and open another request?', 'Discard', 'btn danger');
     if (!ok) { X.selectRow(S.ed.uid, false); return; }
   }

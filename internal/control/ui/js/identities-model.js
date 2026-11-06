@@ -332,12 +332,19 @@ export function timelineItems(detail) {
   const events = (tl.events || []).map((e, i) => ({
     kind: 'event', event: e.kind, label: EVENT_LABELS[e.kind] || String(e.kind || 'Event'), ts: e.ts, at: toMs(e.ts), actor: String(e.actor || ''), detail: String(e.detail || ''), order: i,
   }));
-  events.sort((a, b) => {
-    const x = Number.isFinite(a.at) ? a.at : Infinity;
-    const y = Number.isFinite(b.at) ? b.at : Infinity;
-    return x - y || a.order - b.order;
-  });
-  return items.concat(events);
+  // The source flow is not automatically the oldest row: Refresh from flow
+  // re-points it at a newer flow, so it has to be merged into the same
+  // oldest-first order instead of being prepended. A source and the created
+  // event it produced can share a timestamp; the flow comes first there.
+  const rank = (it) => (it.kind === 'source' ? 0 : 1);
+  return items.concat(events)
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => {
+      const x = Number.isFinite(a.it.at) ? a.it.at : Infinity;
+      const y = Number.isFinite(b.it.at) ? b.it.at : Infinity;
+      return x - y || rank(a.it) - rank(b.it) || a.i - b.i;
+    })
+    .map((x) => x.it);
 }
 
 export function usageSummary(detail) {

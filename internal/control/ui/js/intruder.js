@@ -132,6 +132,77 @@ export function runSummaryText({ done = 0, total = 0, rate = 0, results = [], ru
   return parts.join(' · ');
 }
 
+// mergeLiveHead folds the state poll's bounded head into the rows already shown.
+// The head is the run's first liveHeadCap results and is rewritten in place when
+// the run finishes (derived flags are applied then), so it must replace its
+// prefix even when it is the same length; the paged tail past the head is kept.
+// Replacing only a *longer* head froze a finished run on the un-flagged rows the
+// live stream had, and a plain concat would duplicate rows on every poll.
+export function mergeLiveHead(displayed, head, newRun = false) {
+  const shown = Array.isArray(displayed) ? displayed : [];
+  const live = Array.isArray(head) ? head : [];
+  if (newRun) return live.slice();
+  if (!live.length) return shown.slice();
+  return live.concat(shown.slice(live.length));
+}
+
+// pollRebasesRunRows: may a state poll rebase the active run's row snapshot?
+// Only the pane that is actually showing that run may — the live owner, with the
+// run's own attack tab active. While History owns the pane, or the run belongs to
+// another attack tab, the displayed array holds something else (another run's
+// attempts, or nothing), so adopting it destroys the run's own rows: "Live /
+// current run" then restores foreign rows and the pager continues from a foreign
+// offset, appending a page that starts in the middle of the run.
+export function pollRebasesRunRows(owner, belongsHere) {
+  return owner === 'live' && belongsHere === true;
+}
+
+// intrCaptureRows: the attempts a finished run contributes to History, or null
+// while the pane is showing something other than that run. History must never
+// record another run's rows (and its flagged count) under this run's id, and a
+// History view shorter than the run must not block the capture forever — the
+// run's own view captures it instead.
+export function intrCaptureRows(owner, displayed, runRows) {
+  if (owner !== 'live') return null;
+  const rows = Array.isArray(displayed) ? displayed : runRows;
+  return Array.isArray(rows) ? rows.slice() : [];
+}
+
+// intrRowSelection: the attempt the result-row actions (Attach, Diff vs
+// baseline, the e/d shortcuts) target after a row was clicked or focused. A row
+// the attack captured no flow for has no evidence to act on, so the selection
+// clears — keeping the previous attempt armed attached or diffed a different
+// attempt's response than the one the operator picked.
+export function intrRowSelection(rowFlowId) {
+  const id = Number(rowFlowId);
+  return Number.isSafeInteger(id) && id > 0 ? id : 0;
+}
+
+// presetFromEditor snapshots the editor for "Save attack preset". Payload lists
+// longer than the editor preview live only in sniperLines/posLines; the tab
+// serializer deliberately drops the largest ones to protect localStorage, but a
+// preset is saved once and must keep the list it was saved with — otherwise a
+// 1000-line list came back as its 40-line preview and the attack silently sent
+// the wrong payloads.
+export function presetFromEditor(snapshot, name) {
+  const s = snapshot || {};
+  const lines = (v) => (Array.isArray(v) ? v.map((item) => String(item)) : null);
+  return {
+    name: String(name == null ? '' : name),
+    target: String(s.target || ''), template: String(s.template || ''), type: s.type || 'sniper',
+    sniper: String(s.sniper || ''), pos: Array.isArray(s.pos) ? s.pos.map((item) => String(item)) : [],
+    sniperSource: s.sniperSource || 'list', sniperNums: { ...(s.sniperNums || {}) },
+    posSources: Array.isArray(s.posSources) ? s.posSources.slice() : [],
+    posNums: Array.isArray(s.posNums) ? s.posNums.map((n) => ({ ...(n || {}) })) : [],
+    threads: s.threads, delay: s.delay, repeat: s.repeat,
+    grep: String(s.grep || ''), extract: String(s.extract || ''), proc: String(s.proc || ''),
+    sniperLines: lines(s.sniperLines),
+    posLines: Array.isArray(s.posLines) ? s.posLines.map((a) => (Array.isArray(a) ? a.map((item) => String(item)) : null)) : [],
+    sniperFile: typeof s.sniperFile === 'string' ? s.sniperFile : null,
+    posFiles: Array.isArray(s.posFiles) ? s.posFiles.map((f) => (typeof f === 'string' ? f : null)) : [],
+  };
+}
+
 // INTR_MAX_DELAY_MS bounds the per-request throttle so one typo cannot hold a
 // run for the better part of an hour (the server itself accepts any delay).
 export const INTR_MAX_DELAY_MS = 60000;
@@ -147,12 +218,18 @@ export function intrRequestCount(type, counts, markers) {
   return type === 'battering' ? n : n * Math.max(markers || 0, 1);
 }
 
-// intrRepeatError validates the Race / repeat count the same way Start does.
-export const INTR_MAX_REPEAT = 2000;
+// The Intruder has no request cap: payload lists and repeat counts are bounded
+// only by what the machine can actually send. These two constants are sanity
+// bounds on a single input field, not on the attack — they exist so a typo
+// (1e15 sends) is refused up front instead of running for a century. Anything
+// inside them runs in full; the server schedules requests lazily.
+export const INTR_MAX_REPEAT = 1000000;
 export function intrRepeatError(raw) {
   const text = String(raw ?? '').trim();
   const n = Number(text);
-  return text !== '' && Number.isInteger(n) && n >= 1 && n <= INTR_MAX_REPEAT ? '' : 'repeat must be between 1 and 2000';
+  return text !== '' && Number.isInteger(n) && n >= 1 && n <= INTR_MAX_REPEAT
+    ? ''
+    : `repeat must be between 1 and ${INTR_MAX_REPEAT.toLocaleString()}`;
 }
 
 // intrCountLabel is the attack-bar count for Race / repeat: the number of
@@ -164,6 +241,11 @@ export function intrCountLabel(type, { repeat } = {}) {
   return `${n} send${n === 1 ? '' : 's'}`;
 }
 
+// INTR_MAX_NUMBERS mirrors maxNumbersValues in internal/intruder/numbers.go: one
+// Numbers payload list is materialised, so its length is bounded — and an
+// oversized range is refused with this message rather than silently truncated.
+export const INTR_MAX_NUMBERS = 1000000;
+
 // intrNumbersError returns a message for a Numbers payload range that cannot
 // produce values (empty string when it can). Step 0 means "auto direction".
 export function intrNumbersError(cfg) {
@@ -171,11 +253,17 @@ export function intrNumbersError(cfg) {
   if (!Number.isFinite(Number(c.start)) || !Number.isFinite(Number(c.end)) || c.start === '' || c.end === '') return 'enter a start and end';
   if ((c.mode || 'sequence') === 'random') {
     const n = Number(c.count);
-    return Number.isInteger(n) && n >= 1 ? '' : 'how many must be a whole number of 1 or more';
+    if (!Number.isInteger(n) || n < 1) return 'how many must be a whole number of 1 or more';
+    if (n > INTR_MAX_NUMBERS) return `how many is ${n.toLocaleString()} — the maximum is ${INTR_MAX_NUMBERS.toLocaleString()}`;
+    return '';
   }
   const step = Number(c.step) || 0;
   if (!Number.isInteger(step)) return 'step must be a whole number';
-  if ((step > 0 && Number(c.start) > Number(c.end)) || (step < 0 && Number(c.start) < Number(c.end))) return 'step goes the wrong way for start and end';
+  const start = Number(c.start), end = Number(c.end);
+  if ((step > 0 && start > end) || (step < 0 && start < end)) return 'step goes the wrong way for start and end';
+  const stride = step === 0 ? (start > end ? -1 : 1) : step;
+  const count = Math.floor((end - start) / stride) + 1;
+  if (count > INTR_MAX_NUMBERS) return `this range produces ${count.toLocaleString()} values — the maximum is ${INTR_MAX_NUMBERS.toLocaleString()}; widen the step or narrow the range`;
   return '';
 }
 
@@ -389,8 +477,12 @@ export function wireIntruderExtras(deps) {
   }
   const rowFlow = (el) => Number(el && el.dataset && el.dataset.flow) || 0;
   function setActive(el) {
-    const id = rowFlow(el);
-    if (id && id !== active) { active = id; syncActions(); }
+    if (!el) return;
+    // Every row owns the selection once picked, including one whose attempt has
+    // no captured flow: leaving the previous attempt armed would make Attach /
+    // Diff act on a different attempt than the row the operator selected.
+    const id = intrRowSelection(rowFlow(el));
+    if (id !== active) { active = id; syncActions(); }
   }
   list.addEventListener('focusin', (e) => setActive(e.target.closest && e.target.closest('.intr-row')));
   list.addEventListener('click', (e) => setActive(e.target.closest && e.target.closest('.intr-row')));
@@ -457,5 +549,5 @@ export function wireIntruderExtras(deps) {
 
   setStep('positions');
   syncActions();
-  return { onRender, setStep, confirmLarge };
+  return { onRender, setStep, confirmLarge, closeDiff: () => diffPanel.close({ focus: false }) };
 }

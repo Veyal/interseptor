@@ -127,9 +127,13 @@ class Header {
 }
 
 class PropertyList {
-  constructor(items, keyName, Ctor) {
+  // headerList marks a HeaderList (request/response headers), whose keys are
+  // case-insensitive and may repeat. Body property lists reuse the Header item
+  // type but are ordinary property lists; they must not inherit header casing.
+  constructor(items, keyName, Ctor, headerList) {
     this.__keyName = keyName || 'key';
     this.__Ctor = Ctor || Header;
+    this.__headerList = headerList === undefined ? this.__Ctor === Header : !!headerList;
     this.members = [];
     (items || []).forEach((i) => this.members.push(new this.__Ctor(i)));
   }
@@ -162,10 +166,16 @@ class PropertyList {
   populate(items) { (items || []).forEach((i) => this.add(i)); }
   toObject(excludeDisabled, caseSensitive, multi) {
     const o = {};
+    // Header items make a list case-insensitive and multi-valued, exactly like
+    // postman-collection: toObject() lowercases keys and keeps duplicate names
+    // as an array unless the caller asks for case-sensitive keys.
+    const headerList = this.__headerList;
+    const sensitive = !headerList || caseSensitive;
+    const multivalue = headerList || multi;
     this.members.forEach((m) => {
       if (excludeDisabled && m.disabled) return;
-      const k = caseSensitive ? m[this.__keyName] : m[this.__keyName];
-      if (multi && hasOwn(o, k)) setOwn(o, k, [].concat(o[k], m.value)); else setOwn(o, k, m.value);
+      const k = sensitive ? m[this.__keyName] : String(m[this.__keyName]).toLowerCase();
+      if (multivalue && hasOwn(o, k)) setOwn(o, k, [].concat(o[k], m.value)); else setOwn(o, k, m.value);
     });
     return o;
   }

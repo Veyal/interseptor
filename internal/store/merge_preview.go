@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // MergePreview reports what MergeFrom would add/skip without mutating this store.
@@ -73,26 +72,21 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 	if err != nil {
 		return stats, fmt.Errorf("index local flows: %w", err)
 	}
-	rows, err := peer.Query(`SELECT id, ts, method, scheme, host, port, path, http_version, status,
-		req_headers, res_headers, req_body_hash, res_body_hash, req_len, res_len, mime,
-		duration_ms, client_addr, error, flags, note FROM flows`)
+	pflowQuery, err := peerFlowQuery(peer)
+	if err != nil {
+		return stats, fmt.Errorf("inspect peer flows: %w", err)
+	}
+	rows, err := peer.Query(pflowQuery)
 	if err != nil {
 		return stats, fmt.Errorf("read peer flows: %w", err)
 	}
 	for rows.Next() {
-		var f Flow
-		var tsMs int64
-		var reqH, resH, note string
-		if err := rows.Scan(&f.ID, &tsMs, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path,
-			&f.HTTPVersion, &f.Status, &reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
-			&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &note); err != nil {
+		f, err := scanPeerFlow(rows)
+		if err != nil {
 			rows.Close()
 			return stats, err
 		}
-		f.TS = time.UnixMilli(tsMs)
-		_ = json.Unmarshal([]byte(reqH), &f.ReqHeaders)
-		_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
-		for _, bodyHash := range []string{f.ReqBodyHash, f.ResBodyHash} {
+		for _, bodyHash := range []string{f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash} {
 			if bodyHash == "" {
 				continue
 			}
@@ -130,7 +124,7 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 		var f Finding
 		if err := frows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss, &f.VerificationInstructions,
-			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
+			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}); err != nil {
 			frows.Close()
 			return stats, err
 		}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -275,5 +276,46 @@ func TestURLQueryAndBodyCredentialsFlaggedWithoutLeak(t *testing.T) {
 	b, _ := json.Marshal(rep)
 	if strings.Contains(string(b), "CANARY") {
 		t.Fatalf("report leaks a secret: %s", b)
+	}
+}
+
+// curl's --json is a shortcut for --data plus the JSON headers, so like -d it
+// reads a local file for an argument that starts with "@". Treating it as
+// --data-raw imported a body of "@payload.json" — the request silently sent
+// the filename instead of its content, and nothing was reported.
+func TestJSONFileArgumentIsANeedsAssetNotALiteralBody(t *testing.T) {
+	it, rep := parse1(t, `curl --json @payload.json https://example.com/api`)
+	if strings.Contains(string(it.Body), "payload.json") {
+		t.Fatalf("body holds the file name instead of an asset marker: %s", it.Body)
+	}
+	if rep.Stats.NeedsAsset != 1 || !strings.Contains(string(it.Body), `"mode":"file"`) {
+		t.Fatalf("body=%s needs-asset=%d entries=%+v", it.Body, rep.Stats.NeedsAsset, rep.Entries)
+	}
+	if hget(headersOf(t, it), "Content-Type") != "application/json" {
+		t.Fatalf("--json must still imply the JSON headers: %s", it.Headers)
+	}
+}
+
+// --data-raw is the one -d form that takes @ literally; it must stay literal.
+func TestDataRawKeepsAtLiteral(t *testing.T) {
+	it, rep := parse1(t, `curl --data-raw @literal https://example.com`)
+	if !strings.Contains(string(it.Body), "@literal") || rep.Stats.NeedsAsset != 0 {
+		t.Fatalf("body=%s needs-asset=%d", it.Body, rep.Stats.NeedsAsset)
+	}
+}
+
+// Item names are cut at 120 bytes; the cut used to land inside a multi-byte
+// rune often enough to leave invalid UTF-8 in the item name (JSON then shows
+// U+FFFD). The cut must stay on a rune boundary.
+func TestLongItemNameStaysValidUTF8(t *testing.T) {
+	// "GET " (4) + "example.com/" (12) + 103 'a's puts a two-byte "é" right
+	// across the 120-byte boundary.
+	cmd := "curl https://example.com/" + strings.Repeat("a", 103) + "é" + strings.Repeat("b", 40)
+	it, _ := parse1(t, cmd)
+	if !utf8.ValidString(it.Name) {
+		t.Fatalf("name is not valid UTF-8: %q", it.Name)
+	}
+	if len(it.Name) > 120 {
+		t.Fatalf("name is %d bytes, want <= 120", len(it.Name))
 	}
 }

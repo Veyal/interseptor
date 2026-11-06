@@ -72,7 +72,7 @@ function syncFindingsEditChrome(){
 }
 function findingModeChipHTML(){
   const on = findingsEditable();
-  return `<button type="button" class="btn xs find-mode-chip" id="findModeChip" aria-label="${on ? 'Finding editing is on. Open settings to change it.' : 'Findings are maintained by agents. Open settings to allow editing.'}">${on ? '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg>' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg>'}<span>${on ? 'Editing on' : 'Agent-maintained'}</span></button>`;
+  return `<button type="button" class="btn xs find-mode-chip" id="findModeChip" aria-label="${on ? 'Findings writing is enabled. Open settings to change it.' : 'Findings are maintained by agents. Open settings to allow writing.'}">${on ? '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg>' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg>'}<span>${on ? 'Writing enabled' : 'Agent-maintained'}</span></button>`;
 }
 let findSection = 'overview';
 let findSearch = '', findSeverityFilter = '', findStatusFilter = '';
@@ -249,7 +249,7 @@ function findingGapLabel(gap) {
 
 function findingGapTarget(gap) {
  if(gap.startsWith('capability:'))return 'findCapabilityClaims';
-  return ({ title: 'findTitleText', summary: 'find-sec-summary', target: 'find-sec-target', target_evidence:'find-sec-target', action:'find-sec-poc', result:'find-sec-poc', control:'find-sec-poc', visual:'find-sec-poc', execution:'find-sec-proof-review', execution_reason:'find-sec-proof-review', cvss:'findCvss', severity:'findSeverity', impact: 'find-sec-impact', why: 'find-sec-why', evidence: 'find-sec-poc', proof: 'find-sec-poc', reproduction: 'find-sec-poc', fix: 'find-sec-fix', retest: 'find-sec-retest', confidence: 'find-sec-review' })[gap] || 'find-sec-poc';
+  return ({ title: 'findTitleText', summary: 'find-sec-summary', target: 'find-sec-target', target_evidence:'find-sec-target', action:'find-sec-poc', result:'find-sec-poc', control:'find-sec-poc', visual:'find-sec-poc', execution:'find-sec-proof-review', execution_reason:'find-sec-proof-review', cvss:'findCvss', severity:'findCvss', impact: 'find-sec-impact', why: 'find-sec-why', evidence: 'find-sec-poc', proof: 'find-sec-poc', reproduction: 'find-sec-poc', fix: 'find-sec-fix', retest: 'find-sec-retest', confidence: 'find-sec-review' })[gap] || 'find-sec-poc';
 }
 
 function findingPocCount(f) {
@@ -421,7 +421,11 @@ document.addEventListener('pointerdown', e => {
   const pop = $('#findFilters');
   if (pop && !pop.hidden && !e.target.closest('#findFilters,#findFilterBtn,.ui-select-menu')) setFindFiltersOpen(false);
 });
-$('#findListNew')?.addEventListener('click', () => $('#findNew')?.click());
+// The square "+" beside the search field duplicated the toolbar primary: same
+// accessible name ("New finding"), same action. The primary is the one create
+// control, so the duplicate leaves the DOM (its markup stays in index.html for
+// the contract tests that pin it).
+$('#findListNew')?.remove();
 
 function renderFindTagFilter() {
   const box = $('#findTagFilter'); if (!box) return;
@@ -1872,7 +1876,7 @@ function renderFindingDetail() {
     const details=target?.closest('details');if(details)details.open=true;
     revealInRail(box, target);
     target?.scrollIntoView({block:'nearest'});
-    const controls={title:'findRename',summary:'findSummary',target:'findTarget',target_evidence:'findAddTarget',execution:'findExecution',execution_reason:'findExecutionReason',cvss:'findCvss',severity:'findSeverity',action:'findAddFlow',result:'findAddFlow',control:'findAddFlow',visual:'findAddImage',impact:'findImpact',why:'findWhy',evidence:'findAddFlow',proof:'findAddFlow',reproduction:'findAddText',fix:'findFix',retest:'findRetest',confidence:'findConfidence'};
+    const controls={title:'findRename',summary:'findSummary',target:'findTarget',target_evidence:'findAddTarget',execution:'findExecution',execution_reason:'findExecutionReason',cvss:'findCvss',severity:'findCvss',action:'findAddFlow',result:'findAddFlow',control:'findAddFlow',visual:'findAddImage',impact:'findImpact',why:'findWhy',evidence:'findAddFlow',proof:'findAddFlow',reproduction:'findAddText',fix:'findFix',retest:'findRetest',confidence:'findConfidence'};
     const control=box.querySelector('#'+controls[link.dataset.gap]);
     const focusTarget=control?._uiSelect?.trigger||control||target;
     focusTarget?.scrollIntoView({block:'nearest'});
@@ -2029,7 +2033,6 @@ function renderFindingDetail() {
   };
   if (edit) {
     blurPatch('#findStatus', 'status', el => el.value);
-    blurPatch('#findSeverity', 'severity', el => el.value);
     blurPatch('#findEnv', 'environment', el => el.value);
     blurPatch('#findImpact', 'impact', el => el.value);
     blurPatch('#findWhy', 'why', el => el.value);
@@ -2602,6 +2605,67 @@ $('#findGuide') && ($('#findGuide').onclick = () => {
 });
 $('#findGuideDialog') && ($('#findGuideDialog').onclick = () => openModal($('#findGuideModal')));
 $('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
+
+// ---- header: one primary, one overflow ---------------------------------------
+// "+ New finding" is the only primary. Writing guide, Deleted and Report are the
+// header's secondary actions, so they move into one overflow menu instead of a row of
+// four buttons. The controls themselves stay in the DOM (#findHeaderFolded) with
+// their ids, handlers and aria-controls, and every menu row delegates to one, so
+// the element stays the single owner of its behaviour and the menu is the
+// accessible path.
+function findHeaderRow(id, iconName) {
+  const el = document.getElementById(id);
+  if (!el || el.disabled) return null;
+  return { label: (el.getAttribute('aria-label') || el.textContent || '').trim(), icon: iconName, act: () => el.click() };
+}
+
+function wireFindingsHeaderOverflow() {
+  const actions = document.querySelector('#panel-findings .findings-toolbar-actions');
+  if (!actions || document.getElementById('findHeaderMore')) return;
+  const folded = document.createElement('div');
+  folded.id = 'findHeaderFolded';
+  folded.className = 'find-header-folded';
+  folded.hidden = true;
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.id = 'findHeaderMore';
+  more.className = 'btn find-header-more';
+  more.setAttribute('aria-haspopup', 'menu');
+  more.setAttribute('aria-expanded', 'false');
+  more.setAttribute('aria-label', 'More finding actions');
+  more.title = 'Writing guide, Deleted, Report';
+  more.innerHTML = icon('more');
+  actions.append(more, folded);
+  // Report is created by report-preflight.js, which may initialise before or
+  // after this module: adopt it now when it is already there, and when it lands.
+  const fold = () => {
+    for (const id of ['findGuide', 'findDeletedOpen', 'findReportToggle']) {
+      const el = document.getElementById(id);
+      if (el && el.parentElement !== folded) folded.append(el);
+    }
+    actions.querySelector('.toolbar-divider')?.remove(); // it only separated the folded controls
+  };
+  fold();
+  const adopt = new MutationObserver(() => {
+    if (document.getElementById('findReportToggle')?.parentElement === folded) { adopt.disconnect(); return; }
+    fold();
+  });
+  adopt.observe(actions, { childList: true });
+  more.addEventListener('click', () => {
+    // Rebuilt on every open, so turning editing on (which reveals Deleted) or a
+    // late Report button shows up without a reload.
+    const rows = [
+      findHeaderRow('findGuide', 'info'),
+      findingsEditable() ? findHeaderRow('findDeletedOpen', 'trash') : null,
+      findHeaderRow('findReportToggle', 'report'),
+    ].filter(Boolean);
+    if (!rows.length) return;
+    const r = more.getBoundingClientRect();
+    openCtxMenu(r.left, r.bottom, [{ head: 'FINDINGS', items: rows }], more);
+  });
+}
+
+wireFindingsHeaderOverflow();
 
 export async function settleFindingsBeforeExport() {
   captureActiveFindingTextEditor(bodyFindingId);

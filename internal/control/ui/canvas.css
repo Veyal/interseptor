@@ -62,3 +62,9 @@
   .canvas-sash{background:CanvasText}
   #canvas[data-layout^="split"] .canvas-pane[data-focused="true"]{box-shadow:inset 0 0 0 2px Highlight}
 }
+
+/* The three split/close icon buttons are driven from the labelled Layout menu
+   (#paneMenuBtn), which canvas.js inserts first. Keeping them in the DOM keeps
+   their ids, handlers and aria-pressed state available to the menu and to tests;
+   hiding them here is what turns four icons into one. */
+#paneActions.pane-menu .pane-btn:not(#paneMenuBtn){display:none}

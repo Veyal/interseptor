@@ -79,7 +79,10 @@ func TestUIRepeaterHistoryMigrationIsOneShotAndRaceSafe(t *testing.T) {
 		"const legacyURL=t.historyLegacyURL||t.url",
 		"t.historyMigrationPromise=(async()=>",
 		"await repStoreHistoryEntries(t,legacy)",
-		"t.history=normalizeRepHistory([...(t.history||[]),...legacy])",
+		// The merged rail must stay newest-first: "Diff vs previous" resolves
+		// positionally, so a legacy snapshot appended verbatim compared against a
+		// newer response. mergeHistoryNewestFirst sorts by flow id and de-dupes.
+		"t.history=mergeHistoryNewestFirst(t.history,legacy)",
 		"t.historyNeedsMigration=false",
 		"t.historyLegacyURL=''",
 		"t.historyMigrationPromise=null",

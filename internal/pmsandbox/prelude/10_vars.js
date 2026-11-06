@@ -173,8 +173,8 @@ class Body {
     this.mode = b.mode || (b.raw ? 'raw' : undefined);
     this.raw = b.raw;
     this.options = b.language ? { raw: { language: b.language } } : undefined;
-    this.urlencoded = new PropertyList(b.urlencoded || [], 'key', Header);
-    this.formdata = new PropertyList(b.formdata || [], 'key', Header);
+    this.urlencoded = new PropertyList(b.urlencoded || [], 'key', Header, false);
+    this.formdata = new PropertyList(b.formdata || [], 'key', Header, false);
   }
   isEmpty() {
     if (this.mode === 'raw') return !this.raw;
@@ -191,8 +191,8 @@ class Body {
     if (typeof spec === 'string') { this.mode = 'raw'; this.raw = spec; return; }
     if (spec.mode) this.mode = spec.mode;
     if (spec.raw !== undefined) this.raw = spec.raw;
-    if (spec.urlencoded) this.urlencoded = new PropertyList(Array.isArray(spec.urlencoded) ? spec.urlencoded : (spec.urlencoded.members || []), 'key', Header);
-    if (spec.formdata) this.formdata = new PropertyList(Array.isArray(spec.formdata) ? spec.formdata : (spec.formdata.members || []), 'key', Header);
+    if (spec.urlencoded) this.urlencoded = new PropertyList(Array.isArray(spec.urlencoded) ? spec.urlencoded : (spec.urlencoded.members || []), 'key', Header, false);
+    if (spec.formdata) this.formdata = new PropertyList(Array.isArray(spec.formdata) ? spec.formdata : (spec.formdata.members || []), 'key', Header, false);
     if (spec.options) this.options = spec.options;
   }
   toJSON() {
@@ -214,7 +214,10 @@ class RequestObj {
   }
   get url() { return this.__url; }
   set url(v) { this.__url = v instanceof Url ? v : new Url(String(v)); }
-  getHeaders(opts) { return this.headers.toObject(opts && opts.ignoreCase === false ? false : false, false, opts && opts.enableMultiValue); }
+  getHeaders(opts) {
+    opts = opts || {};
+    return this.headers.toObject(opts.enabled, !opts.ignoreCase, opts.enableMultiValue || opts.multiValue);
+  }
   addHeader(h) { this.headers.add(h); }
   removeHeader(k) { this.headers.remove(k); }
   upsertHeader(h) { this.headers.upsert(h); }

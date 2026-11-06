@@ -107,23 +107,24 @@ func migrateAPIKeysInto(dst, src *sql.DB) error {
 	}
 
 	if keyCount == 0 {
-		rows, err := src.Query(`SELECT label, prefix, hash, created, scope, expires FROM api_keys`)
+		rows, err := legacyAPIKeyRows(src)
 		if err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
-				return err
-			}
-		} else {
+			return err
+		}
+		if rows != nil {
 			for rows.Next() {
-				var label, prefix, hash, scope string
+				var label sql.NullString
+				var prefix, hash, scope string
 				var created, expires int64
 				if err := rows.Scan(&label, &prefix, &hash, &created, &scope, &expires); err != nil {
 					rows.Close()
 					return err
 				}
 				armed = true
+				scope = NormalizeScope(scope)
 				if _, err := tx.Exec(
 					`INSERT OR IGNORE INTO api_keys (label, prefix, hash, created, scope, expires) VALUES (?,?,?,?,?,?)`,
-					label, prefix, hash, created, scope, expires); err != nil {
+					label.String, prefix, hash, created, scope, expires); err != nil {
 					rows.Close()
 					return err
 				}
@@ -152,4 +153,28 @@ func (s *Store) keysDB() *sql.DB {
 		return s.keys
 	}
 	return s.db
+}
+
+// legacyAPIKeyRows reads a migration source's api_keys rows, tolerating a
+// project database that predates the scope/expires columns (a migration source
+// is often a project no newer binary has opened yet). A source without the
+// table at all yields nil rows and no error. The columns that do exist are read
+// as stored; a missing scope means the legacy "full" scope and a missing expiry
+// means "never".
+func legacyAPIKeyRows(src *sql.DB) (*sql.Rows, error) {
+	columns, err := peerTableColumns(src, "api_keys")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	optional := func(name, fallback string) string {
+		if columns[name] {
+			return name
+		}
+		return fallback
+	}
+	return src.Query(`SELECT label, prefix, hash, created, ` +
+		optional("scope", `'full'`) + `, ` + optional("expires", `0`) + ` FROM api_keys`)
 }

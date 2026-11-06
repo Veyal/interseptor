@@ -58,21 +58,21 @@ func Findings(issues []store.Issue) string {
 	lastSev := ""
 	for n, is := range sorted {
 		if is.Severity != lastSev {
-			b.WriteString("\n## " + orVal(is.Severity, "Info") + "\n")
+			b.WriteString("\n## " + sanitizeLine(orVal(is.Severity, "Info")) + "\n")
 			lastSev = is.Severity
 		}
-		fmt.Fprintf(&b, "\n### %d. %s\n", n+1, is.Title)
+		fmt.Fprintf(&b, "\n### %d. %s\n", n+1, sanitizeLine(is.Title))
 		if is.Target != "" {
 			b.WriteString("- **Target:** `" + code(is.Target) + "`\n")
 		}
 		if is.Detail != "" {
-			b.WriteString("- **Detail:** " + is.Detail + "\n")
+			b.WriteString("- **Detail:** " + sanitizeLine(is.Detail) + "\n")
 		}
 		if is.Evidence != "" {
 			b.WriteString("- **Evidence:** `" + code(is.Evidence) + "`\n")
 		}
 		if is.Fix != "" {
-			b.WriteString("- **Remediation:** " + is.Fix + "\n")
+			b.WriteString("- **Remediation:** " + sanitizeLine(is.Fix) + "\n")
 		}
 	}
 	return b.String()
@@ -175,9 +175,12 @@ func Project(findings []store.Finding, issues []store.Issue) string {
 			return sortedFP[i].ID < sortedFP[j].ID
 		})
 		for n, f := range sortedFP {
-			fmt.Fprintf(&b, "\n### %d. %s\n", n+1, f.Title)
+			// Same neutralization as the main body (renderFindingSection): a title
+			// or severity is one inline field, so a newline in it must never start
+			// a new Markdown line that forges report structure.
+			fmt.Fprintf(&b, "\n### %d. %s\n", n+1, sanitizeLine(f.Title))
 			if f.Severity != "" {
-				b.WriteString("- **Severity:** " + f.Severity + "\n")
+				b.WriteString("- **Severity:** " + sanitizeLine(f.Severity) + "\n")
 			}
 			if f.Target != "" {
 				b.WriteString("- **Target:** `" + code(f.Target) + "`\n")
@@ -351,12 +354,14 @@ func renderFindingSection(b *strings.Builder, n int, f store.Finding, titles map
 			b.WriteString("**Evidence:** " + sanitizeBody(f.Evidence) + "\n\n")
 		}
 	} else {
-		// Legacy fallback: separate detail / evidence / flows sections.
+		// Legacy fallback: separate detail / evidence / flows sections. These
+		// fields hold the same freeform, possibly captured/AI-authored content a
+		// text block does, so they get the same line-start neutralisation.
 		if f.Detail != "" {
-			b.WriteString(f.Detail + "\n\n")
+			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
 		if f.Evidence != "" {
-			b.WriteString("**Evidence:** " + f.Evidence + "\n\n")
+			b.WriteString("**Evidence:** " + sanitizeBody(f.Evidence) + "\n\n")
 		}
 		if len(f.Flows) > 0 {
 			b.WriteString("**PoC flows:**\n")
@@ -512,6 +517,12 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 			}
 			if bl.Missing {
 				b.WriteString(fmt.Sprintf("> ⚠ Screenshot — evidence blob missing (`%s`)\n\n", code(bl.Hash)))
+				continue
+			}
+			if bl.URL == "" && bl.Omitted != "" {
+				// The image is in the store but not in this document. Say that, so a
+				// caption is never mistaken for the evidence itself.
+				b.WriteString(fmt.Sprintf("> ℹ %s (`%s`)\n\n", sanitizeLine(bl.Omitted), code(bl.Hash)))
 				continue
 			}
 			if bl.URL != "" {

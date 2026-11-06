@@ -3,6 +3,7 @@ package control
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,7 +32,12 @@ type intruderStartJSON struct {
 
 func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 	var in intruderStartJSON
-	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
+	// A payload list is the one request field that grows with the attack, so a
+	// body over the limit is almost always that. Name the limit and the way
+	// forward instead of the generic "request body too large" — the engine has no
+	// request cap, only this transport has a body cap.
+	if !decodeLimitedJSONTooLarge(w, r, maxRequestBody, &in,
+		fmt.Sprintf("payload list is larger than the %d MiB request-body limit: split it into smaller runs (the attack itself has no request cap)", maxRequestBody>>20)) {
 		return
 	}
 	if h.targetsOwnListener(in.Target) {
@@ -101,11 +107,21 @@ func (h *toolsAPI) intruderResults(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	// A page is addressed by offset into one run's log. If the client names the
+	// run it is paging and another client has started a new one, the offsets
+	// address different rows: refuse instead of concatenating two runs. The
+	// response always carries the run id so a caller can detect the switch.
+	current := h.intr.RunID()
+	if want := strings.TrimSpace(q.Get("runId")); want != "" && want != current {
+		writeJSON(w, http.StatusOK, map[string]any{"results": []intruder.Result{}, "total": 0,
+			"offset": offset, "limit": limit, "runId": current, "stale": true})
+		return
+	}
 	results, total := h.intr.Results(offset, limit)
 	if results == nil {
 		results = []intruder.Result{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"results": results, "total": total, "offset": offset, "limit": limit})
+	writeJSON(w, http.StatusOK, map[string]any{"results": results, "total": total, "offset": offset, "limit": limit, "runId": current})
 }
 
 func (h *toolsAPI) intruderStop(w http.ResponseWriter, r *http.Request) {
@@ -281,11 +297,10 @@ func intruderRaceInput(env intruderRunEnvelope, mask bool, expected int) preview
 			Status: r.Status, Length: int(r.Length), BodyHash: clipText(r.BodyHash, 64), Matched: r.Matched,
 		}
 		if r.Extracted != "" {
-			v := clipText(r.Extracted, maxEvidenceValueRunes)
-			if mask {
-				v = maskedValue(v)
-			}
-			row.Extracted = []string{v}
+			// Mask the FULL value, then clip the placeholder: clipping first made
+			// the drawn length and digest describe a prefix, so two different long
+			// secrets rendered identically.
+			row.Extracted = []string{evidenceValueText(r.Extracted, mask)}
 		}
 		in.Rows = append(in.Rows, row)
 	}
@@ -298,10 +313,7 @@ func intruderRaceInput(env intruderRunEnvelope, mask bool, expected int) preview
 func intruderStripInput(env intruderRunEnvelope, mask bool) preview.StripInput {
 	in := preview.StripInput{RunID: clipText(env.RunID, maxEvidenceRunIDRunes), Attack: clipText(env.attack(), maxEvidenceNameRunes), Mask: mask, Premasked: mask}
 	for _, r := range env.State.Results {
-		payload := clipText(r.Payload, maxEvidenceValueRunes)
-		if mask {
-			payload = maskedValue(payload)
-		}
+		payload := evidenceValueText(r.Payload, mask)
 		in.Rows = append(in.Rows, preview.StripRow{
 			Seq: resultSeq(r), Payload: payload, Status: r.Status,
 			Length: int(r.Length), TimeMs: int(r.TimeMs), Matched: r.Matched, Anomaly: r.Anomaly,

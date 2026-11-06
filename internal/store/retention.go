@@ -44,6 +44,10 @@ const referencedFlowIDsSQL = `SELECT ref FROM (
 		json_each(t.value, '$.flow_ids') i
 ) WHERE ref > 0`
 
+// ErrBlankHostPattern rejects an empty/whitespace host pattern in an explicit
+// purge: match-all is never what a blank list entry means.
+var ErrBlankHostPattern = errors.New("store.DeleteFlowsByHost: empty host pattern")
+
 func retentionHostMatches(pattern, host string) bool {
 	return hostpattern.MatchHost(pattern, host)
 }
@@ -64,6 +68,15 @@ func retentionHostMatches(pattern, host string) bool {
 // then show the evidence as missing (automatic retention preserves them).
 func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) {
 	s.syncFlows()
+	// MatchHost("") is the documented match-all pattern (scope relies on it), so
+	// a blank entry here would mean "every host": with keepOnly=false that wipes
+	// the whole history from one blank line in a pasted list. Reject it instead
+	// of interpreting it.
+	for i, h := range hosts {
+		if strings.TrimSpace(h) == "" {
+			return 0, fmt.Errorf("%w (entry %d)", ErrBlankHostPattern, i+1)
+		}
+	}
 	if len(hosts) == 0 {
 		if keepOnly {
 			return 0, errors.New("store.DeleteFlowsByHost: keepOnly requires at least one host pattern")
@@ -448,8 +461,11 @@ func isHex(s string) bool {
 }
 
 // HostStats returns per-host flow counts and approximate byte totals, sorted
-// descending by bytes. See HostStat for the approximation caveat.
+// descending by bytes. See HostStat for the approximation caveat. Queued
+// write-behind capture is drained first so the breakdown includes the newest
+// flows.
 func (s *Store) HostStats() ([]HostStat, error) {
+	s.syncFlows()
 	rows, err := s.db.Query(
 		`SELECT host, COUNT(*) AS flows, SUM(req_len + res_len) AS bytes
 		 FROM flows

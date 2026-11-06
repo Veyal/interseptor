@@ -554,7 +554,7 @@ func parseEditedRequest(raw []byte, orig *http.Request) (*http.Request, error) {
 	// require hand-fixing Content-Length (http.ReadRequest otherwise truncates
 	// the body to the stale header). Chunked bodies carry their own framing, so
 	// leave those alone; and don't add a length to a genuinely body-less request.
-	if !isChunked(r.Header) {
+	if !isChunked(r.TransferEncoding, r.Header) {
 		body, _ := rawBody(raw)
 		if len(body) > 0 || r.Header.Get("Content-Length") != "" {
 			r.Body = io.NopCloser(bytes.NewReader(body))
@@ -577,10 +577,22 @@ func rawBody(raw []byte) (body []byte, ok bool) {
 	return nil, false
 }
 
-// isChunked reports whether the headers request chunked transfer encoding.
-func isChunked(h http.Header) bool {
-	for _, te := range h["Transfer-Encoding"] {
-		if strings.Contains(strings.ToLower(te), "chunked") {
+// isChunked reports whether a parsed request uses chunked transfer encoding.
+// http.ReadRequest moves a "Transfer-Encoding: chunked" header out of Header and
+// into TransferEncoding, so both must be consulted — checking Header alone never
+// matches and would re-derive the body of a chunked edit from its raw chunk
+// markers, sending them upstream as literal payload (double framing).
+func isChunked(te []string, h http.Header) bool {
+	for _, v := range te {
+		if strings.EqualFold(v, "chunked") {
+			return true
+		}
+	}
+	if h == nil {
+		return false
+	}
+	for _, v := range h["Transfer-Encoding"] {
+		if strings.Contains(strings.ToLower(v), "chunked") {
 			return true
 		}
 	}

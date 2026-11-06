@@ -34,16 +34,44 @@ export const COPY_AS_KINDS = [
 ];
 const KIND_BY_NAME = Object.fromEntries(COPY_AS_KINDS.map((k) => [k.kind, k]));
 
-export function flowURL(f) {
-  const scheme = f.scheme || 'http';
-  const def = (scheme === 'https' && f.port === 443) || (scheme === 'http' && f.port === 80);
-  const port = f.port && !def ? ':' + f.port : '';
-  return `${scheme}://${f.host || ''}${port}${f.path || '/'}`;
+// urlHost brackets an IPv6 literal. Captured flows store net/url's Hostname()
+// ("::1", no brackets), so a raw concatenation built http://::1:8080/…, which
+// curl and every other client parse as an invalid authority.
+export function urlHost(host) {
+  const h = String(host || '');
+  // More than one colon means an IPv6 literal, not host:port.
+  return h.includes(':') && !h.startsWith('[') && h.split(':').length > 2 ? '[' + h + ']' : h;
 }
 
+// flowURL is the flow's absolute URL. `scheme` overrides the transport scheme
+// (ws / wss for a WebSocket flow) while the default-port rule keeps using the
+// flow's own http scheme, so ws://…:443 and ws://…:80 read as written.
+export function flowURL(f, { scheme = '' } = {}) {
+  const s = scheme || f.scheme || 'http';
+  const transport = s === 'wss' ? 'https' : s === 'ws' ? 'http' : s;
+  const port = Number(f.port) || 0;
+  const def = (transport === 'https' && port === 443) || (transport === 'http' && port === 80);
+  return `${s}://${urlHost(f.host)}${port && !def ? ':' + port : ''}${f.path || '/'}`;
+}
+
+// truncateBody cuts `text` at `limit` UTF-8 *bytes* — the unit MAX_BODY_BYTES and
+// streamBody's reader already use — and never splits a surrogate pair. Counting
+// UTF-16 code units instead let a multibyte body through at up to three times the
+// stated cap, and a cut inside an astral character left a lone surrogate in the
+// copied text (curl/python/JSON all render that as U+FFFD).
 export function truncateBody(text, limit = MAX_BODY_BYTES) {
   const s = String(text == null ? '' : text);
-  return s.length > limit ? { text: s.slice(0, limit), truncated: true } : { text: s, truncated: false };
+  const n = Number(limit);
+  const max = n > 0 ? Math.floor(n) : 0;
+  let bytes = 0;
+  for (let i = 0; i < s.length;) {
+    const cp = s.codePointAt(i);
+    const width = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+    if (bytes + width > max) return { text: s.slice(0, i), truncated: true };
+    bytes += width;
+    i += cp > 0xffff ? 2 : 1;
+  }
+  return { text: s, truncated: false };
 }
 
 export function redactHeaders(headers) {
@@ -118,7 +146,7 @@ function httpie(f, redact) {
 }
 function rawHTTP(f, redact) {
   const headers = headerPairs(redact ? redactHeaders(f.reqHeaders) : f.reqHeaders, { skip: ['host'] });
-  let out = `${method(f)} ${f.path || '/'} ${f.httpVersion || 'HTTP/1.1'}\r\nHost: ${f.host}${f.port && ![80, 443].includes(f.port) ? ':' + f.port : ''}\r\n`;
+  let out = `${method(f)} ${f.path || '/'} ${f.httpVersion || 'HTTP/1.1'}\r\nHost: ${urlHost(f.host)}${f.port && ![80, 443].includes(f.port) ? ':' + f.port : ''}\r\n`;
   for (const [k, v] of headers) out += `${k}: ${v}\r\n`;
   out += '\r\n' + (hasBody(f) ? f.reqBody : '');
   return out;
@@ -207,7 +235,7 @@ export function buildCopyAs(kind, flows, opts = {}) {
     case 'har-bundle':
       text = JSON.stringify({ log: { version: '1.2', creator: { name: 'Interseptor', version: '' }, entries: flows.map((f) => harEntry(f, redact)) } }, null, 2);
       break;
-    case 'url': text = flows.map(flowURL).join('\n'); break;
+    case 'url': text = flows.map((f) => flowURL(f)).join('\n'); break;
     case 'headers':
       text = flows.map((f) => headerPairs(side === 'res' ? (redact ? redactHeaders(f.resHeaders) : f.resHeaders) : (redact ? redactHeaders(f.reqHeaders) : f.reqHeaders)).map(([k, v]) => `${k}: ${v}`).join('\n')).join('\n\n');
       break;

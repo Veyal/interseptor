@@ -239,7 +239,10 @@ export function openItemMenu(it, x, y, trigger) {
   const items = [];
   if (!folder) {
     items.push({ label: 'Open', icon: 'search', act: () => selectRow(it.uid, true) });
-    items.push({ label: 'Send', icon: 'rocket', act: async () => { await X.openItem(it.uid, { focusTree: false }); X.sendCurrent(); } });
+    // Sending is only right when the editor really moved to this request: a
+    // cancelled "discard unsaved changes" prompt leaves the other request open,
+    // and Send would have fired that one at the target instead.
+    items.push({ label: 'Send', icon: 'rocket', act: async () => { await X.openItem(it.uid, { focusTree: false }); if (M.isOpenItem(S.ed, it.uid)) X.sendCurrent(); } });
   } else {
     items.push({ label: 'New request here', icon: 'plus', act: () => addItem('request', it.uid) });
     items.push({ label: 'New folder here', icon: 'folder', act: () => addItem('folder', it.uid) });

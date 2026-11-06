@@ -46,12 +46,17 @@ test('result row tooltip carries the full payload', async () => {
 });
 
 test('repeat count validates instead of printing a nonsense count', async () => {
-  const { intrRepeatError, intrCountLabel } = await import('../js/intruder.js');
-  for (const v of ['20', '1', '2000', 20]) assert.equal(intrRepeatError(v), '', String(v));
-  for (const v of ['-3', '0', '2001', '1.5', '', 'abc']) assert.match(intrRepeatError(v), /between 1 and 2000/, String(v));
+  const { intrRepeatError, intrCountLabel, INTR_MAX_REPEAT } = await import('../js/intruder.js');
+  // There is no 2000-request ceiling any more: a repeat well past the old cap is
+  // valid, and only the sanity bound on the field itself is refused.
+  for (const v of ['20', '1', '2000', '2001', '250000', String(INTR_MAX_REPEAT), 20]) assert.equal(intrRepeatError(v), '', String(v));
+  const bad = String(INTR_MAX_REPEAT + 1);
+  for (const v of ['-3', '0', bad, '1.5', '', 'abc']) assert.match(intrRepeatError(v), /between 1 and /, String(v));
+  assert.ok(intrRepeatError(bad).includes(INTR_MAX_REPEAT.toLocaleString()), 'the message names the real bound');
   assert.equal(intrCountLabel('repeat', { repeat: '20' }), '20 sends');
   assert.equal(intrCountLabel('repeat', { repeat: '1' }), '1 send');
-  for (const v of ['-3', '0', '2001', '1.5']) assert.doesNotMatch(intrCountLabel('repeat', { repeat: v }), /\d+ sends?$/, v);
+  assert.equal(intrCountLabel('repeat', { repeat: '5000' }), '5000 sends');
+  for (const v of ['-3', '0', bad, '1.5']) assert.doesNotMatch(intrCountLabel('repeat', { repeat: v }), /\d+ sends?$/, v);
   assert.match(intrCountLabel('repeat', { repeat: '-3' }), /invalid/i);
 });
 

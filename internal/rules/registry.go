@@ -146,6 +146,17 @@ func (r *Registry) record(m Manifest, files []File, checksDir, source, signed st
 	if err != nil {
 		return written, err
 	}
+	// The ids the previous version of this pack owned. An upgrade removes the
+	// ones this version dropped; otherwise the old check file stays installed and
+	// active forever, and `rules remove` cannot delete it (the new record does
+	// not list it).
+	var previousIDs []string
+	for _, p := range rf.Packs {
+		if p.Name == m.Name {
+			previousIDs = append([]string(nil), p.IDs...)
+			break
+		}
+	}
 	rec := InstallRecord{
 		Name: m.Name, Version: m.Version, IDs: ids, Source: source, Signed: signed,
 		Installed: time.Now().UTC().Format(time.RFC3339),
@@ -167,7 +178,19 @@ func (r *Registry) record(m Manifest, files []File, checksDir, source, signed st
 		out = append(out, rec)
 	}
 	rf.Packs = out
-	return written, r.save(rf)
+	if err := r.save(rf); err != nil {
+		return written, err
+	}
+	keep := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		keep[id] = true
+	}
+	for _, id := range previousIDs {
+		if !keep[id] {
+			_ = os.Remove(filepath.Join(checksDir, id+".star"))
+		}
+	}
+	return written, nil
 }
 
 // InstallStream reads a pack from r, verifies it, writes its checks to disk, and

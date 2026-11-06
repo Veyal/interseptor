@@ -76,3 +76,96 @@ func TestMergeFromOlderPeerWithoutCollectionTables(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A peer collection that has been edited carries a higher rev than the copy this
+// project created from it. That revision is the merge clock: it must be recorded
+// so "higher rev wins" converges, otherwise every re-merge rewrites the
+// collection (bumping its rev and updated timestamp again) instead of skipping
+// it, and the local rev can never catch up with the peer's.
+func TestMergeCollectionsConvergesOnPeerRevision(t *testing.T) {
+	peer := newTestStore(t)
+	c := mustColl(t, peer, Collection{Name: "shared"})
+	for i := 0; i < 5; i++ {
+		cur, err := peer.GetCollection(c.UID)
+		if err != nil {
+			t.Fatalf("GetCollection: %v", err)
+		}
+		if _, err := peer.UpdateCollection(*cur); err != nil {
+			t.Fatalf("UpdateCollection: %v", err)
+		}
+	}
+	peerColl, err := peer.GetCollection(c.UID)
+	if err != nil {
+		t.Fatalf("GetCollection: %v", err)
+	}
+	if peerColl.Rev < 6 {
+		t.Fatalf("peer rev = %d, want it edited past the first revision", peerColl.Rev)
+	}
+	peerDB := filepath.Join(t.TempDir(), "peer.db")
+	if err := peer.BackupTo(peerDB); err != nil {
+		t.Fatalf("BackupTo: %v", err)
+	}
+
+	local := newTestStore(t)
+	if _, err := local.MergeFrom(peerDB, "", "peer"); err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+	merged, err := local.ListCollections()
+	if err != nil {
+		t.Fatalf("ListCollections: %v", err)
+	}
+	if len(merged) != 1 || merged[0].Rev != peerColl.Rev {
+		t.Fatalf("merged collection = %+v, want the peer revision %d recorded", merged, peerColl.Rev)
+	}
+
+	// Re-merging the same peer must not rewrite the collection again.
+	st, err := local.MergeFrom(peerDB, "", "peer")
+	if err != nil {
+		t.Fatalf("re-merge: %v", err)
+	}
+	if st.Collections == nil || st.Collections.CollectionsUpdated != 0 || st.Collections.CollectionsSkipped != 1 {
+		t.Fatalf("re-merge collections stats = %+v, want the collection skipped", st.Collections)
+	}
+	again, err := local.GetCollection(c.UID)
+	if err != nil {
+		t.Fatalf("GetCollection after re-merge: %v", err)
+	}
+	if again.Rev != peerColl.Rev {
+		t.Fatalf("re-merge bumped the rev to %d, want it to stay at %d", again.Rev, peerColl.Rev)
+	}
+}
+
+// A bundle may name a collection without a uid (the store assigns one on
+// create). Its items then carry an empty collection uid too, so the merge must
+// map them onto the uid CreateCollection actually assigned — not onto the empty
+// string it was asked for, which no collection has.
+func TestImportCollectionsBundleAssignsUIDToCollectionAndItsItems(t *testing.T) {
+	s := newTestStore(t)
+	bundle := CollectionsBundle{
+		Version:     CollectionsBundleVersion,
+		Collections: []Collection{{Name: "fresh"}},
+		Items: []Item{{Kind: "request", Name: "ping", Method: "GET",
+			URL: json.RawMessage(`{"raw":"https://example.com/ping"}`)}},
+	}
+	st, _, err := s.ImportUserCollectionsBundle(bundle)
+	if err != nil {
+		t.Fatalf("ImportUserCollectionsBundle: %v", err)
+	}
+	if st.CollectionsAdded != 1 || st.ItemsAdded != 1 || st.ItemsOrphaned != 0 {
+		t.Fatalf("stats = %+v", st)
+	}
+	collections, err := s.ListCollections()
+	if err != nil {
+		t.Fatalf("ListCollections: %v", err)
+	}
+	if len(collections) != 1 || collections[0].UID == "" {
+		t.Fatalf("collections = %+v, want one with an assigned uid", collections)
+	}
+	items, err := s.ListItems(collections[0].UID)
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "ping" {
+		t.Fatalf("items = %+v, want the imported request under the assigned uid", items)
+	}
+}

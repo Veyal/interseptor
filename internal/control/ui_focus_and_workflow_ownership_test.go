@@ -167,11 +167,16 @@ func TestUIProjectPathFailuresAreOwnedByBothProjectSurfaces(t *testing.T) {
 }
 
 func TestUIIntruderPresetSnapshotsBeforePrompt(t *testing.T) {
+	// The editor is snapshotted before the name prompt, and the preset keeps the
+	// full payload lists (presetFromEditor), not the tab serializer's capped view.
 	tools := requireUIContracts(t, "js/tools.js",
 		"const snapshot=intrReadEditor()",
-		"target:snapshot.target",
-		"template:snapshot.template",
-		"posNums:snapshot.posNums.map",
+		"list.unshift(presetFromEditor(snapshot,name))",
+	)
+	requireUIContracts(t, "js/intruder.js",
+		"export function presetFromEditor(snapshot, name)",
+		"sniperLines: lines(s.sniperLines)",
+		"posLines: Array.isArray(s.posLines) ? s.posLines.map((a) => (Array.isArray(a) ? a.map((item) => String(item)) : null)) : []",
 	)
 	snapshot := strings.Index(tools, "const snapshot=intrReadEditor()")
 	prompt := strings.Index(tools[snapshot:], "await uiPrompt({title:'Save attack preset'")

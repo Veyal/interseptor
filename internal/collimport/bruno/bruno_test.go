@@ -201,3 +201,36 @@ func FuzzParseBru(f *testing.F) {
 		_, _ = ParseFiles([]File{{Path: "x.bru", Data: []byte(s)}}, Options{NewID: counter()})
 	})
 }
+
+// Bruno stores a `seq` in each item's meta block — folders (folder.bru) and
+// requests alike — and lists a folder's children in that order. The importer
+// used to emit every folder before every request of the same parent, so a
+// request with a lower seq than a sibling folder ran after it and the run
+// order no longer matched the collection.
+func TestSiblingOrderFollowsSeqAcrossFoldersAndRequests(t *testing.T) {
+	files := []File{
+		{Path: "later.bru", Data: []byte("meta {\n  name: Later\n  seq: 3\n}\n\nget {\n  url: https://example.com/later\n}\n")},
+		{Path: "first.bru", Data: []byte("meta {\n  name: First\n  seq: 1\n}\n\nget {\n  url: https://example.com/first\n}\n")},
+		{Path: "mid/folder.bru", Data: []byte("meta {\n  name: Middle\n  seq: 2\n}\n")},
+		{Path: "mid/inner.bru", Data: []byte("meta {\n  name: Inner\n  seq: 1\n}\n\nget {\n  url: https://example.com/inner\n}\n")},
+	}
+	res, err := ParseFiles(files, Options{NewID: counter()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roots []store.Item
+	for _, it := range res.Items {
+		if it.ParentUID == "" {
+			roots = append(roots, it)
+		}
+	}
+	sort.SliceStable(roots, func(i, j int) bool { return roots[i].Rank < roots[j].Rank })
+	var names []string
+	for _, it := range roots {
+		names = append(names, it.Name)
+	}
+	want := []string{"First", "Middle", "Later"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("root order = %v, want %v (seq decides, folders and requests interleave)", names, want)
+	}
+}

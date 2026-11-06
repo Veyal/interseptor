@@ -35,7 +35,9 @@ The goal is a **report-ready project**, not just a pile of History rows.
 
 - [ ] Retest the findings you are claiming (`POST /api/findings/{id}/retest`) and read the
   observation, not a verdict: `unchanged`, `changed` or `inconclusive`. A differing response is not
-  proof of remediation, and the retest never moves the finding's status
+  proof of remediation, and the retest never moves the finding's status. Read `requested`, `skipped`
+  and `capped` too: a finding with more attached evidence than the per-retest limit (10) is replayed
+  in part, and the conclusion names the flows it did not cover.
 - [ ] Leave non-idempotent requests skipped unless you mean to re-send them (`allowUnsafeMethods`)
 - [ ] Keep the attached `retest` evidence block: it is a new revision, and the original evidence
   stays as it was

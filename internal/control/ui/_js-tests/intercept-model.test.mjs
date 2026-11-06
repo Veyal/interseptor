@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -248,4 +249,24 @@ test('contentLengthText is short, states the change and when it happens', async 
   assert.equal(contentLengthText({ declared: 22, actual: 26 }), 'Content-Length 22 → 26 on Forward');
   assert.equal(contentLengthText({ declared: null, actual: 2 }), 'Content-Length 2 added on Forward');
   assert.equal(contentLengthText(null), '');
+});
+
+test('undoDropOutcome only claims "kept" when the item is still held', async () => {
+  const { undoDropOutcome } = await import('../js/intercept-model.js');
+  // The timer was cancelled and the item is still in the hold queue.
+  assert.equal(undoDropOutcome({ cancelled: true, held: true }), 'kept');
+  // Another client (window, MCP, REST) released or forwarded it meanwhile: the
+  // toast must not claim a hold that no longer exists.
+  assert.equal(undoDropOutcome({ cancelled: true, held: false }), 'released');
+  // The drop already fired: nothing to report.
+  assert.equal(undoDropOutcome({ cancelled: false, held: true }), null);
+  assert.equal(undoDropOutcome(), null);
+});
+
+test('the Intruder Numbers Step field is disabled in random mode', () => {
+  // Source contract: random mode draws between start and end, so Step has no
+  // meaning there and the refresh must not re-enable it (the markup disables it).
+  const src = readFileSync(new URL('../js/tools.js', import.meta.url), 'utf8');
+  assert.match(src, /stepEl\.disabled=rand;/);
+  assert.ok(!/stepEl\.disabled=rand&&/.test(src));
 });

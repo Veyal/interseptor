@@ -229,7 +229,10 @@ func TestUIIntruderDisplayRendersPreserveAuthoritativeRunState(t *testing.T) {
 		"export function renderIntr(st,{authoritative=true}={})",
 		"if(authoritative){",
 		"syncIntrTabLock(intrLastRunning||intrStartPending)",
-		"intrLastResults=res.slice()",
+		// The authoritative snapshot is the accumulated run view: the state poll
+		// carries only the engine's bounded head, so pages past it are merged in
+		// before the snapshot is taken (intrLastResults tracks that array).
+		"intrLastResults=intrDisplayedResults.slice()",
 		"{authoritative:false}",
 	} {
 		if !strings.Contains(tools, contract) {

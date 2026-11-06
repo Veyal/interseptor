@@ -151,21 +151,15 @@ func (c *collectionsAPI) updateEnv(w http.ResponseWriter, r *http.Request) {
 	if !decodeLimitedJSON(w, r, maxCollectionSmallBytes, &in) {
 		return
 	}
-	e, err := c.h.st.UpdateEnvironment(store.Environment{UID: r.PathValue("uid"), Name: in.Name,
-		BoundIdentity: in.BoundIdentity, BaseTargetPin: in.BaseTargetPin, Rev: in.Rev})
+	if in.Variables != nil && len(*in.Variables) > maxVariablesBatch {
+		httpErr(w, http.StatusBadRequest, "too many variables")
+		return
+	}
+	e, err := c.h.st.UpdateEnvironmentWithVariables(store.Environment{UID: r.PathValue("uid"), Name: in.Name,
+		BoundIdentity: in.BoundIdentity, BaseTargetPin: in.BaseTargetPin, Rev: in.Rev}, in.Variables)
 	if err != nil {
 		collErr(w, err)
 		return
-	}
-	if in.Variables != nil {
-		if len(*in.Variables) > maxVariablesBatch {
-			httpErr(w, http.StatusBadRequest, "too many variables")
-			return
-		}
-		if err := c.h.st.SetVariables(store.VarOwnerEnvironment, e.UID, *in.Variables); err != nil {
-			collErr(w, err)
-			return
-		}
 	}
 	v, err := c.envView(*e, false, isAISource(r))
 	if err != nil {

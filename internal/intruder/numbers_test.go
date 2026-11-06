@@ -2,6 +2,7 @@ package intruder
 
 import (
 	"math/rand"
+	"strconv"
 	"testing"
 )
 
@@ -67,13 +68,48 @@ func TestExpandNumbersRandomInRange(t *testing.T) {
 	}
 }
 
-func TestExpandNumbersCapsAtMaxRequests(t *testing.T) {
-	got, err := ExpandNumbers(NumbersSpec{Start: 1, End: 100000, Step: 1, Mode: "sequence"})
+// An oversized Numbers range is refused with an explicit error, never silently
+// truncated to a cap: the payload count the user sees must be what is sent.
+func TestExpandNumbersRefusesOversizedRange(t *testing.T) {
+	if _, err := ExpandNumbers(NumbersSpec{Start: 1, End: maxNumbersValues + 1, Step: 1, Mode: "sequence"}); err == nil {
+		t.Fatal("expected an error for a range larger than maxNumbersValues")
+	}
+	got, err := ExpandNumbers(NumbersSpec{Start: 1, End: maxNumbersValues, Step: 1, Mode: "sequence"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != maxRequests {
-		t.Fatalf("got %d want cap %d", len(got), maxRequests)
+	if len(got) != maxNumbersValues {
+		t.Fatalf("got %d want %d", len(got), maxNumbersValues)
+	}
+	// A range exactly at the cap in random mode is allowed too.
+	if _, err := ExpandNumbers(NumbersSpec{Start: 0, End: 9, Mode: "random", Count: 10}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A wide stepped range must sample across the whole range, not only from its
+// first N values (the old lattice materialisation biased it).
+func TestExpandNumbersRandomSamplesWholeSteppedRange(t *testing.T) {
+	r := rand.New(rand.NewSource(7))
+	got, err := ExpandNumbersRand(NumbersSpec{Start: 0, End: 1_000_000, Step: 2, Mode: "random", Count: 200}, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var maxSeen int64
+	for _, s := range got {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			t.Fatalf("bad number %q: %v", s, err)
+		}
+		if n%2 != 0 {
+			t.Fatalf("stepped range produced an off-step value %d", n)
+		}
+		if n > maxSeen {
+			maxSeen = n
+		}
+	}
+	if maxSeen < 500_000 {
+		t.Fatalf("max sampled value = %d; a 1,000,000 range must not only sample its first values", maxSeen)
 	}
 }
 

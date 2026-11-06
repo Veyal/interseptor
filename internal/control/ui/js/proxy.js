@@ -2,7 +2,7 @@ import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, stat
 import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 import { on as busOn, EVENTS } from './bus.js';
-import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL } from './inspector-structure.js';
+import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL, subtreeVisibility } from './inspector-structure.js';
 import { highlightJSON, apiBytes } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
@@ -18,15 +18,16 @@ import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
-import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget } from './proxy-selection.js';
+import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget, pruneSelection } from './proxy-selection.js';
 import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
-import { copyAs, COPY_AS_KINDS } from './copyas.js';
+import { copyAs, COPY_AS_KINDS, urlHost } from './copyas.js';
 import { createKeyRegistry } from './keys.js';
 import { openFlowDiff } from './flow-diff.js';
 import { createFinder } from './finder.js';
 import { getShellApi } from './shell-hooks.js';
+import { openSheet, closeSheet } from './sheet.js';
 import { modShortcut, hasNativeHost } from './desktop-panel-kit.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
@@ -65,9 +66,11 @@ async function sendAsIdentity(f, id){
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
     if(!current()){if(!t._closed)toast('identity load skipped because the Repeater tab changed','warn');return false;}
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     t.method=d.method;
-    t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
+    // flowURL (flowbody.flowUrl) brackets an IPv6 literal and drops the scheme's
+    // default port; a hand-built authority put "http://::1:8080/…" in the editor,
+    // which the Repeater cannot parse.
+    t.url=flowURL(d);
     t.headers=applyIdentityToHeaders(headersToText(d.reqHeaders),id.headers||'');
     const i2=raw.indexOf('\r\n\r\n');t.body=i2>=0?raw.slice(i2+4):'';
     t.resId=null;t.status='';t.color='';
@@ -718,7 +721,10 @@ function queueFullWindowRebuild(){
   // inserts in the same frame collapses to one pass (same as before).
   if(liveRenderQueued)return;
   liveRenderQueued=true;
-  const fire=()=>{liveRenderQueued=false;if(!reconcileVirtualRows())renderRows();};
+  // A rebuild queued a frame before the operator paused must not land on the
+  // frozen list: resuming reconciles the same window (renderRows/loadFlows), so
+  // dropping it here loses nothing and keeps Pause honest.
+  const fire=()=>{liveRenderQueued=false;if(liveFrozen)return;if(!reconcileVirtualRows())renderRows();};
   // rAF is suspended outright (not just throttled) for a backgrounded/hidden
   // tab in every major browser — Interceptor's control UI is routinely left
   // in a background tab while the operator works in the app under test, so
@@ -799,9 +805,31 @@ function reconcileFlowLoadEvent(event){
 // capture. Resuming flushes everything that arrived into the list.
 let liveFrozen=false,frozenNew=0;
 export function isLiveFrozen(){return liveFrozen;}
+const FREEZE_PAUSE_LABEL='Pause live history updates; capture continues';
+const FREEZE_RESUME_LABEL='Resume live history updates; capture continues';
 function updateFreezeBadge(){
   const b=$('#freezeCount');
-  if(b){b.textContent=frozenNew>0?('+'+frozenNew):'';b.hidden=!(liveFrozen&&frozenNew>0);}
+  if(b){
+    b.textContent=frozenNew>0?('+'+frozenNew):'';
+    b.hidden=!(liveFrozen&&frozenNew>0);
+    b.title=liveFrozen&&frozenNew>0?frozenNew+' new flow'+(frozenNew===1?'':'s')+' held while paused — Resume to show them':'';
+  }
+  // The accessible name follows the state: a pressed Pause button still named
+  // "Pause live history updates" told assistive tech the opposite of the truth.
+  const btn=$('#freezeBtn');
+  if(btn)btn.setAttribute('aria-label',liveFrozen?(FREEZE_RESUME_LABEL+(frozenNew>0?' ('+frozenNew+' new)':'')):FREEZE_PAUSE_LABEL);
+}
+// noteFrozenArrival counts an arrival the frozen viewport is holding back, so the
+// "+N" badge cannot claim the list is current while rows pile up behind it. A flow
+// the client-side predicate rules out is not counted (resuming will not reveal
+// it); when only the server can decide — a text search, a regex scope rule — the
+// arrival is counted, because under-reporting would hide captured traffic.
+function noteFrozenArrival(f){
+  if(!liveFrozen)return false;
+  if(canIncremental()&&!flowMatchesFilters(f))return false;
+  frozenNew++;
+  updateFreezeBadge();
+  return true;
 }
 export function setLiveFrozen(on){
   const next=!!on;
@@ -814,8 +842,20 @@ export function setLiveFrozen(on){
     if(btn.firstChild&&btn.firstChild.nodeType===3)btn.firstChild.textContent=liveFrozen?'Resume':'Pause';
     btn.title=liveFrozen?'Resume live history updates (Ctrl+Alt+P or Space)':'Pause live history updates (Ctrl+Alt+P or Space) — capture to disk continues';
   }
-  if(!liveFrozen){frozenNew=0;updateFreezeBadge();renderRows();}
-  else updateFreezeBadge();
+  if(!liveFrozen){
+    frozenNew=0;
+    // Resume: a reload trigger (or an already armed debounce) that the freeze held
+    // back runs now, so the list is the latest state immediately rather than one
+    // trigger late.
+    const deferred=takeDeferredReload();
+    updateFreezeBadge();
+    if(deferred)loadFlows();else renderRows();
+  }else{
+    // Freezing also has to stop a reload that is already debouncing: it would
+    // otherwise repaint the list a few milliseconds after the pause.
+    suspendReload();
+    updateFreezeBadge();
+  }
 }
 export function toggleLiveFreeze(){setLiveFrozen(!liveFrozen);}
 {const fb=$('#freezeBtn');if(fb)fb.onclick=()=>toggleLiveFreeze();}
@@ -824,12 +864,21 @@ export function handleFlowNew(f){
   if(!f)return;
   rememberFlowLoadEvent('new',f);
   onFlowMaybeTLS(f);
-  if(!sortIsLiveDefault()||!canIncremental()){scheduleReload();return;}
+  const proxy=document.querySelector('.panel[data-panel="proxy"]');
+  const active=proxy&&proxy.classList.contains('active');
+  if(!sortIsLiveDefault()||!canIncremental()){
+    // Placing this row correctly needs a reload (not the live-default sort, or a
+    // filter only the server can evaluate). While frozen scheduleReload holds that
+    // reload back instead of re-sorting the list the operator pinned — but the
+    // arrival is still counted, so "+N" keeps matching what resuming reveals.
+    if(active)noteFrozenArrival(f);
+    scheduleReload();
+    return;
+  }
   if(!flowMatchesFilters(f))return; // doesn't match the active filters — nothing to show, no reload needed
   upsertFlow(f);
   refreshMethodFilter();
-  const proxy=document.querySelector('.panel[data-panel="proxy"]');
-  if(!proxy||!proxy.classList.contains('active'))return;
+  if(!active)return;
   // Frozen: keep the flow (upserted above) but hold the viewport; count arrivals.
   if(liveFrozen){frozenNew++;updateFreezeBadge();return;}
   queueFlowSignal(f.id);
@@ -841,6 +890,10 @@ export function handleFlowUpdate(f){
   onFlowMaybeTLS(f);
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   const active=proxy&&proxy.classList.contains('active');
+  // A frozen viewport must not move: the store, the filters and the selection keep
+  // following the data (they are the truth), but no row is inserted, removed or
+  // repainted underneath the operator. Resuming reconciles the list once.
+  const paint=active&&!liveFrozen;
   if(flowStore.byId.has(f.id)){
     const existing=flowStore.byId.get(f.id);
     const sortValueBefore=flowSortValue(existing);
@@ -851,13 +904,13 @@ export function handleFlowUpdate(f){
     // stale row. Same ambiguous-case handling applies to a flow that newly
     // starts matching (see the else-branch below): insert/remove a single row
     // instead of a full reload either way.
-    if(!canIncremental()){storeUpsertFlow(flowStore,f);if(active)flowRowLiveUpdate(f,false);return;}
+    if(!canIncremental()){storeUpsertFlow(flowStore,f);if(paint)flowRowLiveUpdate(f,false);return;}
     if(!flowMatchesFilters(f)){
       const removedSelected=state.selId===f.id;
       removeFlow(flowStore,f.id);
       if(state.selected)state.selected.delete(f.id);
       if(removedSelected){closeInspector();return;}
-      if(active){const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');if(row)row.remove();else if(flowVirt.isActive())queueFullWindowRebuild();}
+      if(paint){const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');if(row)row.remove();else if(flowVirt.isActive())queueFullWindowRebuild();}
       return;
     }
     storeUpsertFlow(flowStore,f); // O(1) in-place refresh — no findIndex over the loaded list
@@ -866,11 +919,11 @@ export function handleFlowUpdate(f){
     // wrong order. Coalesced reloads keep this correct without doing a full
     // fetch for every burst event.
     if(sortValueBefore!==sortValueAfter){scheduleReload();return;}
-    if(!active)return;
+    if(!paint)return;
     flowRowLiveUpdate(f,false);
     return;
   }
-  if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);refreshMethodFilter();if(active)flowRowLiveUpdate(f,true);}
+  if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);refreshMethodFilter();if(paint)flowRowLiveUpdate(f,true);}
   else if(!canIncremental())scheduleReload();
   // else: doesn't match filters and was never in the list — nothing to do.
 }
@@ -921,7 +974,10 @@ const flowVirt=createVirtualList({container:$('#rows'),itemHeight:()=>ROW_H,thre
 // whether a rebuild was already queued — cheap (renderRows() just rebuilds
 // from the current in-memory state.flows) and guarantees the visible window
 // can never stay stale after a background period.
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive())renderRows();});
+// A frozen list is the exception: its rows are pinned on purpose, and the flows
+// that landed while the tab was hidden are already in state.flows — resuming
+// renders them, so this catch-up must not shift the viewport in the meantime.
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive()&&!liveFrozen)renderRows();});
 // "Yest"/"Today" labels depend on the current day, so schedule one refresh at the
 // next local midnight (re-armed each time) and re-check on focus/visibility
 // (sleeping laptops skip timers). Only rows whose markup changed are patched.
@@ -1268,7 +1324,34 @@ function inspectorFilterSignature(){
   });
 }
 
+// pruneFlowSelection drops selected ids the active filters no longer match, so the
+// bulk bar can never offer Delete/Tag/Repeater over flows the operator cannot see.
+// It runs on every filter/search reload: once as the reload starts (the bar and its
+// count are then right before the response lands) and once when the replacement
+// page is committed, judged against the outgoing page cache as well — a selected
+// flow that was paged in and now fails the filters must not stay action-able, while
+// one that merely paged out (no object left to judge) keeps its place.
+// `outgoingFlows` is that cache; it is spread first so the freshly loaded page wins.
+function pruneFlowSelection(outgoingFlows){
+  const previous=state.selected;
+  if(!previous.size)return 0;
+  const flows=outgoingFlows?[...outgoingFlows,...state.flows]:state.flows;
+  const keep=pruneSelection(previous,flows,flowMatchesFilters);
+  if(keep.size===previous.size)return 0;
+  state.selected=keep;
+  // The anchor only breaks when the row it pointed at is the one that went away: a
+  // plain click sets an anchor that is not part of the multi-selection, and that
+  // one keeps working.
+  if(state.selAnchorId!=null&&previous.has(state.selAnchorId)&&!keep.has(state.selAnchorId))state.selAnchorId=null;
+  if(!keep.size)state.lastSelIdx=-1;
+  updateSelBar();
+  return previous.size-keep.size;
+}
+
 export async function loadFlows(){
+  // A filter or search change lands here: drop what the new predicate hides before
+  // the request, then again against the page that replaces the cache (below).
+  pruneFlowSelection();
   const filterSignature=inspectorFilterSignature();
   const signatureChanged=filterSignature!==flowFilterSignature;
   if(signatureChanged){flowFilterSignature=filterSignature;flowFilterEpoch++;}
@@ -1304,11 +1387,13 @@ export async function loadFlows(){
     let flows=d.flows||[];
     applyPageMore(d,flows.length);
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
+    const outgoingFlows=new Map(flowStore.byId).values(); // the page cache this load replaces
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
     let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
+    pruneFlowSelection(outgoingFlows);
     // Reconcile against the replacement cache only after the latest response
     // wins. This preserves an older paged selection when its known flow still
     // matches, while restarting an invalidated pending detail request for a
@@ -1411,7 +1496,7 @@ let methodsDirty=true; // build the method filter once initially
 // request) do O(1) lookup+refresh instead of O(N) findIndex over the whole
 // loaded list — essential once you've scrolled deep.
 const flowStore=createFlowStore(state.flows);
-let reloadTimer=null,reloadFirstAt=0;
+let reloadTimer=null,reloadFirstAt=0,reloadPendingWhileFrozen=false;
 const RELOAD_DEBOUNCE_MS=150,RELOAD_MAX_WAIT_MS=1000;
 const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0,wsReplayEpoch=0;
@@ -1442,12 +1527,38 @@ function restoreFlowNoteDraft(flowId,fallback){
 }
 // scheduleReload debounces bursts of reload triggers but never starves: once the
 // first pending trigger is RELOAD_MAX_WAIT_MS old the reload fires regardless.
+// While the live view is frozen it arms nothing — a reload re-sorts and re-renders
+// the list the operator pinned, which is exactly what Pause promises not to do
+// (#104) — so the trigger is only remembered and honoured once on resume.
 export function scheduleReload(){
+  if(liveFrozen){reloadPendingWhileFrozen=true;return;}
+  reloadPendingWhileFrozen=false;
+  armReload();
+}
+// armReload is the debounced reload itself; it is split out of scheduleReload so
+// the freeze gate above is the one place that can start a reload timer.
+function armReload(){
   const now=Date.now();
   if(!reloadFirstAt)reloadFirstAt=now;
   clearTimeout(reloadTimer);
   const wait=Math.max(0,Math.min(RELOAD_DEBOUNCE_MS,RELOAD_MAX_WAIT_MS-(now-reloadFirstAt)));
   reloadTimer=setTimeout(()=>{reloadFirstAt=0;loadFlows();},wait);
+}
+// suspendReload drops a reload that is already debouncing when the operator pauses:
+// the flow that triggered it still lands in the store, and resuming reloads once.
+function suspendReload(){
+  if(reloadTimer==null)return;
+  clearTimeout(reloadTimer);
+  reloadTimer=null;
+  reloadFirstAt=0;
+  reloadPendingWhileFrozen=true;
+}
+// takeDeferredReload reports (and clears) a reload trigger a freeze held back — the
+// one-shot bridge between the pause and the resume.
+function takeDeferredReload(){
+  const pending=reloadPendingWhileFrozen;
+  reloadPendingWhileFrozen=false;
+  return pending;
 }
 function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   if(state.selId==null)return;
@@ -1676,7 +1787,10 @@ function ensureWsFrameDelegation(){
   root.addEventListener('click',e=>{const row=e.target.closest?.('.ws-frame-replay');if(row&&root.contains(row))load(row);});
   root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const row=e.target.closest?.('.ws-frame-replay');if(row&&root.contains(row)){e.preventDefault();load(row);}});
 }
-function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${d.host}${def?'':':'+d.port}${d.path||'/'}`;}
+// flowWsURL is the replay socket's address. urlHost brackets a captured IPv6
+// literal (net/url's unbracketed Hostname()), which the hand-built authority did
+// not, so ws://::1:8080/… was posted to /api/ws/send and rejected as invalid.
+function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${urlHost(d.host)}${def?'':':'+d.port}${d.path||'/'}`;}
 export async function renderWSFrames(id){
   const epoch=++wsRenderEpoch;
   const detail=state.detail;
@@ -1808,9 +1922,17 @@ function ensureInspStructDelegation(){
     const fold=e.target.closest?.('.insp-fold');
     if(fold&&root.contains(fold)){
       const row=fold.closest('.insp-json-row');if(!row)return;
-      const depth=Number(row.dataset.depth);const open=row.getAttribute('aria-expanded')!=='false';
+      const open=row.getAttribute('aria-expanded')!=='false';
       row.setAttribute('aria-expanded',open?'false':'true');
-      for(let n=row.nextElementSibling;n&&n.classList.contains('insp-json-row')&&Number(n.dataset.depth)>depth;n=n.nextElementSibling)n.hidden=open;
+      // The flat row list from this row down decides visibility: a container the
+      // user folded *inside* the subtree must stay folded when a parent opens
+      // (unhiding by depth alone unfolded it and left aria-expanded saying
+      // "collapsed"), so the tree state is one pure function.
+      const rows=[];
+      for(let n=row;n&&n.classList.contains('insp-json-row');n=n.nextElementSibling)rows.push(n);
+      const model=rows.map(n=>({depth:Number(n.dataset.depth),container:n.hasAttribute('aria-expanded'),expanded:n.getAttribute('aria-expanded')!=='false'}));
+      const flags=subtreeVisibility(model,0,!open);
+      for(let i=1;i<rows.length&&i-1<flags.length;i++)rows[i].hidden=flags[i-1];
     }
   });
   root.addEventListener('input',e=>{
@@ -3292,3 +3414,260 @@ busOn(EVENTS.PROXY_REFRESH_ROWS, () => { refreshVisibleRows(); });
 busOn(EVENTS.PROXY_FILTER_TAG, (tag) => { filterByTag(tag); });
 busOn(EVENTS.PROXY_SELECT_FLOW, (id) => { selectFlow(id); });
 busOn(EVENTS.PROXY_RELOAD_AUTHZ_IDS, () => { refreshAuthzIds(); });
+
+/* ---- the History filter bar: Filters sheet on phones, scope inside Filters ----
+   A 390px screen used to spend seven rows of chrome (panel switcher, search,
+   method/status/in-scope, Edit scope/Filters/Views/Pause, Cols, chips and the
+   TLS banner) before the first flow. Two rules now hold at <=640px:
+     1. the bar is two rows — the shell's panel switcher (Proxy | Intercept) and
+        search + one Filters button (#proxyFiltersBtn, with an active count);
+     2. every other control moves into the #filtersSheet bottom sheet, and Pause
+        moves into the panel header (#dockSeg, the row that carries the switcher).
+   The nodes themselves move, so a control's id, value and handler — and the one
+   copy of filter state — are the ones proxy.js already wired. Coming back above
+   the breakpoint (or running inside the desktop layout, which re-arranges the
+   same bar itself) puts every control back in the slot index.html gave it.
+   Above 640px on the web, Edit scope is no longer a toolbar button of its own:
+   "In scope only" and "Edit scope" join the Filters popover, the same way the
+   desktop layout and the Scanner already fold their scope entry in. */
+const phoneFilterQuery = typeof matchMedia === 'function' ? matchMedia('(max-width:640px)') : null;
+// Node -> the exact slot it came from, so leaving the phone breakpoint restores
+// the toolbar byte for byte (order included).
+const phoneFilterHomes = new Map();
+let phoneSheet = null;
+
+const isDesktopShell = () => document.documentElement.classList.contains('desktop-app');
+const phoneLayoutOn = () => !!(phoneFilterQuery && phoneFilterQuery.matches && !isDesktopShell());
+const phoneGroup = (key) => $('#phoneFiltersBody [data-g="' + key + '"]');
+// A native <select> is wrapped by the ui-select shim (core.js); the wrapper is
+// what the operator sees and clicks, so that is what moves.
+const selectWrap = (id) => $('#' + id)?.closest('.ui-select');
+
+function phoneMove(node, host) {
+  if (!node || !host || node.parentNode === host) return;
+  if (!phoneFilterHomes.has(node)) phoneFilterHomes.set(node, { parent: node.parentNode, next: node.nextSibling });
+  host.appendChild(node);
+}
+function phoneRestore() {
+  for (const [node, home] of phoneFilterHomes) {
+    if (!home.parent) continue;
+    if (home.next && home.next.parentNode === home.parent) home.parent.insertBefore(node, home.next);
+    else home.parent.appendChild(node);
+  }
+  phoneFilterHomes.clear();
+}
+
+// ensurePhoneFiltersBtn adds row B's single Filters trigger next to the search
+// field. It is the sheet's opener and the only filter affordance on a phone, so
+// it carries the active-filter count the old popover badge owned.
+function ensurePhoneFiltersBtn() {
+  let btn = $('#proxyFiltersBtn');
+  if (btn) return btn;
+  const search = $('.proxy-toolbar .search');
+  if (!search) return null;
+  btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'proxyFiltersBtn';
+  btn.className = 'btn';
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-controls', 'filtersSheet');
+  btn.innerHTML = icon('filter') + ' Filters <span id="proxyFiltersCount" class="filters-count" hidden></span>';
+  search.insertAdjacentElement('afterend', btn);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openPhoneFilters();
+  });
+  return btn;
+}
+
+// phoneFiltersContainer builds the sheet's body once: a stable host whose groups
+// hold the moved controls. Between openings it waits in #phoneFiltersPark (a
+// display:none div on <body>), so the controls are neither painted nor reachable
+// by assistive tech; opening the sheet re-parents the host into the sheet body,
+// closing it hands it back. Keeping one live host (instead of rendering markup
+// per open) is what makes the sheet show the state that is actually applied.
+function phoneFiltersContainer() {
+  let park = $('#phoneFiltersPark');
+  if (!park) {
+    park = document.createElement('div');
+    park.id = 'phoneFiltersPark';
+    park.hidden = true;
+    document.body.appendChild(park);
+  }
+  let host = $('#phoneFiltersBody');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'phoneFiltersBody';
+    host.className = 'phone-filters';
+    for (const key of ['scope', 'selects', 'active', 'sources', 'actions', 'clear']) {
+      const group = document.createElement('div');
+      group.className = 'phone-filters-group';
+      group.dataset.g = key;
+      host.appendChild(group);
+    }
+    host.querySelector('[data-g="clear"]').appendChild(phoneClearAllButton());
+  }
+  if (host.parentNode !== park) park.appendChild(host);
+  return host;
+}
+function parkPhoneFilters() {
+  const host = $('#phoneFiltersBody'), park = $('#phoneFiltersPark');
+  if (host && park && host.parentNode !== park) park.appendChild(host);
+}
+
+// phoneClearAllButton is the sheet's one "Clear all". Inside the sheet every
+// control is on screen already, so the chip line that used to summarise them (and
+// carried its own "Clear all") is hidden there — see panel-proxy.css — and one
+// button at the bottom does the whole reset: filters, source hides, the search
+// field and the count badge. #chipsClear stays untouched for desktop and for the
+// panel's own chip line.
+function phoneClearAllButton() {
+  let btn = $('#phoneFiltersClear');
+  if (btn) return btn;
+  btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'phoneFiltersClear';
+  btn.className = 'btn phone-filters-clear';
+  btn.textContent = 'Clear all';
+  btn.setAttribute('aria-label', 'Clear all filters, hidden sources and the search');
+  btn.addEventListener('click', () => {
+    clearAllFilters();
+    // clearAllFilters() resets state and repaints, but a reset that only clears the
+    // search field writes no event, so the badge is synced here as well.
+    syncPhoneFiltersBtn();
+  });
+  return btn;
+}
+
+function movePhoneControls() {
+  phoneFiltersContainer();
+  phoneMove($('#scopeToggle'), phoneGroup('scope'));
+  phoneMove($('#scopeEdit'), phoneGroup('scope'));
+  phoneMove($('#scopeCoach'), phoneGroup('scope'));
+  for (const id of ['fSearchScope', 'fMethod', 'fStatus']) phoneMove(selectWrap(id), phoneGroup('selects'));
+  phoneMove($('#activeFilterBar'), phoneGroup('active'));
+  // The pills row, not the scope row scopeIntoFilters() put in the popover first.
+  phoneMove($('#proxyFilters .proxy-filters-row:not(.proxy-filters-scope)'), phoneGroup('sources'));
+  phoneMove($('#tagBar'), phoneGroup('sources'));
+  phoneMove($('#flowSearchScripts'), phoneGroup('sources'));
+  phoneMove($('#viewsBtn'), phoneGroup('actions'));
+  phoneMove($('#colPickerBtn'), phoneGroup('actions'));
+  // Panel header: the row that already carries the Proxy | Intercept switcher is
+  // the only header a phone panel has, so Pause becomes a compact control there.
+  // Nothing is duplicated — it is the same #freezeBtn with the same state. dock.js
+  // builds that row in its own module, so until it exists the button stays in the
+  // toolbar and watchPanelHeader() moves it as soon as the row appears.
+  phoneMove($('#freezeBtn'), $('#dockSeg') || $('.proxy-toolbar'));
+}
+function watchPanelHeader() {
+  const dock = $('#dockSeg'), pause = $('#freezeBtn');
+  if (!dock || !pause || !phoneLayoutOn()) return false;
+  if (pause.parentNode !== dock) phoneMove(pause, dock);
+  return true;
+}
+
+// phoneFilterCount counts the filters that now live behind the sheet button. The
+// search field is still on screen in row B, so its own value is not one of them.
+function phoneFilterCount() {
+  const n = activeFilterCount(state);
+  return state.filters && state.filters.search ? Math.max(0, n - 1) : n;
+}
+function syncPhoneFiltersBtn() {
+  const btn = $('#proxyFiltersBtn');
+  if (!btn) return;
+  const n = phoneFilterCount();
+  const badge = $('#proxyFiltersCount');
+  if (badge) { badge.hidden = n === 0; badge.textContent = String(n); }
+  btn.setAttribute('aria-label', n ? 'Filters, ' + n + ' active' : 'Filters');
+}
+
+function openPhoneFilters() {
+  const btn = $('#proxyFiltersBtn');
+  const svc = openSheet({
+    id: 'filtersSheet',
+    title: 'Filters',
+    detents: ['half', 'full'],
+    detent: 'half',
+    opener: btn,
+    // The container is returned, not rebuilt: its controls keep the values and
+    // listeners they had, so reopening shows the state that is actually applied.
+    content: () => { syncPhoneFiltersBtn(); return phoneFiltersContainer(); },
+    onClose: () => { phoneSheet = null; parkPhoneFilters(); btn?.setAttribute('aria-expanded', 'false'); },
+  });
+  phoneSheet = svc;
+  btn?.setAttribute('aria-expanded', 'true');
+  syncPhoneFiltersBtn();
+  return svc;
+}
+
+function applyPhoneFilterLayout() {
+  const panel = $('#panel-proxy');
+  if (!panel) return;
+  const on = phoneLayoutOn();
+  const applied = panel.classList.contains('phone-filters');
+  syncPhoneFiltersBtn();
+  if (on === applied) { if (on) movePhoneControls(); return; }
+  if (on) {
+    ensurePhoneFiltersBtn();
+    movePhoneControls();
+    panel.classList.add('phone-filters');
+    return;
+  }
+  // Leaving the phone shape: close the sheet first, then hand every control back
+  // to its index.html slot.
+  if (phoneSheet) closeSheet('filtersSheet');
+  phoneRestore();
+  panel.classList.remove('phone-filters');
+}
+
+// scopeIntoFilters folds "In scope only" and "Edit scope" into the Filters
+// popover on the web layout (the desktop layout makes the same move itself). The
+// Scope chip in the Flight Bar stays the primary entry point; these are the
+// History-level ones. Ids and handlers are untouched — the buttons only move.
+function scopeIntoFilters() {
+  if (isDesktopShell()) return;
+  const pop = $('#proxyFilters');
+  if (!pop) return;
+  let row = pop.querySelector('.proxy-filters-scope');
+  if (!row) {
+    row = document.createElement('div');
+    // Not .proxy-filters-row: the desktop layout styles the first row it finds
+    // under that class, and it must keep finding the source pills, not this one.
+    row.className = 'proxy-filters-scope';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Scope');
+    pop.insertBefore(row, pop.firstChild);
+  }
+  for (const id of ['scopeToggle', 'scopeEdit', 'scopeCoach']) {
+    const node = $('#' + id);
+    if (node) row.appendChild(node);
+  }
+}
+
+{
+  // Edit scope leaves History for Settings → Scope, so the popover closes with it.
+  $('#scopeEdit')?.addEventListener('click', () => {
+    const pop = $('#proxyFilters');
+    if (pop && !pop.hidden) setFiltersOpen(false);
+  });
+  const search = $('#fSearch');
+  if (search) search.addEventListener('input', () => { if (phoneLayoutOn()) syncPhoneFiltersBtn(); });
+  const chips = $('#chips');
+  if (chips) new MutationObserver(() => { if (phoneLayoutOn()) syncPhoneFiltersBtn(); }).observe(chips, { childList: true });
+  // Method/Status/scope/source changes all repaint the chip line; a change that
+  // leaves it byte-identical (GET -> POST with no chips on screen) still moves the
+  // count, so the selects are watched directly too.
+  for (const id of ['fMethod', 'fStatus', 'fSearchScope']) $('#' + id)?.addEventListener('change', () => { if (phoneLayoutOn()) syncPhoneFiltersBtn(); });
+  ensurePhoneFiltersBtn();
+  scopeIntoFilters();
+  applyPhoneFilterLayout();
+  if (!watchPanelHeader()) {
+    // #dockSeg does not exist yet: latch onto the first body mutation that brings it.
+    const obs = new MutationObserver(() => { if (watchPanelHeader()) obs.disconnect(); });
+    obs.observe(document.body, { childList: true });
+    setTimeout(() => obs.disconnect(), 5000);
+  }
+  if (phoneFilterQuery) phoneFilterQuery.addEventListener('change', applyPhoneFilterLayout);
+  window.addEventListener('resize', applyPhoneFilterLayout);
+}

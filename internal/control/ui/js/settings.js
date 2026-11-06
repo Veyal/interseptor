@@ -469,7 +469,9 @@ function renderDeviceProxyUI(ep){
   }
   const resolved=$('#deviceProxyResolved');
   if(resolved){
-    const src=ep?.source?(' · '+ep.source.replace(/_/g,' ')):'';
+    // The endpoint comes from the API; the source token is a server enum today,
+    // but it is still interpolated into innerHTML, so escape it like the address.
+    const src=ep?.source?(' · '+esc(String(ep.source).replace(/_/g,' '))):'';
     resolved.innerHTML=endpoint?`Resolved: <b style="font-family:var(--mono);color:var(--accent)">${esc(endpoint)}</b>${src}`:'';
   }
   const seg=$('#deviceProxyModeSeg');
@@ -1579,6 +1581,15 @@ configureProjectPicker({
 });
 export function openProjectModal(from){return openProjectPicker(from);}
 $('#projPickerBtn')?.addEventListener('click',e=>openProjectModal(e.currentTarget));
+// Two buttons on this page wrote a listener and both said "Apply listener
+// changes", so neither name said what it writes. Each now names its listener: the
+// proxy the tools and devices connect to, and the Control UI's own API/UI address.
+// The visible label and the accessible name agree (WCAG 2.5.3 label in name).
+{
+  const proxyApply=$('#saveAddrBtn'),controlApply=$('#saveControlAddrBtn');
+  if(proxyApply){proxyApply.textContent='Apply proxy listener';proxyApply.setAttribute('aria-label','Apply proxy listener changes');}
+  if(controlApply){controlApply.textContent='Apply control UI listener';controlApply.setAttribute('aria-label','Apply control UI listener changes');}
+}
 $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
   const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();

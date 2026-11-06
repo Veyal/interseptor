@@ -780,7 +780,10 @@ then change one thing, then `diff_flows`. Use `set_session` when sends need the 
 1. Confirm scope and that the brief allows volume. Keep counts small.
 2. `start_intruder` with `attackType` `repeat`, a modest `repeat`, and `threads` (set `barrier` to launch
    workers together for a race). It returns a run identity (`runId`).
-3. `intruder_state` shows per-result status, timing, and rate-limit headers.
+3. `intruder_state` shows per-result status, timing, and rate-limit headers for the run's first 2000
+   results (`partialResults: true` when the run is longer); page the rest with `GET
+   /api/intruder/results?offset=&limit=&runId=`, or read the recorded run (`GET /api/intruder/attacks/{id}`).
+   A run has no request cap, so this tool is a status check, not a result export.
 4. `render_intruder_preview` with `kind` `timeline`, `distribution`, `race`, or `strip` and the `runId`
    as `attackId`; pass `findingId`, `role`, and `proof` to attach it. These are generated
    (`evidence_render`) and report counts only; a render never says a bypass is confirmed.

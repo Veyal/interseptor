@@ -133,7 +133,12 @@ func comment(s string) string { return "<!--" + strings.ReplaceAll(s, "--", "- -
 func (g *gen) line(out *strings.Builder, ind int, s string) {
 	g.size += ind*len(indentUnit) + len(s) + 1
 	if g.size > maxEnvelopeSize {
-		g.truncated = true
+		// Once the envelope is over the size cap every later line is dropped, so
+		// the body is cut: say so instead of silently sending a partial message.
+		if !g.truncated {
+			g.truncated = true
+			g.issue("envelope-truncated", "the envelope was cut at the size limit; later parts of the message were not expanded")
+		}
 		return
 	}
 	out.WriteString(strings.Repeat(indentUnit, ind))

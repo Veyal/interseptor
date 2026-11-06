@@ -200,6 +200,7 @@ func TestHostileInput(t *testing.T) {
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(`{"_type":"export","resources":[]}`))
 	f.Add([]byte("type: collection.insomnia.rest/5.0\ncollection: []"))
+	f.Add([]byte(`{"_type":"export","__export_format":4,"resources":[{"_type":"environment","name":"e"},{"_id":"env:r","_type":"request","parentId":"","name":"R","url":"https://example.com"}]}`))
 	f.Fuzz(func(t *testing.T, in []byte) { _, _ = Parse(in, Options{NewID: counter()}) })
 }
 
@@ -223,5 +224,69 @@ func TestFolderHeadersAreInheritedByRequests(t *testing.T) {
 	}
 	if !res.Report.Has(impkit.Degraded, "inherited-headers") {
 		t.Fatal("inheritance not reported")
+	}
+}
+
+// A malformed v4 export can omit a resource _id. An environment without one
+// used to produce a link that was not recognised as an environment (the "env:"
+// prefix check required more than four bytes) and was attached to the tree as a
+// nil node, panicking in breakCycles. A request whose _id merely starts with
+// "env:" was dropped for the same reason.
+func TestMalformedResourceIDsDoNotPanicOrDropRequests(t *testing.T) {
+	in := `{"_type":"export","__export_format":4,"resources":[
+	 {"_id":"w","_type":"workspace","name":"W"},
+	 {"_type":"environment","parentId":"w","name":"Base Environment","data":{"k":"v"}},
+	 {"_id":"env:r1","_type":"request","parentId":"w","name":"EnvPrefixed","url":"https://example.com/a","method":"GET"},
+	 {"_id":"r2","_type":"request","parentId":"w","name":"Plain","url":"https://example.com/b","method":"GET"}]}`
+	res, err := Parse([]byte(in), Options{NewID: counter()})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := res.Report.Stats.Requests; got != 2 {
+		t.Fatalf("requests = %d, want 2 (a request whose id starts with env: must not be dropped)", got)
+	}
+	names := map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind == "request" {
+			names[it.Name] = true
+		}
+	}
+	if !names["EnvPrefixed"] || !names["Plain"] {
+		t.Fatalf("items = %+v", names)
+	}
+}
+
+// A malformed v4 export can omit _id on several resources. They all collapsed
+// onto the empty-string key in the resource index, so a request was lost and
+// the surviving node was emitted twice with the same uid — two items that a
+// store commit cannot both hold. Each resource needs its own key.
+func TestMissingResourceIDsGetUniqueUIDs(t *testing.T) {
+	in := `{"_type":"export","__export_format":4,"resources":[
+	 {"_id":"w","_type":"workspace","name":"W"},
+	 {"_type":"request","parentId":"w","name":"A","url":"https://example.com/a","method":"GET"},
+	 {"_type":"request","parentId":"w","name":"B","url":"https://example.com/b","method":"GET"},
+	 {"_type":"environment","parentId":"w","name":"Base","data":{"k":"v"}},
+	 {"_type":"environment","parentId":"w","name":"Dev","data":{"k2":"v2"}}]}`
+	res, err := Parse([]byte(in), Options{NewID: counter()})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := res.Report.Stats.Requests; got != 2 {
+		t.Fatalf("requests = %d, want 2 (a resource without _id was lost)", got)
+	}
+	seen := map[string]bool{}
+	names := map[string]bool{}
+	for _, it := range res.Items {
+		if seen[it.UID] {
+			t.Fatalf("duplicate item uid %q", it.UID)
+		}
+		seen[it.UID] = true
+		names[it.Name] = true
+	}
+	if !names["A"] || !names["B"] {
+		t.Fatalf("items = %v, want both A and B", names)
+	}
+	if len(res.Environments) != 1 || res.Environments[0].Environment.Name != "Dev" {
+		t.Fatalf("environments = %+v, want the second id-less environment as Dev", res.Environments)
 	}
 }

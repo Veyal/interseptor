@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/collimport/postman"
 	"github.com/Veyal/interseptor/internal/store"
@@ -319,8 +320,14 @@ func itemName(method, rawURL string, n int) string {
 	}
 	if len(s) > 120 {
 		s = s[:120]
-		for len(s) > 0 && s[len(s)-1]&0xC0 == 0x80 {
-			s = s[:len(s)-1]
+		// Drop a trailing partial rune (or a cut inside one) so the name stays
+		// valid UTF-8; JSON would otherwise replace the tail with U+FFFD.
+		for len(s) > 0 {
+			if r, size := utf8.DecodeLastRuneInString(s); r == utf8.RuneError && size <= 1 {
+				s = s[:len(s)-1]
+				continue
+			}
+			break
 		}
 	}
 	return strings.TrimSpace(s)

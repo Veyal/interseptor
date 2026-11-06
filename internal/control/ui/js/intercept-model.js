@@ -145,6 +145,15 @@ export function heldCountText(total) {
   return n ? n + ' held' : 'Nothing held';
 }
 
+// undoDropOutcome decides what cancelling a pending drop reports. The item may
+// have been released or forwarded by another client (another window, MCP, REST)
+// while the Undo toast was live: reporting "kept on hold" then would claim a
+// state the queue no longer has.
+export function undoDropOutcome({ cancelled = false, held = false } = {}) {
+  if (!cancelled) return null;
+  return held ? 'kept' : 'released';
+}
+
 export function dropToastText(side) {
   return (side === 'resp' ? 'Dropping response' : 'Dropping request') + ' in ' + Math.round(DROP_DELAY_MS / 1000) + 's';
 }

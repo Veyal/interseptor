@@ -158,3 +158,75 @@ func TestShellInjectionInValues(t *testing.T) {
 		t.Fatalf("URL not single-quoted safely:\n%s", out.Data)
 	}
 }
+
+// A raw body always goes out with the content type the pipeline derives from
+// its language (text/plain when there is none). curl's --data-raw would
+// otherwise send "application/x-www-form-urlencoded", so the exporter must
+// spell the header out or the command does not reproduce the send.
+func TestRawBodyExportsItsImplicitContentType(t *testing.T) {
+	cases := []struct {
+		body json.RawMessage
+		want string
+	}{
+		{json.RawMessage(`{"mode":"raw","raw":"plain text"}`), "text/plain"},
+		{json.RawMessage(`{"mode":"raw","raw":"<p>x</p>","options":{"raw":{"language":"html"}}}`), "text/html"},
+		{json.RawMessage(`{"mode":"raw","raw":"{}","options":{"raw":{"language":"json"}}}`), "application/json"},
+		{json.RawMessage(`{"mode":"raw","raw":"<a/>","options":{"raw":{"language":"xml"}}}`), "application/xml"},
+	}
+	for _, c := range cases {
+		b := store.CollectionsBundle{Collections: []store.Collection{{UID: "c", Name: "c"}}, Items: []store.Item{
+			{UID: "r", CollectionUID: "c", Kind: "request", Rank: "a", Name: "x", Method: "POST",
+				URL: json.RawMessage(`"https://example.com/x"`), Body: c.body},
+		}}
+		out, err := ExportCollection(b, "c", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(out.Data); !strings.Contains(got, "-H 'Content-Type: "+c.want+"'") {
+			t.Fatalf("body %s: missing Content-Type %s:\n%s", c.body, c.want, got)
+		}
+	}
+}
+
+// An explicit header always wins over the implicit default.
+func TestRawBodyKeepsExplicitContentType(t *testing.T) {
+	b := store.CollectionsBundle{Collections: []store.Collection{{UID: "c", Name: "c"}}, Items: []store.Item{
+		{UID: "r", CollectionUID: "c", Kind: "request", Rank: "a", Name: "x", Method: "POST",
+			URL:     json.RawMessage(`"https://example.com/x"`),
+			Headers: json.RawMessage(`[{"key":"Content-Type","value":"application/vnd.example+json"}]`),
+			Body:    json.RawMessage(`{"mode":"raw","raw":"{}","options":{"raw":{"language":"json"}}}`)},
+	}}
+	out, err := ExportCollection(b, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(out.Data); strings.Count(s, "Content-Type:") != 1 || !strings.Contains(s, "application/vnd.example+json") {
+		t.Fatalf("explicit content type not preserved:\n%s", s)
+	}
+}
+
+// The URL column can be a structured object without a "raw" string (the store's
+// EffectiveURL contract rebuilds it from protocol/host/port/path/query). The
+// exporter only looked at "raw" and emitted an empty URL, losing the request.
+func TestURLObjectWithoutRawIsRebuilt(t *testing.T) {
+	b := store.CollectionsBundle{Collections: []store.Collection{{UID: "c", Name: "c"}}, Items: []store.Item{
+		{UID: "r", CollectionUID: "c", Kind: "request", Rank: "a", Name: "x", Method: "GET",
+			URL: json.RawMessage(`{"protocol":"https","host":["example.com"],"path":["api","users"],"query":[{"key":"a","value":"1"},{"key":"off","value":"1","disabled":true}]}`)},
+	}}
+	out, err := ExportCollection(b, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out.Data)
+	if !strings.Contains(s, "'https://example.com/api/users?a=1'") {
+		t.Fatalf("structured URL not rebuilt:\n%s", s)
+	}
+	if strings.Contains(s, "off=1") {
+		t.Fatalf("disabled query row exported:\n%s", s)
+	}
+	for _, w := range out.Warnings {
+		if w.Feature == "no-url" {
+			t.Fatalf("reported no-url for a structured URL: %+v", out.Warnings)
+		}
+	}
+}

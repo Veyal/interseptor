@@ -686,4 +686,10 @@ func TestRunItemCountIsBounded(t *testing.T) {
 	if code != http.StatusBadRequest || !strings.Contains(out, "item limit") {
 		t.Fatalf("over-limit run = %d %s", code, out)
 	}
+	// An out-of-range maxItems is refused, not silently clamped: clamping would
+	// run fewer requests than the caller asked for and report success.
+	code, out = f.do("POST", "/api/collections/run", map[string]any{"collectionUid": co.UID, "maxItems": maxRunItems + 1}, asUI)
+	if code != http.StatusBadRequest || !strings.Contains(out, "maxItems must be at most") {
+		t.Fatalf("maxItems above the ceiling = %d %s", code, out)
+	}
 }

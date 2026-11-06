@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Veyal/interseptor/internal/collimport/insomnia/impkit"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -725,6 +726,7 @@ func FuzzParse(f *testing.F) {
 	f.Add(readFile2("testdata/introspection.json"))
 	f.Add("type Query { a(x: [Int!]! = [1]): A } type A { a: A b: [A!] } union U = A | B")
 	f.Add(`"""x""" type`)
+	f.Add(`{"data":{"__schema":{"queryType":{"name":"Q"},"types":[{"kind":"OBJECT","name":"Q","fields":[{"name":"","args":[],"type":{"kind":"SCALAR","name":"Int"}}]}]}}}`)
 	f.Fuzz(func(t *testing.T, in string) {
 		if len(in) > 1<<16 {
 			t.Skip()
@@ -739,4 +741,29 @@ func FuzzParse(f *testing.F) {
 func readFile2(p string) string {
 	b, _ := os.ReadFile(p)
 	return string(b)
+}
+
+// A malformed introspection result may carry a root field with no name. It has
+// no query to build and must be reported and skipped, never panic (building the
+// operation name slices the first byte of the field name).
+func TestUnnamedRootFieldIsSkippedNotAPanic(t *testing.T) {
+	in := `{"data":{"__schema":{"queryType":{"name":"Q"},"types":[
+		{"kind":"OBJECT","name":"Q","fields":[
+			{"name":"","args":[],"type":{"kind":"SCALAR","name":"Int"}},
+			{"name":"ok","args":[],"type":{"kind":"SCALAR","name":"Int"}}]}]}}}`
+	res, err := Parse([]byte(in), Options{NewID: counter()})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := res.Report.Stats.Requests; got != 2 { // introspection query + "ok"
+		t.Fatalf("requests = %d, want 2", got)
+	}
+	if !res.Report.Has(impkit.NeedsReview, "unnamed-field") {
+		t.Fatalf("missing unnamed-field report entry: %+v", res.Report.Entries)
+	}
+	for _, it := range res.Items {
+		if it.Name == "" {
+			t.Fatalf("an item without a name was emitted: %+v", it)
+		}
+	}
 }
