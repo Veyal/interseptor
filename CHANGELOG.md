@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Non-HTTP findings can reach report-ready.** An SSH, SMTP/IMAP/POP3, SMB, LDAP or Redis finding has no flow to attach and no browser screenshot to take, so it could only ever sit in draft. A `text` block with `source=tool_output` or the new `protocol_capture` and a `proof` now attests the role it names and can carry the target evidence; uploaded (`operator_upload`/`tool_output`) images evidence a role or a target too, and readiness reports `transcriptCount`. Neither ever counts as `visual`, and generated previews still evidence nothing. (`internal/store/finding_provenance.go`, `finding_assessment.go`, `findings.go`.)
+- **A client-side finding needs a capture of the effect.** A finding whose CWE is the XSS family (CWE-79/80/83/84/85/86/87), or that declares `proofReview.visual`, now keeps a `visual` gap until a `browser_screenshot` or `device_screenshot` with a proof statement is attached in the `result` role — attaching an echoed response or a generated preview no longer passes. `llms.txt`/`llms-full.txt` carry the per-class minimum-proof table, say that generated renders never satisfy it, and note the macOS `screencapture -x` workaround for an open `alert()`. (`internal/store/finding_assessment.go`, `internal/mcp/instructions.go`, `docs/findings-and-reporting.md`.)
+
 - **Intruder template position highlighting.** Every `§…§` position in the request template is now tinted in the same colour as its payload-list swatch (delimiters stronger), while an empty `§§` or unpaired `§` shows a red wavy warning underline instead of a position. The tint sits on the shared Repeater overlay-editor pattern (transparent textarea over a scroll-synced backdrop), repaints once per frame, and is dropped in Race / repeat mode.
 
 ### Fixed

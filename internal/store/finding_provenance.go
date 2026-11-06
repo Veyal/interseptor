@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,37 @@ func validateSourceRef(ref string) error {
 }
 func capturedFindingImage(source string) bool {
 	return source == "browser_screenshot" || source == "device_screenshot"
+}
+
+// uploadedFindingImage reports an image bound to a finding whose provenance is
+// an upload or a tool render: an operator screenshot of a terminal transcript,
+// a device dump, a command output. It can evidence a role or a target but never
+// a visual claim, which needs a real browser or device capture.
+func uploadedFindingImage(source string) bool {
+	return source == "operator_upload" || source == "tool_output"
+}
+
+// evidenceFindingImage reports an image that may evidence a role or a target:
+// a real capture or an uploaded transcript. Generated previews and renders
+// never qualify — they are drawings of recorded data, not observations.
+func evidenceFindingImage(source string) bool {
+	return capturedFindingImage(source) || uploadedFindingImage(source)
+}
+
+// protocolCaptureSource is the honest provenance for a block that quotes a
+// non-HTTP conversation (SSH banner, SMTP/IMAP dialogue, SMB or LDAP response).
+// There is no flow to attach and no browser screenshot to take for those, so a
+// transcript is the real artefact rather than a mislabelled capture.
+const protocolCaptureSource = "protocol_capture"
+
+// attestingTranscript reports whether a block is a captured protocol
+// transcript: a text block whose source says it came from a tool or a protocol
+// capture and which carries a proof statement naming what it establishes.
+func attestingTranscript(b FindingBlock) bool {
+	if b.Type != "text" || b.Missing || strings.TrimSpace(b.Proof) == "" {
+		return false
+	}
+	return b.Source == "tool_output" || b.Source == protocolCaptureSource
 }
 
 func stampFindingImageProvenance(tx *sql.Tx, oldBody, newBody string, change FindingChange) (string, error) {

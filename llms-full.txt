@@ -1755,6 +1755,33 @@ Image provenance is explicit:
 A generated flow preview must never be presented as a browser screenshot. It improves report
 readability; the attached flow remains the raw evidence.
 
+### Proof of impact (required for every finding)
+
+Attaching something is not the same as showing impact. The evidence must show the effect the
+vulnerability class claims:
+
+| Class | Minimum evidence of impact |
+| --- | --- |
+| XSS (stored or DOM) | A real browser screenshot of the dialog or the DOM change |
+| XSS (reflected) | The same, plus the request that delivered the payload |
+| SQL injection | Returned rows or an error proving the injected predicate took effect |
+| IDOR / BOLA | Another identity's object returned by the same request, with the owning identity named |
+| SSRF | An OOB interaction recorded by the catcher |
+| Upload | The uploaded artefact reached an executed or readable location |
+| Auth bypass | The privileged action succeeding under the bypassed session |
+| Protocol exposure (SSH, SMTP/IMAP/POP3, SMB, LDAP, Redis) | The captured transcript that shows the exposed service or behaviour |
+
+Generated previews and evidence renders never satisfy this table. A screenshot of markup the server
+echoed is not execution: a stored-XSS finding is ready only when something shows the script ran. A
+finding whose CWE is the XSS family (CWE-79/80/83/84/85/86/87) or that sets `proofReview.visual` gets
+a `visual` gap until a `browser_screenshot` or `device_screenshot` is attached with a `proof` and the
+`result` role.
+
+Practical: an open JavaScript `alert()` blocks Playwright from closing the browser and the run hangs.
+Register a `dialog` listener that leaves the dialog open, capture the OS screen first (`screencapture -x
+shot.png` on macOS), then exit the process — or use a payload that paints a visible banner instead of a
+modal dialog.
+
 Every finding image, and the generated request and response preview of an attached flow, has a
 **Copy image** button in the finding editor and in the report-ready proof view; the image viewer has
 one too. It puts a PNG on the clipboard so you can paste the picture straight into Notion or any
@@ -1863,6 +1890,12 @@ Attach what does prove the claim, and keep the same action / result / control st
 | File or log contents | The smallest excerpt that shows it, as a text block naming the file and the command that produced it; redact the value and keep a length or digest |
 | A static or build fact | The file, the line, and the build or package the artefact came from |
 | Rendered browser behaviour | A real browser screenshot of the observed result; a generated preview never qualifies |
+
+A transcript is evidence here, and it counts: a `text` block whose `source` is `tool_output` (a command
+you ran) or `protocol_capture` (a non-HTTP conversation) with a non-empty `proof` attests the role it
+names and can carry the target evidence, so an SSH or SMTP finding can reach report-ready. It never
+counts as `visual`. An image with `source=operator_upload` or `tool_output` likewise evidences a role or
+a target but is not a browser capture. Prose with no source still proves nothing.
 
 The control is what makes it a finding rather than a note: the same read on a hardened build, the same
 request as a different role, or the documented expectation it contradicts. A finding with no flow and no

@@ -417,6 +417,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	images := map[string]bool{}
 	visual := false
 	visualResult := false
+	transcript := false
 	for _, b := range f.Blocks {
 		if b.Missing || strings.TrimSpace(b.Proof) == "" {
 			continue
@@ -425,12 +426,21 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 			roles[b.Role] = true
 			flows[b.FlowID] = true
 		}
-		if b.Type == "image" && b.Hash != "" && capturedFindingImage(b.Source) {
+		// A captured protocol transcript evidences the role it names. There is no
+		// flow and no browser screenshot for SSH, SMTP, SMB or Redis, so refusing
+		// prose-free transcripts would leave those findings permanently in draft.
+		if attestingTranscript(b) {
 			roles[b.Role] = true
-			visual = true
+			transcript = true
+		}
+		if b.Type == "image" && b.Hash != "" && evidenceFindingImage(b.Source) {
+			roles[b.Role] = true
 			images[b.Hash] = true
-			if b.Role == "result" {
-				visualResult = true
+			if capturedFindingImage(b.Source) {
+				visual = true
+				if b.Role == "result" {
+					visualResult = true
+				}
 			}
 		}
 	}
@@ -453,7 +463,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	if (f.ProofReview.Execution == "not_executed" || f.ProofReview.Execution == "prerequisite_only") && strings.TrimSpace(f.ProofReview.Reason) == "" && len(f.NotExecuted) == 0 {
 		gaps = append(gaps, "execution_reason")
 	}
-	if f.ProofReview.Visual && !visualResult {
+	if f.clientSideImpact() && !visualResult {
 		gaps = append(gaps, "visual")
 	}
 	rawCvss := strings.TrimSpace(f.Cvss)
@@ -488,7 +498,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 		if (t.Relation == "setup" || t.Relation == "chain") && strings.TrimSpace(t.EvidenceException) != "" {
 			continue
 		}
-		ok := len(f.Targets) == 1 && len(t.FlowIDs) == 0 && visual
+		ok := len(f.Targets) == 1 && len(t.FlowIDs) == 0 && (visual || transcript)
 		for _, id := range t.FlowIDs {
 			if flows[id] && !slices.Contains(t.MissingFlowIDs, id) {
 				ok = true
@@ -706,6 +716,26 @@ func undemonstrated(execution string) bool {
 	switch strings.TrimSpace(execution) {
 	case "prerequisite_only", "not_executed":
 		return true
+	}
+	return false
+}
+
+// clientSideImpact reports a finding whose demonstrated effect is only visible
+// in a client, so a real capture is required: an XSS-class CWE (the CWE-79
+// family) or an explicit proofReview.visual declaration. Attaching a flow, an
+// uploaded image or a generated preview does not show that a script ran.
+func (f *Finding) clientSideImpact() bool {
+	if f.ProofReview.Visual {
+		return true
+	}
+	cwe := strings.ToUpper(strings.ReplaceAll(f.Cwe, " ", ""))
+	if strings.Contains(cwe, "XSS") {
+		return true
+	}
+	for _, id := range []string{"CWE-79", "CWE-80", "CWE-83", "CWE-84", "CWE-85", "CWE-86", "CWE-87"} {
+		if strings.Contains(cwe, id) {
+			return true
+		}
 	}
 	return false
 }

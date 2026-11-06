@@ -174,6 +174,8 @@ func normalizeFindingBlockSource(source string) string {
 		return "captured_flow"
 	case "tool_output":
 		return "tool_output"
+	case "protocol_capture", "protocol_transcript":
+		return protocolCaptureSource
 	case "generated_image":
 		return "generated_image"
 	case "evidence_render":
@@ -300,6 +302,9 @@ type FindingReadiness struct {
 	EvidenceCount          int                   `json:"evidenceCount"`
 	AnnotatedEvidenceCount int                   `json:"annotatedEvidenceCount"`
 	FlowCount              int                   `json:"flowCount"`
+	// TranscriptCount are captured protocol transcripts (SSH, SMTP, SMB, raw
+	// socket): the evidence form for findings that have no flow to attach.
+	TranscriptCount        int                   `json:"transcriptCount,omitempty"`
 	ScreenshotCount        int                   `json:"screenshotCount"`
 	ImageCount             int                   `json:"imageCount"`
 	VisualProofRecommended bool                  `json:"visualProofRecommended"`
@@ -1009,6 +1014,12 @@ func (f *Finding) ReadinessSummary() FindingReadiness {
 			} else {
 				unproved++
 			}
+		case "text":
+			if !attestingTranscript(b) {
+				continue
+			}
+			r.TranscriptCount++
+			r.AnnotatedEvidenceCount++
 		case "image":
 			if b.Hash == "" {
 				continue
@@ -1032,7 +1043,7 @@ func (f *Finding) ReadinessSummary() FindingReadiness {
 			typed = true
 		}
 	}
-	r.EvidenceCount = r.FlowCount + r.ImageCount
+	r.EvidenceCount = r.FlowCount + r.ImageCount + r.TranscriptCount
 	r.VisualProofRecommended = r.ScreenshotCount == 0
 	if r.EvidenceCount == 0 {
 		gaps = append(gaps, "evidence")
