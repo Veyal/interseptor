@@ -78,6 +78,32 @@ decoded as hex, so a raw 32-byte ASCII key such as `0123456789abcdef0123456789ab
 becomes a 16-byte key. Pass `key_format="raw"` to use the string bytes as-is, or
 `key_format="hex"` to require hex (an invalid hex key is then an error).
 
+## Signing a re-encoded request
+
+An API that signs every request (HMAC over method + path + body + timestamp, plus a
+nonce) rejects any edited body unless the signature is recomputed, which makes the
+whole tampering class unreachable. A codec may declare `sign` next to `encode`:
+
+```python
+meta = {"id": "pos", "apply_on_send": True}
+
+def sign(flow, side, raw):          # raw = the final outgoing wire body
+    return {
+        "X-Pos-Timestamp": str(now_ms()),
+        "X-Pos-Nonce": random_hex(8),
+        "X-Pos-Signature": hmac_sha256_hex(SECRET, flow.method + flow.path + raw),
+    }
+```
+
+The returned headers override the captured ones on the send. Signing runs only on the same
+explicit path as re-encoding — a Repeater send with the Decoded view and `apply_on_send`
+enabled — never on intercept-forward, passive capture or an unedited resend, so a stored flow
+is never rewritten behind you. `sign` requires `apply_on_send = true` (there is no body to sign
+otherwise) and returns a dict of string header names to string values.
+
+Signing helpers: `now_ms()`, `random_hex(bytes)` → lowercase hex, `hmac_sha256_hex(key, data)`,
+`sha256_hex(data)`.
+
 ## Safety
 
 - Codecs run only on explicit UI/API/MCP decode requests — **never** on the proxy hot path.

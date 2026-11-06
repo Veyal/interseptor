@@ -107,12 +107,17 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 			httpErr(w, http.StatusBadRequest, "codecId required when bodyMode=decoded")
 			return
 		}
-		wire, err := h.encodeWithCodec(in.CodecID, in.FlowID, "req", in.Body, in.RawBody)
+		wire, signed, err := h.encodeWithCodec(in.CodecID, in.FlowID, "req", in.Body, in.RawBody)
 		if err != nil {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		body = wire
+		// The codec's sign() recomputed the signature/timestamp/nonce for the
+		// edited body; apply them over the captured headers.
+		for name, value := range signed {
+			hdr[http.CanonicalHeaderKey(name)] = []string{value}
+		}
 	}
 	ctx, cancel := sendContext(r, in.TimeoutMs)
 	defer cancel()

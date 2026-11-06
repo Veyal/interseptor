@@ -89,6 +89,7 @@ type Codec struct {
 	fnM  starlark.Value // match
 	fnD  starlark.Value // decode
 	fnE  starlark.Value // encode (optional)
+	fnS  starlark.Value // sign (optional)
 }
 
 func predeclared() starlark.StringDict {
@@ -134,8 +135,20 @@ func Compile(id, src string) (*Codec, error) {
 	if meta.ApplyOnSend && fnE == nil {
 		return nil, fmt.Errorf("codec %q: apply_on_send requires encode(flow, side, plaintext)", id)
 	}
+	var fnS starlark.Value
+	if v, ok := globals["sign"]; ok {
+		if _, ok := v.(starlark.Callable); !ok {
+			return nil, fmt.Errorf("codec %q: sign must be a function", id)
+		}
+		fnS = v
+		// A sign() without encode() would claim request signing it cannot apply:
+		// headers can only be recomputed after the body is final.
+		if !meta.ApplyOnSend {
+			return nil, fmt.Errorf("codec %q: sign(flow, side, raw) requires apply_on_send = true", id)
+		}
+	}
 	globals.Freeze()
-	return &Codec{Meta: meta, Src: src, fnM: fnM, fnD: fnD, fnE: fnE}, nil
+	return &Codec{Meta: meta, Src: src, fnM: fnM, fnD: fnD, fnE: fnE, fnS: fnS}, nil
 }
 
 // parseMeta reads the script's meta dict. ID is always the file id (<id>.star):
@@ -196,6 +209,46 @@ func (c *Codec) Decode(flow Flow, side string) (Result, error) {
 			budgetFormatted(starx.ScriptError("decode", err), thread.ExecutionSteps())
 	}
 	return parseDecodeResult(c, v)
+}
+
+// HasSign reports whether the codec can recompute request signatures.
+func (c *Codec) HasSign() bool { return c.fnS != nil }
+
+// Sign runs sign(flow, side, raw) where raw is the final outgoing body and
+// returns the header overrides the caller must apply. It is invoked only on an
+// explicit send with a decoded body: intercept-forward and passive traffic never
+// reach it, so a captured flow is never silently rewritten.
+func (c *Codec) Sign(flow Flow, side, raw string) (map[string]string, error) {
+	if c.fnS == nil {
+		return nil, nil
+	}
+	side = normalizeSide(side)
+	thread := &starlark.Thread{Name: "sign:" + c.Meta.ID}
+	thread.SetMaxExecutionSteps(maxSteps)
+	v, err := starlark.Call(thread, c.fnS, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(raw)}, nil)
+	if err != nil {
+		return nil, budgetFormatted(starx.ScriptError("sign", err), thread.ExecutionSteps())
+	}
+	headers := map[string]string{}
+	if v == starlark.None {
+		return headers, nil
+	}
+	d, ok := v.(*starlark.Dict)
+	if !ok {
+		return nil, fmt.Errorf("sign must return a dict of header names to values")
+	}
+	for _, item := range d.Items() {
+		name, okName := starlark.AsString(item[0])
+		value, okVal := starlark.AsString(item[1])
+		if !okName || !okVal {
+			return nil, fmt.Errorf("sign must return string header names and values")
+		}
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("sign returned an empty header name")
+		}
+		headers[name] = value
+	}
+	return headers, nil
 }
 
 // Encode rebuilds a wire body from edited plaintext.

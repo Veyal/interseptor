@@ -187,6 +187,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		for _, c := range h.loadCodecs() {
 			if c != nil && c.Meta.ID == res.CodecID {
 				out["applyOnSend"] = c.Meta.ApplyOnSend
+				out["signs"] = c.HasSign()
 				break
 			}
 		}
@@ -259,6 +260,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		"codecId": res.CodecID, "title": res.Title,
 		"plaintext": res.Plaintext, "fields": res.Fields, "note": res.Note,
 		"applyOnSend": c.Meta.ApplyOnSend,
+		"signs":       c.HasSign(),
 	}
 	if derr != nil {
 		out["error"] = derr.Error()
@@ -393,25 +395,44 @@ func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// encode helper used by repeater when bodyMode=decoded.
-func (h *Hub) encodeWithCodec(codecID string, flowID int64, side, plaintext, rawBody string) (string, error) {
+// encodeWithCodec re-encodes an edited body and, when the codec declares one,
+// applies its sign() header overrides to the outgoing request. Signing is part
+// of the same explicit-send path: an intercept forward or a passive capture
+// never calls this, so a stored flow is never rewritten behind the operator.
+func (h *Hub) encodeWithCodec(codecID string, flowID int64, side, plaintext, rawBody string) (wire string, headers map[string]string, err error) {
+	wire, c, flow, err := h.encodeAndCompile(codecID, flowID, side, plaintext, rawBody)
+	if err != nil {
+		return "", nil, err
+	}
+	if !c.HasSign() {
+		return wire, nil, nil
+	}
+	headers, err = c.Sign(flow, side, wire)
+	if err != nil {
+		return "", nil, err
+	}
+	return wire, headers, nil
+}
+
+// encodeAndCompile is the shared load → compile → encode step.
+func (h *Hub) encodeAndCompile(codecID string, flowID int64, side, plaintext, rawBody string) (string, *msgcodec.Codec, msgcodec.Flow, error) {
 	src, err := msgcodec.Read(h.CodecsDir(), codecID)
 	if err != nil {
-		return "", err
+		return "", nil, msgcodec.Flow{}, err
 	}
 	c, err := msgcodec.Compile(codecID, src)
 	if err != nil {
-		return "", err
+		return "", nil, msgcodec.Flow{}, err
 	}
 	var flow msgcodec.Flow
 	if flowID > 0 {
 		f, err := h.st.GetFlow(flowID)
 		if err != nil {
-			return "", err
+			return "", nil, msgcodec.Flow{}, err
 		}
 		flow, err = h.flowForCodec(f)
 		if err != nil {
-			return "", err
+			return "", nil, msgcodec.Flow{}, err
 		}
 	}
 	if rawBody != "" {
@@ -421,5 +442,9 @@ func (h *Hub) encodeWithCodec(codecID string, flowID int64, side, plaintext, raw
 			flow.ReqBody = rawBody
 		}
 	}
-	return c.Encode(flow, side, plaintext)
+	wire, err := c.Encode(flow, side, plaintext)
+	if err != nil {
+		return "", nil, msgcodec.Flow{}, err
+	}
+	return wire, c, flow, nil
 }
