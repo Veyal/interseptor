@@ -18,6 +18,7 @@ import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
 import './authz.js'; // side-effect: wires authz modal buttons
 import './capture-loss.js'; // side-effect: History banner when capture drops traffic
+import './suppressed-banner.js'; // side-effect: History banner when the capture filters drop traffic
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';

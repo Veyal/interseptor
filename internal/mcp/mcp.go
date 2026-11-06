@@ -3317,6 +3317,17 @@ func (s *Server) registerTools() {
 			return strings.TrimRight(sb.String(), "\n"), nil
 		})
 
+	s.add("list_suppressed",
+		"Requests the capture filter dropped in the last 15 minutes (out-of-scope, browser or Android telemetry), aggregated per host. Use it when History looks empty: a non-zero total means the proxy forwarded traffic that was never persisted, so 'the app sent nothing' is the wrong conclusion.",
+		obj(map[string]any{"windowSec": p("integer", "look-back window in seconds (default 900, max 86400)")}),
+		func(a map[string]any) (string, error) {
+			path := "/api/flows/suppressed"
+			if n := argInt(a, "windowSec", 0); n > 0 {
+				path += "?windowSec=" + strconv.Itoa(n)
+			}
+			return s.apiGet(path)
+		})
+
 	s.add("prune_undo",
 		"Restore a pruned batch inside its undo window (default 30 minutes). Use prune_pending to see what is restorable.",
 		obj(map[string]any{"pruneId": pt("integer")}, "pruneId"),

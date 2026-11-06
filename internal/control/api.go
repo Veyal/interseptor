@@ -341,6 +341,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/events", "Server-Sent Events stream of live updates"},
 	{"POST", "/api/flows/delete", "Delete flows by id. Body: {ids: []}; content-addressed bodies are untouched (GC separately)"},
 	{"POST", "/api/flows/purge", "Prune flows by host pattern and optional filters; reclaims orphaned bodies in the background afterward (not reflected in this response). Body: {hosts: [], mode: delete|keepOnly, dryRun?: bool, methods?: [], statuses?: [], mimePrefixes?: [], pathPrefixes?: [], undoWindowMs?: n}. A dry run reports per-host counts and bytes and deletes nothing; a real run also returns pruneId and undoExpires, and keeps the batch restorable for the undo window (default 30 minutes). Response: {dryRun, mode, matched, bytes, perHost, deleted, pruneId, undoExpires}"},
+	{"GET", "/api/flows/suppressed", "Requests the capture filter dropped (?windowSec=900, default 15 min): {windowSec, total, hosts:[{host,reason,count,newestTs}], samples:[{ts,host,method,path,reason}]}. reason is out-of-scope | browser-telemetry | android-telemetry. A non-zero total means the proxy forwarded traffic that History does not contain"},
 	{"GET", "/api/flows/prune/pending", "Prune batches still restorable, newest first: {prunes: [{id, ts, expiresTs, mode, flows, restoresInMs}]}"},
 	{"POST", "/api/flows/prune/undo", "Restore a pruned batch inside its undo window. Body: {pruneId}. Response: {restored, pruneId}"},
 	{"POST", "/api/flows/gc", "Reclaim orphaned body files (no flows deleted, no body). Response: {removedFiles,freedBytes}"},
@@ -507,6 +508,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "prune_history", "desc": "DESTRUCTIVE: prune flows by host and optional filters; dryRun first, undo window after"},
 		{"name": "prune_undo", "desc": "Restore a pruned batch inside its undo window"},
 		{"name": "prune_pending", "desc": "List prune batches still restorable"},
+		{"name": "list_suppressed", "desc": "Requests dropped by the capture filters, per host — explains an empty History"},
 	},
 }
 

@@ -26,3 +26,14 @@ func TestRetentionPrunePreviewModel(t *testing.T) {
 		t.Fatalf("prune-preview.test.mjs failed:\n%s", out)
 	}
 }
+
+// The suppressed-traffic banner's wording is pure logic; it tells "we filtered
+// it" apart from "the app sent nothing".
+func TestSuppressedBannerModel(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	if out, err := exec.Command("node", "--test", "ui/_js-tests/suppressed-model.test.mjs").CombinedOutput(); err != nil {
+		t.Fatalf("suppressed-model.test.mjs failed:\n%s", out)
+	}
+}

@@ -325,6 +325,7 @@ func run() error {
 	// operator does not want full out-of-scope traffic on disk (issue #108). The
 	// scope engine already has its persisted rules loaded via control.New.
 	hub.SetCaptureScopeOnly = prx.SetCaptureScopeOnly
+	hub.SetSuppressedProvider(prx.RecentSuppressed)
 	scopeOnlyRaw, scopeOnlySet, _ := st.GetSetting("capture.scopeOnly")
 	if control.ResolveCaptureScopeOnly(scopeOnlyRaw, scopeOnlySet, sc.HasIncludes()) {
 		prx.SetCaptureScopeOnly(true)

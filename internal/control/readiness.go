@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -72,7 +73,7 @@ func (h *authzAPI) buildReadiness() readinessReport {
 
 	flowN, _ := h.st.FlowCount()
 	trafficOK := flowN > 0
-	add("traffic", trafficOK, flowCountDetail(flowN), "route the target through the proxy and browse the app")
+	add("traffic", trafficOK, h.trafficDetail(flowN), "route the target through the proxy and browse the app")
 
 	capOK, capDetail, capFix := captureCheck(h.st.CaptureStats())
 	add("capture", capOK, capDetail, capFix)
@@ -136,6 +137,21 @@ func flowCountDetail(n int64) string {
 		return "no flows captured"
 	}
 	return itoa64(n) + " flows captured"
+}
+
+// trafficDetail says when History is empty *because a filter dropped the
+// traffic*, not because the app sent nothing: without this, "0 flows" and "the
+// proxy forwarded 12 requests your scope filtered" look identical.
+func (h *Hub) trafficDetail(n int64) string {
+	rep := h.suppressedReport(15 * time.Minute)
+	if rep.Total == 0 {
+		return flowCountDetail(n)
+	}
+	top := ""
+	if len(rep.Hosts) > 0 {
+		top = " — top: " + rep.Hosts[0].Host + " (" + rep.Hosts[0].Reason + ")"
+	}
+	return flowCountDetail(n) + " · " + itoa64(rep.Total) + " suppressed by filters" + top
 }
 
 // captureCheck turns the store's capture counters into the "capture" readiness

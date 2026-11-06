@@ -50,6 +50,7 @@ type ScopeChecker interface {
 type proxyFlow struct {
 	*store.Flow
 	suppressCapture bool
+	suppressedBy    string // which suppression dropped it, empty when none
 	budgetHeld      int64 // transform-buffer bytes reserved for this exchange
 }
 
@@ -67,6 +68,7 @@ type Server struct {
 	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
 	budget                   *byteBudget // nil → sharedTransformBudget
 	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
+	suppressed               suppressedLog // recent drops, so a filtered capture is not silent
 	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
@@ -1799,9 +1801,19 @@ func (s *Server) persistable(flow *proxyFlow) bool {
 		return false
 	}
 	if flow.suppressCapture {
+		reason := flow.suppressedBy
+		if reason == "" {
+			reason = SuppressedBrowserTelemetry
+		}
+		s.recordSuppressed(SuppressedRequest{
+			Host: flow.Flow.Host, Method: flow.Flow.Method, Path: flow.Flow.Path, Reason: reason,
+		})
 		return false
 	}
 	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow.Flow) {
+		s.recordSuppressed(SuppressedRequest{
+			Host: flow.Flow.Host, Method: flow.Flow.Method, Path: flow.Flow.Path, Reason: SuppressedOutOfScope,
+		})
 		return false
 	}
 	return true

@@ -209,7 +209,19 @@ func (snapshot suppressionSnapshot) newFlow(flow *store.Flow) *proxyFlow {
 	return &proxyFlow{
 		Flow:            flow,
 		suppressCapture: snapshot.suppresses(flow.Host),
+		suppressedBy:    snapshot.reason(flow.Host),
 	}
+}
+
+// reason names the suppression that dropped the flow, for the ring the UI reads.
+func (snapshot suppressionSnapshot) reason(host string) string {
+	switch {
+	case snapshot.browser && isBrowserTelemetry(host):
+		return SuppressedBrowserTelemetry
+	case snapshot.android && isAndroidTelemetry(host):
+		return SuppressedAndroidTelemetry
+	}
+	return ""
 }
 
 func (s *Server) newFlow(flow *store.Flow) *proxyFlow {

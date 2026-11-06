@@ -943,7 +943,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (139)
+### MCP tools (140)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -1031,6 +1031,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `list_params` | none | Mined request parameters per host (name, where it appears — query/form/json — hit count and a sample path... |
 | `list_rules` | none | List match-&-replace rules. |
 | `list_scope` | none | List target-scope rules (which hosts/paths are in scope). |
+| `list_suppressed` | none | Requests the capture filter dropped in the last 15 minutes (out-of-scope, browser or Android telemetry)... |
 | `list_tags` | none | List the tags in use across the project's flows, with how many flows carry each — so you can reuse existing... |
 | `list_ws_frames` | `id` | List a flow's WebSocket frames (dir/opcode/length/preview). |
 | `normalize_finding_targets` | `id` | Normalize a saved finding's affected targets with reviewer-approved path templates (for example... |
@@ -1193,7 +1194,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (312)
+### REST routes (313)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1328,6 +1329,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | PUT | `/api/flows/retention` | Set the retention policy; body {maxAgeHours, maxFlows} |
 | POST | `/api/flows/retention/run` | Apply the retention policy now and return {deleted} |
 | GET | `/api/flows/session-inspect` | Passive session timeline for selected captured flow ids (ids=1,2&roles=anonymous,user); cookie values are... |
+| GET | `/api/flows/suppressed` | Requests the capture filter dropped (?windowSec=900, default 15 min): {windowSec, total... |
 | POST | `/api/flows/tags` | Add or remove tags on many flows. |
 | GET | `/api/flows/{id}` | Flow detail (headers, body hashes, flags) |
 | GET | `/api/flows/{id}/analyze` | Compact AI-friendly summary of a flow |

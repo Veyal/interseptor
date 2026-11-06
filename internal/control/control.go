@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/proxy"
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/intruder"
@@ -188,6 +189,7 @@ type Hub struct {
 	maintenanceClosed bool
 	maintenanceWG     sync.WaitGroup
 	gcBodiesFn        func() (int64, int64, error)
+	suppressedFn      func(time.Duration) proxy.SuppressedReport
 }
 
 // New builds a Hub. eng, ca, and rebind may be nil. If eng is non-nil, the

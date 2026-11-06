@@ -42,7 +42,7 @@ var fullToolNames = []string{
 	"android_status", "android_setup", "android_teardown",
 	"ios_status", "ios_setup", "ios_install_ca", "ios_ssh_status", "ios_ssh_setup", "ios_ssh_install_ca",
 	"check_readiness", "detect_ssl_pinning", "scope_from_url",
-	"request_human_input", "get_human_response", "host_stats", "prune_history", "prune_undo", "prune_pending",
+	"request_human_input", "get_human_response", "host_stats", "prune_history", "list_suppressed", "prune_undo", "prune_pending",
 	"run_login_macro", "get_authz", "list_authz", "set_authz", "add_authz_identity",
 	"list_authz_runs", "get_authz_run",
 	"remove_authz_identity", "authz_differential", "auth_timeline", "authz_run",
