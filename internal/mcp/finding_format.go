@@ -19,7 +19,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - Link annotated evidence per target; only documented setup/chain targets may use evidenceException
    - Environment: production|staging|development|testing|local (legacy prod is preserved)
    - CVSS:4.0 vector is required for report readiness; the calculated score must match severity
-4. Proof of concept — every filed finding tells this story, in order, so a non-technical reader and a developer can both follow it. This is the Differential proof. Do not pick a shorter role sequence.
+4. Proof of concept — tell this story in order so a non-technical reader and a developer can follow it. This is the Differential proof; do not pick a shorter role sequence.
    - baseline: what the application normally does for an ordinary authorized user. Attach that captured request when it exists, and say it in plain language.
    - action: what we changed or sent to trigger the issue. Name the exact difference from the normal request.
    - result: what the response or application did differently, and the practical impact of that change.
@@ -28,11 +28,11 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - When the finding lists more than one affected target, repeat this proof for each affected target you tested. Link that proof with the target's flow_ids or image_hashes. One capture may be linked to several targets when it truly proves each of them. A target you did not test may be listed without its own proof; do not invent a request to fill it.
    - Readiness still checks an evidenced action, observed result, and a negative or normal control. The baseline is the normal behavior; a separate control block is still required before report-ready.
 5. Evidence — ALWAYS attach evidence. Every finding needs at least one captured flow or image, attached in the same run that files it. A title-only stub is an intermediate step, never a finished finding: create it, then attach, before you move on. A claim with nothing behind it is not a finding.
-   - Any form satisfies this: an attached flow (add_finding_poc), a real browser or device screenshot (add_finding_image), or a generated HTTP preview (render_flow_preview). Attaching something is never optional. What each form is worth as proof is a separate question, answered below.
+   - Any form satisfies this: an attached flow (add_finding_poc), a real browser or device screenshot (add_finding_image), or a generated HTTP preview (render_flow_preview). What each form is worth as proof is a separate question, answered below.
    - If you could not capture anything, say why in proofReview.reason and keep status=needs_verification. Do not file the claim bare and do not invent a request.
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
-   - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot. Only the first 80 lines of each side are drawn by default: when the proof sits deeper in a long body, pass focus with the exact proof text (or lines=res:400-440) plus a caption, and check the reported match counts before relying on the image
+   - Use render_flow_preview for a generated HTTP image; it is a labeled flow preview, not a browser screenshot. The first 80 lines of each side are drawn by default: when the proof sits deeper, pass focus with the exact text (or lines=res:400-440) plus a caption, and check the reported match counts
    - Capability checklist before report-ready (readiness reports each separately): ACTION the exact triggering request/flow; RESULT the observed outcome; CONTROL a negative or normal-behavior request that distinguishes vulnerable behavior; VISUAL a real browser/device screenshot for browser findings
    - Operator-uploaded images count as visual proof only after a reviewer classifies them (classify_finding_image); generated previews and evidence renders never qualify
    - Use render_evidence for generated Intruder/authz/diff/waterfall/chain images (source=evidence_render, sourceRef kept); they are drawn from recorded data and are not browser proof, so a real screenshot via add_finding_image is still required for visual claims
@@ -57,7 +57,7 @@ SEVERITY is the outcome you demonstrated, not the worst case the flaw could enab
 
 NOT EVERY FINDING IS AN HTTP EXCHANGE. When the claim lives outside the proxy -- on-device storage, logs, a manifest or build artefact, client-side enforcement, a debugging socket -- a captured flow cannot prove it, and attaching a loosely related flow is worse than attaching nothing. Attach what does prove it, and keep ACTION / RESULT / CONTROL:
 - device or app state: a real device screenshot (add_finding_image), plus the exact path and how you read it in the action block
-- file or log contents: the smallest excerpt that shows the issue as a text block, naming the file and the command that produced it; redact the value and keep a length or digest
+- file or log contents or a protocol transcript: the smallest excerpt as a text block with source=tool_output or protocol_capture plus a proof, naming the file and command; redact the value and keep a length or digest. Such a transcript evidences a role and a target but never a visual claim
 - static or build facts: the file, the line, and the build or package the artefact came from
 - the control is what makes it a finding: the same read on a hardened build, a different account, or the documented expectation
 

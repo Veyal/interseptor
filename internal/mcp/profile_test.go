@@ -382,9 +382,13 @@ func TestInitializeAndCapabilitiesReportTheProfile(t *testing.T) {
 // Measured schema sizes back the documented token numbers, and guard against a
 // future edit quietly inflating a curated profile back toward the full surface.
 func TestProfileSchemaSizeStaysUnderBudget(t *testing.T) {
+	// The reporting profile grew by one parameter pair (preview scale, capture
+	// counters) after landing exactly on the 22 KiB line; 23 KiB leaves room for
+	// that without drifting toward the 110 KiB full surface. Trim prose before
+	// raising it again.
 	budget := map[Profile]int{
 		ProfileWebPentest: 40 << 10,
-		ProfileReporting:  22 << 10,
+		ProfileReporting:  23 << 10,
 		ProfileMobile:     10 << 10,
 	}
 	fullSize := toolListBytes(t, New("http://127.0.0.1:1"))

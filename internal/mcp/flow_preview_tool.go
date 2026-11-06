@@ -179,6 +179,9 @@ func (s *Server) renderFlowPreview(a map[string]any) (string, error) {
 			"flowId": flowID, "side": side, "pretty": pretty, "layout": layout, "theme": theme,
 			"caption": argStr(a, "caption"), "role": argStr(a, "role"), "proof": argStr(a, "proof"),
 		}
+		if scale := previewArgScale(a); scale > 1 {
+			reqBody["scale"] = scale
+		}
 		if pos, ok := a["position"]; ok && pos != nil {
 			reqBody["position"] = pos
 		}
@@ -202,6 +205,9 @@ func (s *Server) renderFlowPreview(a map[string]any) (string, error) {
 		theme = string(preview.ThemeLight)
 	}
 	q.Set("theme", theme)
+	if scale := previewArgScale(a); scale > 1 {
+		q.Set("scale", strconv.Itoa(scale))
+	}
 	flowPreviewFocusQuery(a, q)
 	if decode != "" {
 		q.Set("decode", decode)
@@ -213,4 +219,17 @@ func (s *Server) renderFlowPreview(a map[string]any) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString([]byte(raw))
 	return fmt.Sprintf("PNG preview for flow %d (%d bytes, side=%s pretty=%v layout=%s theme=%s).%s\nmime=image/png\nURL: /api/flows/%d/preview.png?%s\ndata:image/png;base64,%s\n\nTip: re-call with findingId to attach directly to a finding.",
 		flowID, len(raw), side, pretty, preview.NormalizeLayout(layout), preview.NormalizeTheme(theme), focusReport(hdr)+decodeReport(hdr), flowID, q.Encode(), b64), nil
+}
+
+// previewArgScale reads the optional scale argument, clamped to the renderer's
+// supported range so a bad value degrades to 1x instead of failing the render.
+func previewArgScale(a map[string]any) int {
+	n := argInt(a, "scale", 1)
+	if n < 1 {
+		return 1
+	}
+	if n > 3 {
+		return 3
+	}
+	return n
 }

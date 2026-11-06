@@ -2242,6 +2242,7 @@ func (s *Server) registerTools() {
 			"context":   p("integer", "lines kept around each match or range (default 6, 0-40)"),
 			"mode":      p("string", "top | focus (optional; focus is implied by focus or lines; top ignores them and attaches the first lines without focus provenance)"),
 			"decode":    p("string", "auto (default, decoded body) | raw (captured bytes)"),
+			"scale":     pr("N x linear size with scaled text (default 1); 2 for report-sized evidence", 1, 3),
 		}, "flowId"),
 		func(a map[string]any) (string, error) { return s.renderFlowPreview(a) })
 

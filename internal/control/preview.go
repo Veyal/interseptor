@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -83,6 +84,7 @@ type flowPreviewAttachInput struct {
 	Context   *int        `json:"context"`
 	Mode      string      `json:"mode"`
 	Decode    string      `json:"decode"`
+	Scale     int         `json:"scale"`
 	// Mask credential header values in the stored image. Default true: an
 	// attached screenshot becomes report evidence, and the report's "mask
 	// credential headers" promise cannot reach into a PNG after the fact.
@@ -101,6 +103,7 @@ func (in flowPreviewAttachInput) attachOptions() (preview.Options, bool, error) 
 		Layout: preview.NormalizeLayout(in.Layout),
 		Theme:  preview.NormalizeTheme(in.Theme),
 		Pretty: preview.Bool(in.Pretty == nil || *in.Pretty),
+		Scale:  in.Scale,
 	}
 	focus := previewFocusInput{Focus: in.Focus, Regex: in.Regex, FocusSide: in.FocusSide, Context: in.Context, Caption: in.Caption, Mode: in.Mode}
 	if strings.TrimSpace(in.Lines) != "" {
@@ -228,11 +231,16 @@ func focusNotFoundBody(r preview.RenderResult) map[string]any {
 
 func previewOptsFromQuery(r *http.Request) (preview.Options, error) {
 	q := r.URL.Query()
+	scale, err := previewScaleFromQuery(q)
+	if err != nil {
+		return preview.Options{}, err
+	}
 	opts := preview.Options{
 		Side:   preview.NormalizeSide(q.Get("side")),
 		Layout: preview.NormalizeLayout(q.Get("layout")),
 		Theme:  preview.NormalizeTheme(q.Get("theme")),
 		Pretty: preview.Bool(preview.ParseBool(q.Get("pretty"), true)),
+		Scale:  scale,
 	}
 	in, err := focusFromQuery(q)
 	if err != nil {
@@ -240,6 +248,31 @@ func previewOptsFromQuery(r *http.Request) (preview.Options, error) {
 	}
 	_, err = in.apply(&opts)
 	return opts, err
+}
+
+// basePreviewWidth is the nominal 1x width of a both-sides preview, used only to
+// turn a requested pixel width into an integer scale.
+const basePreviewWidth = 770
+
+// previewScaleFromQuery reads scale=1|2|3, or width=<px> as its rough
+// equivalent. Both are clamped to the renderer's supported range.
+func previewScaleFromQuery(q url.Values) (int, error) {
+	scale := 1
+	if raw := strings.TrimSpace(q.Get("scale")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 4 {
+			return 0, fmt.Errorf("scale must be an integer 1..3")
+		}
+		scale = n
+	}
+	if raw := strings.TrimSpace(q.Get("width")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < basePreviewWidth/2 || n > 6000 {
+			return 0, fmt.Errorf("width must be an integer between %d and 6000", basePreviewWidth/2)
+		}
+		scale = max(1, min(3, (n+basePreviewWidth/2)/basePreviewWidth))
+	}
+	return scale, nil
 }
 
 func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options, maskHeaders bool, decode string) (preview.RenderResult, previewDecodeInfo, error) {

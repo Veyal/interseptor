@@ -56,6 +56,9 @@ const (
 	defaultMaxLines = 80
 	defaultMaxCols  = 100
 	prettyMaxBody   = 256 << 10
+	// maxScale bounds Scale: 3x of a wide pane already exceeds the PNG cap, and
+	// the retry path downshifts MaxLines rather than the scale.
+	maxScale = 3
 	padX            = 16
 	padY            = 12
 	titleBarH       = 36
@@ -96,6 +99,10 @@ type Options struct {
 	// Notices are one-line notes drawn as bands under the caption, e.g. which
 	// body decoding was applied. Callers word them; blank ones are skipped.
 	Notices []string
+	// Scale renders the image at Scale x linear size (font and every pixel
+	// measure scaled together) instead of upscaling a 1x bitmap, so text stays
+	// crisp in a report. 1 (default) keeps existing links unchanged.
+	Scale int
 }
 
 // Bool returns a *bool for Options.Pretty literals.
@@ -204,32 +211,44 @@ func themePalette(t Theme) palette {
 // panic when several preview.png requests render at once.
 var (
 	glyphMu   sync.Mutex
-	faceCache font.Face
+	faceCache = map[int]font.Face{}
+	sfntOnce  sync.Once
+	sfntFont  *opentype.Font
+	sfntErr   error
 )
+
+// baseFontSize is the 1x monospace size; Scale multiplies it for a denser
+// render instead of upscaling finished pixels, so text stays crisp.
+const baseFontSize = 12
 
 func monoFace() (font.Face, error) {
 	glyphMu.Lock()
 	defer glyphMu.Unlock()
-	return monoFaceLocked()
+	return monoFaceLocked(1)
 }
 
-func monoFaceLocked() (font.Face, error) {
-	if faceCache != nil {
-		return faceCache, nil
+func monoFaceLocked(scale int) (font.Face, error) {
+	if scale < 1 {
+		scale = 1
 	}
-	f, err := opentype.Parse(gomono.TTF)
-	if err != nil {
-		return nil, err
+	if face, ok := faceCache[scale]; ok {
+		return face, nil
 	}
-	face, err := opentype.NewFace(f, &opentype.FaceOptions{
-		Size:    12,
+	sfntOnce.Do(func() {
+		sfntFont, sfntErr = opentype.Parse(gomono.TTF)
+	})
+	if sfntErr != nil {
+		return nil, sfntErr
+	}
+	face, err := opentype.NewFace(sfntFont, &opentype.FaceOptions{
+		Size:    float64(baseFontSize * scale),
 		DPI:     72,
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
 		return nil, err
 	}
-	faceCache = face
+	faceCache[scale] = face
 	return face, nil
 }
 
@@ -279,6 +298,12 @@ func (o Options) normalized() Options {
 	if o.MaxCols <= 0 {
 		o.MaxCols = defaultMaxCols
 	}
+	if o.Scale < 1 {
+		o.Scale = 1
+	}
+	if o.Scale > maxScale {
+		o.Scale = maxScale
+	}
 	return o
 }
 
@@ -302,7 +327,7 @@ func RenderFlow(req, res []byte, opts Options) (RenderResult, error) {
 	if expired(o.Deadline) {
 		return RenderResult{}, ErrRenderTimeout
 	}
-	img, err := drawPreview(panes, o.Layout, o.MaxCols, strings.TrimSpace(o.Title), "Interseptor", bands, pal)
+	img, err := drawPreview(panes, o.Layout, o.MaxCols, strings.TrimSpace(o.Title), "Interseptor", bands, pal, o.Scale)
 	if err != nil {
 		return RenderResult{}, err
 	}
@@ -590,6 +615,15 @@ type drawMetrics struct {
 	charW   int
 	gutterW int // line-number gutter including the focus bar
 	numCols int
+	scale   int // 1 = base size; >1 renders every pixel measure at that multiple
+}
+
+// px scales a base-size pixel measure (padding, chrome height) for the render.
+func (m drawMetrics) px(v int) int {
+	if m.scale <= 1 {
+		return v
+	}
+	return v * m.scale
 }
 
 const (
@@ -607,21 +641,24 @@ func gutterCols(panes []pane) int {
 	return max(3, len(fmt.Sprint(maxNo)))
 }
 
-func drawPreview(panes []pane, layout Layout, maxCols int, title, brand string, bands []band, pal palette) (*image.RGBA, error) {
+func drawPreview(panes []pane, layout Layout, maxCols int, title, brand string, bands []band, pal palette, scale int) (*image.RGBA, error) {
 	glyphMu.Lock()
 	defer glyphMu.Unlock()
-	face, err := monoFaceLocked()
+	face, err := monoFaceLocked(scale)
 	if err != nil {
 		return nil, err
 	}
-	m := drawMetrics{face: face, metrics: face.Metrics()}
-	m.lineH = (m.metrics.Ascent + m.metrics.Descent).Ceil() + lineGap
+	if scale < 1 {
+		scale = 1
+	}
+	m := drawMetrics{face: face, metrics: face.Metrics(), scale: scale}
+	m.lineH = (m.metrics.Ascent + m.metrics.Descent).Ceil() + m.px(lineGap)
 	m.charW = font.MeasureString(face, "M").Ceil()
 	if m.charW < 1 {
 		m.charW = 7
 	}
 	m.numCols = gutterCols(panes)
-	m.gutterW = gutterBarW + 6 + m.numCols*m.charW + 8
+	m.gutterW = m.px(gutterBarW) + m.px(6) + m.numCols*m.charW + m.px(8)
 	if layout == LayoutHorizontal && len(panes) >= 2 {
 		return renderHorizontal(panes, m, maxCols, title, brand, bands, pal), nil
 	}
@@ -629,63 +666,63 @@ func drawPreview(panes []pane, layout Layout, maxCols int, title, brand string, 
 }
 
 func chromeHeight(m drawMetrics, bands []band) int {
-	return titleBarH + len(bands)*(m.lineH+bandPadY)
+	return m.px(titleBarH) + len(bands)*(m.lineH+m.px(bandPadY))
 }
 
 func chromeMinWidth(m drawMetrics, title, brand string, bands []band) int {
-	w := font.MeasureString(m.face, brand+"  "+title).Ceil() + padX*2
+	w := font.MeasureString(m.face, brand+"  "+title).Ceil() + m.px(padX)*2
 	for _, b := range bands {
-		w = max(w, font.MeasureString(m.face, b.text).Ceil()+padX*2+8)
+		w = max(w, font.MeasureString(m.face, b.text).Ceil()+m.px(padX)*2+8)
 	}
 	return w
 }
 
 func renderVertical(panes []pane, m drawMetrics, maxCols int, title, brand string, bands []band, pal palette) *image.RGBA {
-	contentW := max(max(m.gutterW+maxCols*m.charW+padX*2, chromeMinWidth(m, title, brand, bands)), 480)
+	contentW := max(max(m.gutterW+maxCols*m.charW+m.px(padX)*2, chromeMinWidth(m, title, brand, bands)), 480)
 	chromeH := chromeHeight(m, bands)
-	height := chromeH + padY
+	height := chromeH + m.px(padY)
 	for _, p := range panes {
-		height += paneHeaderH + len(p.rows)*m.lineH + padY
+		height += m.px(paneHeaderH) + len(p.rows)*m.lineH + m.px(padY)
 	}
-	height += padY
+	height += m.px(padY)
 
 	img := image.NewRGBA(image.Rect(0, 0, contentW, height))
 	drawChrome(img, contentW, m, title, brand, bands, pal)
 
 	d := &font.Drawer{Dst: img, Face: m.face}
-	y := chromeH + padY/2
+	y := chromeH + m.px(padY)/2
 	for _, p := range panes {
-		paneH := paneHeaderH + len(p.rows)*m.lineH + padY/2
-		drawPane(img, d, m, p, padX/2, y, contentW-padX/2, paneH, pal)
-		y += paneH + padY/2
+		paneH := m.px(paneHeaderH) + len(p.rows)*m.lineH + m.px(padY)/2
+		drawPane(img, d, m, p, m.px(padX)/2, y, contentW-m.px(padX)/2, paneH, pal)
+		y += paneH + m.px(padY)/2
 	}
 	return img
 }
 
 func renderHorizontal(panes []pane, m drawMetrics, maxCols int, title, brand string, bands []band, pal palette) *image.RGBA {
-	colW := max(m.gutterW+maxCols*m.charW+padX*2, 320)
-	contentW := max(colW*2+paneGap+padX, chromeMinWidth(m, title, brand, bands))
+	colW := max(m.gutterW+maxCols*m.charW+m.px(padX)*2, 320)
+	contentW := max(colW*2+m.px(paneGap)+m.px(padX), chromeMinWidth(m, title, brand, bands))
 	rows := 0
 	for _, p := range panes {
 		rows = max(rows, len(p.rows))
 	}
-	paneH := paneHeaderH + rows*m.lineH + padY/2
+	paneH := m.px(paneHeaderH) + rows*m.lineH + m.px(padY)/2
 	chromeH := chromeHeight(m, bands)
-	height := chromeH + padY + paneH + padY
+	height := chromeH + m.px(padY) + paneH + m.px(padY)
 
 	img := image.NewRGBA(image.Rect(0, 0, contentW, height))
 	drawChrome(img, contentW, m, title, brand, bands, pal)
 
 	d := &font.Drawer{Dst: img, Face: m.face}
-	y := chromeH + padY/2
+	y := chromeH + m.px(padY)/2
 	// Request on the left, Response on the right (Burp/HTTP-tool convention).
 	left, right := panes[0], panes[1]
 	if panes[0].label == "Response" && panes[1].label == "Request" {
 		left, right = panes[1], panes[0]
 	}
-	x0 := padX / 2
+	x0 := m.px(padX) / 2
 	drawPane(img, d, m, left, x0, y, x0+colW, paneH, pal)
-	x1 := x0 + colW + paneGap
+	x1 := x0 + colW + m.px(paneGap)
 	drawPane(img, d, m, right, x1, y, x1+colW, paneH, pal)
 	return img
 }
@@ -696,29 +733,29 @@ func fillRect(img *image.RGBA, r image.Rectangle, c color.RGBA) {
 
 func drawChrome(img *image.RGBA, contentW int, m drawMetrics, title, brand string, bands []band, pal palette) {
 	fillRect(img, img.Bounds(), pal.bg)
-	fillRect(img, image.Rect(0, 0, contentW, titleBarH), pal.titleBar)
-	fillRect(img, image.Rect(0, titleBarH-2, contentW, titleBarH), pal.accent)
+	fillRect(img, image.Rect(0, 0, contentW, m.px(titleBarH)), pal.titleBar)
+	fillRect(img, image.Rect(0, m.px(titleBarH)-2, contentW, m.px(titleBarH)), pal.accent)
 
 	asc := m.metrics.Ascent.Ceil()
 	d := &font.Drawer{Dst: img, Src: image.NewUniform(pal.accent), Face: m.face}
-	d.Dot = fixed.P(padX, titleBarH/2+asc/2-2)
+	d.Dot = fixed.P(m.px(padX), m.px(titleBarH)/2+asc/2-2)
 	d.DrawString(brand)
 	if title != "" {
 		brandW := font.MeasureString(m.face, brand+"  ").Ceil()
 		d.Src = image.NewUniform(pal.muted)
-		d.Dot = fixed.P(padX+brandW, titleBarH/2+asc/2-2)
+		d.Dot = fixed.P(m.px(padX)+brandW, m.px(titleBarH)/2+asc/2-2)
 		d.DrawString(title)
 	}
-	y := titleBarH
+	y := m.px(titleBarH)
 	for _, b := range bands {
-		h := m.lineH + bandPadY
+		h := m.lineH + m.px(bandPadY)
 		bar, fg := pal.accent, pal.text
 		if b.notice {
 			bar, fg = pal.notice, pal.notice
 		}
-		fillRect(img, image.Rect(padX/2, y+bandPadY/2, padX/2+gutterBarW, y+h), bar)
+		fillRect(img, image.Rect(m.px(padX)/2, y+m.px(bandPadY)/2, m.px(padX)/2+m.px(gutterBarW), y+h), bar)
 		d.Src = image.NewUniform(fg)
-		d.Dot = fixed.P(padX+4, y+bandPadY/2+asc)
+		d.Dot = fixed.P(m.px(padX)+4, y+m.px(bandPadY)/2+asc)
 		d.DrawString(b.text)
 		y += h
 	}
@@ -726,14 +763,14 @@ func drawChrome(img *image.RGBA, contentW int, m drawMetrics, title, brand strin
 
 func drawPane(img *image.RGBA, d *font.Drawer, m drawMetrics, p pane, x0, y0, x1, paneH int, pal palette) {
 	fillRect(img, image.Rect(x0, y0, x1, y0+paneH), p.bg)
-	fillRect(img, image.Rect(x0, y0, x1, y0+paneHeaderH), pal.paneHdr)
-	fillRect(img, image.Rect(x0, y0, x0+3, y0+paneHeaderH), pal.accent)
+	fillRect(img, image.Rect(x0, y0, x1, y0+m.px(paneHeaderH)), pal.paneHdr)
+	fillRect(img, image.Rect(x0, y0, x0+3, y0+m.px(paneHeaderH)), pal.accent)
 
 	d.Src = image.NewUniform(pal.text)
-	d.Dot = fixed.P(x0+padX/2+4, y0+paneHeaderH/2+m.metrics.Ascent.Ceil()/2-2)
+	d.Dot = fixed.P(x0+m.px(padX)/2+4, y0+m.px(paneHeaderH)/2+m.metrics.Ascent.Ceil()/2-2)
 	d.DrawString(p.label)
 
-	top := y0 + paneHeaderH
+	top := y0 + m.px(paneHeaderH)
 	for _, r := range p.rows {
 		drawRow(img, d, m, r, x0, x1, top, pal)
 		top += m.lineH
@@ -749,9 +786,9 @@ func drawRow(img *image.RGBA, d *font.Drawer, m drawMetrics, r planRow, x0, x1, 
 	textX := x0 + m.gutterW
 	switch {
 	case r.match():
-		fillRect(img, image.Rect(barX, top, barX+gutterBarW, top+m.lineH), pal.hlBar)
+		fillRect(img, image.Rect(barX, top, barX+m.px(gutterBarW), top+m.lineH), pal.hlBar)
 	case r.inRange:
-		fillRect(img, image.Rect(barX, top, barX+gutterBarW, top+m.lineH), pal.accent)
+		fillRect(img, image.Rect(barX, top, barX+m.px(gutterBarW), top+m.lineH), pal.accent)
 	}
 	if r.kind == rowMarker {
 		fillRect(img, image.Rect(x0+1, top, x1-1, top+m.lineH), pal.marker)

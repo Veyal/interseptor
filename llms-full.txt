@@ -1333,7 +1333,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/flows/{id}/decoded` | App-layer message codec decode (?side=req\|res). |
 | PUT | `/api/flows/{id}/interception` | Mark a bodiless CONNECT status-0 flow as pinning_blocked or not_intercepted so a capture gap is not read as a... |
 | PUT | `/api/flows/{id}/note` | Set or clear a flow note. |
-| GET | `/api/flows/{id}/preview.png` | Interseptor-styled PNG preview of request/response (?side=both\|req\|res, pretty=0\|1 default 1... |
+| GET | `/api/flows/{id}/preview.png` | Interseptor-styled PNG preview of request/response (?scale=1..3 or `width=<px>` renders at that linear size... |
 | GET | `/api/flows/{id}/raw` | Reconstructed raw request/response (?side=req\|res) |
 | POST | `/api/flows/{id}/replay` | Re-send a captured flow's request as a new Repeater flow. |
 | PUT | `/api/flows/{id}/tags` | Replace a flow's tags. |
