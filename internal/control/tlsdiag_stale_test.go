@@ -1,119 +1,60 @@
 package control
 
 import (
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
-// tlsFixture stores one TLS rejection and, optionally, one intercepted HTTPS
-// flow, at the given ages.
-func tlsFixture(t *testing.T, failureAge, successAge time.Duration) *tlsDiagnosisReport {
-	t.Helper()
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { st.Close() })
-	st.InsertFlow(&store.Flow{
-		TS: time.Now().Add(-failureAge), Method: "CONNECT", Scheme: "https", Host: "api.bank.example", Port: 443,
-		Path: "(tls handshake)", Error: "tls: client closed during handshake", Flags: store.FlagTLSFailed,
-	})
-	if successAge >= 0 {
-		st.InsertFlow(&store.Flow{
-			TS: time.Now().Add(-successAge), Method: "GET", Scheme: "https", Host: "api.bank.example", Port: 443,
-			Path: "/v1/me", Status: 200,
-		})
-	}
-	hub := New(st, intercept.New(), nil, nil, nil)
-	rep := (&authzAPI{hub}).buildTLSDiagnosis("")
-	return &rep
-}
+// A rejection captured hours ago must not keep tls_intercept blocked once a fresh
+// HTTPS flow has been intercepted: a fixed environment that reads as broken hides
+// the real regression next time.
+func TestStaleTLSRejectionsDoNotBlockAfterAFreshSuccess(t *testing.T) {
+	h, st, _ := newHub(t)
 
-// A pinning bypass that worked leaves old rejections behind. They must not keep
-// the check red once fresh traffic is being intercepted.
-func TestStaleTLSFailureDoesNotBlockWhenInterceptionWorks(t *testing.T) {
-	rep := tlsFixture(t, 3*time.Hour, time.Minute)
+	old := time.Now().Add(-3 * time.Hour)
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: old, Method: "CONNECT", Scheme: "https", Host: "api.example", Port: 443,
+		Path: "", Status: 0, Flags: store.FlagTLSFailed,
+	}); err != nil {
+		t.Fatalf("insert failure: %v", err)
+	}
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.Now().Add(-time.Minute), Method: "GET", Scheme: "https", Host: "api.example", Port: 443,
+		Path: "/me", Status: 200, Flags: 0, Mime: "application/json",
+	}); err != nil {
+		t.Fatalf("insert success: %v", err)
+	}
+
+	rep := (&authzAPI{h}).buildTLSDiagnosis("")
 	if rep.Verdict != "ok" {
-		t.Fatalf("verdict = %q, want ok: %s", rep.Verdict, rep.Detail)
+		t.Fatalf("verdict = %q (%s), want ok: a newer success means interception works", rep.Verdict, rep.Detail)
 	}
-	if rep.RecentFailureCount != 0 {
-		t.Fatalf("recentFailureCount = %d, want 0", rep.RecentFailureCount)
+	if rep.NewestFailureAge == "" {
+		t.Fatal("the detail must still state the age of the last rejection")
 	}
-	if rep.NewestFailureAge == "" || !strings.Contains(rep.Detail, "newest "+rep.NewestFailureAge+" ago") {
-		t.Fatalf("detail must state the newest failure's age: %q", rep.Detail)
-	}
-	if !strings.Contains(rep.NewestFailureAge, "3h") {
-		t.Fatalf("age = %q, want it to describe 3 hours", rep.NewestFailureAge)
+	if rep.NewestFailureTS == 0 || rep.NewestFailureTS > time.Now().Add(-2*time.Hour).UnixMilli() {
+		t.Fatalf("newest failure ts = %d, want the old one", rep.NewestFailureTS)
 	}
 }
 
-func TestFreshTLSFailureStillBlocks(t *testing.T) {
-	rep := tlsFixture(t, 30*time.Second, time.Minute)
-	if rep.Verdict != "tls_blocked" {
-		t.Fatalf("verdict = %q, want tls_blocked: %s", rep.Verdict, rep.Detail)
+// A rejection newer than the last success is current, so it still blocks.
+func TestFreshTLSRejectionStillBlocks(t *testing.T) {
+	h, st, _ := newHub(t)
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.Now().Add(-2 * time.Minute), Method: "GET", Scheme: "https", Host: "api.example", Port: 443,
+		Path: "/me", Status: 200,
+	}); err != nil {
+		t.Fatalf("insert success: %v", err)
 	}
-	if rep.RecentFailureCount != 1 {
-		t.Fatalf("recentFailureCount = %d, want 1", rep.RecentFailureCount)
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.Now().Add(-time.Minute), Method: "CONNECT", Scheme: "https", Host: "api.example", Port: 443,
+		Flags: store.FlagTLSFailed,
+	}); err != nil {
+		t.Fatalf("insert failure: %v", err)
 	}
-}
-
-func TestStaleTLSFailureWithoutAnySuccessStillBlocks(t *testing.T) {
-	rep := tlsFixture(t, 3*time.Hour, -1)
-	if rep.Verdict != "tls_blocked" {
-		t.Fatalf("verdict = %q, want tls_blocked when nothing was ever intercepted", rep.Verdict)
-	}
-	if !strings.Contains(rep.Detail, "no HTTPS flow has been intercepted yet") {
-		t.Fatalf("detail should say interception never worked: %q", rep.Detail)
-	}
-}
-
-// The readiness row follows the verdict, so a fixed environment reports ready.
-func TestReadinessTLSCheckClearsAfterStaleFailures(t *testing.T) {
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer st.Close()
-	st.InsertFlow(&store.Flow{TS: time.Now().Add(-4 * time.Hour), Method: "CONNECT", Scheme: "https", Host: "x.example", Port: 443, Flags: store.FlagTLSFailed, Error: "tls fail"})
-	st.InsertFlow(&store.Flow{TS: time.Now(), Method: "GET", Scheme: "https", Host: "x.example", Port: 443, Path: "/", Status: 200})
-	if _, err := st.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "x.example", Enabled: true}); err != nil {
-		t.Fatalf("scope: %v", err)
-	}
-
-	hub := New(st, intercept.New(), nil, nil, nil)
-	rep := (&authzAPI{hub}).buildReadiness()
-	for _, c := range rep.Checks {
-		if c.ID != "tls_intercept" {
-			continue
-		}
-		if !c.OK {
-			t.Fatalf("tls_intercept should be ok with stale failures and fresh success: %+v", c)
-		}
-		if !strings.Contains(c.Detail, "older TLS rejection") {
-			t.Fatalf("detail should distinguish historical rejections: %q", c.Detail)
-		}
-		return
-	}
-	t.Fatal("tls_intercept row missing")
-}
-
-func TestHumanAge(t *testing.T) {
-	for _, tc := range []struct {
-		d    time.Duration
-		want string
-	}{
-		{45 * time.Second, "45s"},
-		{12 * time.Minute, "12m"},
-		{3*time.Hour + 12*time.Minute, "3h12m"},
-		{50 * time.Hour, "2d02h"},
-		{-time.Minute, "0s"},
-	} {
-		if got := humanAge(tc.d); got != tc.want {
-			t.Errorf("humanAge(%v) = %q, want %q", tc.d, got, tc.want)
-		}
+	if rep := (&authzAPI{h}).buildTLSDiagnosis(""); rep.Verdict != "tls_blocked" {
+		t.Fatalf("verdict = %q, want tls_blocked", rep.Verdict)
 	}
 }

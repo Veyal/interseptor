@@ -125,6 +125,14 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 	}
 
 	switch {
+	case rep.TLSFailureCount > 0 && rep.HTTPSOkCount > 0 && newestSuccessMS > newestFailureMS:
+		// A successful MITM is newer than the last rejection: interception works
+		// now, whatever the history says. Without this, a fixed environment keeps
+		// reporting a blocker until the old rows age out of the window, and a real
+		// regression hides in that noise.
+		rep.Verdict = "ok"
+		rep.Detail = fmt.Sprintf("HTTPS interception is working (%d successful HTTPS flows, newest %s ago; the last rejection was %s ago and is historical)",
+			rep.HTTPSOkCount, humanAge(time.Since(time.UnixMilli(newestSuccessMS))), rep.NewestFailureAge)
 	case rep.TLSFailureCount > 0 && recentFailures > 0:
 		rep.Verdict = "tls_blocked"
 		n := rep.TLSFailureCount
