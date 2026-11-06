@@ -184,6 +184,13 @@ export async function loadCodecsList() {
       hint.textContent = lab.text;
       hint.title = lab.title;
     }
+    // Publish the per-call step budget: a codec that dies on "too many steps"
+    // is otherwise sized by guesswork.
+    const budget = $('#codecsStepBudget');
+    if (budget && d.maxSteps) {
+      budget.textContent = 'Step budget: ' + Number(d.maxSteps).toLocaleString() + ' per call';
+      budget.hidden = false;
+    }
     if (!list.length) {
       box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> or consult <b>Docs</b> → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
       return;

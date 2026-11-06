@@ -1,6 +1,7 @@
-import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DROPPED, flowPending, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, mountHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, flowSelectionImageItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
+import { $, findingsEditable, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DROPPED, flowPending, FLAG_COLLECTION, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, beautifyBody, PRETTY_MAX, mountHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError, mountFlowCopyPng, flowPngMenuItems, flowSelectionImageItems, copyFlowPng, copyDecoded, DEC_OPS, ctxMenuContains, ctxMenuTrigger, registerCtxDecoder, registerCtxHistorySearch, registerWorkspaceCtxSection } from './core.js';
 import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
+import { decodedShape } from './codec-view-model.js';
 import { on as busOn, EVENTS } from './bus.js';
 import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL, subtreeVisibility } from './inspector-structure.js';
 import { highlightJSON, apiBytes } from './core.js';
@@ -2003,9 +2004,35 @@ export async function renderSide(side){
           ? `<div class="hint codec-fields">Decoded fields: ${Object.keys(d.fields).map(k=>`<code>${esc(k)}</code>`).join(', ')}</div>` : '';
         const badge=`<div class="hint codec-badge">Decoded for display · <b>${esc(d.title||d.codecId||'')}</b>${d.applyOnSend?' · apply_on_send':''}${d.note?' · '+esc(d.note):''}</div>`;
         const body=typeof d.plaintext==='string'?d.plaintext:'';
+        // A codec usually returns compact JSON over an encrypted wire format, so
+        // the Pretty view (which formats the raw bytes) cannot help here. Indent
+        // the plaintext instead and keep the original one click away.
+        const shape=decodedShape(body,PRETTY_MAX,beautifyBody);
+        const beautified=shape.shown;
+        const isJson=shape.beautified;
+        const paint=(text)=>{
+          const pre=el.querySelector('.codec-pre');
+          if(pre)pre.innerHTML=highlightBodyText(text,mime||'application/json');
+          el._rawText=text;
+          el.querySelectorAll('[data-codec-shape]').forEach(b=>{
+            const on=b.dataset.codecShape===(text===body?'raw':'pretty');
+            b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');
+          });
+        };
+        const toggle=isJson
+          ? '<div class="seg codec-shape" role="group" aria-label="Decoded body format">'
+            +'<button type="button" data-codec-shape="pretty" class="on" aria-pressed="true">Pretty</button>'
+            +'<button type="button" data-codec-shape="raw" aria-pressed="false">Raw</button></div>'
+          : '';
         el._rawText=body;
         el._pretty=true;
-        el.innerHTML=badge+fields+'<pre class="codec-pre">'+highlightBodyText(body,mime||'application/json')+'</pre>';
+        el.innerHTML=badge+fields+toggle+'<pre class="codec-pre">'+highlightBodyText(beautified,mime||'application/json')+'</pre>';
+        if(isJson){
+          el._rawText=beautified;
+          el.querySelectorAll('[data-codec-shape]').forEach(b=>{
+            b.addEventListener('click',()=>paint(b.dataset.codecShape==='raw'?body:beautified));
+          });
+        }
         return;
       }
       if(view==='hex'){

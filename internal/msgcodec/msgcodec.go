@@ -16,7 +16,38 @@ import (
 	"github.com/Veyal/interseptor/internal/starx"
 )
 
-const maxSteps = 5_000_000
+// MaxSteps is the Starlark step budget for one compile/match/decode/encode
+// call. Exported so the codec editor can publish it and a budget failure can
+// name what it hit instead of a bare "computation cancelled".
+const MaxSteps = 5_000_000
+
+const maxSteps = MaxSteps
+
+// budgetError annotates a Starlark cancellation with the budget it hit. The
+// library's own text ("Starlark computation cancelled: too many steps") gives no
+// scale, so sizing a codec was guesswork.
+func budgetError(err error, steps uint64) error {
+	if err == nil {
+		return nil
+	}
+	if !strings.Contains(err.Error(), "too many steps") {
+		return err
+	}
+	return fmt.Errorf("%w (used %d of %d steps)", err, steps, MaxSteps)
+}
+
+// budgetFormatted is budgetError for an error already rendered by
+// starx.ScriptError: an EvalError's backtrace replaces the wrapped text, so the
+// hint has to be appended to the formatted message instead.
+func budgetFormatted(err error, steps uint64) error {
+	if err == nil || !strings.Contains(err.Error(), "too many steps") {
+		return err
+	}
+	if strings.Contains(err.Error(), " steps)") {
+		return err
+	}
+	return fmt.Errorf("%w (used %d of %d steps)", err, steps, MaxSteps)
+}
 
 // Meta is codec metadata from the script's `meta` dict (or defaults from id).
 type Meta struct {
@@ -71,7 +102,7 @@ func Compile(id, src string) (*Codec, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
 	if err != nil {
-		return nil, starx.ScriptError(fmt.Sprintf("codec %q", id), err)
+		return nil, budgetFormatted(starx.ScriptError(fmt.Sprintf("codec %q", id), err), thread.ExecutionSteps())
 	}
 	meta := Meta{ID: id, Title: id, Enabled: true}
 	if mv, ok := globals["meta"]; ok {
@@ -145,7 +176,7 @@ func (c *Codec) Match(flow Flow, side string) (bool, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	v, err := starlark.Call(thread, c.fnM, starlark.Tuple{flowValue(flow), starlark.String(side)}, nil)
 	if err != nil {
-		return false, starx.ScriptError("match", err)
+		return false, budgetFormatted(starx.ScriptError("match", err), thread.ExecutionSteps())
 	}
 	if b, ok := v.(starlark.Bool); ok {
 		return bool(b), nil
@@ -161,7 +192,8 @@ func (c *Codec) Decode(flow Flow, side string) (Result, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	v, err := starlark.Call(thread, c.fnD, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(raw)}, nil)
 	if err != nil {
-		return Result{CodecID: c.Meta.ID, Title: c.Meta.Title, Error: err.Error()}, starx.ScriptError("decode", err)
+		return Result{CodecID: c.Meta.ID, Title: c.Meta.Title, Error: budgetError(err, thread.ExecutionSteps()).Error()},
+			budgetFormatted(starx.ScriptError("decode", err), thread.ExecutionSteps())
 	}
 	return parseDecodeResult(c, v)
 }
@@ -176,7 +208,7 @@ func (c *Codec) Encode(flow Flow, side, plaintext string) (string, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	v, err := starlark.Call(thread, c.fnE, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(plaintext)}, nil)
 	if err != nil {
-		return "", starx.ScriptError("encode", err)
+		return "", budgetFormatted(starx.ScriptError("encode", err), thread.ExecutionSteps())
 	}
 	s, ok := starlark.AsString(v)
 	if !ok {

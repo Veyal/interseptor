@@ -57,6 +57,9 @@ func (h *checksAPI) listCodecs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"codecs": codecs,
 		"dir":    dir,
+		// maxSteps publishes the per-call Starlark budget so the editor can show
+		// what a codec is spending instead of leaving sizing to guesswork.
+		"maxSteps": msgcodec.MaxSteps,
 	})
 }
 
