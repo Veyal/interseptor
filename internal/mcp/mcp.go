@@ -47,6 +47,10 @@ type Server struct {
 	authMu        sync.RWMutex
 	authorization string
 	report        func(Activity) // called after each tool call; surfaces AI actions in the UI
+	projMu        sync.Mutex
+	projName      string
+	projDir       string
+	projAt        time.Time
 }
 
 type tool struct {
@@ -416,6 +420,11 @@ func (s *Server) runTool(name string, args map[string]any) (text string, err err
 	if args == nil {
 		args = map[string]any{}
 	}
+	// A pinned project that no longer matches means the operator switched under
+	// the caller, which for a destructive tool is exactly the silent mistake.
+	if err := s.requireExpectedProject(name, args); err != nil {
+		return "", err
+	}
 	start := time.Now()
 	// Validate against the advertised schema before the tool runs, and turn a
 	// result that only reports an error into a tool error, so an agent sees a
@@ -427,6 +436,11 @@ func (s *Server) runTool(name string, args map[string]any) (text string, err err
 		if msg, failed := errorOnlyResult(text); failed {
 			text, err = "", fmt.Errorf("%s", msg)
 		}
+	}
+	if err == nil && text != "" {
+		// Name the project on every result: an agent that reads only the response
+		// must never have to guess which engagement it just changed.
+		text += s.projectFooter()
 	}
 	if s.report != nil {
 		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
@@ -641,6 +655,9 @@ func (s *Server) apiWithHeaders(method, path string, body any) (string, http.Hea
 		return "", nil, fmt.Errorf("control API unreachable at %s — is `interseptor` running? (%v)", s.base, err)
 	}
 	defer resp.Body.Close()
+	// The response names the project it acted on; record it so the tool result can
+	// say so without a second round trip.
+	s.noteProject(resp.Header.Get("X-Interseptor-Project"), resp.Header.Get("X-Interseptor-Project-Dir"))
 	b, readErr := io.ReadAll(io.LimitReader(resp.Body, maxControlAPIResponseBytes+1))
 	if readErr != nil {
 		return "", nil, fmt.Errorf("read control API response: %w", readErr)

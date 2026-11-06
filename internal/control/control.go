@@ -262,7 +262,25 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 // security guard (see securityGuard).
 // securityHeaders owns framing protection (frame-ancestors 'none'), so it
 // replaces the older noFraming wrapper and also covers guard refusals.
-func (h *Hub) Handler() http.Handler { return securityHeaders(h.securityGuard(h.mux)) }
+func (h *Hub) Handler() http.Handler {
+	return securityHeaders(h.securityGuard(h.withProjectHeaders(h.mux)))
+}
+
+// withProjectHeaders names the active project on every API response. MCP tools
+// are HTTP clients of this API, and a tool result that does not say which
+// project it touched lets an agent act on the wrong engagement after a switch.
+// The value rides on the response the tool already made: no extra round trip.
+func (h *Hub) withProjectHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if name := h.ProjectName; name != "" {
+			w.Header().Set("X-Interseptor-Project", name)
+			if dir := h.ProjectDir; dir != "" {
+				w.Header().Set("X-Interseptor-Project-Dir", dir)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
 // calls stay on loopback while retaining the authenticated caller's credential.

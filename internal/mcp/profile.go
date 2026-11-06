@@ -281,6 +281,7 @@ func instructionSections() []string {
 		sectionScan,
 		sectionRecord,
 		sectionProofOfImpact,
+		sectionProjectPin,
 		findingFormatGuide + "\n\n",
 		sectionTagging,
 		sectionHumanInput,
