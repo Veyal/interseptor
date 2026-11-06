@@ -429,6 +429,9 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 	if h.targetsOwnListener(url) {
 		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
 	}
+	if msg := h.aiScopeRefusal(extra, url, ""); msg != "" {
+		return authzResult{Name: id.Name, Error: msg}
+	}
 	body := bodyOverride
 	if body == nil {
 		var err error
@@ -793,6 +796,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	var results []crossHostResult
 	for _, t := range targets {
 		targetURL := t.scheme + "://" + netutil.URLAuthority(t.scheme, t.host, t.port) + path
+		if msg := h.aiScopeRefusal(aiSourceFlag(r), targetURL, ""); msg != "" {
+			results = append(results, crossHostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL, Error: msg})
+			continue
+		}
 
 		hdrs := cloneHeaders(ref.ReqHeaders)
 		if mode == "bearer" {

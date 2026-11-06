@@ -387,6 +387,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "evaluate_finding_cvss", "desc": "Preview CVSS v4 score and severity"},
 		{"name": "redact_value", "desc": "Describe a secret as {len, sha256_prefix, kind}; the value is never stored"},
 		{"name": "list_flows", "desc": "List/search captured proxy flows"},
+		{"name": "list_endpoints", "desc": "Deduplicated attack-surface map: one row per (method, host, path)"},
+		{"name": "list_params", "desc": "Mined request parameter names per host: the injection-point inventory"},
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},
 		{"name": "analyze_flow", "desc": "Compact summary: headers, params, scanner hits, scope"},
 		{"name": "audit_endpoint", "desc": "Consolidated triage: attack surfaces, auth context, passive findings, next steps"},

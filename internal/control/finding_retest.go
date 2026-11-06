@@ -237,6 +237,10 @@ func (h *findingsAPI) retestOneFlow(r *http.Request, flowID int64, in retestRequ
 		obs.Skipped = "refusing to send to Interseptor's own listener"
 		return obs
 	}
+	if msg := h.aiScopeRefusal(aiSourceFlag(r), url, ""); msg != "" {
+		obs.Skipped = msg + "; " + aiScopeFix
+		return obs
+	}
 	body, err := h.bodyBytesResult(evidence.ReqBodyHash)
 	if err != nil {
 		obs.Error = "the recorded request body is no longer available, so the replay would not be the same request"

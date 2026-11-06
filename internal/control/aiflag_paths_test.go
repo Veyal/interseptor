@@ -298,7 +298,7 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/vault/merge":                     "vault transfer",
 }
 
-var mcpAPIPathRe = regexp.MustCompile(`^/api/[A-Za-z0-9_./{}%-]+$`)
+var mcpAPIPathRe = regexp.MustCompile(`^/api/[A-Za-z0-9_./{}%-]+(\?.*)?$`)
 var printfVerbRe = regexp.MustCompile(`%[0-9]*[a-z]`)
 
 // normalizeMCPPath turns a path literal from the MCP sources into a comparable

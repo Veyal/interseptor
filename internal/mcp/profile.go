@@ -114,7 +114,7 @@ var webPentestTools = []string{
 	// setup and scope
 	"check_readiness", "scope_from_url", "list_scope", "ca_info",
 	// triage
-	"list_flows", "get_flow", "analyze_flow", "host_stats",
+	"list_flows", "get_flow", "analyze_flow", "host_stats", "list_endpoints", "list_params",
 	// replay and attack
 	"send_request", "start_intruder", "intruder_state",
 	// passive scan
@@ -282,6 +282,7 @@ func instructionSections() []string {
 		sectionRecord,
 		findingFormatGuide + "\n\n",
 		sectionTagging,
+		sectionUntrusted,
 		sectionHumanInput,
 		sectionAskForFindings,
 		sectionImprove,

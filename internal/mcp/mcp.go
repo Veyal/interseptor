@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/httplines"
 	"github.com/Veyal/interseptor/internal/store"
@@ -97,11 +98,7 @@ func firstLine(s string, n int) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	s = strings.TrimSpace(s)
-	if n > 0 && len(s) > n {
-		s = s[:n] + "…"
-	}
-	return s
+	return truncRunes(strings.TrimSpace(s), n)
 }
 
 // New builds an MCP server that talks to the control API at baseURL
@@ -420,7 +417,17 @@ func (s *Server) runTool(name string, args map[string]any) (text string, err err
 		args = map[string]any{}
 	}
 	start := time.Now()
-	text, err = t.call(args)
+	// Validate against the advertised schema before the tool runs, and turn a
+	// result that only reports an error into a tool error, so an agent sees a
+	// failure instead of a successful-looking message.
+	if err = validateArgs(t.schema, args); err == nil {
+		text, err = t.call(args)
+	}
+	if err == nil {
+		if msg, failed := errorOnlyResult(text); failed {
+			text, err = "", fmt.Errorf("%s", msg)
+		}
+	}
 	if s.report != nil {
 		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
 		if err != nil {
@@ -1054,11 +1061,46 @@ func argHeaderLines(a map[string]any, key string) (string, error) {
 	return httplines.ToLines(m), nil
 }
 
+// argHostHeaderLines normalizes a per-host header map whose values are either
+// "Key: Value" lines or header objects, so every host gets header lines.
+func argHostHeaderLines(a map[string]any, key string) (map[string]string, error) {
+	v, ok := a[key]
+	if !ok || v == nil {
+		return nil, nil
+	}
+	m, isMap := v.(map[string]any)
+	if !isMap {
+		return nil, fmt.Errorf("%s must be an object mapping hostname to headers (got %T %s)", key, v, describeValue(key, v))
+	}
+	out := make(map[string]string, len(m))
+	for host, hv := range m {
+		lines, err := argHeaderLines(map[string]any{"h": hv}, "h")
+		if err != nil {
+			return nil, fmt.Errorf("%s[%q]: %w", key, host, err)
+		}
+		out[host] = lines
+	}
+	return out, nil
+}
+
+// headerArgSchema is the shared schema for a header argument that accepts
+// "Key: Value" lines or a header object.
+func headerArgSchema(desc string) map[string]any {
+	return map[string]any{"description": desc, "oneOf": []any{
+		map[string]any{"type": "string", "description": "'Key: Value' lines"},
+		map[string]any{"type": "object", "description": "header map e.g. {\"Authorization\":\"Bearer …\"}"},
+	}}
+}
+
 func truncate(s string, n int) string {
 	if n <= 0 || len(s) <= n {
 		return s
 	}
-	return s[:n] + fmt.Sprintf("\n…[truncated %d more bytes — increase maxBytes]", len(s)-n)
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut-- // never split a multi-byte rune: the result must stay valid UTF-8
+	}
+	return s[:cut] + fmt.Sprintf("\n…[truncated %d more bytes — increase maxBytes]", len(s)-cut)
 }
 
 // boundJSON keeps a tool result both VALID and small. Byte-truncating a JSON
@@ -1193,24 +1235,27 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 func (s *Server) registerTools() {
 	s.registerFindingReviewTools()
 	s.registerEvidenceRenderTools()
+	s.registerReconTools()
 	s.registerCollectionTools()
 	s.registerCollmatrixTools()
 	s.add("list_flows",
-		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
+		"Search captured flows → compact rows (id, method, host, path, status), newest first. Filters optional. search matches anywhere (path, headers and body) by default; pass searchScope=id|body to narrow it. Page older flows by passing the smallest id you have seen as cursor; when the reply has truncated:true, more remain. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
 			"host":         p("string", "substring"),
 			"method":       pt("string"),
-			"search":       p("string", "path substring"),
+			"search":       p("string", "substring matched across path, headers and body (see searchScope)"),
+			"searchScope":  pe("default anywhere", "anywhere", "body", "id"),
 			"scheme":       pt("string"),
-			"status":       p("integer", "class 1-5 (4=4xx)"),
+			"status":       pr("class (4=4xx)", 1, 5),
 			"tag":          p("string", "filter by tag (exact, case-insensitive)"),
 			"tlsFailed":    p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
 			"includeTools": p("boolean", "include Repeater/Intruder and other tool-generated flows (default true for agents; false = History UI filter)"),
-			"limit":        p("integer", "default 50"),
+			"cursor":       map[string]any{"type": "integer", "minimum": 1, "description": "page older flows: pass the smallest id from the previous page"},
+			"limit":        pr("default 50", 1, 5000),
 		}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
-			for _, k := range []string{"host", "method", "search", "scheme", "tag"} {
+			for _, k := range []string{"host", "method", "search", "scheme", "tag", "searchScope"} {
 				if v := argStr(a, k); v != "" {
 					q.Set(k, v)
 				}
@@ -1224,6 +1269,9 @@ func (s *Server) registerTools() {
 			// Agents need tool traffic after scans; History UI keeps ExcludeFlags.
 			if argBool(a, "includeTools", true) {
 				q.Set("includeTools", "1")
+			}
+			if c := argInt(a, "cursor", 0); c > 0 {
+				q.Set("before", strconv.Itoa(c))
 			}
 			q.Set("limit", strconv.Itoa(argInt(a, "limit", 50)))
 			return s.apiGet("/api/flows?" + q.Encode())
@@ -2376,13 +2424,13 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("send_request",
-		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body. Optional bodyMode=decoded + codecId re-encodes plaintext via a message codec before send (pass rawBody for encode context when needed).",
+		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body. The URL must be in project scope (out-of-scope sends are refused with code out_of_scope). Optional bodyMode=decoded + codecId re-encodes plaintext via a message codec before send (pass rawBody for encode context when needed).",
 		obj(map[string]any{
 			"method":   pt("string"),
 			"url":      p("string", "absolute URL"),
 			"headers":  map[string]any{"oneOf": []any{map[string]any{"type": "string", "description": "'Key: Value' lines"}, map[string]any{"type": "object", "description": "header map e.g. {\"User-Agent\":\"bot\"}"}}},
 			"body":     pt("string"),
-			"bodyMode": p("string", "raw (default) | decoded"),
+			"bodyMode": pe("raw (default) | decoded", "raw", "decoded"),
 			"codecId":  p("string", "required when bodyMode=decoded"),
 			"flowId":   p("integer", "optional encode context"),
 			"rawBody":  p("string", "wire body for encode context"),
@@ -2430,12 +2478,12 @@ func (s *Server) registerTools() {
 		obj(map[string]any{
 			"target":       p("string", "scheme://host[:port]"),
 			"template":     p("string", "raw request with §…§"),
-			"attackType":   p("string", "sniper | battering | pitchfork | cluster | repeat"),
+			"attackType":   pe("default sniper, or repeat when no payloads are given and repeat>0", "sniper", "battering", "batteringram", "pitchfork", "cluster", "clusterbomb", "repeat", "null"),
 			"payloads":     map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
 			"repeat":       p("integer", "Race / repeat send count"),
 			"count":        p("integer", "alias for repeat"),
-			"threads":      p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
-			"delayMs":      p("integer", "delay between requests in milliseconds"),
+			"threads":      pr("concurrent in-flight requests (default 1; AI-started attacks are capped at 10)", 1, 10),
+			"delayMs":      map[string]any{"type": "integer", "minimum": 0, "description": "delay between requests in milliseconds"},
 			"barrier":      p("boolean", "repeat/race only, threads>1: launch the first requests together (separate connections, not single-packet sync); recorded in state.barrier"),
 			"grepMatch":    p("string", "regex that flags matching responses"),
 			"grepExtract":  p("string", "regex whose captures are included in results"),
@@ -2446,9 +2494,16 @@ func (s *Server) registerTools() {
 			if repeat == 0 {
 				repeat = argInt(a, "count", 0)
 			}
+			attackType := strings.TrimSpace(argStr(a, "attackType"))
+			if attackType == "" {
+				attackType = "sniper"
+				if a["payloads"] == nil && repeat > 0 {
+					attackType = "repeat"
+				}
+			}
 			return s.api(http.MethodPost, "/api/intruder/start", map[string]any{
 				"target": argStr(a, "target"), "template": argStr(a, "template"),
-				"attackType": argStr(a, "attackType"), "payloads": a["payloads"],
+				"attackType": attackType, "payloads": a["payloads"],
 				"repeat": repeat, "threads": argInt(a, "threads", 1),
 				"delayMs": argInt(a, "delayMs", 0), "barrier": argBool(a, "barrier", false), "grepMatch": argStr(a, "grepMatch"),
 				"grepExtract": argStr(a, "grepExtract"), "processRules": a["processRules"],
@@ -2456,11 +2511,15 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("intruder_state",
-		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId. results is capped to the head of the run (partialResults=true when more exist); this tool is a status check, not a result export.",
-		obj(map[string]any{}),
+		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId. A big run keeps every result on disk: page with offset/limit (the reply carries total and nextOffset), and onlyAnomalies/onlyFlagged surface the interesting rows wherever they fall in the run.",
+		obj(map[string]any{
+			"offset":        map[string]any{"type": "integer", "minimum": 0, "description": "result index to start at (default 0)"},
+			"limit":         pr("results per page (default 200)", 1, 5000),
+			"onlyAnomalies": p("boolean", "only results flagged as length/behaviour anomalies"),
+			"onlyFlagged":   p("boolean", "only results a grep-match rule hit"),
+		}),
 		func(a map[string]any) (string, error) {
-			out, err := s.apiGet("/api/intruder/state")
-			return boundJSON(out, 200), err
+			return s.intruderState(a)
 		})
 
 	s.add("run_scanner",
@@ -2485,9 +2544,12 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("scan_report",
-		"Passive findings as a Markdown report, grouped by severity.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/report") })
+		"Passive findings as a Markdown report, grouped by severity. Long reports are cut at maxBytes (default 20000); prefer list_issues for triage.",
+		obj(map[string]any{"maxBytes": pr("default 20000", 1000, 1000000)}),
+		func(a map[string]any) (string, error) {
+			out, err := s.apiGet("/api/scanner/report")
+			return truncate(out, argInt(a, "maxBytes", 20000)), err
+		})
 
 	s.add("list_checks",
 		"List custom Starlark checks (id, source, compile error). They run on every scan.",
@@ -2532,7 +2594,7 @@ func (s *Server) registerTools() {
 			"source": p("string", "Starlark source (or omit and pass id of a saved codec)"),
 			"id":     p("string", "saved codec id when source omitted"),
 			"flowId": p("integer", "default latest"),
-			"side":   p("string", "req | res (default req)"),
+			"side":   pe("default req", "req", "res"),
 		}),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"flowId": argInt(a, "flowId", 0), "side": argStr(a, "side")}
@@ -2565,7 +2627,7 @@ func (s *Server) registerTools() {
 		"Return app-layer decoded plaintext for a flow when a project message codec matches (display-only). side=req|res.",
 		obj(map[string]any{
 			"id":   pt("integer"),
-			"side": p("string", "req | res (default req)"),
+			"side": pe("default req", "req", "res"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqFlowID(a)
@@ -2586,7 +2648,7 @@ func (s *Server) registerTools() {
 			"source":    p("string", "Starlark source when id omitted"),
 			"plaintext": pt("string"),
 			"flowId":    p("integer", "context flow for encode()"),
-			"side":      p("string", "req | res (default req)"),
+			"side":      pe("default req", "req", "res"),
 			"rawBody":   p("string", "optional wire body for encode context (prefix/fields)"),
 		}, "plaintext"),
 		func(a map[string]any) (string, error) {
@@ -2757,12 +2819,12 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scope") })
 
 	s.add("add_scope_rule",
-		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners.",
+		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list needs the operator (request_human_input).",
 		obj(map[string]any{
-			"action":  p("string", "include | exclude"),
+			"action":  pe("", "include", "exclude"),
 			"host":    p("string", "e.g. *.acme.com"),
 			"path":    p("string", "prefix (optional)"),
-			"scheme":  p("string", "http | https (optional)"),
+			"scheme":  pe("optional", "http", "https"),
 			"enabled": p("boolean", "default true"),
 		}, "action"),
 		func(a map[string]any) (string, error) {
@@ -2779,18 +2841,28 @@ func (s *Server) registerTools() {
 		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop. Only the fields you pass change (omitted headers/hostHeaders are kept). Use hostHeaders when testing multiple targets simultaneously — each host gets its own auth, overriding the global headers for that hostname.",
 		obj(map[string]any{
 			"enabled":     pt("boolean"),
-			"headers":     p("string", "'Key: Value' lines — global fallback applied to all in-scope hosts"),
-			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} — replaces global headers for matching hosts only"),
+			"headers":     headerArgSchema("global fallback applied to all in-scope hosts"),
+			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} or {\"hostname\": {\"Key\": \"Value\"}} — replaces global headers for matching hosts only"),
 		}, "enabled"),
 		func(a map[string]any) (string, error) {
 			// POST /api/session is a partial update: send only what was passed so
 			// the unscoped opt-in, login macro and omitted fields stay as they are.
 			body := map[string]any{"enabled": argBool(a, "enabled", false)}
 			if _, ok := a["headers"]; ok {
-				body["headers"] = argStr(a, "headers")
+				hdr, err := argHeaderLines(a, "headers")
+				if err != nil {
+					return "", fmt.Errorf("headers: %w", err)
+				}
+				body["headers"] = hdr
 			}
 			if v, ok := a["hostHeaders"]; ok && v != nil {
-				body["hostHeaders"] = v
+				hostHeaders, err := argHostHeaderLines(a, "hostHeaders")
+				if err != nil {
+					return "", err
+				}
+				if hostHeaders != nil {
+					body["hostHeaders"] = hostHeaders
+				}
 			}
 			return s.api(http.MethodPost, "/api/session", body)
 		})
@@ -2798,7 +2870,7 @@ func (s *Server) registerTools() {
 	s.add("decode",
 		"Encode/decode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode, smart (auto-detect one layer).",
 		obj(map[string]any{
-			"op":    p("string", "see list above"),
+			"op":    pe("", "base64encode", "base64decode", "urlencode", "urldecode", "hexencode", "hexdecode", "htmlencode", "htmldecode", "jwtdecode", "smart"),
 			"input": pt("string"),
 		}, "op", "input"),
 		func(a map[string]any) (string, error) {
@@ -3153,7 +3225,7 @@ func (s *Server) registerTools() {
 		"DESTRUCTIVE: delete flows by host pattern to keep the project small. hosts is a comma- or newline-separated list of host patterns (wildcards like *.acme.com are supported). mode=delete removes flows matching the listed hosts; mode=keepOnly removes everything EXCEPT the listed hosts. keepOnly with no hosts is rejected (prevents accidental wipe). Changes are broadcast live to open History views.",
 		obj(map[string]any{
 			"hosts": p("string", "comma- or newline-separated host patterns, e.g. 'noise.com,*.cdn.com'"),
-			"mode":  p("string", "delete (default) | keepOnly"),
+			"mode":  pe("default delete", "delete", "keepOnly"),
 		}, "hosts"),
 		func(a map[string]any) (string, error) {
 			hostsRaw := argStr(a, "hosts")
@@ -3203,7 +3275,7 @@ func (s *Server) registerTools() {
 		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
-			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"mode":       pe("merge (default: upsert by name, keep others) | replace (overwrite the whole list)", "merge", "replace"),
 			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
@@ -3361,7 +3433,7 @@ func (s *Server) registerTools() {
 			"flowId":    pt("integer"),
 			"jwtFlowId": p("integer", "flow whose JWT to extract — defaults to flowId"),
 			"jwt":       p("string", "raw JWT string (alternative to jwtFlowId)"),
-			"mode":      p("string", "auto | bearer | path — auto picks path replay for SSO URL/path tokens"),
+			"mode":      pe("auto picks path replay for SSO URL/path tokens", "auto", "bearer", "path"),
 		}, "flowId"),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"flowId": argInt(a, "flowId", 0)}

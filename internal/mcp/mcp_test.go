@@ -233,7 +233,7 @@ func TestSendRequestGetFlowUIURL(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/repeater/send":
 			io.WriteString(w, `{"id":6010,"status":200,"method":"GET"}`)
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/flows/6010/raw"):
-			io.WriteString(w, "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			io.WriteString(w, `{"head":"GET / HTTP/1.1\r\nHost: example.com\r\n"}`)
 		default:
 			w.WriteHeader(404)
 		}

@@ -91,6 +91,10 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
+	if msg := h.aiScopeRefusal(aiSourceFlag(r), in.URL, ""); msg != "" {
+		writeAIScopeRefusal(w, msg, in.URL)
+		return
+	}
 	hdr, err := httplines.NormalizeJSON(in.Headers)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())

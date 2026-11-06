@@ -48,6 +48,14 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "threads must be a positive number")
 		return
 	}
+	if msg := h.aiScopeRefusal(aiSourceFlag(r), in.Target, templatePath(in.Template)); msg != "" {
+		writeAIScopeRefusal(w, msg, in.Target)
+		return
+	}
+	if aiSourceFlag(r) != 0 && in.Threads > aiMaxIntruderThreads {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("threads must be at most %d for AI-started attacks (got %d); lower threads or ask the operator to run a wider attack from the UI", aiMaxIntruderThreads, in.Threads))
+		return
+	}
 	err := h.intr.Start(intruder.Spec{
 		Target:       in.Target,
 		Template:     in.Template,

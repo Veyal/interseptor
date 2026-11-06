@@ -78,10 +78,22 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 	for _, ex := range existing {
 		if scopeRuleIdentity(ex) == scopeRuleIdentity(in) {
 			// An exact duplicate adds nothing; the existing rule is returned so
-			// "make sure this host is in scope" callers can treat it as done.
+			// "make sure this host is in scope" callers can treat it as done. The
+			// UI is told it was a duplicate; an agent gets 200 so a repeated
+			// ensure-in-scope call is idempotent rather than a failure to retry.
+			if isAISource(r) {
+				writeJSON(w, http.StatusOK, ex)
+				return
+			}
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "an identical scope rule already exists", "rule": ex})
 			return
 		}
+	}
+	// An agent may add scope, but never widen it on its own: adding a new host
+	// needs the operator, matching update/delete below.
+	if msg := h.aiScopeWideningRefusal(r, &in); msg != "" {
+		httpErr(w, http.StatusForbidden, msg)
+		return
 	}
 	if _, err := h.st.CreateScopeRule(&in); err != nil {
 		httpInternalErr(w, err)
@@ -95,6 +107,10 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	if msg := h.aiScopeWideningRefusal(r, nil); msg != "" {
+		httpErr(w, http.StatusForbidden, msg)
 		return
 	}
 	var in store.ScopeRule
@@ -136,6 +152,10 @@ func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	if msg := h.aiScopeWideningRefusal(r, nil); msg != "" {
+		httpErr(w, http.StatusForbidden, msg)
 		return
 	}
 	if err := h.st.DeleteScopeRule(id); err != nil {

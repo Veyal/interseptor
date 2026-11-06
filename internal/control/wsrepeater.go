@@ -29,6 +29,10 @@ func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
+	if msg := h.aiScopeRefusal(aiSourceFlag(r), in.URL, ""); msg != "" {
+		writeAIScopeRefusal(w, msg, in.URL)
+		return
+	}
 	hdrs := map[string]string{}
 	for _, hh := range parseSessionHeaders(in.Headers) {
 		hdrs[hh.Key] = hh.Value

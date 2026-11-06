@@ -943,7 +943,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (135)
+### MCP tools (137)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -966,7 +966,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `authz_differential` | `flowId` | Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify... |
 | `authz_run` | none | Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control. |
 | `ca_info` | none | How to trust the CA so HTTPS can be intercepted (proxy address + CA location). |
-| `check_readiness` | none | Pre-flight setup checklist (structured JSON): proxy, scope, traffic, capture (flow writes or WebSocket frames... |
+| `check_readiness` | none | Pre-flight setup checklist (structured JSON): proxy, scope, traffic, capture (dropped flow writes or WS... |
 | `classify_finding_image` | `findingId`, `hash`, `source` | Reviewer relabel of an already-attached finding image (for example an operator_upload that is a real browser... |
 | `collection_attach_run_evidence` | `collectionUid`, `runUid`, `findingId` | Attach the captured flows of a stored collection run (or selected requests) to a finding as typed evidence... |
 | `collection_example_diff` | `collectionUid`, `itemUid`, `flowId` | Diff a saved response example of a collection request (name or 1-based index) against a captured response... |
@@ -1021,12 +1021,14 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `list_checks` | none | List custom Starlark checks (id, source, compile error). |
 | `list_codecs` | none | List project Starlark message codecs (id, source, meta, compile error). |
 | `list_collections` | none | List request collections (Postman-style trees) and environments. |
+| `list_endpoints` | none | The deduplicated attack-surface map: one row per (method, host, path) with the statuses seen, hit count and... |
 | `list_finding_revisions` | `id` | List immutable finding revision metadata, including deleted findings. |
 | `list_finding_tags` | none | List tags in use on findings (with counts) — reuse these for report scoping (cms, website, app, api... |
 | `list_findings` | none | List concise finding summaries, evidence/readiness state, and optional severity/status/tag filters. |
-| `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status). |
+| `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status), newest first. |
 | `list_issues` | none | List passive scanner issues. |
 | `list_packs` | none | List installed rule packs (bundles of Starlark checks). |
+| `list_params` | none | Mined request parameters per host (name, where it appears — query/form/json — hit count and a sample path... |
 | `list_rules` | none | List match-&-replace rules. |
 | `list_scope` | none | List target-scope rules (which hosts/paths are in scope). |
 | `list_tags` | none | List the tags in use across the project's flows, with how many flows carry each — so you can reuse existing... |
