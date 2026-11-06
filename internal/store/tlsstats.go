@@ -27,3 +27,34 @@ func (s *Store) CountSuccessfulHTTPS(hostSubstring string) (int64, error) {
 	err := s.db.QueryRow(q, args...).Scan(&n)
 	return n, err
 }
+
+// TLSFailureStats summarises the TLS-interception picture for the readiness
+// check: the newest rejection, how many are recent enough to matter, and the
+// newest successfully intercepted HTTPS flow. Timestamps are unix milliseconds
+// (0 when there is none). A wall of old rejections must not outvote fresh
+// successful traffic, and a fresh one must not hide behind a stale count.
+func (s *Store) TLSFailureStats(hostSubstring string, sinceMS int64) (newestFailureMS, recentFailures, newestSuccessMS int64, err error) {
+	s.syncFlows()
+	hostClause := ""
+	if hostSubstring != "" {
+		hostClause = ` AND instr(lower(host), lower(?)) > 0`
+	}
+	q := `SELECT COALESCE(MAX(ts),0), COALESCE(SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END),0)
+	      FROM flows WHERE (flags & ?) != 0` + hostClause
+	qArgs := []any{sinceMS, FlagTLSFailed}
+	if hostSubstring != "" {
+		qArgs = append(qArgs, hostSubstring)
+	}
+	if err = s.db.QueryRow(q, qArgs...).Scan(&newestFailureMS, &recentFailures); err != nil {
+		return 0, 0, 0, err
+	}
+	q2 := `SELECT COALESCE(MAX(ts),0) FROM flows WHERE scheme = 'https' AND status > 0 AND (flags & ?) = 0` + hostClause
+	args2 := []any{FlagTLSFailed}
+	if hostSubstring != "" {
+		args2 = append(args2, hostSubstring)
+	}
+	if err = s.db.QueryRow(q2, args2...).Scan(&newestSuccessMS); err != nil {
+		return 0, 0, 0, err
+	}
+	return newestFailureMS, recentFailures, newestSuccessMS, nil
+}

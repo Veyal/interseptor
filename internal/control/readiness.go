@@ -117,6 +117,9 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	tlsFix := tlsDiag.Fix
 	if tlsDiag.Verdict == "tls_blocked" {
 		tlsDetail = fmt.Sprintf("%d TLS rejection(s) — pinning or untrusted CA", tlsDiag.TLSFailureCount)
+		if tlsDiag.NewestFailureAge != "" {
+			tlsDetail += fmt.Sprintf(" (newest %s ago)", tlsDiag.NewestFailureAge)
+		}
 	}
 	add("tls_intercept", tlsOK, tlsDetail, tlsFix)
 

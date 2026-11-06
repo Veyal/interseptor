@@ -4,9 +4,27 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+// humanAge renders a coarse age ("45s", "12m", "3h12m", "2d4h") for diagnostics.
+func humanAge(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%dd%02dh", int(d.Hours())/24, int(d.Hours())%24)
+	}
+}
 
 // tlsFailureSummary is one recorded CONNECT→TLS-failure for the diagnosis report.
 type tlsFailureSummary struct {
@@ -26,11 +44,24 @@ type tlsDiagnosisReport struct {
 	CanBypass       bool                `json:"canBypass"` // always false — Interseptor is a proxy, not a pin bypass tool
 	BypassHints     []string            `json:"bypassHints,omitempty"`
 	TLSFailureCount int64               `json:"tlsFailureCount"`
+	// RecentFailureCount counts rejections inside tlsFailureWindow; a stale
+	// rejection must not keep the checklist red after interception started
+	// working. NewestFailureAge is human-readable ("3h12m") and empty when there
+	// has never been a rejection.
+	RecentFailureCount int64               `json:"recentFailureCount"`
+	NewestFailureTS    int64               `json:"newestFailureTs,omitempty"`
+	NewestFailureAge   string              `json:"newestFailureAge,omitempty"`
 	HTTPSOkCount    int64               `json:"httpsOkCount"`
 	TotalFlows      int64               `json:"totalFlows"`
 	RecentFailures  []tlsFailureSummary `json:"recentFailures,omitempty"`
 	HostsBlocked    []string            `json:"hostsBlocked,omitempty"`
 }
+
+// tlsFailureWindow is how recent a rejection must be to count as current. A
+// failure older than this is reported with its age instead of blocking the
+// readiness check, so a fixed environment stops looking broken. A var so tests
+// can shorten it.
+var tlsFailureWindow = 15 * time.Minute
 
 var tlsBypassHints = []string{
 	"Interseptor cannot bypass SSL pinning — it only detects when the app rejects the MITM certificate.",
@@ -86,14 +117,32 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 		rep.HostsBlocked = append(rep.HostsBlocked, hst)
 	}
 
+	newestFailureMS, recentFailures, newestSuccessMS, _ := h.st.TLSFailureStats(hostFilter, time.Now().Add(-tlsFailureWindow).UnixMilli())
+	rep.RecentFailureCount = recentFailures
+	rep.NewestFailureTS = newestFailureMS
+	if newestFailureMS > 0 {
+		rep.NewestFailureAge = humanAge(time.Since(time.UnixMilli(newestFailureMS)))
+	}
+
 	switch {
-	case rep.TLSFailureCount > 0:
+	case rep.TLSFailureCount > 0 && recentFailures > 0:
 		rep.Verdict = "tls_blocked"
 		n := rep.TLSFailureCount
 		if hostFilter != "" {
 			n = int64(len(failures))
 		}
-		rep.Detail = fmt.Sprintf("%d CONNECT tunnel(s) reached the proxy but the client rejected the MITM certificate before any HTTP request", n)
+		rep.Detail = fmt.Sprintf("%d CONNECT tunnel(s) reached the proxy and the client rejected the MITM certificate before any HTTP request (newest %s ago)", n, rep.NewestFailureAge)
+		rep.Fix = "The app likely uses SSL pinning or ignores your CA. Bypass with Frida/objection, a patched APK, or an emulator with a system CA (android_setup caMode:system). On Android 7+, user CAs are ignored by most apps — use system CA or patch network_security_config."
+	case rep.TLSFailureCount > 0 && rep.HTTPSOkCount > 0:
+		// Historical rejections only: interception is demonstrably working now
+		// (the pinning bypass landed), so report the age instead of blocking.
+		rep.Verdict = "ok"
+		rep.Detail = fmt.Sprintf("HTTPS interception is working (%d successful HTTPS flows); %d older TLS rejection(s), newest %s ago — no rejection in the last %s",
+			rep.HTTPSOkCount, rep.TLSFailureCount, rep.NewestFailureAge, humanAge(tlsFailureWindow))
+		_ = newestSuccessMS
+	case rep.TLSFailureCount > 0:
+		rep.Verdict = "tls_blocked"
+		rep.Detail = fmt.Sprintf("%d CONNECT tunnel(s) reached the proxy but no HTTPS flow has been intercepted yet (newest rejection %s ago)", rep.TLSFailureCount, rep.NewestFailureAge)
 		rep.Fix = "The app likely uses SSL pinning or ignores your CA. Bypass with Frida/objection, a patched APK, or an emulator with a system CA (android_setup caMode:system). On Android 7+, user CAs are ignored by most apps — use system CA or patch network_security_config."
 	case rep.TotalFlows == 0:
 		rep.Verdict = "no_traffic"
