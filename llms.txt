@@ -41,6 +41,7 @@ The project notebook (Report → Notes; `get_notes`, `set_notes`, `append_notes`
 - [HTTP/2](https://veyal.github.io/interseptor/http2/): HTTP/2 behavior
 - [Message codecs](https://veyal.github.io/interseptor/message-codecs/): App-layer encrypt and decrypt codecs for captured bodies
 - [Mobile testing](https://veyal.github.io/interseptor/mobile-testing/): Android and iOS interception setup
+- [Playbooks](https://veyal.github.io/interseptor/playbooks/): Markdown test guides the connected agent executes, and the coverage ledger
 - [Rule packs](https://veyal.github.io/interseptor/rule-packs/): Building, installing, and signing rule packs
 - [Settings](https://veyal.github.io/interseptor/settings/): Where each setting lives
 - [Troubleshooting](https://veyal.github.io/interseptor/troubleshooting/): Connection, certificate, rendering, and update problems

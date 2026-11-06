@@ -89,6 +89,7 @@
 <symbol id="i-intercept" viewBox="0 0 24 24"><path d="M3 12h9M8 8l4 4-4 4"/><path d="M17 4v16"/><path d="M21 12h.01"/></symbol>
 <symbol id="i-repeater" viewBox="0 0 24 24"><path d="M4 11V9l3-3h12M16 3l3 3-3 3"/><path d="M20 13v2l-3 3H5M8 15l-3 3 3 3"/></symbol>
 <symbol id="i-intruder" viewBox="0 0 24 24"><path d="M3 11h2v2H3z"/><path d="M6 12h2M8 12l6-6h3M8 12h9M8 12l6 6h3"/><path d="M20 4v16"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h7v16H4z"/><path d="M13 4h7v16h-7z"/><path d="M6 8h3"/><path d="M15 8h3"/></symbol>
 <symbol id="i-scanner" viewBox="0 0 24 24"><path d="M16 3H8L3 8v8l5 5h8l5-5V8"/><path d="M10 8.5h4l1.5 1.5v4l-1.5 1.5h-4l-1.5-1.5v-4z"/><path d="M12 12l6.5-6.5"/></symbol>
 <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 3h6v5H9zM3 16h5v5H3zM16 16h5v5h-5z"/><path d="M12 8v4M5.5 16v-4h13v4"/></symbol>
 <symbol id="i-finding" viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M6 4h13l-4 4 4 4H6"/></symbol>
@@ -229,7 +230,7 @@
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
-<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="scanner">Scanner (deprecated)</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
@@ -247,7 +248,8 @@
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
-    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon" title="Scanner"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-hidden="true"></span></button>
+    <button class="tab" id="tab-playbooks" role="tab" aria-selected="false" aria-controls="panel-playbooks" data-tab="playbooks" data-group="Recon" title="Playbooks"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-book"/></svg>Playbooks</button>
+    <button class="tab tab-deprecated" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon" title="Scanner (deprecated: use Playbooks)"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-hidden="true"></span></button>
     <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon" title="Map"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg>Map<span id="mapBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="report">
@@ -597,9 +599,36 @@ Content-Type: application/json
     </div>
   </div>
   <!-- /region:identities -->
+  <!-- region:playbooks -->
+  <!-- PLAYBOOKS -->
+  <div class="panel" id="panel-playbooks" role="tabpanel" aria-labelledby="tab-playbooks" data-panel="playbooks">
+    <div class="toolbar">
+      <div class="row find-toolbar-row u-gap-2 u-wrap">
+        <input id="pbFilter" class="btn btn-field field-grow" aria-label="Filter playbooks" placeholder="Filter: host, path, /checkout, graphql">
+        <span id="pbCount" class="count" role="status" aria-live="polite"></span>
+        <span id="pbTrust" class="hint"></span>
+      </div>
+    </div>
+    <div class="pb-root" id="pbRoot">
+      <section class="split-list pb-list-col" aria-label="Playbooks">
+        <div id="pbList" class="pb-list"></div>
+      </section>
+      <section class="split-detail pb-detail-col" aria-label="Playbook detail">
+        <div id="pbDetail" class="pb-detail">
+          <div class="hint">Select a playbook. These are markdown test guides the connected AI harness reads over MCP and executes with the ordinary tools — Interseptor ships the knowledge, the agent does the work.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <!-- /region:playbooks -->
   <!-- region:scanner -->
   <!-- SCANNER -->
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
+    <div class="capture-loss-banner" role="status">
+      <strong>Deprecated.</strong> The passive scanner is being retired: an AI harness running the
+      <button type="button" class="btn btn-sm" id="scanGotoPlaybooks">Playbooks</button>
+      is the detection path, and it records coverage the scanner never did. Saved issues still open.
+    </div>
     <div class="toolbar">
       <div id="scanPassiveBar" class="row find-toolbar-row">
       <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>

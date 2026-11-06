@@ -282,6 +282,7 @@ func instructionSections() []string {
 		sectionRecord,
 		sectionProofOfImpact,
 		sectionProjectPin,
+		sectionPlaybooks,
 		findingFormatGuide + "\n\n",
 		sectionTagging,
 		sectionHumanInput,

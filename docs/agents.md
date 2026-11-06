@@ -910,7 +910,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (140)
+### MCP tools (145)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -973,6 +973,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `get_intercept` | none | Intercept state + current hold queue. |
 | `get_interception_setup` | none | Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass... |
 | `get_notes` | none | Read the project's shared markdown notebook: the engagement's reference sheet of credentials and test... |
+| `get_playbook` | `id` | Read one playbook in full as markdown, with its trust banner. |
 | `get_settings` | none | Proxy/intercept settings (bind address, intercept on/off). |
 | `host_stats` | none | Show a table of captured hosts sorted by byte volume (flows + bytes per host, plus totals). |
 | `import_full_project` | `path`, `name` | Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project... |
@@ -993,26 +994,30 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `list_finding_tags` | none | List tags in use on findings (with counts) — reuse these for report scoping (cms, website, app, api... |
 | `list_findings` | none | List concise finding summaries, evidence/readiness state, and optional severity/status/tag filters. |
 | `list_flows` | none | Search captured flows → compact rows (id, method, host, path, status), newest first. |
-| `list_issues` | none | List passive scanner issues. |
+| `list_issues` | none | DEPRECATED (passive scanner, retiring in favour of Playbooks). |
 | `list_packs` | none | List installed rule packs (bundles of Starlark checks). |
 | `list_params` | none | Mined request parameters per host (name, where it appears — query/form/json — hit count and a sample path... |
+| `list_playbooks` | none | List the markdown test playbooks (bundled with Interseptor plus the project's own). |
 | `list_rules` | none | List match-&-replace rules. |
 | `list_scope` | none | List target-scope rules (which hosts/paths are in scope). |
 | `list_suppressed` | none | Requests the capture filter dropped in the last 15 minutes (out-of-scope, browser or Android telemetry)... |
 | `list_tags` | none | List the tags in use across the project's flows, with how many flows carry each — so you can reuse existing... |
 | `list_ws_frames` | `id` | List a flow's WebSocket frames (dir/opcode/length/preview). |
+| `match_playbooks` | `flowId` | Which playbooks apply to a captured flow, with the signal that matched. |
 | `normalize_finding_targets` | `id` | Normalize a saved finding's affected targets with reviewer-approved path templates (for example... |
 | `oob_enable` | none | Enable the OOB interaction catcher (one-click; required before oob_new). |
 | `oob_new` | none | Generate a new blind-callback token/URL (requires OOB enabled + reachable base URL). |
 | `oob_set_base` | `baseUrl` | Set the public OOB base URL the target can reach (e.g. |
 | `oob_state` | none | Out-of-band callback catcher: enabled flag, base URL, recent interactions. |
 | `pack_info` | `name` | Show one installed rule pack's record (name, version, source, owned check ids). |
+| `playbook_coverage` | none | Read the coverage ledger: per-playbook status counts and the rows themselves, optionally filtered by playbook... |
 | `preview_finding_targets` | none | Preview exact target deduplication and optional path templates without saving. |
 | `promote_flow_to_authz` | `flowId`, `name` | Promote a flow's auth headers into an authz identity (role) for authz_run diffing. |
 | `prune_history` | `hosts` | DESTRUCTIVE: delete flows to keep the project small. |
 | `prune_pending` | none | List prune batches still restorable, newest first (id, flows, expires). |
 | `prune_undo` | `pruneId` | Restore a pruned batch inside its undo window (default 30 minutes). |
 | `record_finding_from_flow` | `flowId`, `title` | Composite tool: creates a finding and attaches the originating captured flow as first-class reproduction... |
+| `record_playbook_coverage` | `playbookId`, `host`, `endpoint`, `status` | Record that a playbook was considered, run, found or dismissed against a surface, with the evidence flow ids. |
 | `redact_value` | `value` | Describe a secret (bearer token, JWT, bcrypt hash, API key) as {len, sha256_prefix, kind} plus a... |
 | `remove_authz_identity` | `name` | Remove ONE authorization-test identity by name; other identities are untouched. |
 | `remove_finding_poc` | `findingId`, `flowId` | Detach a PoC flow from a finding. |
@@ -1024,7 +1029,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
 | `run_request` | `itemUid` | Send one collection request through the shared pipeline: variables resolved, trusted scripts run, scope... |
-| `run_scanner` | none | Passive scan of the newest 5000 captured flows; sends nothing. |
+| `run_scanner` | none | DEPRECATED: the passive scanner is being retired in favour of Playbooks (list_playbooks), which the agent... |
 | `save_check` | `id`, `source` | Save a Starlark check by id (letters/digits/-/_); must compile. |
 | `save_codec` | `id`, `source` | Save a project message codec by id (letters/digits/-/_); must compile. |
 | `scan_report` | none | Passive findings as a Markdown report, grouped by severity. |
@@ -1161,7 +1166,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (313)
+### REST routes (318)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1390,6 +1395,11 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | DELETE | `/api/packs/{name}` | Uninstall a rule pack and delete its check files; full-scope only |
 | GET | `/api/packs/{name}` | Show one installed pack's record |
 | GET | `/api/params` | Aggregate query/form/JSON parameter names from captured traffic (?host=, ?inScope=1) |
+| GET | `/api/playbooks` | List playbooks: bundled (trusted) plus the project's own (untrusted). |
+| GET | `/api/playbooks/coverage` | Coverage ledger: {coverage:[{playbookId,host,endpoint,param,status,flowIds,note,ts}]... |
+| POST | `/api/playbooks/coverage` | Upsert one coverage row: {playbookId, host, endpoint, param?, status: considered\|run\|found\|dismissed... |
+| GET | `/api/playbooks/match` | Which playbooks apply to a captured flow (?flowId=): {flowId, observed, playbooks:[{...summary, matchedOn}]... |
+| GET | `/api/playbooks/{id}` | One playbook: {playbook, markdown (rendered with its trust banner), body} |
 | GET | `/api/project` | Active project + switch targets. |
 | POST | `/api/project/folder` | Set or clear a project's display folder. |
 | GET | `/api/project/readiness` | Engagement-strip aggregate (counts only): {scope:{enabled,in,out}, brief:{target,ok}... |

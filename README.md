@@ -117,6 +117,7 @@ The guide lives in [docs/agents.md](docs/agents.md) (published as
 | **[Troubleshooting](docs/troubleshooting.md)** | No traffic, TLS, 407 auth, Repeater, UI, ports, disk use |
 | **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
+| **[Playbooks](docs/playbooks.md)** | Markdown test guides the connected agent executes, plus the coverage ledger |
 | **[Custom checks](docs/custom-checks.md)** | Author your own passive Starlark checks |
 | **[Rule packs](docs/rule-packs.md)** | Share, install, and manage bundles of checks |
 | **[Project vault](docs/vault.md)** | Always-on backup / import / merge (Tailscale Serve) |

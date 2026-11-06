@@ -258,6 +258,8 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/findings/{}/images/{}/classify":  "finding bookkeeping",
 	"/api/findings/{}/normalize-targets":   "finding bookkeeping",
 	"/api/flows/purge":                     "deletes flows",
+	"/api/playbooks":                       "lists playbook markdown, records nothing",
+	"/api/playbooks/coverage":              "reads or upserts the coverage ledger, records no traffic",
 	"/api/flows/suppressed":                "reads the capture filter's drop ring, records nothing",
 	"/api/flows/prune/undo":                "restores flows from a prune snapshot, records nothing",
 	"/api/flows/{}/preview.png":            "renders a stored flow, records nothing",

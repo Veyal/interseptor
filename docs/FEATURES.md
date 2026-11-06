@@ -34,6 +34,11 @@ User-facing capabilities in the current release. For a tour of the menus, see th
 - **Scanner** — built-in passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
   reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
   exportable as a **Markdown findings report**.
+- **Playbooks** — markdown test guides shipped in the binary plus per-project additions, read by
+  the connected AI harness over MCP (tools, resources, prompts) and executed with the normal
+  tools; a coverage ledger records considered / run / found / dismissed per surface. Project
+  playbooks are marked untrusted content. Replaces the passive scanner (now deprecated). See
+  [playbooks](playbooks.md).
 - **Custom checks & rule packs** — extend the passive scanner with sandboxed **Starlark** checks
   (drop a `.star` in `~/.interseptor/checks/`), install **official packs** from Scanner → Checks
   (or upload a `.tar.gz`), and share community packs. See

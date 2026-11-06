@@ -152,3 +152,25 @@
   .ident-kv{grid-template-columns:minmax(0,1fr)}
   .ident-kv dt{margin-top:var(--sp-1)}
 }
+
+/* Playbooks: the same list/detail split as identities, with the corpus rows and
+   the trust badge that marks project content as untrusted. */
+.pb-root{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,var(--split-size,32%)) 1fr;overflow:hidden}
+.pb-list{overflow:auto;min-height:0}
+.pb-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:var(--sp-2) var(--sp-3);border:0;border-bottom:1px solid var(--border-subtle);background:transparent;color:inherit;cursor:pointer}
+.pb-row:hover{background:var(--surface-1)}
+.pb-row.sel{background:var(--surface-2);box-shadow:inset 2px 0 0 var(--accent)}
+.pb-row-title{font-weight:600;font-size:var(--fs-sm)}
+.pb-row-sub{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
+.pb-badge{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.04em;padding:1px 5px;border-radius:4px;background:var(--surface-3);color:var(--text-muted)}
+.pb-badge-untrusted{background:color-mix(in srgb,var(--red) 18%,transparent);color:var(--red)}
+.pb-sev{font-size:var(--fs-2xs);font-weight:600;color:var(--text-muted)}
+.pb-detail{overflow:auto;min-height:0;padding:var(--sp-3) var(--sp-4) var(--sp-6)}
+.pb-head-title{font-size:var(--fs-lg);font-weight:600}
+.pb-head-meta{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:2px}
+.pb-doc{display:flex;flex-direction:column;gap:var(--sp-2);font-size:var(--fs-sm);line-height:1.55;max-width:72ch;margin-top:var(--sp-3)}
+.pb-doc h1,.pb-doc h2,.pb-doc h3{margin:var(--sp-3) 0 0;font-size:var(--fs-md);font-weight:600}
+.pb-doc h1{font-size:var(--fs-lg)}
+.pb-doc pre{background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:6px;padding:var(--sp-2);overflow:auto;font-size:var(--fs-xs)}
+.pb-doc blockquote{margin:0;padding-left:var(--sp-3);border-left:3px solid var(--red);color:var(--text-muted)}
+.pb-doc p{margin:0}

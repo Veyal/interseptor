@@ -8,6 +8,7 @@ import { selectFlow, revealFlowRow, focusInFlowList, renderChips, renderRows, lo
 import { renderIntercept, toggleIntercept, toggleResponseIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, openNewRepeaterTab, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
+import { loadPlaybooks, initPlaybooks } from './playbooks.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadChromeStatus, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes, toggleNotesMode } from './notes.js';
@@ -132,6 +133,7 @@ function loadPanelData(name){
   else if(name==='activity'){clearActSeen();loadActivity();}
   else if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
   else if(name==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
+  else if(name==='playbooks')loadPlaybooks();
   else if(name==='findings')loadFindings();
   else if(name==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
   else if(name==='notes')loadNotes();
@@ -158,7 +160,7 @@ function resolveSavedTab(){
   if(id==='scanner'){try{if(localStorage.getItem('scanSub')==='findings')id='findings';}catch(e){}}
   if(id==='api')id='settings';
   if(id==='discover')id='map';
-  const known=['proxy','intercept','repeater','intruder','identities','collections','scanner','map','findings','notes','activity','settings'];
+  const known=['proxy','intercept','repeater','intruder','identities','collections','playbooks','scanner','map','findings','notes','activity','settings'];
   return known.includes(id)?id:'proxy';
 }
 function goToNotes(){
@@ -1026,3 +1028,4 @@ renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysPro
 settleWorkspaceBootWatchdog();
 bootFirstRunUI();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
+initPlaybooks();

@@ -37,3 +37,14 @@ func TestSuppressedBannerModel(t *testing.T) {
 		t.Fatalf("suppressed-model.test.mjs failed:\n%s", out)
 	}
 }
+
+// The Playbooks panel's filter, trust badge and coverage wording are pure logic;
+// a broken model would mislabel untrusted project content as bundled.
+func TestPlaybookViewModel(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	if out, err := exec.Command("node", "--test", "ui/_js-tests/playbook-view-model.test.mjs").CombinedOutput(); err != nil {
+		t.Fatalf("playbook-view-model.test.mjs failed:\n%s", out)
+	}
+}

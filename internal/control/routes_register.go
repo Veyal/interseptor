@@ -69,6 +69,12 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("POST /api/flows/delete", f.deleteFlows)
 	h.mux.HandleFunc("POST /api/flows/purge", f.purgeFlows)
 	h.mux.HandleFunc("GET /api/flows/suppressed", f.getSuppressedFlows)
+	pb := &playbooksAPI{h}
+	h.mux.HandleFunc("GET /api/playbooks", pb.listPlaybooks)
+	h.mux.HandleFunc("GET /api/playbooks/match", pb.matchPlaybooks)
+	h.mux.HandleFunc("GET /api/playbooks/coverage", pb.listPlaybookCoverage)
+	h.mux.HandleFunc("POST /api/playbooks/coverage", pb.recordPlaybookCoverage)
+	h.mux.HandleFunc("GET /api/playbooks/{id}", pb.getPlaybook)
 	h.mux.HandleFunc("GET /api/flows/prune/pending", f.listPendingPrunes)
 	h.mux.HandleFunc("POST /api/flows/prune/undo", f.undoPrune)
 	h.mux.HandleFunc("POST /api/flows/gc", f.gcBodies)

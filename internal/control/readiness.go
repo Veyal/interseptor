@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/playbooks"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -84,6 +85,12 @@ func (h *authzAPI) buildReadiness() readinessReport {
 		add("in_scope_traffic", inScopeOK, inScopeDetail(inScopeOK), "browse in-scope hosts or relax scope rules")
 	}
 
+	// Playbooks nudge: an agent that polls readiness learns the corpus has
+	// something for the traffic it already captured, without a second call.
+	if segue := h.playbookNudge(); segue != "" {
+		add("playbooks", true, segue, "")
+	}
+
 	oobOK := h.oobEnabled()
 	oobDetail := "enabled"
 	oobFix := ""
@@ -137,6 +144,32 @@ func flowCountDetail(n int64) string {
 		return "no flows captured"
 	}
 	return itoa64(n) + " flows captured"
+}
+
+// playbookNudge names the playbooks that apply to the newest captured flow.
+func (h *Hub) playbookNudge() string {
+	flows, err := h.st.QueryFlows(1)
+	if err != nil || len(flows) == 0 {
+		return ""
+	}
+	book, err := playbooks.Load(h.ProjectDir)
+	if err != nil {
+		return ""
+	}
+	obs := h.observedForFlow(flows[0])
+	var ids []string
+	for _, p := range book {
+		if p.Match(obs) != "" {
+			ids = append(ids, p.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	if len(ids) > 3 {
+		ids = append(ids[:3], "…")
+	}
+	return itoa64(int64(len(ids))) + " playbook(s) apply to the newest flow (" + strings.Join(ids, ", ") + ") — list_playbooks or match_playbooks"
 }
 
 // trafficDetail says when History is empty *because a filter dropped the

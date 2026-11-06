@@ -267,6 +267,21 @@ CREATE TABLE IF NOT EXISTS notes_images (
   data BLOB NOT NULL
 );
 
+-- Playbook coverage: the "did we actually test X" record that replaces the
+-- passive scanner's output. One row per (playbook, host, endpoint, param).
+CREATE TABLE IF NOT EXISTS playbook_coverage (
+  playbook_id TEXT NOT NULL,
+  host TEXT NOT NULL DEFAULT '',
+  endpoint TEXT NOT NULL DEFAULT '',
+  param TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  flow_ids TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  ts INTEGER NOT NULL,
+  PRIMARY KEY (playbook_id, host, endpoint, param)
+);
+CREATE INDEX IF NOT EXISTS idx_playbook_coverage_host ON playbook_coverage(host);
+
 CREATE TABLE IF NOT EXISTS findings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,

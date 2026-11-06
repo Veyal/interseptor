@@ -1239,3 +1239,6 @@ import('./project-state.js').then(m=>{
 }).catch(()=>renderScanContext());
 // Desktop skin: arrange the toolbar once the host class is set (app.js adds it after the imports run).
 setTimeout(initScannerDesktop,0);
+
+// The scanner is deprecated in favour of Playbooks; the banner's button opens them.
+{const b=document.getElementById('scanGotoPlaybooks');if(b)b.addEventListener('click',()=>document.getElementById('tab-playbooks')?.click());}
