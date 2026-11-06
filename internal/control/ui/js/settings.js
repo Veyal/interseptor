@@ -1227,6 +1227,9 @@ function restoreRetentionSelection(selection){
 }
 
 export async function loadRetentionPolicy(){
+  // The undo affordance is part of the panel's state, so it refreshes with the
+  // policy that governs the same prune.
+  void refreshPrunePending();
   const epoch=++retentionPolicyLoadEpoch;
   const hint=$('#retentionPolicyHint');
   try{
@@ -1317,15 +1320,50 @@ function syncRetSelectAll(sa){
 
 export function retChecked(){return [].slice.call(document.querySelectorAll('.ret-chk:checked')).map(cb=>cb.dataset.host);}
 
+// pruneWithPreview dry-runs a purge so the operator sees the exact counts and
+// bytes before anything is deleted, then commits the same selection. The dry run
+// deletes nothing, so a mis-click costs a round trip, not a capture.
+export async function pruneWithPreview(title, hosts, mode, opts){
+  const body=Object.assign({hosts,mode},opts||{});
+  let preview;
+  try{
+    preview=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({},body,{dryRun:true}))});
+  }catch(e){toastError('Preview failed', e);return null;}
+  const n=preview.matched||0;
+  if(!n){toast('nothing matches that selection — nothing deleted');return null;}
+  const rows=(preview.perHost||[]).slice(0,8).map(h=>'<div class="hint">'+esc(h.host)+' — '+h.flows+' flow'+(h.flows===1?'':'s')+' · '+fmtBytes(h.bytes)+'</div>').join('');
+  const more=(preview.perHost||[]).length>8?'<div class="hint">…and '+((preview.perHost||[]).length-8)+' more host(s)</div>':'';
+  const msg='<b>'+n+'</b> flow'+(n===1?'':'s')+' · <b>'+fmtBytes(preview.bytes||0)+'</b> would be deleted ('+(mode==='keepOnly'?'everything except the selected hosts':'the selected hosts')+').<br>'+rows+more+'<div class="hint u-mt-2">Nothing has been deleted yet. The batch stays undoable for 30 minutes.</div>';
+  const ok=await uiConfirm(title,msg,'Delete them','btn danger','var(--red)');
+  if(!ok)return null;
+  try{
+    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
+    toast('deleted '+(r.deleted||0)+' flow'+((r.deleted||0)===1?'':'s')+' · reclaiming space…');
+    loadFlows();
+    refreshPrunePending();
+    return r;
+  }catch(e){toastError('Purge failed', e);return null;}
+}
+
+// refreshPrunePending shows the Undo button while a prune is still restorable.
+export async function refreshPrunePending(){
+  const btn=$('#retUndoPrune');
+  if(!btn)return;
+  let d;
+  try{d=await api('/api/flows/prune/pending');}catch(e){btn.hidden=true;return;}
+  const p=(d.prunes||[])[0];
+  if(!p){btn.hidden=true;return;}
+  const left=Math.max(0,Math.round((p.restoresInMs||0)/60000));
+  btn.hidden=false;
+  btn.textContent='Undo last prune ('+p.flows+' flow'+(p.flows===1?'':'s')+', '+left+'m left)';
+  btn.dataset.pruneId=String(p.id);
+}
+
 export async function retDeleteOne(host,flows){
   const msg='Delete all '+flows+' flow'+(flows===1?'':'s')+' from '+esc(host)+'? This is permanent.';
   const confirmed=await confirmTyped(uiConfirm,'Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
-  try{
-    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})}));
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadFlows();
-  }catch(e){toastError('Purge failed', e);}
+  await pruneWithPreview('Delete flows from '+esc(host),[host],'delete');
 }
 
 $('#retDeleteSelected').onclick=async()=>{
@@ -1337,11 +1375,7 @@ $('#retDeleteSelected').onclick=async()=>{
   const msg='Delete all flows from '+hosts.length+' host'+(hosts.length===1?'':'s')+' ('+totalFlows+' flow'+(totalFlows===1?'':'s')+')? This is permanent.';
   const confirmed=await confirmTyped(uiConfirm,'Delete selected hosts',msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
-  try{
-    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})}));
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadFlows();
-  }catch(e){toastError('Purge failed', e);}
+  await pruneWithPreview('Delete selected hosts',hosts,'delete');
 };
 
 $('#retKeepOnly').onclick=async()=>{
@@ -1354,25 +1388,31 @@ $('#retKeepOnly').onclick=async()=>{
   const msg='Keep only '+hosts.length+' host'+(hosts.length===1?'':'s')+' and delete the rest (~'+delFlows+' flow'+(delFlows===1?'':'s')+')? This is permanent.';
   const confirmed=await confirmTyped(uiConfirm,'Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
   if(!confirmed)return;
-  try{
-    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})}));
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadFlows();
-  }catch(e){toastError('Purge failed', e);}
+  await pruneWithPreview('Keep only selected',hosts,'keepOnly');
 };
 
 $('#retPurgePattern').onclick=async()=>{
   const pat=($('#retPatternInput')||{}).value&&$('#retPatternInput').value.trim();
   if(!pat){toast('enter a host pattern first');return;}
   const confirmed=await confirmTyped(uiConfirm,'Purge by pattern',
-    'Delete all flows matching <b style="color:var(--accent)">'+esc(pat)+'</b>? This is permanent.','Delete','btn danger','var(--red)');
+    'Delete all flows matching <b style="color:var(--accent)">'+esc(pat)+'</b>?','Delete','btn danger','var(--red)');
   if(!confirmed)return;
+  const done=await pruneWithPreview('Purge by pattern',[pat],'delete');
+  if(done&&$('#retPatternInput'))$('#retPatternInput').value='';
+};
+
+$('#retUndoPrune').onclick=async()=>{
+  const btn=$('#retUndoPrune');
+  const id=Number(btn.dataset.pruneId||0);
+  if(!id){toast('nothing to undo');return;}
+  const ok=await uiConfirm('Undo prune','Restore the flows deleted by the last prune?','Restore','btn accent','');
+  if(!ok)return;
   try{
-    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[pat],mode:'delete'})}));
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    if($('#retPatternInput'))$('#retPatternInput').value='';
+    const r=await api('/api/flows/prune/undo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pruneId:id})});
+    toast('restored '+(r.restored||0)+' flow'+((r.restored||0)===1?'':'s'));
     loadFlows();
-  }catch(e){toastError('Purge failed', e);}
+    refreshPrunePending();
+  }catch(e){toastError('Undo failed', e);}
 };
 
 $('#retGc').onclick=async()=>{

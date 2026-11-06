@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/hostpattern"
 )
@@ -383,6 +384,12 @@ func (s *Store) referencedBodyHashes() (map[string]struct{}, error) {
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("store.GCBodies: close rows: %w", err)
 	}
+	// A live prune snapshot can be undone, so its bodies must survive the sweep.
+	if protected, perr := s.protectedPruneHashes(); perr == nil {
+		for h := range protected {
+			referenced[h] = struct{}{}
+		}
+	}
 	// Finding screenshot/evidence images live in the same bodiesDir; keep them
 	// alive even when no flow references the hash.
 	imgRefs, err := s.FindingImageHashes()
@@ -484,4 +491,266 @@ func (s *Store) HostStats() ([]HostStat, error) {
 		out = append(out, hs)
 	}
 	return out, rows.Err()
+}
+
+// PruneOptions selects which flows one prune removes. Every non-empty filter is
+// ANDed with the host selection, so a cleanup can keep the target host and still
+// drop its static assets or its 2xx noise.
+type PruneOptions struct {
+	Hosts        []string
+	KeepOnly     bool
+	Methods      []string
+	Statuses     []int
+	MimePrefixes []string
+	PathPrefixes []string
+	// DryRun reports what would go without deleting anything.
+	DryRun bool
+	// UndoWindow keeps the removed rows restorable for this long (default
+	// DefaultPruneUndoWindow).
+	UndoWindow time.Duration
+}
+
+// Dir reports whether the prune removes matching rows (delete) or everything
+// that does not match (keepOnly).
+func (o PruneOptions) Dir() string {
+	if o.KeepOnly {
+		return "keepOnly"
+	}
+	return "delete"
+}
+
+// DefaultPruneUndoWindow is how long a prune stays reversible.
+const DefaultPruneUndoWindow = 30 * time.Minute
+
+// PruneHostStat is one host's share of a prune.
+type PruneHostStat struct {
+	Host  string `json:"host"`
+	Flows int64  `json:"flows"`
+	Bytes int64  `json:"bytes"`
+}
+
+// PruneResult is what a prune (or its dry run) would remove and what it did.
+type PruneResult struct {
+	DryRun  bool            `json:"dryRun"`
+	Mode    string          `json:"mode"`
+	Matched int64           `json:"matched"`
+	Bytes   int64           `json:"bytes"`
+	PerHost []PruneHostStat `json:"perHost"`
+	Deleted int64           `json:"deleted"`
+	// PruneID addresses this prune's undo snapshot (0 on a dry run or when
+	// nothing matched).
+	PruneID int64 `json:"pruneId,omitempty"`
+	// UndoExpires is the unix-ms deadline for RestorePrune.
+	UndoExpires int64 `json:"undoExpires,omitempty"`
+}
+
+// pruneFilterSQL builds the ANDed filter clause for PruneOptions.
+func (o PruneOptions) filterSQL() (string, []any) {
+	var where []string
+	var args []any
+	if len(o.Methods) > 0 {
+		ph := strings.TrimRight(strings.Repeat("?,", len(o.Methods)), ",")
+		where = append(where, "upper(method) IN ("+ph+")")
+		for _, m := range o.Methods {
+			args = append(args, strings.ToUpper(strings.TrimSpace(m)))
+		}
+	}
+	if len(o.Statuses) > 0 {
+		ph := strings.TrimRight(strings.Repeat("?,", len(o.Statuses)), ",")
+		where = append(where, "status IN ("+ph+")")
+		for _, st := range o.Statuses {
+			args = append(args, st)
+		}
+	}
+	if len(o.MimePrefixes) > 0 {
+		var or []string
+		for _, p := range o.MimePrefixes {
+			or = append(or, "lower(COALESCE(mime,'')) LIKE ?")
+			args = append(args, strings.ToLower(strings.TrimSpace(p))+"%")
+		}
+		where = append(where, "("+strings.Join(or, " OR ")+")")
+	}
+	if len(o.PathPrefixes) > 0 {
+		var or []string
+		for _, p := range o.PathPrefixes {
+			or = append(or, "lower(COALESCE(path,'')) LIKE ?")
+			args = append(args, strings.ToLower(strings.TrimSpace(p))+"%")
+		}
+		where = append(where, "("+strings.Join(or, " OR ")+")")
+	}
+	if len(where) == 0 {
+		return "", nil
+	}
+	return " AND " + strings.Join(where, " AND "), args
+}
+
+// pruneSnapshotSchema keeps a pruned batch restorable. Body files are not
+// copied: content-addressed bodies stay on disk while the snapshot lives,
+// because referencedBodyHashes counts prune_body_hashes too.
+const pruneSnapshotSchema = `
+CREATE TABLE IF NOT EXISTS prune_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  expires_ts INTEGER NOT NULL,
+  mode TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  flows TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS prune_body_hashes (
+  snapshot_id INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  PRIMARY KEY (snapshot_id, hash)
+);
+`
+
+// PruneFlows removes matching flows (or counts them for a dry run), keeping the
+// batch restorable for op.UndoWindow so a mistaken prune does not need a
+// full-project import.
+func (s *Store) PruneFlows(op PruneOptions) (PruneResult, error) {
+	s.syncFlows()
+	res := PruneResult{DryRun: op.DryRun, Mode: op.Dir(), PerHost: []PruneHostStat{}}
+	for i, h := range op.Hosts {
+		if strings.TrimSpace(h) == "" {
+			return res, fmt.Errorf("%w (entry %d)", ErrBlankHostPattern, i+1)
+		}
+	}
+	if len(op.Hosts) == 0 && op.KeepOnly {
+		return res, errors.New("store.PruneFlows: keepOnly requires at least one host pattern")
+	}
+
+	// Resolve the host selection to an explicit host list (wildcards are matched
+	// in Go; SQLite has no native wildcard-host function).
+	deleteAll := false
+	var selected []string
+	if len(op.Hosts) > 0 {
+		all, err := s.distinctHosts()
+		if err != nil {
+			return res, err
+		}
+		for _, h := range all {
+			matched := false
+			for _, p := range op.Hosts {
+				if retentionHostMatches(p, h) {
+					matched = true
+					break
+				}
+			}
+			if matched != op.KeepOnly {
+				selected = append(selected, h)
+			}
+		}
+		if len(selected) == 0 {
+			return res, nil
+		}
+	} else {
+		deleteAll = true
+	}
+
+	ids, err := s.pruneCandidateIDs(selected, deleteAll, op)
+	if err != nil {
+		return res, err
+	}
+	if len(ids) == 0 {
+		return res, nil
+	}
+
+	// Aggregate what the selection covers, per host.
+	rows, err := s.queryRowsByIDs(ids,
+		`SELECT lower(host), COUNT(*), COALESCE(SUM(COALESCE(req_len,0)+COALESCE(res_len,0)),0) FROM flows WHERE id IN (%s) GROUP BY lower(host) ORDER BY 2 DESC`)
+	if err != nil {
+		return res, err
+	}
+	for _, row := range rows {
+		stat := PruneHostStat{Host: row.str(0), Flows: row.int(1), Bytes: row.int(2)}
+		res.PerHost = append(res.PerHost, stat)
+		res.Matched += stat.Flows
+		res.Bytes += stat.Bytes
+	}
+	if op.DryRun {
+		return res, nil
+	}
+
+	window := op.UndoWindow
+	if window <= 0 {
+		window = DefaultPruneUndoWindow
+	}
+	expires := time.Now().Add(window).UnixMilli()
+	pruneID, err := s.snapshotPrune(ids, op.Dir(), expires)
+	if err != nil {
+		return res, err
+	}
+	deleted, err := s.deleteFlowsByIDs(ids)
+	if err != nil {
+		return res, err
+	}
+	res.Deleted = deleted
+	res.PruneID = pruneID
+	res.UndoExpires = expires
+	return res, nil
+}
+
+// distinctHosts lists the hosts present in history, lowercased.
+func (s *Store) distinctHosts() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT lower(host) FROM flows`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list hosts: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, fmt.Errorf("store: scan host: %w", err)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// pruneCandidateIDs returns the flow ids a prune removes, chunking the host list
+// to stay below SQLite's parameter limit.
+func (s *Store) pruneCandidateIDs(selected []string, deleteAll bool, op PruneOptions) ([]int64, error) {
+	const hostChunk = 400
+	filter, filterArgs := op.filterSQL()
+	var ids []int64
+	if deleteAll {
+		rows, err := s.db.Query(`SELECT id FROM flows WHERE 1=1`+filter, filterArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("store: prune candidates: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		return ids, rows.Err()
+	}
+	for start := 0; start < len(selected); start += hostChunk {
+		end := min(start+hostChunk, len(selected))
+		args := make([]any, 0, end-start+len(filterArgs))
+		for _, h := range selected[start:end] {
+			args = append(args, h)
+		}
+		args = append(args, filterArgs...)
+		ph := strings.TrimRight(strings.Repeat("?,", end-start), ",")
+		rows, err := s.db.Query(`SELECT id FROM flows WHERE lower(host) IN (`+ph+`)`+filter, args...)
+		if err != nil {
+			return nil, fmt.Errorf("store: prune candidates: %w", err)
+		}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
 }

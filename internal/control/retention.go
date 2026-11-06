@@ -3,12 +3,24 @@ package control
 import (
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // purgeRequest is the request body for POST /api/flows/purge.
 type purgeRequest struct {
 	Hosts []string `json:"hosts"`
 	Mode  string   `json:"mode"` // "delete" or "keepOnly"
+	// DryRun reports what the prune would remove without deleting anything.
+	DryRun bool `json:"dryRun"`
+	// Filters narrow the selection; every non-empty one is ANDed with the hosts.
+	Methods      []string `json:"methods"`
+	Statuses     []int    `json:"statuses"`
+	MimePrefixes []string `json:"mimePrefixes"`
+	PathPrefixes []string `json:"pathPrefixes"`
+	// UndoWindowMs overrides how long the batch stays restorable.
+	UndoWindowMs int64 `json:"undoWindowMs"`
 }
 
 // purgeFlows removes flows matching host patterns and reclaims orphaned bodies.
@@ -26,22 +38,32 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "too many hosts")
 		return
 	}
-	var keepOnly bool
 	switch in.Mode {
-	case "delete":
-	case "keepOnly":
-		keepOnly = true
+	case "delete", "keepOnly":
 	default:
 		httpErr(w, http.StatusBadRequest, "mode must be delete or keepOnly")
 		return
 	}
 
-	deleted, err := h.st.DeleteFlowsByHost(in.Hosts, keepOnly)
+	if in.DryRun {
+		// A dry run must not delete, broadcast or kick off a GC: it reports the
+		// exact counts and bytes so the operator can decide before committing.
+		res, err := h.st.PruneFlows(h.pruneOptions(in))
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		res.DryRun = true
+		writeJSON(w, http.StatusOK, res)
+		return
+	}
+	res, err := h.st.PruneFlows(h.pruneOptions(in))
 	if err != nil {
 		// store returns an error for keepOnly + empty hosts; surface as 400.
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	deleted := res.Deleted
 
 	if deleted > 0 {
 		h.epsCache.invalidate()
@@ -56,7 +78,61 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+	res.Deleted = deleted
+	writeJSON(w, http.StatusOK, res)
+}
+
+// pruneOptions maps the request body onto the store's prune selection.
+func (h *flowAPI) pruneOptions(in purgeRequest) store.PruneOptions {
+	op := store.PruneOptions{
+		Hosts:        in.Hosts,
+		KeepOnly:     in.Mode == "keepOnly",
+		DryRun:       in.DryRun,
+		Methods:      in.Methods,
+		Statuses:     in.Statuses,
+		MimePrefixes: in.MimePrefixes,
+		PathPrefixes: in.PathPrefixes,
+	}
+	if in.UndoWindowMs > 0 {
+		op.UndoWindow = time.Duration(in.UndoWindowMs) * time.Millisecond
+	}
+	return op
+}
+
+// listPendingPrunes reports which prune batches are still restorable.
+//
+//	GET /api/flows/prune/pending
+func (h *flowAPI) listPendingPrunes(w http.ResponseWriter, r *http.Request) {
+	items, err := h.st.PendingPrunes()
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"prunes": items})
+}
+
+// undoPrune restores one pruned batch.
+//
+//	POST /api/flows/prune/undo {"pruneId":N}
+func (h *flowAPI) undoPrune(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		PruneID int64 `json:"pruneId"`
+	}
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
+		return
+	}
+	if in.PruneID <= 0 {
+		httpErr(w, http.StatusBadRequest, "pruneId is required")
+		return
+	}
+	restored, err := h.st.RestorePrune(in.PruneID)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.epsCache.invalidate()
+	h.broadcast(map[string]any{"type": "flow.new"})
+	writeJSON(w, http.StatusOK, map[string]any{"restored": restored, "pruneId": in.PruneID})
 }
 
 func (h *Hub) startMaintenance(run func()) bool {

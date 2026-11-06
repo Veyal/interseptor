@@ -68,6 +68,8 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("PUT /api/tags/{tag}/color", f.setTagColor)
 	h.mux.HandleFunc("POST /api/flows/delete", f.deleteFlows)
 	h.mux.HandleFunc("POST /api/flows/purge", f.purgeFlows)
+	h.mux.HandleFunc("GET /api/flows/prune/pending", f.listPendingPrunes)
+	h.mux.HandleFunc("POST /api/flows/prune/undo", f.undoPrune)
 	h.mux.HandleFunc("POST /api/flows/gc", f.gcBodies)
 	h.mux.HandleFunc("GET /api/flows/retention", f.getRetention)
 	h.mux.HandleFunc("PUT /api/flows/retention", f.putRetention)

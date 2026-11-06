@@ -3223,10 +3223,15 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("prune_history",
-		"DESTRUCTIVE: delete flows by host pattern to keep the project small. hosts is a comma- or newline-separated list of host patterns (wildcards like *.acme.com are supported). mode=delete removes flows matching the listed hosts; mode=keepOnly removes everything EXCEPT the listed hosts. keepOnly with no hosts is rejected (prevents accidental wipe). Changes are broadcast live to open History views.",
+		"DESTRUCTIVE: delete flows to keep the project small. hosts is a comma- or newline-separated list of host patterns (wildcards like *.acme.com supported): mode=delete removes matching hosts, mode=keepOnly everything EXCEPT them (rejected with no hosts). Optional filters narrow the selection and are ANDed: methods, statuses, mimePrefixes, pathPrefixes — so you can keep a target host but drop its static assets. ALWAYS call dryRun=true first: it reports per-host counts and bytes and deletes nothing. A real prune returns pruneId, and the batch stays restorable for 30 minutes with prune_undo.",
 		obj(map[string]any{
-			"hosts": p("string", "comma- or newline-separated host patterns, e.g. 'noise.com,*.cdn.com'"),
-			"mode":  pe("default delete", "delete", "keepOnly"),
+			"hosts":        p("string", "comma- or newline-separated host patterns, e.g. 'noise.com,*.cdn.com'"),
+			"mode":         pe("default delete", "delete", "keepOnly"),
+			"dryRun":       p("boolean", "report exact counts and bytes without deleting (do this first)"),
+			"methods":      p("string", "comma-separated methods to prune, e.g. GET,HEAD"),
+			"statuses":     p("string", "comma-separated status codes to prune, e.g. 200,204"),
+			"mimePrefixes": p("string", "comma-separated MIME prefixes to prune, e.g. image/,text/css,application/javascript"),
+			"pathPrefixes": p("string", "comma-separated path prefixes to prune, e.g. /static/,/assets/"),
 		}, "hosts"),
 		func(a map[string]any) (string, error) {
 			hostsRaw := argStr(a, "hosts")
@@ -3243,23 +3248,69 @@ func (s *Server) registerTools() {
 					hosts = append(hosts, h)
 				}
 			}
-			raw, err := s.api(http.MethodPost, "/api/flows/purge", map[string]any{
-				"hosts": hosts,
-				"mode":  mode,
-			})
+			body := map[string]any{
+				"hosts":        hosts,
+				"mode":         mode,
+				"dryRun":       argBool(a, "dryRun", false),
+				"methods":      splitCSV(argStr(a, "methods")),
+				"mimePrefixes": splitCSV(argStr(a, "mimePrefixes")),
+				"pathPrefixes": splitCSV(argStr(a, "pathPrefixes")),
+			}
+			if st := splitCSV(argStr(a, "statuses")); len(st) > 0 {
+				codes := make([]int, 0, len(st))
+				for _, v := range st {
+					if n, convErr := strconv.Atoi(v); convErr == nil {
+						codes = append(codes, n)
+					}
+				}
+				body["statuses"] = codes
+			}
+			raw, err := s.api(http.MethodPost, "/api/flows/purge", body)
 			if err != nil {
 				return "", err
 			}
 			var d struct {
-				Deleted      int64 `json:"deleted"`
-				RemovedFiles int64 `json:"removedFiles"`
-				FreedBytes   int64 `json:"freedBytes"`
+				DryRun      bool            `json:"dryRun"`
+				Matched     int64           `json:"matched"`
+				Bytes       int64           `json:"bytes"`
+				Deleted     int64           `json:"deleted"`
+				PruneID     int64           `json:"pruneId"`
+				UndoExpires int64           `json:"undoExpires"`
+				PerHost     []struct {
+					Host  string `json:"host"`
+					Flows int64  `json:"flows"`
+					Bytes int64  `json:"bytes"`
+				} `json:"perHost"`
 			}
 			if jsonErr := json.Unmarshal([]byte(raw), &d); jsonErr != nil {
 				return raw, nil
 			}
-			return fmt.Sprintf("deleted %d flows · freed %s (mode=%s)", d.Deleted, formatBytes(d.FreedBytes), mode), nil
+			var sb strings.Builder
+			if d.DryRun {
+				fmt.Fprintf(&sb, "DRY RUN — would delete %d flow(s), %s (mode=%s); nothing was removed.\n", d.Matched, formatBytes(d.Bytes), mode)
+			} else {
+				fmt.Fprintf(&sb, "deleted %d flow(s) · %s (mode=%s)\n", d.Deleted, formatBytes(d.Bytes), mode)
+			}
+			for _, h := range d.PerHost {
+				fmt.Fprintf(&sb, "  %-40s %5d  %s\n", h.Host, h.Flows, formatBytes(h.Bytes))
+			}
+			if d.PruneID > 0 {
+				fmt.Fprintf(&sb, "Undo with prune_undo pruneId=%d within %s.", d.PruneID, humanWindow(d.UndoExpires))
+			}
+			return strings.TrimRight(sb.String(), "\n"), nil
 		})
+
+	s.add("prune_undo",
+		"Restore a pruned batch inside its undo window (default 30 minutes). Use prune_pending to see what is restorable.",
+		obj(map[string]any{"pruneId": pt("integer")}, "pruneId"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/flows/prune/undo", map[string]any{"pruneId": argInt(a, "pruneId", 0)})
+		})
+
+	s.add("prune_pending",
+		"List prune batches still restorable, newest first (id, flows, expires).",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/flows/prune/pending") })
 
 	s.add("run_login_macro",
 		"Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. Configure via Settings → Session, set_login_macro or set_login_macro_from_flow.",

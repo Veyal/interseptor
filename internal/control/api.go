@@ -340,7 +340,9 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/update/restart", "Relaunch the updated binary on the same project, flags and ports (202, then the server re-execs). 409 unless the update phase is ready; 403 for AI/MCP or API-key callers"},
 	{"GET", "/api/events", "Server-Sent Events stream of live updates"},
 	{"POST", "/api/flows/delete", "Delete flows by id. Body: {ids: []}; content-addressed bodies are untouched (GC separately)"},
-	{"POST", "/api/flows/purge", "Purge flows by host pattern; reclaims orphaned bodies in the background afterward (not reflected in this response). Body: {hosts: [], mode} — mode delete|keepOnly. Response: {deleted}"},
+	{"POST", "/api/flows/purge", "Prune flows by host pattern and optional filters; reclaims orphaned bodies in the background afterward (not reflected in this response). Body: {hosts: [], mode: delete|keepOnly, dryRun?: bool, methods?: [], statuses?: [], mimePrefixes?: [], pathPrefixes?: [], undoWindowMs?: n}. A dry run reports per-host counts and bytes and deletes nothing; a real run also returns pruneId and undoExpires, and keeps the batch restorable for the undo window (default 30 minutes). Response: {dryRun, mode, matched, bytes, perHost, deleted, pruneId, undoExpires}"},
+	{"GET", "/api/flows/prune/pending", "Prune batches still restorable, newest first: {prunes: [{id, ts, expiresTs, mode, flows, restoresInMs}]}"},
+	{"POST", "/api/flows/prune/undo", "Restore a pruned batch inside its undo window. Body: {pruneId}. Response: {restored, pruneId}"},
 	{"POST", "/api/flows/gc", "Reclaim orphaned body files (no flows deleted, no body). Response: {removedFiles,freedBytes}"},
 	{"GET", "/api/flows/retention", "Automatic retention policy (maxAgeHours, maxFlows; 0 = off)"},
 	{"PUT", "/api/flows/retention", "Set the retention policy; body {maxAgeHours, maxFlows}"},
@@ -502,7 +504,9 @@ var mcpDescriptor = map[string]any{
 		{"name": "ios_ssh_setup", "desc": "Jailbroken iOS intercept setup via SSH (profile CA + proxy)"},
 		{"name": "ios_ssh_install_ca", "desc": "Jailbroken iOS: open mobileconfig on device via SSH"},
 		{"name": "host_stats", "desc": "Per-host flow/byte breakdown — use before prune_history"},
-		{"name": "prune_history", "desc": "DESTRUCTIVE: delete flows by host pattern (delete noisy hosts or keepOnly important ones)"},
+		{"name": "prune_history", "desc": "DESTRUCTIVE: prune flows by host and optional filters; dryRun first, undo window after"},
+		{"name": "prune_undo", "desc": "Restore a pruned batch inside its undo window"},
+		{"name": "prune_pending", "desc": "List prune batches still restorable"},
 	},
 }
 
