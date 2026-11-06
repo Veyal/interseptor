@@ -50,6 +50,7 @@ type ScopeChecker interface {
 type proxyFlow struct {
 	*store.Flow
 	suppressCapture bool
+	budgetHeld      int64 // transform-buffer bytes reserved for this exchange
 }
 
 // Server is the intercepting forward-proxy HTTP handler.
@@ -64,6 +65,7 @@ type Server struct {
 	upstream                 atomic.Pointer[url.URL] // optional chained upstream proxy
 	upstreamProxyRoots       atomic.Pointer[x509.CertPool]
 	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
+	budget                   *byteBudget // nil → sharedTransformBudget
 	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
 	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
@@ -786,7 +788,11 @@ func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow 
 func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, r *http.Request, flow *proxyFlow) {
 	flow.Flags |= store.FlagWebSocket
 
-	up, err := s.dialUpstream(flow.Scheme, flow.Host, flow.Port)
+	// Dial what an ordinary request on this tunnel would: for "CONNECT <IP>"
+	// with the real hostname only in SNI, that is the CONNECT IP, not a fresh
+	// lookup of the SNI name (which may not resolve, or resolve elsewhere).
+	dialAddr := originDialAddress(r.Context(), net.JoinHostPort(flow.Host, strconv.Itoa(flow.Port)))
+	up, err := s.dialUpstreamTo(flow.Scheme, flow.Host, flow.Port, dialAddr)
 	if err != nil {
 		s.recordUpgradeError(clientConn, flow, "upgrade dial: "+err.Error())
 		return
@@ -888,11 +894,20 @@ func (s *Server) recordUpgradeError(clientConn net.Conn, flow *proxyFlow, msg st
 
 // dialUpstream opens a raw connection to the target, using TLS for https so the
 // upgraded stream is end-to-end encrypted to the origin.
+// dialUpstream opens a raw connection to host:port (see dialUpstreamTo).
 func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
+	return s.dialUpstreamTo(scheme, host, port, net.JoinHostPort(host, strconv.Itoa(port)))
+}
+
+// dialUpstreamTo opens a raw connection to the target, using TLS for https so
+// the upgraded stream is end-to-end encrypted to the origin. dialAddr is the
+// address actually dialled, so a CONNECT-tunnelled origin is reached at its
+// CONNECT IP while the TLS handshake still uses the logical hostname.
+func (s *Server) dialUpstreamTo(scheme, host string, port int, dialAddr string) (net.Conn, error) {
 	if s.isOwnListenerTarget(host, port) {
 		return nil, errSelfTarget
 	}
-	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	addr := dialAddr
 	// KeepAlive lets the OS detect a half-open upstream (peer vanished without
 	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
 	// without an application-level timeout that would kill a legitimately idle one.
@@ -1182,7 +1197,10 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 	// that are not covered by an enabled background-traffic suppression policy.
 	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow.Flow) && !flow.suppressCapture &&
 		(s.Scope == nil || s.Scope.InScope(flow.Flow)) {
-		raw, truncated := dumpRequest(out)
+		raw, truncated, held := dumpRequestWithin(out, s.transformBudget())
+		if held > 0 {
+			defer s.transformBudget().release(held)
+		}
 		if truncated {
 			// The body is too large or could not be read completely, so a round-tripped
 			// edit could forward a truncated body. Skip the hold and preserve the stream.
@@ -1341,6 +1359,7 @@ func isBodylessResponse(resp *http.Response) bool {
 func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *proxyFlow) {
 	defer resp.Body.Close()
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
+		defer s.releaseBuffered(flow)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		http.Error(w, "response dropped by interseptor", http.StatusBadGateway)
@@ -1425,6 +1444,7 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 	upstream := resp.Body
 	defer upstream.Close()
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
+		defer s.releaseBuffered(flow)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		writeSimpleResponse(conn, http.StatusBadGateway, "response dropped by interseptor")
@@ -1553,9 +1573,17 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		}
 	}
 
-	lr := io.LimitReader(resp.Body, readLimit+1)
-	b, rerr := io.ReadAll(lr)
+	budget := s.transformBudget()
+	b, held, rerr := readBodyWithinBudget(resp.Body, readLimit, resp.ContentLength, budget)
+	// The caller releases this once the body has been written to the client.
+	flow.budgetHeld += held
 	if rerr != nil || int64(len(b)) > readLimit {
+		budget.release(held)
+		flow.budgetHeld -= held
+		held = 0
+		if errors.Is(rerr, errTransformBudget) {
+			noteOverBudget(budget, "response", flow.Host, flow.Path)
+		}
 		// Too large to buffer/transform (or a mid-body read error) — restore the
 		// stream and forward it untransformed, rather than buffering unbounded or
 		// forwarding a silently-truncated body. Rules/hold don't apply over the cap.
@@ -1893,11 +1921,23 @@ func headerWithHost(r *http.Request) map[string][]string {
 // when the body exceeded the editor buffer or could not be read completely, in
 // which case the partial stream is restored to r.Body and interception is bypassed.
 func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
+	raw, truncated, held := dumpRequestWithin(r, sharedTransformBudget)
+	sharedTransformBudget.release(held)
+	return raw, truncated
+}
+
+// dumpRequestWithin is dumpRequest with the body buffered against budget. held
+// is the reservation the caller must release once the request is forwarded; an
+// exhausted budget is reported as truncated, so the hold is bypassed and the
+// body streams untouched.
+func dumpRequestWithin(r *http.Request, budget *byteBudget) (raw []byte, truncated bool, held int64) {
 	var body []byte
 	if r.Body != nil {
 		var readErr error
-		body, readErr = io.ReadAll(io.LimitReader(r.Body, maxTransformBody+1))
+		body, held, readErr = readBodyWithinBudget(r.Body, maxTransformBody, r.ContentLength, budget)
 		if readErr != nil || int64(len(body)) > maxTransformBody {
+			budget.release(held)
+			held = 0
 			// Body too large to buffer for the intercept editor — restore the full
 			// or unread portion so forwarding isn't replaced by an editable partial dump.
 			r.Body = restoreBody(body, r.Body)
@@ -1931,7 +1971,15 @@ func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
 	}
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes(), truncated
+	return b.Bytes(), truncated, held
+}
+
+// releaseBuffered returns the exchange's transform-buffer reservation.
+func (s *Server) releaseBuffered(flow *proxyFlow) {
+	if flow.budgetHeld > 0 {
+		s.transformBudget().release(flow.budgetHeld)
+		flow.budgetHeld = 0
+	}
 }
 
 func isChunked(te []string, h http.Header) bool {
