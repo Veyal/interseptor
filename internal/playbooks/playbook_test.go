@@ -12,7 +12,7 @@ func TestBundledCorpusLoadsAndIsTrusted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(all) < 5 {
+	if len(all) < 8 {
 		t.Fatalf("bundled corpus has %d playbooks, want the shipped set", len(all))
 	}
 	for _, p := range all {

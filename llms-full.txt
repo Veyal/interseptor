@@ -4866,6 +4866,11 @@ test X" record the report's coverage section reads.
 
 ## Retiring the passive scanner
 
+The bundled corpus already covers the checks the passive scanner valued most — security
+headers and CORS, cookies, reflected parameters (as reflected XSS, which needs execution to be
+of value), secrets and tokens in responses and bundles, version disclosure and debug endpoints —
+each written as a check the agent runs and evidences rather than a regex over a response.
+
 Playbooks replace the passive scanner. The scanner's panel and its `run_scanner` /
 `list_issues` tools are marked deprecated and keep working for existing projects; removal follows
 in a later release, once the bundled corpus covers the checks it performed. See issue #119.
