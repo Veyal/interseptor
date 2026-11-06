@@ -2607,7 +2607,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/codecs") })
 
 	s.add("test_codec",
-		"Compile+match/decode a message codec against a flow WITHOUT saving. Omit flowId for the latest flow. Shape: meta={...}; def match(flow,side); def decode(flow,side,raw); optional def encode(...). Builtins include aes_ecb_encrypt/decrypt, hash, hmac, b64*, json_*, re_search.",
+		"Compile+match/decode a message codec against a flow WITHOUT saving. Omit flowId for the latest flow. Shape: meta={...}; def match(flow,side); def decode(flow,side,raw); optional def encode(...). Builtins include aes_ecb_encrypt/decrypt, aes_cbc_encrypt/decrypt, aes_ctr, hash, hmac, b64*, json_*, re_search.",
 		obj(map[string]any{
 			"source": p("string", "Starlark source (or omit and pass id of a saved codec)"),
 			"id":     p("string", "saved codec id when source omitted"),

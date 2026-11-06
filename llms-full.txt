@@ -4589,13 +4589,29 @@ original `"id"` still encodes with its own file.
 
 ## Builtins
 
-Shared Starlark stdlib (`internal/starx`) plus AES-ECB helpers:
+Shared Starlark stdlib (`internal/starx`) plus AES helpers:
 
 | Builtin | Notes |
 |---|---|
 | `aes_ecb_encrypt(key, plaintext, key_format="auto")` | PKCS7 pad → AES-ECB → **base64** ciphertext |
 | `aes_ecb_decrypt(key, ciphertext, key_format="auto")` | base64 or raw → AES-ECB → plaintext string |
+| `aes_cbc_decrypt(key, ciphertext, iv, key_format?, data_format?, iv_format?)` | base64/raw/hex ciphertext → CBC → PKCS7 unpad → plaintext |
+| `aes_cbc_encrypt(key, plaintext, iv, key_format?, iv_format?)` | PKCS7 pad → CBC → **base64** ciphertext |
+| `aes_ctr(key, data, iv, key_format?, data_format?, iv_format?)` | unpadded keystream; the same call encrypts and decrypts, returns **base64** |
 | `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | same as checks |
+
+`data_format` / `iv_format` take `"auto"` (default), `"raw"` or `"hex"`. An IV of 32 hex
+characters or exactly 16 raw characters is recognised automatically, which covers the common
+`hex(IV || CBC(payload))` envelope:
+
+```python
+def decode(flow, side, raw):
+    iv, ct = raw[:32], raw[32:]
+    return aes_cbc_decrypt(SECRET, ct, iv, data_format="hex", iv_format="hex")
+```
+
+These run natively, so a 120 KB body decodes in a handful of Starlark steps; emulating CBC
+with the ECB helper cost roughly ten million steps and hit the codec budget around 24 KB.
 
 `key` may be 16/24/32 raw bytes **or** hex of that length (32/48/64 hex chars).
 With the default `key_format="auto"`, a key that is valid hex of one of those lengths is

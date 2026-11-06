@@ -45,6 +45,9 @@ func Predeclared() starlark.StringDict {
 		"hmac":            starlark.NewBuiltin("hmac", HMACBuiltin),
 		"aes_ecb_encrypt": starlark.NewBuiltin("aes_ecb_encrypt", AESECBEncryptBuiltin),
 		"aes_ecb_decrypt": starlark.NewBuiltin("aes_ecb_decrypt", AESECBDecryptBuiltin),
+		"aes_cbc_encrypt": starlark.NewBuiltin("aes_cbc_encrypt", AESCBCEncryptBuiltin),
+		"aes_cbc_decrypt": starlark.NewBuiltin("aes_cbc_decrypt", AESCBCDecryptBuiltin),
+		"aes_ctr":         starlark.NewBuiltin("aes_ctr", AESCTRBuiltin),
 	}
 }
 
