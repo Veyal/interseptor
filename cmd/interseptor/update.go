@@ -50,8 +50,6 @@ Usage:
   interseptor launcher     dashboard to run multiple projects at once, each its own instance
   interseptor vault        always-on project archive vault (Tailscale Serve friendly)
   interseptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
-  interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
-  interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
   interseptor install-chrome install standalone Chrome for Testing (the CLI's UI window, PDF export
                            and test browser; the desktop app does not need it)
   interseptor install-desktop install or update the macOS desktop app (Interseptor.app) from GitHub
@@ -93,12 +91,6 @@ Install-desktop flags (macOS only):
 Stop flags:
   --force, -f              skip graceful shutdown and force-kill immediately
   --timeout 6s             grace period before force-kill (default 6s)
-
-Check flags (interseptor check <action>):
-  new <id>                  scaffold a check template into ~/.interseptor/checks
-  validate [files...]      compile every check; exit 1 on any error (CI gate)
-  lint     [files...]      alias of validate
-  test <file> --flow-json f compile + run a passive check against a flow JSON
 
 Examples:
   interseptor update

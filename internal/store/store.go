@@ -199,6 +199,9 @@ CREATE TABLE IF NOT EXISTS rules (
   big_body INTEGER NOT NULL DEFAULT 0
 );
 
+-- scan_issues is retained unread: the passive scanner that wrote it was removed
+-- in favour of Playbooks, but a project opened from an older release must not lose
+-- the rows it recorded. Nothing inserts into it any more.
 CREATE TABLE IF NOT EXISTS scan_issues (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   flow_id INTEGER NOT NULL DEFAULT 0,

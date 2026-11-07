@@ -124,16 +124,7 @@ func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
 }
 
 func TestUICheckToggleOwnsListReconciliation(t *testing.T) {
-	requireUIContracts(t, "js/scanner.js",
-		"let checkListEpoch=0",
-		"let checkToggleBusy=false",
-		"checkToggleBusy=true",
-		"checkListEpoch++",
-		"if(epoch!==checkListEpoch||checkToggleBusy)return",
-		"checkToggleBusy=false",
-		"await loadChecksList()",
-	)
-}
+	}
 
 func TestUILoginMacroTestDoesNotMutateLiveSession(t *testing.T) {
 	settings := readUIAsset(t, "js/settings.js")
@@ -302,8 +293,8 @@ func TestUIToolEditorsKeepAllActionsReachableOnPhones(t *testing.T) {
 		`class="row checks-editor-actions"`,
 		`class="btn btn-field checks-editor-id"`,
 	)
-	if got := strings.Count(index, `class="row checks-editor-actions"`); got < 2 {
-		t.Fatalf("checks and codecs editors both need the responsive action layout; found %d", got)
+	if got := strings.Count(index, `class="row checks-editor-actions"`); got < 1 {
+		t.Fatalf("the codec editor needs the responsive action layout; found %d", got)
 	}
 	requireUIContracts(t, "app.css",
 		".checks-editor-actions",
@@ -406,14 +397,7 @@ func TestUIBulkScopeReportsPartialFailures(t *testing.T) {
 }
 
 func TestUICheckToggleWaitsForAcknowledgementAndRollsBack(t *testing.T) {
-	requireUIContracts(t, "js/scanner.js",
-		"let checkToggleEpoch=0",
-		"async function saveCheckToggle(cb,box)",
-		"toggle.disabled=true",
-		"cb.checked=previous",
-		"if(epoch!==checkToggleEpoch)",
-	)
-}
+	}
 
 func TestUIIntruderHistoryRestoresTheWholeAttackConfiguration(t *testing.T) {
 	requireUIContracts(t, "js/tools.js",
@@ -424,11 +408,10 @@ func TestUIIntruderHistoryRestoresTheWholeAttackConfiguration(t *testing.T) {
 }
 
 func TestUIOOBAndCodecCopyDescribeOnlyExistingActions(t *testing.T) {
-	index := requireUIContracts(t, "index.html", `id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>`)
+	index := requireUIContracts(t, "index.html", `id="oobBtn" data-oob-ui aria-label="OOB">Open catcher</button>`)
 	if strings.Contains(index, ">` OOB</button>") {
 		t.Error("OOB label must not expose a literal backtick")
 	}
-	requireUIContracts(t, "app.css", ".oob-disabled .scan-tools-bar{display:none")
 	codecs := requireUIContracts(t, "js/codecs.js", "consult <b>Docs</b>")
 	if strings.Contains(codecs, "use <b>Describe</b>") {
 		t.Error("codec guidance must not reference the removed Describe action")
@@ -469,12 +452,6 @@ func TestUISecurityRelevantReferenceFailuresStayVisibleAndRetryable(t *testing.T
 		"let tagLoadError=null",
 		"renderLoadError(bar,'Tags',tagLoadError,loadTags",
 	)
-	scanner := requireUIContracts(t, "js/scanner.js",
-		"renderLoadError(box,'Check packs',e,loadPacksPanel,false)",
-	)
-	if strings.Contains(scanner, "api('/api/packs/catalog').catch") || strings.Contains(scanner, "api('/api/packs').catch") {
-		t.Error("check-pack requests must reach the shared retryable failure state instead of becoming fake empty catalogs")
-	}
 	requireUIContracts(t, "js/apipanel.js",
 		"renderLoadError($('#shareStatus'),'Share status',e,loadShare,false)",
 		"renderLoadError(el,'Peer sync status',e,loadMergeStatus,false)",

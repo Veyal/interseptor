@@ -58,7 +58,7 @@ func TestUIShellPreservesRequiredIDs(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, want := range []string{
 		`id="tabs"`, `data-tab="proxy"`, `data-tab="intercept"`, `data-tab="repeater"`, `data-tab="intruder"`,
-		`data-tab="scanner"`, `data-tab="map"`, `data-tab="findings"`, `data-tab="notes"`, `data-tab="activity"`, `data-tab="settings"`,
+		`data-tab="playbooks"`, `data-tab="map"`, `data-tab="findings"`, `data-tab="notes"`, `data-tab="activity"`, `data-tab="settings"`,
 		`id="crumb"`, `id="mobileToolSelect"`, `id="sseStatus"`, `id="proxyAddr"`, `id="controlAddr"`,
 		`id="deviceProxyChip"`, `id="cmdkBtn"`,
 	} {
@@ -178,7 +178,7 @@ func TestUIShellAppExposesExtensionPointsAndKeepsOriginalSSEEvents(t *testing.T)
 	for _, ev := range []string{
 		"flow.new", "flow.update", "activity", "activity.clear", "intercept.update", "rules.update", "ws.frame",
 		"scope.update", "views.update", "session.update", "settings.update", "human.input", "tunnel.update",
-		"checks.update", "codecs.update", "oob.update", "intruder.update", "scanner.update", "notes.update",
+		"codecs.update", "oob.update", "intruder.update", "notes.update",
 		"engagement.update", "findings.update", "tags.update", "allowlist.update",
 	} {
 		if !strings.Contains(app, "'"+ev+"'") {
@@ -216,7 +216,7 @@ func TestUIShellPaletteExtractionKeepsEveryCommand(t *testing.T) {
 		t.Error("the palette must use classes, not inline styles")
 	}
 	// The base list moved with no entry lost.
-	for _, title := range []string{"Go to Proxy", "Go to Intercept", "Go to Repeater", "Go to Intruder", "Go to Scanner", "Go to Findings", "Go to Map", "Go to Notes", "Go to Activity",
+	for _, title := range []string{"Go to Proxy", "Go to Intercept", "Go to Repeater", "Go to Intruder", "Go to Playbooks", "Go to Findings", "Go to Map", "Go to Notes", "Go to Activity",
 		"New finding", "Export findings", "Switch or create project", "Run setup wizard", "Toggle theme (dark / light)", "Shortcuts", "Settings: Scope"} {
 		if !strings.Contains(app, "t:'"+title+"'") {
 			t.Errorf("palette command %q is missing", title)

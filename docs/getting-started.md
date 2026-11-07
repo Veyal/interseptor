@@ -100,8 +100,9 @@ app first, because the command refuses while the app is running. See
    wizard also offers **Launch test browser** to open an isolated Chrome/Chromium already pointed at
    the proxy. See [System proxy automation](proxy-and-tls.md#system-proxy-automation).
 3. **For HTTPS, trust the CA** (see below) — then HTTPS flows are decrypted and editable.
-4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
-   the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.
+4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, open a
+   **Playbook** for the tests to run, set **Scope**, or flip on **Intercept** to hold/edit requests and
+   responses.
 
 For a LAN or mobile listener, read [Proxy listener exposure](proxy-and-tls.md#proxy-listener-exposure)
 before rebinding. Authentication is off by default, so a non-loopback listener is an open proxy
@@ -155,7 +156,7 @@ to give a second manually-launched instance its own proxy port too.
 For running several projects at once, **`interseptor launcher`** is a small dashboard process
 (default `http://127.0.0.1:9965`, no separate auth setup — it auto-generates a local token on start)
 that starts/stops per-project Interseptor instances, each its own OS process with its own
-auto-allocated control+proxy ports, sharing only the global CA and Starlark checks. Closing the
+auto-allocated control+proxy ports, sharing only the global CA. Closing the
 launcher does not stop the instances it spawned.
 
 **`interseptor stop`** gracefully stops all running Interseptor instances (SIGINT/SIGTERM, waiting

@@ -18,9 +18,9 @@ User-facing capabilities in the current release. For a tour of the menus, see th
   payload lists of any length are scheduled lazily and results stream to disk, so the only limit is the
   machine (and the 128 MiB control-request body that carries the list).
 - **Authorization testing** — replay a request as each saved identity (role) and diff for broken
-  access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner & OOB when you have a tunnel or public URL).
+  access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Out-of-band (OOB) when you have a tunnel or public URL).
 - **External agent orchestration** — MCP exposes deterministic capture, replay, mutation, scope,
-  passive scanning, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
+  playbook, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
   Interseptor records every request and result in History, Activity, and findings.
 - **Mobile device support** — Android (adb-based CA install + proxy config) and iOS (profile-based,
   including jailbroken-device SSH automation) setup for HTTPS interception on real devices.
@@ -31,27 +31,17 @@ User-facing capabilities in the current release. For a tour of the menus, see th
   multiple project instances from one place.
 - **External AI integration** — connect an AI assistant through MCP or REST/SSE. Interseptor
   supplies tools and evidence; model calls, reasoning, and sequencing stay outside the binary.
-- **Scanner** — built-in passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
-  reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
-  exportable as a **Markdown findings report**.
 - **Playbooks** — markdown test guides shipped in the binary plus per-project additions, read by
   the connected AI harness over MCP (tools, resources, prompts) and executed with the normal
   tools; a coverage ledger records considered / run / found / dismissed per surface. Project
-  playbooks are marked untrusted content. Replaces the passive scanner (now deprecated). See
-  [playbooks](playbooks.md).
-- **Custom checks & rule packs** — extend the passive scanner with sandboxed **Starlark** checks
-  (drop a `.star` in `~/.interseptor/checks/`), install **official packs** from Scanner → Checks
-  (or upload a `.tar.gz`), and share community packs. See
-  [custom checks](custom-checks.md), [rule packs](rule-packs.md), and [`examples/checks/`](../examples/checks/).
+  playbooks are marked untrusted content. See [playbooks](playbooks.md).
 - **Message codecs** — project-scoped Starlark encrypt/decrypt for app payloads (AES-ECB helpers,
   Decoded view in History/Repeater/Intercept, opt-in re-encode on send). See
   [message codecs](message-codecs.md) and [`examples/codecs/`](../examples/codecs/).
-- **Signed rule packs** — ed25519 publisher signatures on pack install (plus manifest sha256). See
-  [rule packs](rule-packs.md).
 - **Guided content discovery** — ferox/ffuf through the proxy (Map → Discovery); soft-404 clustering
   on Map. See [content discovery](content-discovery.md).
 - **HTTP/2 upstream** — prefer h2 to origins; MITM client leg remains HTTP/1.1. See [HTTP/2](http2.md).
-- **Target scope** — include/exclude rules that focus history, the intercept gate, and the scanner.
+- **Target scope** — include/exclude rules that focus history and the intercept gate.
 - **WebSocket** capture (`ws://`/`wss://` per-frame) **and replay** (a WebSocket Repeater).
 - **Session / auth injection** — auto-apply an `Authorization`/`Cookie` to every Repeater & Intruder
   send, plus a **token macro** (CSRF/re-auth: fetch a value from a refresh request, inject per send)
@@ -83,7 +73,7 @@ User-facing capabilities in the current release. For a tour of the menus, see th
 - **Decoder** — inspect common text encodings with copyable output, separate from stored Message codecs.
   See [Workspace guide](workspace.md#decoder).
 - **Map** — tree and graph views of observed hosts and endpoints, with filters and collapsible groups.
-  See [Workspace guide](workspace.md#scanner-and-map).
+  See [Workspace guide](workspace.md#playbooks-and-map).
 - **Settings** — searchable Network, Testing, and System sections with save state and recovery.
   See [Settings](settings.md).
 - **Session inspector** — a passive timeline and role comparison of selected History captures,

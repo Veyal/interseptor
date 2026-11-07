@@ -77,6 +77,9 @@ headers and CORS, cookies, reflected parameters (as reflected XSS, which needs e
 of value), secrets and tokens in responses and bundles, version disclosure and debug endpoints —
 each written as a check the agent runs and evidences rather than a regex over a response.
 
-Playbooks replace the passive scanner. The scanner's panel and its `run_scanner` /
-`list_issues` tools are marked deprecated and keep working for existing projects; removal follows
-in a later release, once the bundled corpus covers the checks it performed. See issue #119.
+Playbooks replace the removed passive scanner. Its panel, `run_scanner` and `list_issues`
+tools, custom checks, and rule packs are no longer available. Existing projects retain captured flows
+and curated findings. Their legacy `scan_issues` database table remains on disk but is no longer exposed
+through the API or reports; use an older version to export those issues if needed. Existing global and
+project check files remain on disk but are not run or migrated, and global checks are excluded from full
+project backups. Use playbooks and ordinary tools to investigate leads. See issue #119.

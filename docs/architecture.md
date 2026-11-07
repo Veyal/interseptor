@@ -58,9 +58,8 @@ independently tested.
 | `internal/preview` | Pure-Go PNG renderers: flow viewer plus the evidence render family (Intruder timeline/distribution/race/strip, authz matrix, flow diff, flow waterfall, finding chain); input structs are plain data, no imports of intruder/control/store |
 | `internal/sender` | One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater & Intruder |
 | `internal/intruder` | Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) |
-| `internal/scanner` | Passive security checks over captured flows |
+| `internal/playbooks` | Bundled and per-project Markdown test guides the connected agent executes, plus the coverage ledger (does no testing itself) |
 | `internal/oob` | Out-of-band interaction catcher (blind SSRF/XXE/SQLi/RCE callbacks) |
-| `internal/checkscript` | Runs user-authored Starlark scanner checks (sandboxed, bounded) |
 | `internal/msgcodec` | Project-scoped Starlark message codecs (app-layer encrypt/decrypt for History/Repeater; never on the proxy hot path) |
 | `internal/curlgen` · `internal/report` | Render a flow as `curl`; render findings as Markdown |
 | `internal/wsrepeater` | WebSocket Repeater (RFC 6455 handshake + masked frames, no deps) |
@@ -274,7 +273,7 @@ multi-monitor `BroadcastChannel` popout inspector are deferred. Shared primitive
 `statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js`,
 `finder.js`, the `bus.js` event bus, and `core.js`'s `createListView` — the one windowed-list
 renderer with container-level event delegation (built on the pure `virtual-list-model.js` windowing
-math) that now backs Intruder results and the WebSocket frame list; `windowed-list.js` (with its `list-rows-model.js`) layers group headers and a sticky header on top of it for the Findings and Scanner-issue lists, so a project with thousands of findings or issues renders a bounded window of rows. The Decoder is a slide-up bottom
+math) that now backs Intruder results and the WebSocket frame list; `windowed-list.js` (with its `list-rows-model.js`) layers group headers and a sticky header on top of it for the Findings list, so a project with thousands of findings renders a bounded window of rows. The Decoder is a slide-up bottom
 "Convert" drawer reachable anywhere with `Cmd/Ctrl+J`. `copy-image.js` is the DOM-free logic behind the Findings **Copy image** button (PNG
 conversion, a promise-valued `ClipboardItem`, secure-context fallbacks). `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
@@ -292,7 +291,8 @@ Deliberate differences from the overhaul spec, recorded so they are not mistaken
 - **Hint strip.** The 24px panel-footer binding list is deferred: every binding is already listed in the
   shortcut sheet and the command palette, and the footer would cost vertical space on phones.
 - **Notes layout.** Notes keeps its single-column list and editor; Map and the Proxy inspector own
-  their own dock layouts. Only Findings, Intercept, Scanner and Settings use `split.js`.
+  their own dock layouts. Findings, Identities, Collections, Intercept and Settings use `split.js`
+  for a resizable list | detail layout.
 - **Intercept auto-forward count.** The server keeps no counter, so Intercept tallies out-of-scope
   requests from the live flow stream with the exact client scope mirror and hides the line when scope
   cannot be decided in the browser (regex rules).

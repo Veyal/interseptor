@@ -1,6 +1,6 @@
-// Package report renders scanner findings as a human-readable Markdown report,
+// Package report renders curated findings as a human-readable Markdown report,
 // ready to paste into a pentest writeup. It is a pure transform over stored
-// issues — no I/O — so it is equally callable from the control API and the AI.
+// findings — no I/O — so it is equally callable from the control API and the AI.
 package report
 
 import (
@@ -17,80 +17,19 @@ var sevRank = map[string]int{"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "I
 // lines and tables. Kept in sync with sevRank.
 var sevOrder = []string{"Critical", "High", "Medium", "Low", "Info"}
 
-// Findings renders issues as Markdown, grouped by severity (High→Info) with a
-// summary line. Output is deterministic for a given set of issues.
-func Findings(issues []store.Issue) string {
-	var b strings.Builder
-	b.WriteString("# Interseptor — Passive Scan Findings\n\n")
-	if len(issues) == 0 {
-		b.WriteString("_No findings._\n")
-		return b.String()
-	}
-
-	counts := map[string]int{}
-	for _, is := range issues {
-		counts[is.Severity]++
-	}
-	var parts []string
-	for _, sev := range sevOrder {
-		if counts[sev] > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[sev], sev))
-		}
-	}
-	noun := "findings"
-	if len(issues) == 1 {
-		noun = "finding"
-	}
-	b.WriteString(fmt.Sprintf("_%d %s: %s_\n", len(issues), noun, strings.Join(parts, ", ")))
-
-	sorted := append([]store.Issue(nil), issues...)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		ri, rj := rank(sorted[i].Severity), rank(sorted[j].Severity)
-		if ri != rj {
-			return ri < rj
-		}
-		if sorted[i].Title != sorted[j].Title {
-			return sorted[i].Title < sorted[j].Title
-		}
-		return sorted[i].Target < sorted[j].Target
-	})
-
-	lastSev := ""
-	for n, is := range sorted {
-		if is.Severity != lastSev {
-			b.WriteString("\n## " + sanitizeLine(orVal(is.Severity, "Info")) + "\n")
-			lastSev = is.Severity
-		}
-		fmt.Fprintf(&b, "\n### %d. %s\n", n+1, sanitizeLine(is.Title))
-		if is.Target != "" {
-			b.WriteString("- **Target:** `" + code(is.Target) + "`\n")
-		}
-		if is.Detail != "" {
-			b.WriteString("- **Detail:** " + sanitizeLine(is.Detail) + "\n")
-		}
-		if is.Evidence != "" {
-			b.WriteString("- **Evidence:** `" + code(is.Evidence) + "`\n")
-		}
-		if is.Fix != "" {
-			b.WriteString("- **Remediation:** " + sanitizeLine(is.Fix) + "\n")
-		}
-	}
-	return b.String()
-}
-
 // Project renders a full engagement report: an executive summary table, then the
 // curated Findings (each with its status and attached PoC request/response flows)
 // grouped by severity Critical→Info, then an "Excluded — False Positives" section
-// for findings marked false_positive, and finally an appendix of the auto-generated
-// passive-scan Issues. Findings marked false_positive are kept out of the main body.
+// for findings marked false_positive. Findings marked false_positive are kept out
+// of the main body.
 // Deterministic for a given input. This is the human-and-AI-shared writeup the
 // operator exports.
-func Project(findings []store.Finding, issues []store.Issue) string {
+func Project(findings []store.Finding) string {
 	var b strings.Builder
 	b.WriteString("# Interseptor — Engagement Report\n\n")
 	titles := findingTitles(findings)
 	findings = withInverseRelations(findings)
-	if len(findings) == 0 && len(issues) == 0 {
+	if len(findings) == 0 {
 		b.WriteString("_No findings recorded._\n")
 		return b.String()
 	}
@@ -186,11 +125,6 @@ func Project(findings []store.Finding, issues []store.Issue) string {
 				b.WriteString("- **Target:** `" + code(f.Target) + "`\n")
 			}
 		}
-	}
-
-	if len(issues) > 0 {
-		b.WriteString("\n---\n\n## Appendix: Passive Scan Issues\n\n")
-		b.WriteString(stripTitle(Findings(issues)))
 	}
 	return b.String()
 }
@@ -739,7 +673,7 @@ func FilterGroupedFindings(findings []store.Finding, omitTags []string) []store.
 // tags follow alphabetically; untagged findings go last under ## Untagged.
 // omitTags drops those tags from sections and excludes findings that only carry
 // omitted tags (typical for out-of-scope).
-func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrder, omitTags []string) string {
+func ProjectGroupedByTag(findings []store.Finding, tagOrder, omitTags []string) string {
 	omit := map[string]bool{}
 	for _, t := range store.NormalizeTags(omitTags) {
 		omit[t] = true
@@ -758,7 +692,7 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 	var b strings.Builder
 	b.WriteString("# Interseptor — Engagement Report\n\n")
 	b.WriteString("_Grouped by finding tag (report scoping)._\n\n")
-	if len(active) == 0 && len(excluded) == 0 && len(issues) == 0 {
+	if len(active) == 0 && len(excluded) == 0 {
 		b.WriteString("_No findings recorded._\n")
 		return b.String()
 	}
@@ -794,10 +728,6 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 				b.WriteString("- **Tags:** " + sanitizeLine(strings.Join(f.Tags, ", ")) + "\n")
 			}
 		}
-	}
-	if len(issues) > 0 {
-		b.WriteString("\n---\n\n## Appendix: Passive Scan Issues\n\n")
-		b.WriteString(stripTitle(Findings(issues)))
 	}
 	return b.String()
 }

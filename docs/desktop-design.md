@@ -2,7 +2,7 @@
 
 The desktop app (the native macOS shell and Chrome/Edge `--app` windows) renders the same embedded UI
 as the browser, with a desktop skin on top. Navigation and flow are unchanged: the rail lists the same
-menus in the same order (Proxy, Intercept, Repeater, Intruder, Collections, Scanner, Map, Findings,
+menus in the same order (Proxy, Intercept, Repeater, Intruder, Collections, Playbooks, Map, Findings,
 Notes, Activity, Settings) and switching between them works as on the web. What changes is how each
 screen looks and how much it shows at rest.
 

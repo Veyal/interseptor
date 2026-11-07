@@ -12,22 +12,14 @@ func TestProjectHTMLContainsStructure(t *testing.T) {
 		{ID: 1, Severity: "High", Status: "verified", Title: "IDOR", Detail: "swap id",
 			Flows: []store.FindingFlow{{FlowID: 1, Method: "GET", Host: "app.test", Path: "/u/2", Status: 200}}},
 	}
-	html := ProjectHTML(findings, nil)
+	html := ProjectHTML(findings)
 	for _, want := range []string{"<!DOCTYPE html>", "<h1>", "IDOR", "GET app.test/u/2", "<table>", "</html>"} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("missing %q in html", want)
 		}
 	}
 	if strings.Contains(html, "Appendix: Passive Scan") {
-		t.Fatal("passive appendix should not appear when issues nil")
-	}
-}
-
-func TestProjectHTMLWithAppendix(t *testing.T) {
-	issues := []store.Issue{{Severity: "Medium", Title: "Missing CSP", Target: "GET /"}}
-	html := ProjectHTML(nil, issues)
-	if !strings.Contains(html, "Missing CSP") {
-		t.Fatalf("appendix missing:\n%s", html)
+		t.Fatal("the removed passive-scanner appendix must not reappear")
 	}
 }
 
@@ -66,7 +58,7 @@ func TestMarkdownToHTMLEmphasisesLinesContainingUnderscores(t *testing.T) {
 // Regression (QA10): a Low finding marked false_positive rendered an INFO badge
 // in the appendix card while its own Severity row said Low.
 func TestProjectHTMLFalsePositiveCardKeepsItsSeverity(t *testing.T) {
-	html := ProjectHTML([]store.Finding{{ID: 1, Severity: "Low", Status: "false_positive", Title: "Dismissed claim", Target: "GET /x"}}, nil)
+	html := ProjectHTML([]store.Finding{{ID: 1, Severity: "Low", Status: "false_positive", Title: "Dismissed claim", Target: "GET /x"}})
 	i := strings.Index(html, "Dismissed claim")
 	if i < 0 {
 		t.Fatalf("false-positive appendix missing:\n%s", html)

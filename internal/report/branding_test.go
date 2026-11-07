@@ -27,7 +27,7 @@ func brandingFixture() store.ReportBranding {
 // Unset branding must leave today's output alone, byte for byte.
 func TestBrandingUnsetChangesNothing(t *testing.T) {
 	findings := []store.Finding{{ID: 1, Severity: "High", Title: "IDOR on /invoices/{id}"}}
-	md := Project(findings, nil)
+	md := Project(findings)
 	if got := WithBranding(md, store.ReportBranding{}); got != md {
 		t.Fatal("empty branding altered the Markdown report")
 	}
@@ -44,7 +44,7 @@ func TestBrandingUnsetChangesNothing(t *testing.T) {
 }
 
 func TestBrandingRewritesTitleAndCover(t *testing.T) {
-	md := WithBranding(Project([]store.Finding{{ID: 1, Title: "IDOR"}}, nil), brandingFixture())
+	md := WithBranding(Project([]store.Finding{{ID: 1, Title: "IDOR"}}), brandingFixture())
 	if !strings.HasPrefix(md, "# Example Corp — External Assessment\n") {
 		t.Fatalf("title not replaced:\n%s", firstLines(md, 3))
 	}
@@ -71,7 +71,7 @@ func TestBrandingRewritesTitleAndCover(t *testing.T) {
 
 func TestBrandingKeepsLogosOutOfMarkdownAndInHTML(t *testing.T) {
 	b := brandingFixture()
-	md := WithBranding(Project(nil, nil), b)
+	md := WithBranding(Project(nil), b)
 	if strings.Contains(md, "base64") {
 		t.Error("a Markdown export must not carry embedded logo bytes")
 	}
@@ -95,7 +95,7 @@ func TestBrandingEscapesEverythingItEmbeds(t *testing.T) {
 		CompanyName: `Acme <img onerror=alert(1)>`,
 		CompanyLogo: `data:image/png;base64,AAA" onerror="alert(1)`,
 	}
-	html := HTMLDocument(WithBranding(Project(nil, nil), b), nil, b)
+	html := HTMLDocument(WithBranding(Project(nil), b), nil, b)
 	if strings.Contains(html, "<script>") {
 		t.Fatalf("script survived into the report:\n%s", html[:400])
 	}
@@ -110,7 +110,7 @@ func TestBrandingEscapesEverythingItEmbeds(t *testing.T) {
 func TestBrandingCustomCoverReplacesTheGeneratedOne(t *testing.T) {
 	b := brandingFixture()
 	b.CoverPage = "## Scope of work\n\nTwo web applications and one API, in scope between the dates above."
-	md := WithBranding(Project(nil, nil), b)
+	md := WithBranding(Project(nil), b)
 	if !strings.Contains(md, "## Scope of work") {
 		t.Fatalf("custom cover missing:\n%s", firstLines(md, 10))
 	}
@@ -124,7 +124,7 @@ func TestBrandingCustomCoverReplacesTheGeneratedOne(t *testing.T) {
 }
 
 func TestBrandingPartialFieldsOnlyRenderWhatIsSet(t *testing.T) {
-	md := WithBranding(Project(nil, nil), store.ReportBranding{Version: 1, LeadAssessor: "A. Assessor"})
+	md := WithBranding(Project(nil), store.ReportBranding{Version: 1, LeadAssessor: "A. Assessor"})
 	if !strings.Contains(md, "- **Lead assessor:** A. Assessor") {
 		t.Fatalf("set field missing:\n%s", firstLines(md, 8))
 	}
@@ -139,14 +139,14 @@ func TestBrandingPartialFieldsOnlyRenderWhatIsSet(t *testing.T) {
 }
 
 func TestBrandingHandlesOneSidedPeriodAndParties(t *testing.T) {
-	md := WithBranding(Project(nil, nil), store.ReportBranding{Version: 1, AssessmentStart: "2026-03-03", CompanyName: "Example Security"})
+	md := WithBranding(Project(nil), store.ReportBranding{Version: 1, AssessmentStart: "2026-03-03", CompanyName: "Example Security"})
 	if !strings.Contains(md, "- **Assessment period:** from 2026-03-03") {
 		t.Errorf("open-ended period:\n%s", firstLines(md, 8))
 	}
 	if !strings.Contains(md, "Prepared by **Example Security**.") {
 		t.Errorf("company without a client:\n%s", firstLines(md, 8))
 	}
-	md = WithBranding(Project(nil, nil), store.ReportBranding{Version: 1, AssessmentEnd: "2026-03-14", ClientName: "Example Corp"})
+	md = WithBranding(Project(nil), store.ReportBranding{Version: 1, AssessmentEnd: "2026-03-14", ClientName: "Example Corp"})
 	if !strings.Contains(md, "- **Assessment period:** to 2026-03-14") {
 		t.Errorf("open-start period:\n%s", firstLines(md, 8))
 	}
@@ -156,7 +156,7 @@ func TestBrandingHandlesOneSidedPeriodAndParties(t *testing.T) {
 }
 
 func TestBrandingSurvivesEngagementContext(t *testing.T) {
-	md := Project(nil, nil)
+	md := Project(nil)
 	md = WithContext(md, Context{Brief: store.EngagementBrief{Version: 2, Scope: "example.com only"}})
 	md = WithBranding(md, brandingFixture())
 	coverAt := strings.Index(md, "Prepared by")

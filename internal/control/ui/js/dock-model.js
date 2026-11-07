@@ -6,14 +6,14 @@
 export const DOCK_DESTINATIONS = [
   { id: 'capture', label: 'Capture', icon: 'proxy', panels: ['proxy', 'intercept'] },
   { id: 'test', label: 'Test', icon: 'repeater', panels: ['repeater', 'intruder', 'identities', 'collections'] },
-  { id: 'recon', label: 'Recon', icon: 'scanner', panels: ['scanner', 'map'] },
+  { id: 'recon', label: 'Recon', icon: 'book', panels: ['playbooks', 'map'] },
   { id: 'report', label: 'Report', icon: 'report', panels: ['findings', 'notes', 'activity'] },
   { id: 'more', label: 'More', icon: 'more', panels: ['settings'] },
 ];
 
 export const PANEL_LABELS = {
   proxy: 'Proxy', intercept: 'Intercept', repeater: 'Repeater', intruder: 'Intruder', identities: 'Identities', collections: 'Collections',
-  scanner: 'Scanner', map: 'Map', findings: 'Findings', notes: 'Notes', activity: 'Activity', settings: 'Settings',
+  playbooks: 'Playbooks', map: 'Map', findings: 'Findings', notes: 'Notes', activity: 'Activity', settings: 'Settings',
 };
 
 const byId = (id) => DOCK_DESTINATIONS.find((d) => d.id === id) || null;

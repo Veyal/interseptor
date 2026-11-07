@@ -231,11 +231,11 @@ test('PANEL_ACTIONS: the panel actions QA looked for are in the palette, each ti
   const titles = PANEL_ACTIONS.map((a) => a.t);
   for (const want of [
     /^Proxy: Filters/, /^Proxy: Hide TLS failures/, /^Proxy: Pause or resume live history/, /^Proxy: Add a note/,
-    /^Intercept: Match & Replace rules/, /^Scanner: Run scan/, /^Scanner: Clear results/,
+    /^Intercept: Match & Replace rules/, /^Playbooks: Filter the corpus/, /^Findings: New finding/,
     /^Map: Expand or collapse all/, /^Map: Rebuild from history/, /^Collections: New environment/,
     /^Collections: Console/, /^Repeater: Import Postman/,
   ]) assert.ok(titles.some((t) => want.test(t)), 'missing ' + want);
-  const panels = ['proxy', 'intercept', 'repeater', 'intruder', 'identities', 'collections', 'scanner', 'map', 'findings', 'notes', 'activity', 'settings'];
+  const panels = ['proxy', 'intercept', 'repeater', 'intruder', 'identities', 'collections', 'playbooks', 'map', 'findings', 'notes', 'activity', 'settings'];
   for (const a of PANEL_ACTIONS) {
     assert.ok(panels.includes(a.tab), a.t + ': unknown panel ' + a.tab);
     assert.match(a.sel, /^#[A-Za-z]+$|^details\.[a-z-]+$/, a.t + ': selector');
@@ -245,5 +245,5 @@ test('PANEL_ACTIONS: the panel actions QA looked for are in the palette, each ti
   }
   // Actions that change or delete data are never fired from a mis-typed Enter:
   // the palette takes you to the control and focuses it.
-  for (const t of [/^Scanner: Run scan/, /^Scanner: Clear results/]) assert.equal(PANEL_ACTIONS.find((a) => t.test(a.t)).how, 'focus');
+  for (const t of [/^Findings: New finding/]) assert.equal(PANEL_ACTIONS.find((a) => t.test(a.t)).how, 'click');
 });

@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="/flow.css">
 <link rel="stylesheet" href="/panel-proxy.css">
 <link rel="stylesheet" href="/panel-tools.css">
-<link rel="stylesheet" href="/panel-scan.css">
+<link rel="stylesheet" href="/panel-intercept-workbench.css">
 <link rel="stylesheet" href="/panel-misc.css">
 <link rel="stylesheet" href="/settings.css">
 <link rel="stylesheet" href="/report.css">
@@ -40,7 +40,6 @@
 <link rel="stylesheet" href="/css/desktop/panel-map.css">
 <link rel="stylesheet" href="/css/desktop/panel-notes.css">
 <link rel="stylesheet" href="/css/desktop/panel-proxy.css">
-<link rel="stylesheet" href="/css/desktop/panel-scanner.css">
 <link rel="stylesheet" href="/css/desktop/panel-settings.css">
 <link rel="stylesheet" href="/css/desktop/panel-collections.css">
 <link rel="stylesheet" href="/css/desktop/panel-identities.css">
@@ -59,7 +58,6 @@
 <link rel="modulepreload" href="/js/settings.js">
 <link rel="modulepreload" href="/js/findings.js">
 <link rel="modulepreload" href="/js/tools.js">
-<link rel="modulepreload" href="/js/scanner.js">
 <script>
 // Apply the saved (or system) theme and density before first paint to avoid a
 // flash or a layout shift. data-theme is light | hc; dark is the unmarked base.
@@ -90,7 +88,6 @@
 <symbol id="i-repeater" viewBox="0 0 24 24"><path d="M4 11V9l3-3h12M16 3l3 3-3 3"/><path d="M20 13v2l-3 3H5M8 15l-3 3 3 3"/></symbol>
 <symbol id="i-intruder" viewBox="0 0 24 24"><path d="M3 11h2v2H3z"/><path d="M6 12h2M8 12l6-6h3M8 12h9M8 12l6 6h3"/><path d="M20 4v16"/></symbol>
 <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h7v16H4z"/><path d="M13 4h7v16h-7z"/><path d="M6 8h3"/><path d="M15 8h3"/></symbol>
-<symbol id="i-scanner" viewBox="0 0 24 24"><path d="M16 3H8L3 8v8l5 5h8l5-5V8"/><path d="M10 8.5h4l1.5 1.5v4l-1.5 1.5h-4l-1.5-1.5v-4z"/><path d="M12 12l6.5-6.5"/></symbol>
 <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 3h6v5H9zM3 16h5v5H3zM16 16h5v5h-5z"/><path d="M12 8v4M5.5 16v-4h13v4"/></symbol>
 <symbol id="i-finding" viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M6 4h13l-4 4 4 4H6"/></symbol>
 <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3h12l2 2v14l-2 2H6z"/><path d="M3 8h3M3 12h3M3 16h3M10 8h6M10 12h6"/></symbol>
@@ -111,7 +108,6 @@
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l9 9v8H3v-8z"/><path d="M12 10v4M12 17h.01"/></symbol>
 <symbol id="i-alert-circle" viewBox="0 0 24 24"><path d="M8 3h8l5 5v8l-5 5h-8l-5-5v-8z"/><path d="M12 7.5v5M12 16.5h.01"/></symbol>
 <symbol id="i-sev-critical" viewBox="0 0 24 24"><path d="M12 2l10 10-10 10L2 12z"/><path d="M12 8v5M12 16.5h.01"/></symbol>
-<symbol id="i-sev-low" viewBox="0 0 24 24"><path d="M12 21l9-9V4H3v8z"/><path d="M9 9h6"/></symbol>
 <symbol id="i-block" viewBox="0 0 24 24"><path d="M8 3h8l5 5v8l-5 5h-8l-5-5v-8z"/><path d="M5.5 5.5l13 13"/></symbol>
 <symbol id="i-tls" viewBox="0 0 24 24"><path d="M12 20H5l-2-2V6l2-2h14l2 2v6"/><path d="M7 9h10M7 13h3"/><path d="M15 13h4l1 1v4l-1 1h-4l-1-1v-4z"/><path d="M15.5 19v3M18.5 19v3"/></symbol>
 <symbol id="i-lock" viewBox="0 0 24 24"><path d="M7 11h10l2 2v6l-2 2h-10l-2-2v-6z"/><path d="M8 11V7l2-2h4l2 2v4"/><path d="M12 16h.01"/></symbol>
@@ -148,7 +144,6 @@
 <symbol id="i-panel-bottom" viewBox="0 0 24 24"><path d="M5 4h14l2 2v12l-2 2h-14l-2-2v-12z"/><path d="M3 14h18"/></symbol>
 <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="i-more" viewBox="0 0 24 24"><path d="M4 11h2v2h-2z"/><path d="M11 11h2v2h-2z"/><path d="M18 11h2v2h-2z"/></symbol>
-<symbol id="i-tools" viewBox="0 0 24 24"><path d="M2 19L10 11L10 7L14 3L16 5L12.5 8.5L15.5 11.5L19 8L21 10L17 14L13 14L5 22z"/></symbol>
 <symbol id="i-decode" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/><path d="M12 5v14"/></symbol>
 <symbol id="i-codec" viewBox="0 0 24 24"><path d="M8 7h8l1 1v8l-1 1h-8l-1-1v-8z"/><path d="M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
 <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="M3 9V6l2-2h4l2 2h6l2 2v1"/><path d="M6 11h15v9H3v-6z"/></symbol>
@@ -230,7 +225,7 @@
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
-<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="scanner">Scanner (deprecated)</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
@@ -249,7 +244,6 @@
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
     <button class="tab" id="tab-playbooks" role="tab" aria-selected="false" aria-controls="panel-playbooks" data-tab="playbooks" data-group="Recon" title="Playbooks"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-book"/></svg>Playbooks</button>
-    <button class="tab tab-deprecated" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon" title="Scanner (deprecated: use Playbooks)"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-hidden="true"></span></button>
     <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon" title="Map"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg>Map<span id="mapBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="report">
@@ -621,68 +615,6 @@ Content-Type: application/json
     </div>
   </div>
   <!-- /region:playbooks -->
-  <!-- region:scanner -->
-  <!-- SCANNER -->
-  <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
-    <div class="capture-loss-banner" role="status">
-      <strong>Deprecated.</strong> The passive scanner is being retired: an AI harness running the
-      <button type="button" class="btn btn-sm" id="scanGotoPlaybooks">Playbooks</button>
-      is the detection path, and it records coverage the scanner never did. Saved issues still open.
-    </div>
-    <div class="toolbar">
-      <div id="scanPassiveBar" class="row find-toolbar-row">
-      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>
-      <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
-      <button class="btn btn-primary" id="scanRun" aria-describedby="scanRunReason">Run scan ▸</button>
-      <button class="btn" id="scanClear">Clear results</button>
-      <span id="scanRescanState" class="hint" role="status"></span>
-      <span id="scanCount" class="count"></span>
-      <div class="spacer"></div>
-      <div class="scan-tools" id="scanTools">
-        <button type="button" class="btn" id="scanToolsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="scanToolsMenu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tools"/></svg> Tools <svg class="icon scan-tools-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
-        <div class="scan-tools-menu" id="scanToolsMenu" role="group" aria-label="Scanner tools" hidden>
-          <button class="btn" id="checksBtn" aria-label="Custom checks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-edit"/></svg> Checks</button>
-          <button class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-codec"/></svg> Codecs</button>
-          <button class="btn" id="scanDecoderBtn" aria-label="Decoder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-decode"/></svg> Decoder</button>
-          <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
-        </div>
-      </div>
-      </div>
-    </div>
-    <div class="scan-context" id="scanContext">
-      <p class="hint scan-scope-line" id="scanScopeLine"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> <span id="scanScopeText">Scope: loading</span> <button type="button" class="btn xs" id="scanScopeLink">Open target scope</button></p>
-      <p class="hint scan-run-reason" id="scanRunReason" hidden></p>
-    </div>
-    <div class="scan-progress" id="scanProgress" hidden>
-      <progress id="scanProgressBar" aria-label="Scan progress"></progress>
-      <span id="scanProgressText" role="status">Scanning</span>
-      <span id="scanProgressCount" class="hint" aria-hidden="true"></span>
-      <button type="button" class="btn xs" id="scanStop">Stop scan</button>
-    </div>
-    <div id="scanPassiveView" class="scan-passive-view split">
-      <div class="split-list scan-list-col" id="scanListCol">
-        <div class="scan-host-filter" id="scanHostRow" hidden><label for="scanHostFilter">Host</label><select id="scanHostFilter" class="btn btn-field"><option value="">All hosts</option></select></div>
-        <div id="scanSevChips" class="scan-sev-chips" role="group" aria-label="Filter results by severity"></div>
-        <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
-          <div class="state-empty">
-            <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-finding"/></svg></div>
-            <div class="state-empty-title">No issues yet</div>
-            <p class="state-empty-hint">Run a scan to find issues.</p>
-
-          </div>
-        </div>
-      </div>
-      <div id="scanDetail" class="pane scan-detail-pane split-detail">
-        <div class="state-empty">
-          <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div>
-          <div class="state-empty-title">No issue selected</div>
-          <p class="state-empty-hint">Select an issue from the list to view its details.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- /region:scanner -->
   <!-- region:findings -->
   <!-- FINDINGS -->
   <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
@@ -915,8 +847,9 @@ Content-Type: application/json
         <div class="settings-nav-group" data-nav-group="testing">
           <div class="settings-nav-group-label">Testing</div>
           <button data-sec="scope">Scope</button>
-          <button type="button" data-sec="scanner">Scanner &amp; OOB</button>
+          <button type="button" data-sec="oob">Out-of-band (OOB)</button>
           <button data-sec="session">Session / auth</button>
+          <button data-sec="payloads">Payloads &amp; codecs</button>
         </div>
         <div class="settings-nav-group" data-nav-group="system">
           <div class="settings-nav-group-label">System</div>
@@ -1288,15 +1221,25 @@ Content-Type: application/json
             <div id="briefFormMount"></div>
           </div>
         </section>
-        <section class="set-sec" data-sec="scanner" hidden>
-          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg><h2>Scanner &amp; OOB</h2></header>
+        <section class="set-sec" data-sec="oob" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-oob"/></svg><h2>Out-of-band (OOB)</h2></header>
           <div class="section">
             <h3>Out-of-band (OOB) catcher</h3>
             <p class="hint u-mb-3">Default <code>127.0.0.1:9966/oob</code> only works for same-machine tests. Enable when you have a reachable base URL.</p>
             <label class="chk-row u-mb-2">
               <input type="checkbox" id="setOobEnabled"> Enable OOB catcher
             </label>
-            <p id="oobDisabledHint" class="hint u-hidden u-mt-2 u-warn">OOB is off — the <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-oob"/></svg> button is hidden. Enable above when you have a publicly reachable callback URL.</p>
+            <p id="oobDisabledHint" class="hint u-hidden u-mt-2 u-warn">OOB is off — the catcher stays closed. Enable above when you have a publicly reachable callback URL.</p>
+            <button type="button" class="btn" id="oobBtn" data-oob-ui aria-label="OOB">Open catcher</button>
+          </div>
+        </section>
+        <section class="set-sec" data-sec="payloads" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-codec"/></svg><h2>Payloads &amp; codecs</h2></header>
+          <div class="section">
+            <h3>Message codecs</h3>
+            <p class="hint u-mb-3">Project-scoped Starlark encrypt/decrypt for app payloads (AES-ECB/CBC/CTR helpers, request signing). They live in <code>project/codecs/*.star</code> and drive the Decoded view and opt-in re-encode on send.</p>
+            <button type="button" class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-codec"/></svg> Open codecs</button>
+            <button type="button" class="btn" id="decoderBtn" aria-label="Decoder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-decode"/></svg> Open decoder</button>
           </div>
         </section>
         <section class="set-sec" data-sec="api" hidden>
@@ -1556,7 +1499,7 @@ Content-Type: application/json
 <nav id="dock" class="dock" aria-label="Main">
   <button type="button" class="dock-btn" data-dock="capture"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-proxy"/></svg><span class="dock-label">Capture</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
   <button type="button" class="dock-btn" data-dock="test"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg><span class="dock-label">Test</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
-  <button type="button" class="dock-btn" data-dock="recon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scanner"/></svg><span class="dock-label">Recon</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+  <button type="button" class="dock-btn" data-dock="recon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-book"/></svg><span class="dock-label">Recon</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
   <button type="button" class="dock-btn" data-dock="report"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-report"/></svg><span class="dock-label">Report</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
   <button type="button" class="dock-btn" data-dock="more" aria-haspopup="dialog"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-more"/></svg><span class="dock-label">More</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
 </nav>
@@ -1585,7 +1528,6 @@ Content-Type: application/json
       </div>
       <button type="button" class="btn" id="fdRepeater" title="Send this flow to Repeater">Repeater</button>
       <button type="button" class="btn" id="fdIntruder" title="Load this flow into Intruder">Intruder</button>
-      <button type="button" class="btn" id="fdScanner" title="Run a scanner check against this flow">Scanner check</button>
       <span id="fdCopyPng"></span>
       <button type="button" class="btn" id="fdMore" aria-haspopup="menu" aria-expanded="false">More</button>
     </footer>
@@ -1638,55 +1580,6 @@ Content-Type: application/json
       </div>
       <label class="sc-foot-switch" for="scSingleKey"><input type="checkbox" id="scSingleKey" checked> Single-key shortcuts (letters without Ctrl)</label>
       <div class="hint sc-foot">Plain-letter workflow shortcuts are disabled while typing. Repeater Send still works in its editor.</div>
-    </div>
-  </div>
-</div>
-<div id="checksModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="checksModalTitle" class="modal-shell checks-dialog">
-    <div class="row modal-shell-head">
-      <span id="checksModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-checks"/></svg> Checks</span>
-      <div class="spacer"></div>
-      <button class="btn" id="checksClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
-    </div>
-    <div class="checks-work">
-      <div class="checks-sidebar">
-        <div class="checks-search-wrap">
-          <input id="checksSearch" class="btn checks-search" placeholder="Filter checks…" aria-label="Filter checks" spellcheck="false">
-        </div>
-        <div id="checksList"></div>
-        <div class="checks-sidebar-foot">
-          <div class="u-flex u-gap-2"><button class="btn btn-primary u-flex-1" id="checkNew">+ New passive</button></div>
-          <details class="checks-packs" id="checksPacks">
-            <summary class="hint u-cursor u-bold">Rule packs</summary>
-            <div id="checksPackList" class="checks-pack-list hint">Loading packs…</div>
-            <label class="chk-row hint u-mt-1 u-mb-1 u-cursor"><input type="checkbox" id="checksPackAllowUnsigned"> Allow unsigned packs</label>
-            <label class="btn btn-file u-mt-1"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder-open"/></svg> Install .tar.gz<input type="file" id="checksPackFile" accept=".tar.gz,application/gzip" hidden></label>
-          </details>
-        </div>
-      </div>
-      <div class="checks-editor">
-        <div class="row checks-editor-actions">
-          <input id="checkId" class="btn btn-field checks-editor-id" aria-label="Check ID" placeholder="check-id (letters, - or _)">
-          <button class="btn" id="checkTest">Test ▸</button>
-          <button class="btn btn-primary" id="checkSave">Save</button>
-          <div class="spacer"></div>
-          <button class="btn u-danger" id="checkDelete" title="Delete custom check, or revert a built-in override"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
-        </div>
-        <div class="row checks-mode-bar">
-          <div class="seg" id="checkModeSeg" role="tablist" aria-label="Check editor mode">
-            <button type="button" class="on" id="checkModeCode" data-mode="code" role="tab" aria-selected="true" aria-controls="checkPaneCode" tabindex="0">Code</button>
-            <button type="button" id="checkModeDocs" data-mode="docs" role="tab" aria-selected="false" aria-controls="checkPaneDocs" tabindex="-1">Docs</button>
-          </div>
-          <span class="hint" id="checkFlowHint">Test uses selected flow or latest capture</span>
-        </div>
-        <div id="checkPaneCode" class="check-pane" role="tabpanel" aria-labelledby="checkModeCode">
-          <textarea id="checkSrc" class="rep-edit" aria-label="Custom check source" spellcheck="false" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
-        </div>
-        <div id="checkPaneDocs" class="check-pane" role="tabpanel" aria-labelledby="checkModeDocs" hidden>
-          <div id="checkDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
-        </div>
-        <div id="checkOut" tabindex="-1"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
-      </div>
     </div>
   </div>
 </div>

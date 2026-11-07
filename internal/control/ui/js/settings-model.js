@@ -156,7 +156,7 @@ const CHECK = (ctx, id) => ((ctx && ctx.readiness && ctx.readiness.checks) || []
 // sectionHealth(sec, ctx) -> null (no chip) or {state:'ok'|'warn'|'unknown', text, detail}.
 // ctx: {readiness:{checks}|null, scope:{enabled,inCount}, brief:{ok}, identities:n, stale:bool}.
 export function sectionHealth(sec, ctx = {}) {
-  const need = { proxy: 'proxy', tls: 'tls_intercept', session: 'auth_identities', scanner: 'oob' }[sec];
+  const need = { proxy: 'proxy', tls: 'tls_intercept', session: 'auth_identities', oob: 'oob' }[sec];
   if (need) {
     const c = CHECK(ctx, need);
     if (!c) return { state: 'unknown', text: 'Health unavailable', detail: ctx.stale ? 'Could not read the readiness report' : 'Checking...' };

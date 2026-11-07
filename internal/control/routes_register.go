@@ -7,8 +7,7 @@ func (h *Hub) routes() {
 	sc := &scopeAPI{h}
 	fd := &findingsAPI{h}
 	tools := &toolsAPI{h}
-	scan := &scannerAPI{h}
-	chk := &checksAPI{h}
+	chk := &codecsAPI{h}
 	proj := &projectAPI{h}
 	and := &androidAPI{h}
 	iosH := &iosAPI{h}
@@ -24,14 +23,12 @@ func (h *Hub) routes() {
 	h.registerScopeRoutes(sc)
 	h.registerFindingsRoutes(fd)
 	h.registerToolsRoutes(tools)
-	h.registerScannerRoutes(scan)
-	h.registerChecksRoutes(chk)
+	h.registerCodecRoutes(chk)
 	h.registerProjectRoutes(proj)
 	h.registerOobRoutes(oob)
 	h.registerAuthzRoutes(az, ev)
 	h.registerEvidenceRoutes(ev)
 	h.registerMetaRoutes(meta)
-	h.registerPacksRoutes()
 	h.registerCollectionRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
@@ -191,23 +188,7 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 	h.mux.HandleFunc("GET /replay/{id}", tools.replayPage)
 }
 
-func (h *Hub) registerScannerRoutes(scan *scannerAPI) {
-	h.mux.HandleFunc("POST /api/scanner/run", scan.scannerRun)
-	h.mux.HandleFunc("POST /api/scanner/cancel", scan.scannerCancel)
-	h.mux.HandleFunc("GET /api/scanner/targets", scan.scannerTargets)
-	h.mux.HandleFunc("GET /api/scanner/issues", scan.scannerIssues)
-	h.mux.HandleFunc("DELETE /api/scanner/issues", scan.clearScannerIssues)
-	h.mux.HandleFunc("GET /api/scanner/report", scan.scannerReport)
-}
-
-func (h *Hub) registerChecksRoutes(chk *checksAPI) {
-	h.mux.HandleFunc("GET /api/checks", chk.listChecks)
-	h.mux.HandleFunc("PUT /api/checks/disabled", chk.setChecksDisabled)
-	h.mux.HandleFunc("GET /api/checks/reference", chk.checksReference)
-	h.mux.HandleFunc("POST /api/checks/test", chk.testCheck)
-	h.mux.HandleFunc("GET /api/checks/{id}", chk.getCheck)
-	h.mux.HandleFunc("PUT /api/checks/{id}", chk.saveCheck)
-	h.mux.HandleFunc("DELETE /api/checks/{id}", chk.deleteCheck)
+func (h *Hub) registerCodecRoutes(chk *codecsAPI) {
 	h.mux.HandleFunc("GET /api/codecs", chk.listCodecs)
 	h.mux.HandleFunc("GET /api/codecs/reference", chk.codecsReference)
 	h.mux.HandleFunc("POST /api/codecs/test", chk.testCodec)
@@ -215,15 +196,6 @@ func (h *Hub) registerChecksRoutes(chk *checksAPI) {
 	h.mux.HandleFunc("GET /api/codecs/{id}", chk.getCodec)
 	h.mux.HandleFunc("PUT /api/codecs/{id}", chk.saveCodec)
 	h.mux.HandleFunc("DELETE /api/codecs/{id}", chk.deleteCodec)
-}
-
-func (h *Hub) registerPacksRoutes() {
-	h.mux.HandleFunc("GET /api/packs", h.listPacks)
-	h.mux.HandleFunc("GET /api/packs/catalog", h.listPackCatalog)
-	h.mux.HandleFunc("POST /api/packs/catalog/{name}/install", h.installCatalogPack)
-	h.mux.HandleFunc("POST /api/packs/install", h.installPack)
-	h.mux.HandleFunc("GET /api/packs/{name}", h.getPack)
-	h.mux.HandleFunc("DELETE /api/packs/{name}", h.removePack)
 }
 
 func (h *Hub) registerProjectRoutes(proj *projectAPI) {

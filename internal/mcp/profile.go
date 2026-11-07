@@ -10,7 +10,7 @@ import (
 	"github.com/Veyal/interseptor/internal/version"
 )
 
-// Profiles are named subsets of the MCP tool surface. The full surface is 133
+// Profiles are named subsets of the MCP tool surface. The full surface is 136
 // tools; an eager-loading MCP client injects every schema into every prompt
 // before the user has said anything, so a client that only replays requests and
 // files findings pays for the mobile, codec, collection and vault tools too. A
@@ -24,7 +24,7 @@ const (
 	// ProfileFull is every registered tool — the default.
 	ProfileFull Profile = "full"
 	// ProfileWebPentest is the replay-first web workflow: scope, flows,
-	// Repeater, Intruder, passive scan, authz, OOB, findings.
+	// Repeater, Intruder, playbooks, authz, OOB, findings.
 	ProfileWebPentest Profile = "web-pentest"
 	// ProfileReporting is the report pass over findings that already exist:
 	// readiness, target cleanup, CVSS, evidence rendering, export.
@@ -117,8 +117,8 @@ var webPentestTools = []string{
 	"list_flows", "get_flow", "analyze_flow", "host_stats", "list_endpoints", "list_params",
 	// replay and attack
 	"send_request", "start_intruder", "intruder_state",
-	// passive scan
-	"run_scanner", "list_issues",
+	// playbooks (the agent runs them itself; there is no passive scanner)
+	"match_playbooks", "get_playbook", "record_playbook_coverage",
 	// identities and authorization
 	"promote_flow_to_authz", "add_authz_identity", "list_authz", "authz_run",
 	"authz_differential", "cross_host_token_replay",
@@ -160,7 +160,7 @@ var mobileTools = []string{
 // profileDescriptions are one-liners for the catalogue served by GET /api/mcp.
 var profileDescriptions = map[Profile]string{
 	ProfileFull:       "Every tool. The default; unchanged from releases before profiles existed.",
-	ProfileWebPentest: "Replay-first web pentest: scope, flows, Repeater, Intruder, passive scan, authz, OOB, findings.",
+	ProfileWebPentest: "Replay-first web pentest: scope, flows, Repeater, Intruder, playbooks, authz, OOB, findings.",
 	ProfileReporting:  "Report pass over existing findings: readiness, target cleanup, CVSS, evidence rendering, export.",
 	ProfileMobile:     "Device interception setup: Android, iOS, CA install, SSL-pinning detection.",
 }

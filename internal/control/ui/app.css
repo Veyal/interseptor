@@ -1297,7 +1297,6 @@ details.acc>summary.acc-h>*{margin:7px 0}
 
 /* responsive: only extreme narrow windows (not the normal desktop layout) */
 .oob-disabled [data-oob-ui]{display:none!important;}
-.oob-disabled .scan-tools-bar{display:none!important}
 
 @media (max-width:1100px){
   .intr-results .pane-head{height:auto;flex-wrap:wrap;overflow:visible}

@@ -365,7 +365,6 @@ func TestFindingsWriteControlsAreHiddenWhenEditingIsOff(t *testing.T) {
 	}
 	for file, want := range map[string]string{
 		"js/tools.js":    `class="btn xs findings-write" id="repAddFinding"`,
-		"js/scanner.js":  `class="btn accent findings-write" id="scanPromote"`,
 		"js/proxy.js":    "if(findingsEditable()){",
 		"js/findings.js": "document.documentElement.dataset.findingsEditing",
 	} {

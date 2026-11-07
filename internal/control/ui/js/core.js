@@ -1313,7 +1313,7 @@ export function createDensityVirtualList(opts){
    per-feature "el.innerHTML = items.map(rowHTML).join(''); then
    el.querySelectorAll(rowSel).forEach(n=>n.onclick=…)" pattern — the serialize-
    all-then-rebind-all shape that leaks listeners, pressures GC and left big lists
-   (Intruder results, WebSocket frames, Scanner issues) unvirtualized.
+   (Intruder results, WebSocket frames) unvirtualized.
 
    With a fixed `rowHeight` and more than `threshold` rows it mounts only the
    visible window inside a spacer (same spacer + translateY shape Intruder used,
@@ -2057,7 +2057,7 @@ function randomUUID(){
   return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
 
-// ctxDecoderOpeners lets scanner.js hand core.js the Decoder drawer without an
+// ctxDecoderOpener lets a panel hand core.js the Decoder drawer without an
 // import cycle; the menu item is hidden until something registers one.
 let ctxDecoderOpener=null;
 export function registerCtxDecoder(open){if(typeof open==='function')ctxDecoderOpener=open;}
@@ -2072,7 +2072,7 @@ function bindTextFieldActions(sections,el){
     if(action==='paste')return async()=>{const t=await clipboardRead();if(t!=null)replaceFieldSelection(el,t);};
     if(action==='select-all')return()=>{el.focus();if(el.isContentEditable)document.getSelection()?.selectAllChildren(el);else el.select?.();};
     if(action==='clear')return()=>{if(el.isContentEditable)el.textContent='';else el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.focus();};
-    if(action==='decoder')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxDecoderOpener)ctxDecoderOpener(t);else copyText(t,'copied — open Decoder from Scanner');};
+    if(action==='decoder')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxDecoderOpener)ctxDecoderOpener(t);else copyText(t,'copied — open Decoder from Tools');};
     if(action==='search')return()=>{const t=fieldSelection(el)||fieldValue(el);if(ctxHistorySearch)ctxHistorySearch(t);};
     if(action&&action.startsWith('codec:')){const op=action.slice(6);const c=CODEC_OPS.find(x=>x.op===op);return()=>runCodecOp(el,op,c?c.label:'Transform');}
     if(action&&action.startsWith('insert:'))return()=>insertSnippet(el,action.slice(7));
@@ -2297,7 +2297,7 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
+export const MODAL_IDS=['flowModal','shortcutsModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
   // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
   // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
   'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet','collEnvSheet','collScriptsSheet','collImportSheet','collExportSheet','collRunSheet',

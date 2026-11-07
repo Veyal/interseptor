@@ -12,7 +12,6 @@ func TestUIStaticEditorsHaveAccessibleNames(t *testing.T) {
 		`id="setSessionHeaders" aria-label="Session headers`,
 		`<label for="macroReq">Refresh request`,
 		`<label for="loginMacroReq">Login request`,
-		`id="checkSrc" class="rep-edit" aria-label="Custom check source`,
 		`id="codecSrc" class="rep-edit" aria-label="Message codec source`,
 		`id="promptInput" class="btn btn-field" aria-label="Value`,
 	} {

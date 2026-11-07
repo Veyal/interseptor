@@ -31,7 +31,7 @@
 - number: "07"
   id: agent-orchestration
   title: External agent orchestration
-  text: MCP exposes deterministic capture, replay, mutation, scope, scanning, evidence, and finding tools. Actions remain recorded in History, Activity, and findings.
+  text: MCP exposes deterministic capture, replay, mutation, scope, playbook, evidence, and finding tools. Actions remain recorded in History, Activity, and findings.
   link: /api-and-mcp/
 - number: "08"
   id: mobile
@@ -54,111 +54,96 @@
   text: External assistants connect through MCP or REST/SSE while Interseptor supplies deterministic tools and evidence. Model calls remain outside the binary.
   link: /api-and-mcp/
 - number: "12"
-  id: scanner
-  title: Scanner
-  text: Built-in passive checks cover security headers, CORS, reflected parameters, secrets, cookies, authentication, and version disclosure.
-  link: /workspace/#scanner-and-map
-- number: "13"
   id: playbooks
   title: Playbooks
   text: Markdown test guides ship in the binary and extend per project; the connected agent reads them over MCP and executes them, and a coverage ledger records what was tested.
   link: /playbooks/
-- number: "14"
-  id: checks
-  title: Custom checks and rule packs
-  text: Sandboxed Starlark passive checks extend scanner behavior without a fork, with official and community bundles.
-  link: /custom-checks/
-- number: "15"
+- number: "13"
   id: codecs
   title: Message codecs
   text: Project-scoped Starlark encrypt/decrypt helpers provide decoded views and opt-in re-encoding for application payloads.
   link: /message-codecs/
-- number: "16"
-  id: signed-packs
-  title: Signed rule packs
-  text: Ed25519 publisher signatures and manifest SHA-256 protect rule-pack provenance during install.
-  link: /rule-packs/
-- number: "17"
+- number: "14"
   id: discovery
   title: Guided content discovery
   text: Run feroxbuster, ffuf, or similar tools through the proxy from Map and cluster soft-404 responses.
   link: /content-discovery/
-- number: "18"
+- number: "15"
   id: http2
   title: HTTP/2 upstream
   text: Prefer h2 to origins while keeping the MITM client leg on HTTP/1.1.
   link: /http2/
-- number: "19"
+- number: "16"
   id: scope
   title: Target scope
-  text: Include and exclude rules focus History, intercept gates, and scanner activity.
+  text: Include and exclude rules focus History and intercept gates.
   link: /settings/#testing
-- number: "20"
+- number: "17"
   id: websockets
   title: WebSocket
   text: Capture ws and wss traffic per frame and replay it in a WebSocket Repeater.
   link: /workspace/#websocket-frames
-- number: "21"
+- number: "18"
   id: session-auth
   title: Session and auth injection
   text: Apply Authorization or Cookie headers, refresh tokens with a token macro, and re-authenticate with a recorded login macro.
   link: /settings/#testing
-- number: "22"
+- number: "19"
   id: import-export
   title: Import and export
   text: HAR, Burp saved-items XML, Postman collections, portable project JSON, and full project archives for different sharing and backup needs.
   link: /projects-and-data/#export-formats
-- number: "23"
+- number: "20"
   id: vault
   title: Project vault
   text: Always-on archive storage supports multi-device backup, import, and merge through Tailscale Serve.
   link: /vault/
-- number: "24"
+- number: "21"
   id: model-free
   title: Model-free core
   text: No provider keys, built-in chat, or autonomous pentest loop. External models use deterministic tools with scope enforcement and evidence recording.
   link: /architecture/#security-model
-- number: "25"
+- number: "22"
   id: findings
   title: Findings and reporting
   text: Searchable evidence review, multiple targets, CVSS v4, report readiness, immutable revisions and restore, and Final or Draft exports.
   link: /findings-and-reporting/
-- number: "26"
+- number: "23"
   id: api-mcp
   title: API and MCP
   text: REST control API, SSE event stream, and full MCP server expose the same deterministic engine to scripts and agents.
   link: /api-and-mcp/
-- number: "27"
+- number: "24"
   id: notes
   title: Notes
   text: Project Markdown notes with image paste, Edit and Preview, autosave, and recovery after a rejected save.
   link: /workspace/#notes
-- number: "28"
+- number: "25"
   id: activity
   title: Activity
   text: Recorded agent actions with intent filters, result details, and links to related captured flows.
   link: /workspace/#activity
-- number: "29"
+- number: "26"
   id: decoder
   title: Decoder
   text: Inspect Base64, URL, Hex, HTML, and JWT text with a separate input and copyable output.
   link: /workspace/#decoder
-- number: "30"
+- number: "27"
   id: map
   title: Map
   text: Tree and graph views of captured hosts and endpoints, with search, filters, and collapsible groups.
-  link: /workspace/#scanner-and-map
-- number: "31"
+  link: /workspace/#playbooks-and-map
+- number: "28"
   id: settings
   title: Settings
   text: Searchable Network, Testing, and System sections with clear save state and failure recovery.
   link: /settings/
-- number: "32"
+- number: "29"
   id: session-inspector
   title: Session inspector
   text: Passive timelines and role comparisons for selected History captures, with redacted observations and no new requests.
   link: /workspace/#session-inspector
-- number: "33"
+- number: "30"
   id: collections
   title: Collections
   text: Saved requests with environments, variables, auth, quarantined pm-compatible scripts, a runner, a CI command with JUnit output, and importers for Postman, OpenAPI, curl, Insomnia, Bruno, HAR, and Burp.

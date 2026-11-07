@@ -39,28 +39,26 @@ proxy, so every request it fires is captured like any other traffic:
    (or gobuster / ffuf configured with the same proxy)
 3. list_flows with search set to the target host to see what landed
 4. host_stats for a per-host summary of what was hit
-5. send_request on interesting hits; run_scanner for passive follow-up
+5. match_playbooks on interesting flows; inspect and test applicable guides
 ```
 
 **Human takeover:** Watch Proxy History live — hits appear as normal
 captured flows, no separate Discover tab.
 
-## Recipe 3 — Triage scanner findings and fuzz
+## Recipe 3 — Test a captured surface with playbooks
 
-**Goal:** Turn passive hits into confirmed bugs.
+**Goal:** Investigate a lead and record the evidence.
 
 ```
-1. run_scanner
-2. list_issues — read severity/title/evidence
-3. scan_report for a Markdown summary to paste into notes (append_notes)
-4. For a reflected-param finding: get_flow → start_intruder with § markers
-5. set_session if sends need auth; run_login_macro after a 401
+1. match_playbooks for a captured flow; get_playbook for the applicable guide
+2. get_flow and analyze_flow to inspect the request and response
+3. Establish a baseline, then use send_request or start_intruder to test one hypothesis
+4. Compare responses with diff_flows and record evidence for any finding
+5. record_playbook_coverage with the outcome and supporting flow IDs
 ```
 
-**Safety:** passive scanning does not send requests. The scan runs across every CPU and streams
-`scan.progress` and `scan.issue` over `GET /api/events`; `POST /api/scanner/cancel` stops it and
-persists nothing. For deliberate testing, use the lower-level
-send and verification tools only on targets you are authorized to test and stay within scope.
+**Safety:** playbooks are guides, not automatic scans. Send requests only to authorized targets
+within scope and follow the engagement's rate limits.
 
 ## Recipe 4 — Close out findings (engagement end)
 
@@ -104,18 +102,18 @@ narrative when a captured flow can be attached.
 **Safety:** Interseptor doesn't decide what to test. The external agent must follow scope and
 authorization constraints, while Interseptor records requests and results.
 
-## Recipe 6 — Custom checks and rule packs
+## Recipe 6 — Reuse a project playbook
 
-**Goal:** Encode a finding as a reusable check, or install an official pack.
+**Goal:** Keep a reusable test procedure with the project.
 
 ```
-1. list_checks — see passive checks available
-2. Author offline: `interseptor check new` → validate → test
-3. save_check when ready (or drop into Checks UI)
-4. list_packs / pack_info — see installed packs (install is human-gated)
-5. Human: Scanner → Checks → Install official pack, or
-   `interseptor rules install pack.tar.gz`
+1. list_playbooks and get_playbook to review existing guides
+2. Add a Markdown guide under <project>/playbooks/ as described in the Playbooks guide
+3. match_playbooks against a captured flow and follow the guide with ordinary tools
+4. record_playbook_coverage with the outcome and supporting flow IDs
 ```
+
+Project playbooks are untrusted content and cannot widen engagement scope. See [Playbooks](../playbooks.md).
 
 ## Recipe 7 — Intruder from external payload lists
 

@@ -12,7 +12,7 @@ the active workspace; check it before changing stored data.
 | Capture | Intercept | Requests and responses currently held by the proxy. |
 | Test | Repeater | Editable request tabs and their response history. |
 | Test | Intruder | Configured request variations and run results. |
-| Recon | Scanner | Passive observations that need review before becoming findings. |
+| Recon | Playbooks | Markdown test guides the connected agent reads and executes, with a coverage ledger. |
 | Recon | Map | Hosts, paths, and relationships derived from captured traffic. |
 | Report | Findings | Evidence records, review state, revisions, and report export. |
 | Report | Notes | The project's reference notebook: credentials, created data, access matrix. |
@@ -85,10 +85,12 @@ path. `header` and `body` read the message in front of you: the request when a r
 that response when a response is held. `any`, the default, matches the request line as well as the
 message, so a path pattern still selects the exchanges it names.
 
-## Scanner and Map
+## Playbooks and Map
 
-Scanner groups passive observations from captured responses. An alert is a review lead; it is
-not a report-ready finding. Findings keep the reviewed claim and supporting evidence separately.
+Playbooks are Markdown test guides: the binary ships a curated corpus and a project can add its own.
+Interseptor does not run them. You or the connected agent reads a guide over MCP or in this panel and
+executes it with the ordinary tools, then records what was considered, run, found, or dismissed
+against that surface. Nothing here scans captured traffic; a guide is a procedure to follow.
 
 Map organizes observed hosts and endpoints in tree and graph views. Search, filters, and collapsed
 groups affect what is visible; a sparse map does not establish that an application has no other
@@ -150,6 +152,6 @@ Intruder manages request variations and results. Authorization tools compare con
 contexts. These tools can send new traffic, unlike History, Decoder, and passive session inspection.
 Their results still require human review before being represented as confirmed findings.
 
-Checks and rule packs extend passive analysis; Message codecs add project-specific body views.
+Message codecs add project-specific body views for History, Repeater, and Intercept.
 The [feature index](../website/pages/features.html) links to the available guides. For connection problems or
 stale drafts, start with [Troubleshooting](troubleshooting.md).

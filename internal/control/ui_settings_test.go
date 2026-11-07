@@ -18,7 +18,7 @@ var wp12Modules = []string{
 	"js/settings-confirm.js", "js/checklist.js", "js/engagement.js",
 }
 
-var settingsSections = []string{"proxy", "tls", "devices", "scope", "scanner", "session", "project", "api", "appearance"}
+var settingsSections = []string{"proxy", "tls", "devices", "scope", "oob", "session", "payloads", "project", "api", "appearance"}
 
 func TestUISettingsPureLogicUnderNode(t *testing.T) {
 	node := requireNode(t)

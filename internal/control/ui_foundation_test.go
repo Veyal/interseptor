@@ -40,11 +40,10 @@ func executableJS(src string) string {
 func TestUIBootHasNoDeadBindings(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	app := readUIAsset(t, "js/app.js")
-	scanner := readUIAsset(t, "js/scanner.js")
 	codecs := readUIAsset(t, "js/codecs.js")
 	notes := readUIAsset(t, "js/notes.js")
 	setup := readUIAsset(t, "js/setup.js")
-	for _, src := range []string{index, app, scanner, codecs, notes, setup} {
+	for _, src := range []string{index, app, codecs, notes, setup} {
 		for _, dead := range []string{"panel-removed", "notesAiModal", "checkAiGen", "codecAiGen", "organizeNotes", "Ask AI", "AI assist"} {
 			if strings.Contains(src, dead) {
 				t.Errorf("dead UI binding remains: %q", dead)
@@ -64,17 +63,15 @@ func TestUIBootHasNoDeadBindings(t *testing.T) {
 func TestRemovedActiveScanningUIIsAbsent(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	app := executableJS(readUIAsset(t, "js/app.js"))
-	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 	core := executableJS(readUIAsset(t, "js/core.js"))
-	for name, src := range map[string]string{"index.html": index, "app.js": app, "scanner.js": scanner, "core.js": core} {
+	for name, src := range map[string]string{"index.html": index, "app.js": app, "core.js": core} {
 		for _, removed := range []string{"activeModal", "activeBtn", "checkNewActive", "/api/activescan", "/api/active-checks", "activescan.update"} {
 			if strings.Contains(strings.ToLower(src), strings.ToLower(removed)) {
 				t.Errorf("%s still contains removed active-scanning UI surface %q", name, removed)
 			}
 		}
 	}
-	requireUIContains(t, index, `id="scanRun"`, `id="checksBtn"`, `id="oobBtn"`)
-	requireUIContains(t, scanner, "'/api/scanner/issues'", "'/api/checks'", "export async function runScan")
+	requireUIContains(t, index, `id="oobBtn"`, `id="codecsBtn"`)
 }
 
 func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
@@ -160,9 +157,9 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 	dialogs := re.FindAllStringSubmatch(index, -1)
 	// #flowModal was removed when the three inspection surfaces were unified into
 	// the single Flow Drawer (#103); the inspector is no longer a centered dialog.
-	// #updateModal (one-click update) brought the count to 19.
-	if len(dialogs) != 19 {
-		t.Fatalf("found %d dialogs, want exactly 19 live dialogs", len(dialogs))
+	// #checksModal went with the passive scanner; 18 live dialogs remain.
+	if len(dialogs) != 18 {
+		t.Fatalf("found %d dialogs, want exactly 18 live dialogs", len(dialogs))
 	}
 	for _, dialog := range dialogs {
 		if !strings.Contains(core, "'"+dialog[1]+"'") {

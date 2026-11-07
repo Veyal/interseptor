@@ -1,5 +1,5 @@
 // settings-health.js — a health chip in every Settings section header (proxy,
-// TLS, scope, auth, scanner). Always icon plus text, never colour alone. It reads
+// TLS, scope, auth, OOB). Always icon plus text, never colour alone. It reads
 // the server's readiness report and the project state; it never fetches before the
 // project store has loaded (so nothing is requested while the UI is locked), and a
 // failed read keeps the last good chip with a dashed "stale" marker.
@@ -8,7 +8,7 @@ import { projectState } from './project-state.js';
 import { sectionHealth } from './settings-model.js';
 import { TAB_CHANGE_EVENT } from './shell-hooks.js';
 
-const SECTIONS = ['proxy', 'tls', 'scope', 'scanner', 'session'];
+const SECTIONS = ['proxy', 'tls', 'scope', 'oob', 'session'];
 const ICONS = { ok: 'status-done', warn: 'alert', unknown: 'status-todo' };
 const MIN_GAP_MS = 5000;
 let readiness = null;

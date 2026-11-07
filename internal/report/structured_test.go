@@ -22,7 +22,7 @@ func structuredFixture() []store.Finding {
 }
 
 func TestProjectRendersClaimsWithWithdrawnMarker(t *testing.T) {
-	out := Project(structuredFixture(), nil)
+	out := Project(structuredFixture())
 	for _, want := range []string{"**Claims:**", "Fabricated timestamps accepted", "CONFIRMED", "WITHDRAWN (refuted)", "profile stayed empty", "flow #7"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
@@ -34,7 +34,7 @@ func TestProjectRendersClaimsWithWithdrawnMarker(t *testing.T) {
 }
 
 func TestProjectRendersNotExecutedSection(t *testing.T) {
-	out := Project(structuredFixture(), nil)
+	out := Project(structuredFixture())
 	i := strings.Index(out, "## Requests Deliberately Not Executed")
 	if i < 0 {
 		t.Fatalf("no dedicated section:\n%s", out)
@@ -48,7 +48,7 @@ func TestProjectRendersNotExecutedSection(t *testing.T) {
 }
 
 func TestProjectRendersRelationsSymmetricallyAndChain(t *testing.T) {
-	out := Project(structuredFixture(), nil)
+	out := Project(structuredFixture())
 	// 40 escalates 30, so 30 shows the inverse and both appear in the chain section.
 	if !strings.Contains(out, "**Related findings:**") || !strings.Contains(out, "escalates") || !strings.Contains(out, "#30") || !strings.Contains(out, "#40") {
 		t.Fatalf("relations missing:\n%s", out)
@@ -66,14 +66,14 @@ func TestProjectEnabledByIsDisplayedAsEnablesFromOtherEnd(t *testing.T) {
 		{ID: 1, Severity: "High", Title: "A"},
 		{ID: 2, Severity: "High", Title: "B", RelatedFindings: []store.FindingRelation{{ID: 1, Relation: "enabled_by"}}},
 	}
-	out := Project(fs, nil)
+	out := Project(fs)
 	if !strings.Contains(out, "#1 A **enables** #2 B") {
 		t.Fatalf("enabled_by not normalised into a directed chain:\n%s", out)
 	}
 }
 
 func TestProjectHTMLCarriesStructuredSections(t *testing.T) {
-	out := ProjectHTML(structuredFixture(), nil)
+	out := ProjectHTML(structuredFixture())
 	for _, want := range []string{"Finding Chains", "Requests Deliberately Not Executed", "WITHDRAWN (refuted)"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("html missing %q", want)

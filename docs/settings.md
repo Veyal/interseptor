@@ -22,11 +22,13 @@ the connection-specific details.
 
 | Section | Use it for |
 |---|---|
-| Target scope | Include/exclude rules used by relevant History, intercept, and scanner controls. |
-| Scanner & OOB | Enablement and configuration for the optional callback service. |
+| Target scope | Include/exclude rules used by relevant History and intercept controls. |
+| Out-of-band (OOB) | Enablement and configuration for the optional callback service. |
 | Session / auth | Saved session headers and existing macro configuration. |
+| Payloads & codecs | Project-scoped message codecs and the Decoder. |
 
-Passive scan controls live in **Recon → Scanner**. Upstream proxy CA trust is under
+Playbooks are not a setting: open **Recon → Playbooks** to read and select the test guides the
+connected agent executes. Upstream proxy CA trust is under
 **Proxy & network → Upstream proxy → Advanced trust settings**, separate from origin verification.
 
 Scope and session settings belong to the project. Review them after importing or switching

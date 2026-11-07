@@ -13,7 +13,7 @@
 const L = (group, scope, keys, label, source, probe, extra) => ({ group, scope, keys, label, source, probe, ...extra });
 
 const GO = [
-  ['p', 'Proxy'], ['i', 'Intercept'], ['r', 'Repeater'], ['u', 'Intruder'], ['c', 'Collections'], ['s', 'Scanner'],
+  ['p', 'Proxy'], ['i', 'Intercept'], ['r', 'Repeater'], ['u', 'Intruder'], ['c', 'Collections'],
   ['m', 'Map'], ['f', 'Findings'], ['n', 'Notes'], ['a', 'Activity'], ['t', 'Settings'],
 ];
 
@@ -67,7 +67,7 @@ export function platformHints(mac) {
 // The scope names the registry dispatcher offers for the active panel are the
 // panel ids (proxy, intercept, repeater, ...); 'drawer' while focus is inside
 // the Flow Drawer. Registrations use the same names.
-export const KNOWN_SCOPES = ['global', 'proxy', 'intercept', 'repeater', 'intruder', 'scanner', 'findings', 'map', 'notes', 'activity', 'settings', 'drawer'];
+export const KNOWN_SCOPES = ['global', 'proxy', 'intercept', 'repeater', 'intruder', 'findings', 'map', 'notes', 'activity', 'settings', 'drawer'];
 
 // parseDisplayKeys splits a display string into kbd groups for rendering:
 // "g p" -> [['g'], ['p']] (chord); "Ctrl+Shift+A" -> [['Ctrl','Shift','A']].

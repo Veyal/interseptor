@@ -43,9 +43,9 @@ Changing the selected flow clears the previous detail before the new request beg
 
 A newly held request or response receives one finite queue-arrival signal, capped during bursts. Forward and Drop remain pending while their real API requests are active. If an SSE removal arrives first, the row is retained briefly so its exit starts only after acknowledgement. Forward fades in the continuation direction; Drop uses a short neutral removal fade. Selection is keyed by request ID and side and is retained when possible.
 
-### Repeater and Scanner
+### Repeater
 
-The action control exposes idle, pending, success, and error state through text, color, `aria-busy`, and disabled state. Response content receives a local opacity transition after real data or an error arrives. Raw status and error information remain visible. Scanner progress continues to use backend-reported progress only.
+The action control exposes idle, pending, success, and error state through text, color, `aria-busy`, and disabled state. Response content receives a local opacity transition after real data or an error arrives. Raw status and error information remain visible.
 
 Repeater send history belongs to the task tab rather than the current URL or request fields. Method, URL, header, body, response selection, top-level navigation, and reload changes do not move or clear it; closing the task tab removes its durable history. Cross-tool loads and Intruder file pickers validate their originating tab and editor generation before updating controls.
 
@@ -59,7 +59,7 @@ Toast entry/exit, control state, capture-live, reconnecting, and enabled-live in
 
 At phone widths the control-stream dot remains visible, and its text expands only for the important reconnecting state. Live Settings refreshes preserve dirty fields and dynamic rows without animating the form or moving focus. Activity refreshes, context menus, and evidence lightboxes preserve or deliberately restore focus; motion never substitutes for their accessible label, outcome, or selection state.
 
-Security context and reference data never fail into a plausible empty state. Scope, identities, projects, saved views/tags, rule packs, sharing, and device/API references keep an inline error and direct Retry action; recovery replaces that state without moving the operator to another panel.
+Security context and reference data never fail into a plausible empty state. Scope, identities, projects, saved views/tags, sharing, and device/API references keep an inline error and direct Retry action; recovery replaces that state without moving the operator to another panel.
 
 ## Reduced motion
 

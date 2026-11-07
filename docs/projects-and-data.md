@@ -20,7 +20,7 @@ work first, and confirm the new project badge before continuing.
 The default project lives in `~/.interseptor/`. Named projects normally live in
 `~/.interseptor/projects/<name>/`; an explicit path can place a project elsewhere. A project contains
 SQLite metadata, content-addressed captured bodies, project settings, findings, and message codecs.
-The CA and custom scanner checks are shared globally rather than copied into every project.
+The CA is shared globally rather than copied into every project.
 
 Captured data is not encrypted at rest. Protect the workstation, backups, exported reports, and
 project archives as engagement evidence.
@@ -73,8 +73,8 @@ session-header reuse, and report contamination.
 | Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project that is a copy of the archived one, including its upstream proxy and proxy-listener settings, minus saved passwords. |
 | Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
 
-The full archive intentionally excludes the global CA and custom checks. Transfer those separately
-only when authorized and necessary.
+The full archive intentionally excludes the global CA, which is shared across projects. Transfer it
+separately only when authorized and necessary.
 
 ### Migrate traffic from Burp Suite
 

@@ -101,26 +101,6 @@ func TestUIReportingAsyncActionsHaveTruthfulFeedback(t *testing.T) {
 	if strings.Contains(codecs, "aria-activedescendant") {
 		t.Error("codec options use roving DOM focus and must not also put aria-activedescendant on the listbox")
 	}
-	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
-	if !strings.Contains(scanner, "checks-edit-target") {
-		t.Error("check enable toggles must have a separate edit control, not a nested interactive row")
-	}
-	if strings.Contains(scanner, "box.querySelectorAll('.checks-pick[data-id]')") && strings.Contains(scanner, "wireRowKey(el,open)") {
-		t.Error("check rows must not be promoted to role=button around their enable checkbox")
-	}
-	for _, want := range []string{"ArrowDown", "ArrowUp", "tabindex=", "scan-issue-"} {
-		if !strings.Contains(scanner, want) {
-			t.Errorf("scanner issue list needs roving keyboard selection: missing %q", want)
-		}
-	}
-	if strings.Contains(scanner, "aria-activedescendant") {
-		t.Error("scanner issues use roving DOM focus and must not also put aria-activedescendant on the listbox")
-	}
-	for _, want := range []string{"checkLoadEpoch", "epoch!==checkLoadEpoch", "checkSelId!==id"} {
-		if !strings.Contains(scanner, want) {
-			t.Errorf("check editor must ignore stale selection responses: missing %q", want)
-		}
-	}
 	mapJS := executableJS(readUIAsset(t, "js/map.js"))
 	for _, want := range []string{"renderLoadError(warn,'Parameters'", "data-map-params-retry", "aria-live", "Map domain", "Map method", "Map status", "Map tag"} {
 		if !strings.Contains(mapJS, want) {

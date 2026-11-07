@@ -17,15 +17,7 @@ func TestUIHighFrequencyListsPreserveKeyboardFocus(t *testing.T) {
 		"const focusedHeld=document.activeElement?.closest?.('#heldList .icpt-item[data-id][data-side]')",
 		"target?.focus({preventScroll:true})",
 	)
-	requireUIContracts(t, "js/scanner.js",
-		"const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||''",
-		"const focusedIssue=!!document.activeElement?.closest?.('#scanList .scan-item')",
-		"const focusedTitle=",
-		"groups.findIndex(group=>group.title===previousSelectedTitle)",
-		"focus({preventScroll:true})",
-		"if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}))",
-	)
-	requireUIContracts(t, "js/tools.js",
+		requireUIContracts(t, "js/tools.js",
 		"const focusedHistoryID=focusedHistory?.dataset.id||''",
 		"if(restoreHistoryFocus)",
 		"data-hid=\"${h.id}\"",
@@ -77,17 +69,15 @@ func TestUISSEHeavyPanelUpdatesAreVisibilityGated(t *testing.T) {
 		"function onPanelUpdate(panelName,reloadFn,badgeId)",
 		"'intruder.update':{contract:'panel-gated nudge'",
 		"onPanelUpdate('intruder',scheduleIntr,'intrBadge')",
-		"'scanner.update':{contract:'panel-gated nudge'",
-		"onPanelUpdate('scanner',loadIssues,'scanBadge')",
+		"'findings.update':{contract:'panel-gated nudge (debounced)'",
 		// Showing/focusing these documents does the heavy refetch (loadPanelData);
 		// the SSE nudges above stay panel-gated via onPanelUpdate.
 		"if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}",
-		"if(name==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}",
 	)
-	if strings.Contains(app, "else if(m.type==='intruder.update')scheduleIntr()") || strings.Contains(app, "else if(m.type==='scanner.update')loadIssues()") {
-		t.Fatal("scanner and Intruder SSE nudges must not do heavy work off-panel")
+	if strings.Contains(app, "else if(m.type==='intruder.update')scheduleIntr()") || strings.Contains(app, "else if(m.type==='findings.update')loadFindings()") {
+		t.Fatal("Findings and Intruder SSE nudges must not do heavy work off-panel")
 	}
-	requireUIContracts(t, "index.html", `id="intrBadge"`, `id="scanBadge"`)
+	requireUIContracts(t, "index.html", `id="intrBadge"`)
 }
 
 func TestUIProjectSwitchWaitsForTheAcceptedIdentity(t *testing.T) {
@@ -197,7 +187,7 @@ func TestUIIntruderHistoryBelongsToItsOriginatingTab(t *testing.T) {
 
 func TestUICreatedFindingsSurfacePartialAttachmentWarnings(t *testing.T) {
 	// Intruder creates findings through the shared findings.js picker.
-	for _, asset := range []string{"js/findings.js", "js/scanner.js"} {
+	for _, asset := range []string{"js/findings.js"} {
 		requireUIContracts(t, asset,
 			"Array.isArray(f.warnings)",
 			"PoC attachment",

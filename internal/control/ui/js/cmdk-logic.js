@@ -255,7 +255,6 @@ export function modeHint(mode, { hasSelection = false } = {}) {
 export const LEGACY_MODALS = [
   { id: 'flowModal', title: 'Open selected flow in the inspector', kw: 'flow inspector popup raw request response', how: { open: 'selected-flow' } },
   { id: 'shortcutsModal', title: 'Keyboard shortcut sheet', kw: 'help cheatsheet keys hotkeys', how: { cmd: 'Shortcuts' } },
-  { id: 'checksModal', title: 'Edit custom scanner checks', kw: 'starlark checks passive custom rules', how: { cmd: 'Edit custom scanner checks' } },
   { id: 'codecsModal', title: 'Edit message codecs', kw: 'encrypt decrypt aes codec', how: { cmd: 'Edit message codecs' } },
   { id: 'oobModal', title: 'Open OOB catcher', kw: 'out of band blind ssrf callback', how: { cmd: 'Open OOB catcher' } },
   { id: 'projModal', title: 'Switch or create project', kw: 'projects workspace engagement', how: { cmd: 'Switch or create project' } },
@@ -285,7 +284,7 @@ export function legacyModalSub(m) {
 // PANEL_ACTIONS: panel controls the palette reaches directly. Each entry opens
 // its panel, then presses (`click`), focuses (`focus`) or expands (`open`) the
 // panel's own control, so the panel's own confirmations and state apply. An
-// action that changes or deletes data (run a scan, clear results) is `focus`:
+// action that changes or deletes data (start a run, delete a row) is `focus`:
 // the palette takes you to the button and Enter there does it.
 export const PANEL_ACTIONS = [
   { t: 'Proxy: Filters', kw: 'history filters source notes tags saved searches popover', tab: 'proxy', sel: '#filtersBtn', how: 'click' },
@@ -296,8 +295,8 @@ export const PANEL_ACTIONS = [
   { t: 'Repeater: Import Postman collection', kw: 'repeater postman import collection environment json', tab: 'repeater', sel: '#repPostmanImport', how: 'click' },
   { t: 'Collections: New environment', kw: 'collections environment create variables', tab: 'collections', sel: '#collEnvNew', how: 'click' },
   { t: 'Collections: Console (show or hide)', kw: 'collections console log scripts output', tab: 'collections', sel: '#collConsoleBtn', how: 'click' },
-  { t: 'Scanner: Run scan', kw: 'scanner passive scan run check issues', tab: 'scanner', sel: '#scanRun', how: 'focus' },
-  { t: 'Scanner: Clear results', kw: 'scanner clear delete results issues reset', tab: 'scanner', sel: '#scanClear', how: 'focus' },
   { t: 'Map: Expand or collapse all', kw: 'map tree expand collapse all endpoints', tab: 'map', sel: '#mapExpand', how: 'click' },
   { t: 'Map: Rebuild from history', kw: 'map rebuild refresh endpoints history', tab: 'map', sel: '#mapRefresh', how: 'click' },
+  { t: 'Playbooks: Filter the corpus', kw: 'playbooks guides test corpus filter host path', tab: 'playbooks', sel: '#pbFilter', how: 'focus' },
+  { t: 'Findings: New finding', kw: 'findings create new finding report vuln', tab: 'findings', sel: '#findNew', how: 'click' },
 ];

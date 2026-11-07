@@ -147,8 +147,8 @@ export function findingStub(f) {
   if (hasClaim || hasSteps) return null;
   const source = (f && f.source) || '';
   const author = f && (f.authoredBy || f.agent);
-  const who = author ? String(author) : source === 'ai' ? 'The authoring agent' : source === 'scanner' ? 'The scanner' : 'The author';
-  return { who, agent: source === 'ai' || source === 'scanner' || !!author, missing: ['claim', 'reproduction steps'] };
+  const who = author ? String(author) : source === 'ai' ? 'The authoring agent' : 'The author';
+  return { who, agent: source === 'ai' || !!author, missing: ['claim', 'reproduction steps'] };
 }
 
 function stubHTML(stub) {

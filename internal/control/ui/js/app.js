@@ -7,7 +7,8 @@ import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeM
 import { selectFlow, revealFlowRow, focusInFlowList, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind, toggleLiveFreeze } from './proxy.js';
 import { renderIntercept, toggleIntercept, toggleResponseIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState, applyInterceptDelta } from './intercept.js';
 import { repInit, intrInit, repSend, openNewRepeaterTab, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
-import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
+import { openDecoder } from './decoder.js';
+import { loadOob } from './oob.js';
 import { loadPlaybooks, initPlaybooks } from './playbooks.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadChromeStatus, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
@@ -45,7 +46,7 @@ import { isMac, hasNativeHost } from './desktop-panel-kit.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
-// from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
+// from the boot sequence below (loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
 // tags/ai/authz/tlsdiag/flowmodal regardless of active tab), so static-importing
 // it buys nothing. Map's code never runs unless the user visits it — see
@@ -132,7 +133,6 @@ function loadPanelData(name){
   if(name==='proxy')renderRows();
   else if(name==='activity'){clearActSeen();loadActivity();}
   else if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
-  else if(name==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
   else if(name==='playbooks')loadPlaybooks();
   else if(name==='findings')loadFindings();
   else if(name==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
@@ -157,10 +157,9 @@ function onCanvasDocShown(name){loadPanelData(name);}
 // first document with the same tab restoreTab will focus (no stray extra tab).
 function resolveSavedTab(){
   let id='';try{id=localStorage.getItem('tab')||'';}catch(e){}
-  if(id==='scanner'){try{if(localStorage.getItem('scanSub')==='findings')id='findings';}catch(e){}}
   if(id==='api')id='settings';
   if(id==='discover')id='map';
-  const known=['proxy','intercept','repeater','intruder','identities','collections','playbooks','scanner','map','findings','notes','activity','settings'];
+  const known=['proxy','intercept','repeater','intruder','identities','collections','playbooks','map','findings','notes','activity','settings'];
   return known.includes(id)?id:'proxy';
 }
 function goToNotes(){
@@ -214,9 +213,8 @@ $('#tabs').addEventListener('keydown',e=>{
 // Re-open whichever tab was active before a refresh (default stays Proxy).
 function restoreTab(){
   try{let id=localStorage.getItem('tab');
-    // Legacy: Findings used to be a sub-view of the Scanner tab (scanSub==='findings').
+    // Legacy: Findings used to be a sub-view of the removed Scanner tab.
     // It is now its own top-level tab — redirect old saved state to it.
-    if(id==='scanner'&&localStorage.getItem('scanSub')==='findings'){id='findings';localStorage.setItem('tab','findings');localStorage.removeItem('scanSub');}
     if(id==='api'){id='settings';localStorage.setItem('tab','settings');}
     // Legacy Discover tab was removed — guided discovery lives under Map.
     if(id==='discover'){id='map';localStorage.setItem('tab','map');}
@@ -370,11 +368,11 @@ function resyncAfterStaleReconnect(){
   loadProject();
   refreshProjectState('resync');
   if(isPanelVisible('intruder'))scheduleIntr();
-  if(isPanelVisible('scanner'))loadIssues();
   if(isPanelVisible('findings'))loadFindings();
   if(isPanelVisible('notes'))loadNotes();
   if(isPanelVisible('activity'))loadActivity();
   if(isPanelVisible('map'))loadMapModule().then(m=>m.loadEndpoints());
+  if(isPanelVisible('playbooks'))loadPlaybooks();
 
   refreshIntercept().then(()=>renderIcptStat());
   loadHumanInput();
@@ -399,12 +397,12 @@ const SSE_NUDGE_DEBOUNCE_MS=200;
                                views.update, session.update, settings.update).
      - panel-gated nudge:     refetch only if the relevant panel is the active
                                tab, to avoid needless work for a panel the user
-                               isn't looking at (scanner.update, discovery.update
+                               isn't looking at (discovery.update, flow.new
                                — the latter also sets a nav-rail badge when the
                                panel is inactive instead of silently no-op'ing).
      - modal-gated nudge:     same idea as panel-gated, but gated on a modal's
-                               open state instead of a tab (checks.update,
-                               oob.update — both follow
+                               open state instead of a tab (oob.update — it
+                               follows
                                the exact same shape: "reload this modal's list
                                if it's currently open, else do nothing since
                                there's no badge/affordance for these modals").
@@ -424,7 +422,7 @@ const SSE_NUDGE_DEBOUNCE_MS=200;
    setNavDot/clearNavDot above) — for events with no badge affordance, "else"
    is simply a no-op instead of setting a dot. */
 // onModalUpdate: reload a modal's contents only while it's open — the shared
-// shape behind checks.update/oob.update below.
+// shape behind oob.update below.
 function onModalUpdate(modalId,reloadFn){
   const m=$('#'+modalId);
   if(m&&m.style.display==='flex')reloadFn();
@@ -446,11 +444,9 @@ function refreshVisibleAllowlist(){
 // directly in the es.onmessage dispatcher below — this is a partial migration,
 // not a full replacement of the if/else chain (see the comment above).
 const SSE_HANDLERS={
-  'checks.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('checksModal',loadChecksList)},
   'codecs.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('codecsModal',loadCodecsList)},
   'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
   'intruder.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('intruder',scheduleIntr,'intrBadge')},
-  'scanner.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('scanner',loadIssues,'scanBadge')},
   'notes.update':{contract:'panel-gated nudge (debounced)',run:debounce(()=>onPanelUpdate('notes',loadNotes),SSE_NUDGE_DEBOUNCE_MS)},
   'engagement.update':{contract:'always-reload',run:loadEngagementBrief},
   'findings.update':{contract:'panel-gated nudge (debounced)',run:debounce(()=>onPanelUpdate('findings',loadFindings),SSE_NUDGE_DEBOUNCE_MS)},
@@ -553,7 +549,7 @@ function setSseStatus(s){
 // screen — plus a few non-destructive conveniences (toggle theme, copy the
 // selected flow as cURL) and workflow entries that only OPEN a dialog (New
 // finding, Export findings, Add to finding). It deliberately never performs a
-// mutating/irreversible action (run a scan or an Intruder attack, toggle
+// mutating/irreversible action (send a request or start an Intruder attack, toggle
 // intercept, send/delete a request) so a mis-typed Enter can't do anything
 // destructive; you act from the screen it takes you to. `kw` adds search aliases.
 function cmdkCommands(){
@@ -565,13 +561,12 @@ function cmdkCommands(){
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
     {t:'Go to Intruder',kw:'fuzz brute force payloads enumerate',run:go('intruder')},
     {t:'Go to Collections',kw:'collections api requests postman insomnia bruno environments runner',run:go('collections')},
-    {t:'Go to Scanner',kw:'passive checks issues vulnerabilities report',run:go('scanner')},
+    {t:'Go to Playbooks',kw:'playbooks guides test corpus coverage what to test',run:go('playbooks')},
     {t:'Go to Map',kw:'endpoints attack surface graph tree headers body search',run:go('map')},
     {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
     {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
     {t:'Go to Settings',kw:'settings preferences configuration options',run:go('settings')},
-    {t:'Edit custom scanner checks',kw:'starlark checks passive custom rules',run:openChecks},
     {t:'Edit message codecs',kw:'encrypt decrypt aes codec plaintext decoded',run:openCodecs},
     ...(state.oobEnabled?[{t:'Open OOB catcher',kw:'out of band blind ssrf callback collab',run:()=>{openModal($('#oobModal'));loadOob();}}]:[]),
     {t:'Open Authz test',kw:'authorization access control roles identity',run:()=>{const f=selectedFlow();if(f)openAuthz(f.id);else toast('select a flow in History first');}},
@@ -593,7 +588,7 @@ function cmdkCommands(){
     {t:'Settings: Mobile devices — Android / iOS',kw:'android ios adb simulator device jailbreak ssh proxy install ca mobile phone',run:goSet('devices')},
     {t:'Settings: Scope',kw:'include exclude host path in scope',run:goSet('scope')},
 
-    {t:'Settings: Scanner & OOB',kw:'scanner oob passive checks enable',run:goSet('scanner')},
+    {t:'Settings: Out-of-band (OOB)',kw:'oob callback catcher out of band ssrf blind',run:goSet('oob')},
     {t:'Settings: Session / auth headers',kw:'cookie token authorization bearer login macro',run:goSet('session')},
     {t:'Settings: Project & data — export, import, retention',kw:'export import har json switch project data retention delete purge gc reclaim space',run:goSet('project')},
     {t:'Settings: API & MCP',kw:'keys tokens rest mcp reference',run:goSet('api')},
@@ -630,7 +625,7 @@ function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
 function sendSelectedFlow(to){const f=selectedFlow();if(f){(to==='intruder'?sendToIntruder:sendToRepeater)(f);return true;}return false;}
-const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
 // isBareCharacterKey: a printable character without Ctrl/Cmd/Alt (Shift allowed,
 // so ? counts). WCAG 2.1.4: these act only while the Single-key switch is on.
 function isBareCharacterKey(e){return e.key.length===1&&e.key!==' '&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
@@ -1028,4 +1023,5 @@ renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysPro
 settleWorkspaceBootWatchdog();
 bootFirstRunUI();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
+{const db=$('#decoderBtn');if(db)db.onclick=()=>openDecoder();}
 initPlaybooks();

@@ -656,9 +656,15 @@ func TestMCPProtocolAndTools(t *testing.T) {
 		}
 		names[tl.Name] = true
 	}
-	for _, want := range []string{"list_flows", "get_flow", "send_request", "run_scanner", "set_intercept", "start_intruder"} {
+	for _, want := range []string{"list_flows", "get_flow", "send_request", "match_playbooks", "set_intercept", "start_intruder", "list_codecs", "test_codec", "save_codec", "delete_codec"} {
 		if !names[want] {
 			t.Fatalf("tools/list missing %q; got %v", want, names)
+		}
+	}
+
+	for _, retired := range []string{"run_scanner", "list_issues", "scan_report", "list_checks", "test_check", "save_check", "delete_check", "list_packs", "pack_info"} {
+		if names[retired] {
+			t.Errorf("retired tool %q remains registered", retired)
 		}
 	}
 

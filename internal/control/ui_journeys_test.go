@@ -59,7 +59,6 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	mapJS := executableJS(readUIAsset(t, "js/map.js"))
 	activity := executableJS(readUIAsset(t, "js/activity.js"))
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
-	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 
 	requireUIContains(t, mapJS,
 		"const MAP_DOMAIN_KEY =",
@@ -79,7 +78,6 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 	requireUIRegex(t, activity, `(?s)if\(id\)\{.*?selectFlow\(id\);return;\}.*?row\.onclick=open;wireRowKey\(row,open\)`)
 	requireUIContains(t, settings, "renderLoadError(", "finally")
-	requireUIContains(t, scanner, "renderLoadError(", "finally")
 	requireUIContains(t, index,
 		`aria-label="Repeater request headers"`,
 		`aria-label="Repeater request body"`,
@@ -422,7 +420,6 @@ func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T
 
 func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *testing.T) {
 	setup := executableJS(readUIAsset(t, "js/setup.js"))
-	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	projectJS := executableJS(readUIAsset(t, "js/project.js"))
@@ -440,16 +437,6 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 		if _, err := os.Stat(filepath.Join("ui", asset)); err == nil {
 			t.Errorf("removed UI asset still exists: %s", asset)
 		}
-	}
-	requireUIContains(t, scanner,
-		"'/api/scanner/targets'",
-		"d.hosts",
-		"d.truncated",
-		"uiConfirm(",
-		"'/api/scanner/issues',{method:'DELETE'}",
-	)
-	if strings.Contains(scanner, "'/api/flows?inScope=1&limit=2000'") || strings.Contains(scanner, "'/api/flows/inscope") {
-		t.Error("Scanner target loader still uses a capped/boolean flow endpoint")
 	}
 	requireUIContains(t, settings,
 		"mobileReadiness",
@@ -478,8 +465,6 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	requireUIContains(t, intercept, "intercept-danger", "held")
 	requireUIContains(t, index,
 		`id="interceptWarning"`,
-		`id="scanClear"`,
-		`id="scanRescanState"`,
 		`id="sharePrereq"`,
 	)
 	requireUIContains(t, index, `id="findEmptyNew"`, `find-view is-empty`, `class="state-empty find-empty"`)
@@ -487,7 +472,7 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 }
 
 func TestUIHasNoBuiltInProviderSurfaces(t *testing.T) {
-	assets := []string{"index.html", "app.css", "js/app.js", "js/settings.js", "js/findings.js", "js/scanner.js", "js/codecs.js", "js/notes.js", "js/tools.js", "js/setup.js", "js/proxy.js"}
+	assets := []string{"index.html", "app.css", "js/app.js", "js/settings.js", "js/findings.js", "js/playbooks.js", "js/codecs.js", "js/notes.js", "js/tools.js", "js/setup.js", "js/proxy.js"}
 	for _, asset := range assets {
 		body := readUIAsset(t, asset)
 		for _, forbidden := range []string{"/api/ai", "/api/autopwn", "Ask AI", "Autopilot", "aiProvider", "setAiProvider", "autopwn.update"} {
@@ -540,9 +525,9 @@ func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
 	requireUIContains(t, css, ".codecs-list .codecs-row", ".codecs-dir-hint", "#codecOut")
 }
 
-func TestUIJourneyToolsAndScannerAsyncActionContracts(t *testing.T) {
+func TestUIJourneyToolsAndOobAsyncActionContracts(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
-	scanner := readUIAsset(t, "js/scanner.js")
+	oob := readUIAsset(t, "js/oob.js")
 	index := readUIAsset(t, "index.html")
 
 	// The shortcut hint must survive Repeater's transient Send states.
@@ -552,26 +537,14 @@ func TestUIJourneyToolsAndScannerAsyncActionContracts(t *testing.T) {
 		t.Error("Intruder polling must pause after an explicit poll failure until Retry")
 	}
 
-	// Checks actions must call the string endpoint, expose pending state, and
-	// prevent a second Test/Save while the first request is in flight.
-	if strings.Contains(scanner, "checkEndpoint()") {
-		t.Error("Checks Test/Save must not call the string endpoint as a function")
-	}
-	requireUIContains(t, scanner, "setCheckActionState", "checkActionEpoch", "aria-busy")
-
-	// OOB clear/load and scanner promotion are destructive or duplicate-prone;
-	// their contracts require visible retry/pending state.
+	// OOB clear/load are destructive or duplicate-prone; their contracts require
+	// visible retry/pending state.
 	requireUIContains(t, index, `id="oobLoadState"`)
-	requireUIContains(t, scanner,
+	requireUIContains(t, oob,
 		"data-oob-retry",
 		"oobClearEpoch",
 		"oobGenerateEpoch",
-		"promoteFindingPending",
-		"setPromoteFindingState",
 	)
-
-	// Scanner controls expose their selection and target to assistive tech.
-	requireUIContains(t, index, `aria-label="Scanner target host"`, `aria-selected="false"`)
 }
 
 // The engine's state poll carries only the bounded head of a run (2000 rows), so

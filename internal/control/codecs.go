@@ -46,7 +46,7 @@ func (h *Hub) loadCodecs() []*msgcodec.Codec {
 	return codecs
 }
 
-func (h *checksAPI) listCodecs(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) listCodecs(w http.ResponseWriter, r *http.Request) {
 	dir := h.CodecsDir()
 	codecs := []msgcodec.Source{}
 	if dir != "" {
@@ -63,7 +63,7 @@ func (h *checksAPI) listCodecs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *checksAPI) getCodec(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) getCodec(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dir := h.CodecsDir()
 	if dir == "" || !msgcodec.Exists(dir, id) {
@@ -85,7 +85,7 @@ func (h *checksAPI) getCodec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *checksAPI) saveCodec(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) saveCodec(w http.ResponseWriter, r *http.Request) {
 	dir := h.CodecsDir()
 	if dir == "" {
 		httpErr(w, http.StatusBadRequest, "project codecs directory not configured")
@@ -106,7 +106,7 @@ func (h *checksAPI) saveCodec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "saved": true})
 }
 
-func (h *checksAPI) deleteCodec(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) deleteCodec(w http.ResponseWriter, r *http.Request) {
 	dir := h.CodecsDir()
 	id := r.PathValue("id")
 	if dir == "" {
@@ -122,7 +122,7 @@ func (h *checksAPI) deleteCodec(w http.ResponseWriter, r *http.Request) {
 }
 
 // testCodec compiles source (or a saved id) and runs match+decode against a flow.
-func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source  string `json:"source"`
 		ID      string `json:"id"`
@@ -327,7 +327,7 @@ func (h *flowAPI) getFlowDecoded(w http.ResponseWriter, r *http.Request) {
 // encodeCodecBody rebuilds a wire body from edited plaintext via a codec.
 // Body: {source?, id?, flowId?, side, plaintext} — id/source identify the codec;
 // flowId supplies match context (headers/host); omit for a synthetic empty flow.
-func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
+func (h *codecsAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source    string `json:"source"`
 		ID        string `json:"id"`

@@ -99,7 +99,6 @@ export function bulkVerbs(n) {
   return [
     { id: 'repeater', label: 'Repeater', enabled: any, reason: 'Select at least one flow' },
     { id: 'intruder', label: 'Intruder', enabled: n === 1, reason: 'Intruder takes exactly one flow' },
-    { id: 'scanner', label: 'Scanner', enabled: n === 1, reason: 'Scanner takes exactly one flow' },
     { id: 'tag', label: 'Tag', enabled: any, reason: 'Select at least one flow' },
     { id: 'finding', label: 'Add to finding', enabled: any, reason: 'Select at least one flow' },
     { id: 'copyas', label: 'Copy as', enabled: any, reason: 'Select at least one flow' },

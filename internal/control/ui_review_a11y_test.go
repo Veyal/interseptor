@@ -83,7 +83,7 @@ func TestUIFlightBarFocusRingFitsAndNoShorthandFocusRing(t *testing.T) {
 	if !regexp.MustCompile(`#bar\{[^}]*overflow-x:auto;overflow-y:hidden`).MatchString(shell) {
 		t.Error("#bar must scroll sideways instead of clipping when the window is narrower than the phone tier")
 	}
-	for _, name := range []string{"app.css", "shell.css", "mobile.css", "findings.css", "panel-proxy.css", "panel-scan.css", "settings.css", "report.css", "surfaces.css", "flow.css", "primitives.css"} {
+	for _, name := range []string{"app.css", "shell.css", "mobile.css", "findings.css", "panel-proxy.css", "settings.css", "report.css", "surfaces.css", "flow.css", "primitives.css"} {
 		css := readUIAsset(t, name)
 		if regexp.MustCompile(`outline:\s*var\(--focus-ring\)`).MatchString(css) {
 			t.Errorf("%s uses outline:var(--focus-ring); --focus-ring is a colour, so that draws no ring", name)

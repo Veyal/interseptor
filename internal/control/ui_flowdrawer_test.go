@@ -79,7 +79,7 @@ func TestUIFlowDrawerMarkupAndARIA(t *testing.T) {
 		`id="fdTabs" role="tablist"`, `id="fdBody" role="tabpanel"`,
 		`id="fdAttach"`, `Attach as evidence`, `aria-keyshortcuts="e"`,
 		`id="fdAttachMore"`, `aria-haspopup="menu"`,
-		`id="fdRepeater"`, `id="fdIntruder"`, `id="fdScanner"`, `id="fdMore"`,
+		`id="fdRepeater"`, `id="fdIntruder"`, `id="fdMore"`,
 		`id="fdClose" aria-label="Close flow drawer"`, `id="fdStatus" role="status"`,
 	)
 	if strings.Contains(region, "style=") {

@@ -116,6 +116,14 @@ func TestStartIntruderDefaultsAttackType(t *testing.T) {
 	}
 }
 
+func TestExportReportRejectsRetiredIssuesOption(t *testing.T) {
+	s, hits, _ := countingControl(t, `{}`)
+	text, isErr := callResult(t, s, "export_report", `{"includeIssues":true}`)
+	if !isErr || !strings.Contains(text, "includeIssues") || hits.Load() != 0 {
+		t.Fatalf("export_report includeIssues = %q isError=%v API hits=%d", text, isErr, hits.Load())
+	}
+}
+
 // /api/decode answers 200 {"error":...} for the UI; the agent must see isError.
 func TestErrorOnlyReplyIsToolError(t *testing.T) {
 	s, _, _ := countingControl(t, `{"error":"illegal base64 data at input byte 0"}`)

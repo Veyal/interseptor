@@ -41,9 +41,6 @@ func TestUIMapGraphMenuAndPinch(t *testing.T) {
 			t.Fatalf("map.js lacks %s", want)
 		}
 	}
-	if !strings.Contains(readUIAsset(t, "js/scanner.js"), "noteEl.title=t") {
-		t.Fatal("scanner status note must mirror its text into a tooltip")
-	}
 }
 
 // Regression (round 2): on the web UI at 900px the third payload list ran
@@ -96,18 +93,7 @@ func TestUIIntruderRound3Contracts(t *testing.T) {
 	}
 }
 
-// Regression (round 3): Scanner/Map layout and state contracts.
-func TestUIScannerMapRound3Contracts(t *testing.T) {
-	scan := readUIAsset(t, "css/desktop/panel-scanner.css")
-	for _, want := range []string{
-		"@media (max-width:1100px)",
-		"#scanRescanState{order:99;flex:1 0 100%",
-		"#scanPassiveBar .ui-select{flex:0 1 190px;min-width:176px",
-	} {
-		if !strings.Contains(scan, want) {
-			t.Fatalf("panel-scanner.css lacks %q", want)
-		}
-	}
+func TestUIMapRound3Contracts(t *testing.T) {
 	mapCSS := readUIAsset(t, "css/desktop/panel-map.css")
 	if strings.Contains(mapCSS, "#mapCount{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis") {
 		t.Fatal("desktop #mapCount must wrap, not ellipsise the 'before collapsing' note")
@@ -116,12 +102,7 @@ func TestUIScannerMapRound3Contracts(t *testing.T) {
 		t.Fatal("the Map table action cell must not paint an ellipsis for its hidden button")
 	}
 	js := readUIAsset(t, "js/map.js")
-	for _, want := range []string{
-		"_reopenFolders",     // cluster badge keeps opened sub-folders
-		`data-fkey=`,         //
-		"graphLabelChars(n)", // Fit bounds include label extents
-		"getBBox",            //
-	} {
+	for _, want := range []string{"_reopenFolders", `data-fkey=`, "graphLabelChars(n)", "getBBox"} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("map.js lacks %q", want)
 		}

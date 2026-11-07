@@ -24,11 +24,11 @@ the same capabilities as the UI. Run the app, then connect your MCP client one o
 (stateless; no subprocess needed).
 
 Both expose the same tool registry as the control plane — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
-`flow_as_curl`), replaying/fuzzing (`send_request`, `start_intruder`, `ws_send`), scanning
-(`run_scanner`, `scan_report`), intercept/rules/scope control, and `set_session` — with bounded
-results so large bodies don't blow the agent's context. Each tool's JSON Schema documents its
-arguments (types, required fields, accepted variants) inline, so an agent can read a tool's
-definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
+`flow_as_curl`), replaying/fuzzing (`send_request`, `start_intruder`, `ws_send`), playbooks
+(`list_playbooks`, `get_playbook`, `playbook_coverage`), intercept/rules/scope control, and
+`set_session` — with bounded results so large bodies don't blow the agent's context. Each tool's JSON
+Schema documents its arguments (types, required fields, accepted variants) inline, so an agent can read
+a tool's definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
 ### Tool profiles
@@ -41,7 +41,7 @@ subset.
 | Profile | `tools/list` size | What it serves |
 |---|---|---|
 | `full` | the whole surface | Everything. The default, unchanged from releases before profiles existed. |
-| `web-pentest` (alias `web`) | about a third of `full` | Scope, flows, Repeater, Intruder, passive scan, authz identities, OOB, findings. |
+| `web-pentest` (alias `web`) | about a third of `full` | Scope, flows, Repeater, Intruder, playbooks, authz identities, OOB, findings. |
 | `reporting` (alias `report`) | under a fifth of `full` | The report pass over findings that already exist: readiness, target cleanup, CVSS, evidence rendering, export. |
 | `mobile` | under a tenth of `full` | Device interception setup: Android, iOS, CA install, SSL-pinning detection. |
 
@@ -112,7 +112,7 @@ For a task-oriented walkthrough (recon → auth → scan → record findings), s
 The full REST surface is documented at runtime: `GET /api/reference` (or the **Settings → API & MCP**
 section) — including the request/response body shape for every mutating route, not just its method
 and path. Live updates stream over Server-Sent Events at `GET /api/events`. Highlights:
-`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
+`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/playbooks`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 
 ### OpenAPI
@@ -140,7 +140,7 @@ array survives as the `x-interseptor-routes` extension; the removed top-level `k
 in the old shape.
 
 Highlights of the REST surface:
-`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
+`/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/playbooks`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 
 Burp Suite migration uses `POST /api/import/burp` with a raw **Save items** XML export. The endpoint

@@ -118,8 +118,7 @@ func TestAuditEndpointAndRecordFindingFromFlow(t *testing.T) {
 				"status": 200,
 				"inScope": true,
 				"securityHeaders": {"x-frame-options": "DENY"},
-				"queryParams": ["id", "redirect"],
-				"passiveFindings": ["Missing HSTS header"]
+				"queryParams": ["id", "redirect"]
 			}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/flows/42":
 			io.WriteString(w, `{

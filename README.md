@@ -15,8 +15,8 @@ at it, watch it flow, break things (yours, or things you're allowed to break).
 
 **Built for human-led, agent-assisted testing.** You drive a fast web UI; external AI assistants and
 agents drive the exact same engine through a real **MCP server** and a **REST/SSE API**. Interseptor
-provides deterministic capture, replay, mutation, scanning, scope, evidence, and finding tools. The
-external agent owns reasoning and sequencing. Nothing phones home.
+provides deterministic capture, replay, mutation, scope, evidence, and finding tools. The external
+agent owns reasoning and sequencing. Nothing phones home.
 
 > ⚖️ **Responsible use.** Interseptor is for testing systems you **own or are explicitly authorized
 > to test**. Pointing it at traffic that isn't yours, or systems you don't have permission to test, is
@@ -32,9 +32,11 @@ external agent owns reasoning and sequencing. Nothing phones home.
   no-payload Repeat (race-window) attacks with grep-match/extract and anomaly flagging. Import Postman Collection v2.0/v2.1 JSON directly into
   editable Repeater tabs (optionally with an exported environment) when a collection is the fastest
   way to bring an API test plan into a pentest.
-- **Scanner** — passive checks out of the box. External agents compose Repeater, Intruder, Authz, OOB,
-  and verification workflows through MCP while Interseptor records requests, evidence, and findings.
-- **Extensible** — write your own passive checks in sandboxed Starlark, no fork required.
+- **Playbooks** — markdown test guides ship in the binary and extend per project. The connected agent
+  reads them over MCP and runs them with the ordinary tools, so Repeater, Intruder, Authz, OOB, and
+  verification workflows follow a written procedure while Interseptor records every request, evidence,
+  and finding.
+- **Extensible** — add project playbooks or sandboxed Starlark message codecs, no fork required.
 - **Mobile-ready** — Android and iOS setup for HTTPS interception on real devices.
 - **MCP & API native** — a full MCP server and a REST/SSE API so an external agent or script drives
   the same core as the UI. Interseptor has no built-in model provider or autonomous decision loop.
@@ -113,13 +115,11 @@ The guide lives in [docs/agents.md](docs/agents.md) (published as
 | **[Collections](docs/collections.md)** | Postman migration, variables, scripts, runner, CI with JUnit, importers |
 | **[Projects & data](docs/projects-and-data.md)** | Storage, project boundaries, export formats, retention |
 | **[API & MCP](docs/api-and-mcp.md)** | Drive Interseptor from an AI agent or a script |
-| **[CLI reference](docs/cli-reference.md)** | Commands, flags, environment variables, checks, rules, vault |
+| **[CLI reference](docs/cli-reference.md)** | Commands, flags, environment variables, vault |
 | **[Troubleshooting](docs/troubleshooting.md)** | No traffic, TLS, 407 auth, Repeater, UI, ports, disk use |
 | **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
 | **[Playbooks](docs/playbooks.md)** | Markdown test guides the connected agent executes, plus the coverage ledger |
-| **[Custom checks](docs/custom-checks.md)** | Author your own passive Starlark checks |
-| **[Rule packs](docs/rule-packs.md)** | Share, install, and manage bundles of checks |
 | **[Project vault](docs/vault.md)** | Always-on backup / import / merge (Tailscale Serve) |
 | **[Engagement close-out](docs/engagement-closeout.md)** | Checklist to leave a report-ready project |
 | **[MCP cookbook](docs/product/mcp-cookbook.md)** | Copy-paste agent recipes |

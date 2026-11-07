@@ -261,7 +261,7 @@ func TestUIStylesheetIsSelfContained(t *testing.T) {
 func TestUIStylesheetHasNoDeadSelectors(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	markup := readUIAsset(t, "index.html")
-	for _, name := range []string{"js/core.js", "js/tools.js", "js/proxy.js", "js/findings.js", "js/scanner.js", "js/app.js", "js/settings.js", "js/map.js", "js/intercept.js"} {
+	for _, name := range []string{"js/core.js", "js/tools.js", "js/proxy.js", "js/findings.js", "js/playbooks.js", "js/app.js", "js/settings.js", "js/map.js", "js/intercept.js"} {
 		markup += readUIAsset(t, name)
 	}
 	// Class names the stylesheet styles as a state modifier on a component.
@@ -299,7 +299,7 @@ func TestUIStylesheetHasNoDeadSelectors(t *testing.T) {
 // allowed: they are plain text glyphs that inherit colour correctly.
 func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 	assets := []string{"index.html", "login.html", "js/core.js", "js/app.js", "js/proxy.js",
-		"js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
+		"js/tools.js", "js/findings.js", "js/playbooks.js", "js/oob.js", "js/decoder.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/apipanel.js", "js/setup.js"}
@@ -747,7 +747,7 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	// index.html and JS template strings bypass the stylesheet entirely, and
 	// that is where 9px and 10px text survived the first cleanup.
 	for _, name := range append(append([]string{}, foundationStylesheets...), "index.html", "login.html", "js/core.js", "js/app.js",
-		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
+		"js/proxy.js", "js/tools.js", "js/findings.js", "js/playbooks.js", "js/oob.js", "js/decoder.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/setup.js") {

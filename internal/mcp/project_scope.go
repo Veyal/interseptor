@@ -71,7 +71,6 @@ var destructiveTools = map[string]bool{
 	"delete_finding":           true,
 	"restore_finding_revision": true,
 	"delete_codec":             true,
-	"delete_check":             true,
 	"delete_rule":              true,
 	"import_full_project":      true,
 }

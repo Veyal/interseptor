@@ -210,6 +210,19 @@ func (c *collCLI) fail(code int, format string, a ...any) int {
 	return code
 }
 
+// dataRoot resolves the global interseptor data dir (where the CA and the project
+// list live): --data-dir / INTERSEPTOR_DATA_DIR, else ~/.interseptor.
+func dataRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if root := strings.TrimSpace(os.Getenv("INTERSEPTOR_DATA_DIR")); root != "" {
+		return root, nil
+	}
+	return filepath.Join(home, newDataDirName), nil
+}
+
 // openProject opens the project store headlessly (no proxy, no listener).
 func (c *collCLI) openProject() (func(), error) {
 	home, _ := os.UserHomeDir()

@@ -830,7 +830,7 @@ export async function renderRepResponse(){
       if(!current())return;
       if(!d.matched){
         $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this response.<br>
-          Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
+          Add one in <b>Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
         return;
       }
       if(d.error){

@@ -232,8 +232,6 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/authz/from-flow/{}":              "promotes a captured flow to an identity",
 	"/api/authz/identity":                  "stores an identity",
 	"/api/authz/runs":                      "reads persisted authz run history",
-	"/api/checks":                          "stores check scripts",
-	"/api/checks/test":                     "runs a check against an already stored flow",
 	"/api/codecs":                          "stores codecs",
 	"/api/codecs/encode":                   "pure transform",
 	"/api/codecs/test":                     "pure transform",
@@ -289,7 +287,6 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/redact":                          "pure transform",
 	"/api/rules":                           "match/replace rule bookkeeping",
 	"/api/rules/{}":                        "match/replace rule bookkeeping",
-	"/api/scanner/run":                     "passive scan over stored flows",
 	"/api/scope":                           "scope bookkeeping",
 	"/api/session":                         "session settings",
 	"/api/session/login/from-flow/{}":      "builds a login macro from a stored flow",
@@ -343,9 +340,9 @@ func mcpSendEndpoints(t *testing.T) map[string]bool {
 				return false
 			}
 			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-				// Normalize before matching: a send literal may carry a query
-				// (e.g. "/api/scanner/run?summary=1"), and normalizeMCPPath drops
-				// it. Gating the regex on the raw literal would hide such paths.
+				// Normalize before matching: a send literal may carry a query,
+				// and normalizeMCPPath drops it. Gating the regex on the raw
+				// literal would hide such paths.
 				if v, err := strconv.Unquote(lit.Value); err == nil {
 					if np := normalizeMCPPath(v); mcpAPIPathRe.MatchString(np) {
 						out[np] = true

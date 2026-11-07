@@ -119,8 +119,8 @@ func TestUICmdkPaletteListsEveryLegacyDialog(t *testing.T) {
 		legacyBlock = legacyBlock[:i]
 	}
 	ids := regexp.MustCompile(`'([A-Za-z]+)'`).FindAllStringSubmatch(legacyBlock, -1)
-	if len(ids) < 20 {
-		t.Fatalf("expected the 21 legacy dialog ids, parsed %d", len(ids))
+	if len(ids) < 19 {
+		t.Fatalf("expected the 20 legacy dialog ids, parsed %d", len(ids))
 	}
 	logic := readUIAsset(t, "js/cmdk-logic.js")
 	app := readUIAsset(t, "js/app.js")

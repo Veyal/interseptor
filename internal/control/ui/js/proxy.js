@@ -11,7 +11,7 @@ import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagCh
 import { sendToRepeater, sendToIntruder, openNewRepeaterTab, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz, onAuthzSelectionChanged } from './authz.js';
-import { openDecoder, prefillScanner } from './scanner.js';
+import { openDecoder } from './decoder.js';
 import { openSessionInspector } from './session-inspection.js';
 import { openAuthTimeline } from './authtimeline.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
@@ -1993,7 +1993,7 @@ export async function renderSide(side){
         if(!current())return;
         if(!d.matched){
           el.innerHTML=`<div class="hint body-note">No project message codec matched this ${side==='req'?'request':'response'}.<br>
-            Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
+            Add one in <b>Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
           return;
         }
         if(d.error){
@@ -2647,7 +2647,6 @@ function flowSendRoot(f){
     {label:'Repeater',icon:'repeater',act:()=>sendToRepeater(f)},
     {label:'Intruder',icon:'intruder',act:()=>sendToIntruder(f)},
     {label:'Decoder',icon:'decode',act:()=>openDecoder('')},
-    {label:'Active Scanner',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host,(f.path||'').split('?')[0])},
     {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)},
   ];
   if(ids.length)children.push({sep:true},{label:'Replay as identity',icon:'identity',children:ids.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
@@ -2737,7 +2736,6 @@ function flowAnalyseRoot(f){
     {label:'Inspect session timeline',icon:'timeline',val:multi?`${state.selected.size} selected captures`:'selected capture',act:()=>openSessionInspector(sessionInspectionSelection(f.id))},
     {label:'Auth timeline from this flow',icon:'timeline',val:'read-only',act:()=>openAuthTimeline(f.id)},
     {label:'Authz differential matrix',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
-    {label:'Scan this host',icon:'scanner',val:f.host,act:()=>prefillScanner(f.host,(f.path||'').split('?')[0])},
   ]};
 }
 
@@ -3002,7 +3000,7 @@ export function updateSelBar(){
   $('#selCount').textContent=n+' selected';
   // Verbs stay visible and are disabled with a reason, so "Diff" is discoverable
   // before the second flow is selected.
-  const buttonFor={repeater:'selSendTo',intruder:'selSendTo',scanner:'selSendTo',tag:'selTag',finding:'selAddFinding',copyas:'selCopyAs',diff:'selCompare',render:'selRender',delete:'selDelete'};
+  const buttonFor={repeater:'selSendTo',intruder:'selSendTo',tag:'selTag',finding:'selAddFinding',copyas:'selCopyAs',diff:'selCompare',render:'selRender',delete:'selDelete'};
   const enabled={};
   bulkVerbs(n).forEach(v=>{
     const id=buttonFor[v.id];
@@ -3323,7 +3321,6 @@ function selectedFlowRecords(){return [...state.selected].map(id=>flowStore.byId
     }}];
     if(ids.length===1){
       items.push({label:'Intruder',act:()=>{const f=selectedFlowRecords()[0];if(f)sendToIntruder(f);}});
-      items.push({label:'Scanner',icon:'search',act:()=>{const f=selectedFlowRecords()[0];if(f)prefillScanner(f.host,(f.path||'').split('?')[0]);}});
     }
     openMenu(0,0,[{head:'SEND '+ids.length+' TO',items}],send);
   };
@@ -3456,7 +3453,7 @@ busOn(EVENTS.PROXY_RELOAD_AUTHZ_IDS, () => { refreshAuthzIds(); });
    same bar itself) puts every control back in the slot index.html gave it.
    Above 640px on the web, Edit scope is no longer a toolbar button of its own:
    "In scope only" and "Edit scope" join the Filters popover, the same way the
-   desktop layout and the Scanner already fold their scope entry in. */
+   desktop layout already folds the scope entry in. */
 const phoneFilterQuery = typeof matchMedia === 'function' ? matchMedia('(max-width:640px)') : null;
 // Node -> the exact slot it came from, so leaving the phone breakpoint restores
 // the toolbar byte for byte (order included).

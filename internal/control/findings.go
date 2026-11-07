@@ -192,14 +192,18 @@ func (h *findingsAPI) listFindingTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // findingsReport renders the curated findings (with PoC flows) as a downloadable
-// engagement report. Passive-scan issues are omitted by default; pass ?issues=1 to
-// append the passive-scan appendix. ?format=html|json returns HTML or JSON;
+// engagement report. The removed passive-scan appendix cannot be requested.
+// ?format=html|json returns HTML or JSON;
 // ?tag= filters; ?groupBy=tag sections by finding tag; ?omitTags=a,b excludes
 // those tags from a grouped export (findings carrying only omitted tags drop out).
 // Full reconstructed request/response bodies for PoC flows are included by default
 // (?includeBodies=0 to omit — useful for huge projects).
 func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if boolParam(q.Get("issues")) {
+		httpErr(w, http.StatusBadRequest, "passive scanner issues are no longer available in reports")
+		return
+	}
 	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
 	if !reportFormats[format] {
 		httpErr(w, http.StatusBadRequest, reportFormatError)
@@ -247,12 +251,6 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Interseptor-Report-Mode", mode)
 
-	var issues []store.Issue
-	if q.Get("issues") == "1" {
-		if iss, err := h.st.ListIssues(); err == nil {
-			issues = iss
-		}
-	}
 	includeBodies := true
 	if v := q.Get("includeBodies"); v == "0" || strings.EqualFold(v, "false") {
 		includeBodies = false
@@ -280,7 +278,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		audit = report.AuditTrail(fs, revisions)
 	}
 	rr := reportRender{
-		findings: fs, issues: issues, groupByTag: groupByTag,
+		findings: fs, groupByTag: groupByTag,
 		tagOrder: tagOrder, omitTags: omitTags,
 		ctx: h.reportContext(), brand: h.reportBranding(), audit: audit,
 		draftNote: draftReportNote(mode, quality),
@@ -289,7 +287,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", reportDisposition("json", mode))
-		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
+		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "quality": quality, "mode": mode,
 			"engagementBriefVersion": rr.ctx.Brief.Version, "interceptionSetupVersion": rr.ctx.Interception.Version,
 			"reportBrandingVersion": rr.brand.Version})
 	case "html":
@@ -314,7 +312,6 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 // read it, so the three cannot describe different reports.
 type reportRender struct {
 	findings   []store.Finding
-	issues     []store.Issue
 	groupByTag bool
 	tagOrder   []string
 	omitTags   []string
@@ -329,7 +326,7 @@ type reportRender struct {
 // markdown is the one place the report Markdown is assembled. Branding is
 // applied last so the cover sits above the engagement context.
 func (rr reportRender) markdown() string {
-	md := report.WithContext(renderReportMarkdown(rr.findings, rr.issues, rr.groupByTag, rr.tagOrder, rr.omitTags), rr.ctx) + rr.audit
+	md := report.WithContext(renderReportMarkdown(rr.findings, rr.groupByTag, rr.tagOrder, rr.omitTags), rr.ctx) + rr.audit
 	return withDraftNote(report.WithBranding(md, rr.brand), rr.draftNote)
 }
 
@@ -366,11 +363,11 @@ func (h *findingsAPI) reportBranding() store.ReportBranding {
 	return b
 }
 
-func renderReportMarkdown(fs []store.Finding, issues []store.Issue, groupByTag bool, tagOrder, omitTags []string) string {
+func renderReportMarkdown(fs []store.Finding, groupByTag bool, tagOrder, omitTags []string) string {
 	if groupByTag {
-		return report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)
+		return report.ProjectGroupedByTag(fs, tagOrder, omitTags)
 	}
-	return report.Project(fs, issues)
+	return report.Project(fs)
 }
 
 // reportContext gathers engagement metadata cited in report headers. Lookup

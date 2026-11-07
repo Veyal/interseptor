@@ -64,6 +64,22 @@ func TestOpenAPIDocumentHasTheRequiredRootFields(t *testing.T) {
 	}
 }
 
+func TestOpenAPIRetiredScannerRoutesAndCodecs(t *testing.T) {
+	paths := openapiDoc(t)["paths"].(map[string]any)
+	for path := range paths {
+		for _, prefix := range []string{"/api/scanner", "/api/checks", "/api/packs"} {
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				t.Errorf("retired route %s remains in OpenAPI", path)
+			}
+		}
+	}
+	for _, path := range []string{"/api/codecs", "/api/codecs/test", "/api/codecs/{id}"} {
+		if _, ok := paths[path]; !ok {
+			t.Errorf("codec route %s missing from OpenAPI", path)
+		}
+	}
+}
+
 // Every route in the catalog must appear, so the document cannot drift from
 // the REST surface it describes.
 func TestOpenAPICoversEveryCatalogRoute(t *testing.T) {
@@ -321,7 +337,7 @@ func TestOpenAPIDoesNotClaimJSONForNonJSONRoutes(t *testing.T) {
 		return c
 	}
 
-	for _, path := range []string{"/api/events", "/api/scanner/report", "/api/flows/{id}/preview.png", "/api/flows/{id}/body", "/api/checks/reference"} {
+	for _, path := range []string{"/api/events", "/api/findings/report", "/api/flows/{id}/preview.png", "/api/flows/{id}/body", "/api/codecs/reference"} {
 		if c := content(path, "get"); c["application/json"] != nil {
 			t.Errorf("GET %s claims a JSON response body", path)
 		}
@@ -390,7 +406,7 @@ func TestOpenAPIEndpointServesTheDocument(t *testing.T) {
 
 func TestOpID(t *testing.T) {
 	cases := map[[2]string]string{
-		{"GET", "/api/checks/{id}"}:          "get_api_checks_id",
+		{"GET", "/api/codecs/{id}"}:          "get_api_codecs_id",
 		{"GET", "/api/render/flow-diff.png"}: "get_api_render_flow_diff_png",
 		{"GET", "/openapi.json"}:             "get_openapi_json",
 		// /mcp and /api/mcp are different routes and must not collide.

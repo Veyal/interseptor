@@ -64,12 +64,6 @@
     - title: API & MCP
       url: /api-and-mcp/
       icon: cable
-    - title: Custom checks
-      url: /custom-checks/
-      icon: square-code
-    - title: Rule packs
-      url: /rule-packs/
-      icon: package
     - title: Message codecs
       url: /message-codecs/
       icon: binary

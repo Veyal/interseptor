@@ -23,7 +23,7 @@ func evidenceFinding() store.Finding {
 }
 
 func TestEvidenceProofLinesHaveOneFinalPeriod(t *testing.T) {
-	out := Project([]store.Finding{evidenceFinding()}, nil)
+	out := Project([]store.Finding{evidenceFinding()})
 	if strings.Contains(out, ".._") {
 		t.Fatalf("proof sentence ends in a double period:\n%s", out)
 	}
@@ -32,13 +32,13 @@ func TestEvidenceProofLinesHaveOneFinalPeriod(t *testing.T) {
 	}
 	f := evidenceFinding()
 	f.Blocks[4].Proof, f.Blocks[4].Source = "Late capture of record 8.", "browser_screenshot"
-	if out := Project([]store.Finding{f}, nil); strings.Contains(out, "8., source=") {
+	if out := Project([]store.Finding{f}); strings.Contains(out, "8., source=") {
 		t.Fatalf("proof period left inside the evidence list:\n%s", out)
 	}
 }
 
 func TestControlRoleIsNotLabelledAsBaseline(t *testing.T) {
-	out := Project([]store.Finding{evidenceFinding()}, nil)
+	out := Project([]store.Finding{evidenceFinding()})
 	if strings.Contains(out, "role=control (normal behavior)") {
 		t.Fatalf("control must not reuse the baseline label:\n%s", out)
 	}
@@ -48,7 +48,7 @@ func TestControlRoleIsNotLabelledAsBaseline(t *testing.T) {
 }
 
 func TestRepeatedFlowKeepsProofButPrintsTheExchangeOnce(t *testing.T) {
-	out := Project([]store.Finding{evidenceFinding()}, nil)
+	out := Project([]store.Finding{evidenceFinding()})
 	if !strings.Contains(out, "proof=The response returns record 8 owned by bob") {
 		t.Fatalf("second citation of the flow lost its proof:\n%s", out)
 	}
@@ -61,7 +61,7 @@ func TestRepeatedFlowKeepsProofButPrintsTheExchangeOnce(t *testing.T) {
 }
 
 func TestScreenshotsGetVisibleNumberedCaptions(t *testing.T) {
-	out := Project([]store.Finding{evidenceFinding()}, nil)
+	out := Project([]store.Finding{evidenceFinding()})
 	if !strings.Contains(out, "_Figure 1.1: Record 8 in alice's browser_") || !strings.Contains(out, "_Figure 1.2: Screenshot_") {
 		t.Fatalf("numbered captions missing:\n%s", out)
 	}
@@ -96,12 +96,12 @@ func TestReportStatesCVSSV31BesideV40AndLabelsLegacyScores(t *testing.T) {
 	f := store.Finding{ID: 1, Severity: "High", Status: "verified", Title: "IDOR",
 		Cvss:   "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
 		CvssV3: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"}
-	out := Project([]store.Finding{f}, nil)
+	out := Project([]store.Finding{f})
 	if !strings.Contains(out, "- **CVSS v3.1:** CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N (6.5, MEDIUM)") {
 		t.Fatalf("v3.1 vector missing:\n%s", out)
 	}
 	legacy := store.Finding{ID: 2, Severity: "Medium", Title: "Old", Cvss: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"}
-	out = Project([]store.Finding{legacy}, nil)
+	out = Project([]store.Finding{legacy})
 	if strings.Contains(out, "Calculated CVSS v4.0") || !strings.Contains(out, "- **Calculated CVSS v3.1:** 6.5 (MEDIUM)") {
 		t.Fatalf("a legacy v3.1 score must not be labelled v4.0:\n%s", out)
 	}
@@ -112,7 +112,7 @@ func TestRetestReplaysGetTheirOwnHeading(t *testing.T) {
 	f.Blocks = append(f.Blocks,
 		store.FindingBlock{Type: "flow", FlowID: 11, Role: "retest", Proof: "Replay now returns 403", Method: "GET", Host: "example.com", Path: "/records/8", Status: 403},
 		store.FindingBlock{Type: "flow", FlowID: 12, Role: "retest", Method: "GET", Host: "example.com", Path: "/records/7", Status: 200})
-	out := Project([]store.Finding{f}, nil)
+	out := Project([]store.Finding{f})
 	if n := strings.Count(out, "**Retest evidence:**"); n != 1 {
 		t.Fatalf("retest heading appears %d times:\n%s", n, out)
 	}

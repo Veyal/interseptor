@@ -91,30 +91,6 @@ Streamable HTTP at `/mcp`. See [API and MCP](api-and-mcp.md).
 | `INTERSEPTOR_CONTROL_URL` | Control plane to drive (default `http://127.0.0.1:9966`). |
 | `INTERSEPTOR_MCP_PROFILE` | Which subset of the tool surface to serve: `full` (the default, every tool), `web-pentest`, `reporting` or `mobile`. Also the default for the HTTP `/mcp` endpoint, which takes `?profile=` per request. An unrecognised value falls back to `full` for stdio and is a `400` over HTTP. |
 
-## Check authoring
-
-```text
-interseptor check new <id>
-interseptor check validate [files...]
-interseptor check lint [files...]
-interseptor check test <file> --flow-json <file|->
-```
-
-Checks live under the data directory's `checks/`. Validation compiles passive checks without starting
-the server. Test consumes the documented flow JSON shape from a file or standard input.
-
-## Rule packs
-
-```text
-interseptor rules create --name <name> [--version <version>] [--out <file>] <dir>
-interseptor rules install <pack>
-interseptor rules list
-interseptor rules info <pack>
-interseptor rules remove <pack>
-```
-
-Use [Rule packs](rule-packs.md) for manifest, signing, and installation behavior.
-
 ## Vault
 
 ```text

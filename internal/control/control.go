@@ -123,10 +123,6 @@ type Hub struct {
 	ScriptRouter scriptworker.Router
 	collAPI      *collectionsAPI
 
-	// ChecksDir holds user-authored Starlark scanner checks (global, shared across
-	// projects — typically ~/.interseptor/checks). Set by cmd.
-	ChecksDir string
-
 	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
 	// cmd; request-generating tools refuse to target it.
 	selfAddr atomic.Pointer[string]
@@ -148,7 +144,6 @@ type Hub struct {
 
 	mcpMu            sync.Mutex
 	mcpSrv           *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
-	scanJob          scanJob     // running passive scans, so POST /api/scanner/cancel can stop one
 	beforeScanCommit func()      // test seam fired in the scan's commit window; nil in production, set before serving
 	mcpKeysSeen      atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
 	iosTCPReachable  func(string, int) bool

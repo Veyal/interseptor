@@ -13,12 +13,11 @@ import (
 // that endpoint limit merely because json.Decoder stops after the first value.
 func TestSourceEndpointsRejectOversizedJSONAfterValidValue(t *testing.T) {
 	h, _, _ := newHub(t)
-	h.ChecksDir = t.TempDir()
 	h.ProjectDir = t.TempDir()
 	ts := httptest.NewServer(h.Handler())
 	t.Cleanup(ts.Close)
 
-	passive := `{"source":"def check(flow):\n    return []\n"}`
+	codec := `{"source":"meta = {}\n\ndef match(flow, side):\n    return True\n"}`
 
 	tests := []struct {
 		name   string
@@ -26,17 +25,14 @@ func TestSourceEndpointsRejectOversizedJSONAfterValidValue(t *testing.T) {
 		path   string
 		prefix string
 	}{
-		{name: "checks disabled", method: http.MethodPut, path: "/api/checks/disabled", prefix: `{"disabled":[]}`},
-		{name: "save passive check", method: http.MethodPut, path: "/api/checks/limit-test", prefix: passive},
-		{name: "test passive check", method: http.MethodPost, path: "/api/checks/test", prefix: passive},
-		{name: "save codec", method: http.MethodPut, path: "/api/codecs/limit-test", prefix: `{}`},
+		{name: "save codec", method: http.MethodPut, path: "/api/codecs/limit-test", prefix: codec},
 		{name: "test codec", method: http.MethodPost, path: "/api/codecs/test", prefix: `{}`},
 		{name: "encode codec", method: http.MethodPost, path: "/api/codecs/encode", prefix: `{}`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := tt.prefix + strings.Repeat(" ", maxCheckSource+1)
+			body := tt.prefix + strings.Repeat(" ", maxCodecSource+1)
 			req, err := http.NewRequest(tt.method, ts.URL+tt.path, strings.NewReader(body))
 			if err != nil {
 				t.Fatal(err)

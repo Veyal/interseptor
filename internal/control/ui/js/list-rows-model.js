@@ -1,5 +1,5 @@
 // list-rows-model.js — pure row, keyboard and sticky-header math for the windowed
-// Findings and Scanner lists. No DOM and no imports, so it runs under node.
+// Findings list. No DOM and no imports, so it runs under node.
 //
 // A windowed list (core.js createListView, built on virtual-list-model.js) mounts
 // a slice of ONE flat list of fixed-height rows. A grouped list therefore folds its

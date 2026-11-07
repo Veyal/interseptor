@@ -18,7 +18,7 @@ import (
 var foundationStylesheets = []string{
 	"app.css", "surfaces.css", "findings.css",
 	"workbench.css", "primitives.css", "shell.css", "flow.css",
-	"panel-proxy.css", "panel-tools.css", "panel-scan.css", "panel-misc.css",
+	"panel-proxy.css", "panel-tools.css", "panel-intercept-workbench.css", "panel-misc.css",
 	"settings.css", "report.css", "canvas.css", "desktop.css", "mobile.css",
 }
 
@@ -26,7 +26,7 @@ var foundationStylesheets = []string{
 var newFoundationStylesheets = foundationStylesheets[3:]
 
 var foundationRegions = []string{
-	"shell", "proxy", "intercept", "repeater", "intruder", "scanner", "findings",
+	"shell", "proxy", "intercept", "repeater", "intruder", "playbooks", "findings",
 	"map", "notes", "activity", "settings", "modals-findings", "modals-tools",
 	"mobile", "flowdrawer",
 }
@@ -452,7 +452,7 @@ func TestUIFoundationRegionMarkersAppearExactlyOnce(t *testing.T) {
 		}
 	}
 	// Panel regions wrap their panel; modal regions wrap the modal run.
-	for _, name := range []string{"proxy", "intercept", "repeater", "intruder", "scanner", "findings", "map", "notes", "activity", "settings"} {
+	for _, name := range []string{"proxy", "intercept", "repeater", "intruder", "playbooks", "findings", "map", "notes", "activity", "settings"} {
 		start := strings.Index(index, "<!-- region:"+name+" -->")
 		end := strings.Index(index, "<!-- /region:"+name+" -->")
 		if !strings.Contains(index[start:end], `data-panel="`+strings.TrimSuffix(name, "")+`"`) {
@@ -479,7 +479,7 @@ func TestUIFoundationRegionMarkersAppearExactlyOnce(t *testing.T) {
 			t.Errorf("modals-tools must enclose %s", id)
 		}
 	}
-	for _, id := range []string{"shortcutsModal", "checksModal", "compareModal", "decModal"} {
+	for _, id := range []string{"shortcutsModal", "codecsModal", "compareModal", "decModal"} {
 		if !strings.Contains(mt, `id="`+id+`"`) {
 			t.Errorf("modals-tools must contain %s", id)
 		}
@@ -527,7 +527,7 @@ func TestUIFoundationNoUnicodeGlyphIconsInStaticMarkup(t *testing.T) {
 		}
 	}
 	// Disclosure triangles are drawn with borders (surfaces.css), never as text.
-	for _, name := range []string{"app.css", "findings.css", "flow.css", "mobile.css", "panel-misc.css", "panel-proxy.css", "panel-scan.css", "panel-tools.css", "primitives.css", "report.css", "settings.css", "shell.css", "surfaces.css", "workbench.css"} {
+	for _, name := range []string{"app.css", "findings.css", "flow.css", "mobile.css", "panel-misc.css", "panel-proxy.css", "panel-tools.css", "primitives.css", "report.css", "settings.css", "shell.css", "surfaces.css", "workbench.css"} {
 		body := readUIAsset(t, name)
 		for _, glyph := range []string{"▾", "▸", "⧉", "◎", "▦", "＋", "◧", "✕"} {
 			if strings.Contains(body, glyph) {

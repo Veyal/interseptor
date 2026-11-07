@@ -36,8 +36,8 @@ func TestInterceptActionBarStaysPinnedWhileMessageScrolls(t *testing.T) {
 			t.Errorf(".icpt-main must keep %q", want)
 		}
 	}
-	scan := readUIAsset(t, "panel-scan.css")
-	bar := interceptCSSRule(t, scan, ".icpt-actionbar")
+	workbench := readUIAsset(t, "panel-intercept-workbench.css")
+	bar := interceptCSSRule(t, workbench, ".icpt-actionbar")
 	for _, want := range []string{"flex:none", "position:sticky", "bottom:0"} {
 		if !strings.Contains(bar, want) {
 			t.Errorf(".icpt-actionbar must keep %q so it never shrinks or scrolls away", want)

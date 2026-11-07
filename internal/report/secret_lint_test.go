@@ -16,8 +16,8 @@ func TestProjectHTMLSecretLintNoticeNeverEchoesValue(t *testing.T) {
 		Blocks:  []store.FindingBlock{{Type: "text", MD: "Header Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345"}},
 	}}
 	for name, html := range map[string]string{
-		"flat":    ProjectHTML(findings, nil),
-		"grouped": ProjectHTMLGroupedByTag(findings, nil, nil, nil),
+		"flat":    ProjectHTML(findings),
+		"grouped": ProjectHTMLGroupedByTag(findings, nil, nil),
 	} {
 		if !strings.Contains(html, `class="secret-lint"`) || !strings.Contains(html, "#7") || !strings.Contains(html, "[redacted jwt") || !strings.Contains(html, "bearer_token") {
 			t.Fatalf("%s: lint notice missing or incomplete:\n%s", name, html)
@@ -34,7 +34,7 @@ func TestProjectHTMLSecretLintNoticeNeverEchoesValue(t *testing.T) {
 }
 
 func TestProjectHTMLNoSecretLintNoticeForCleanFindings(t *testing.T) {
-	html := ProjectHTML([]store.Finding{{ID: 1, Severity: "Low", Status: "verified", Title: "Clean", Summary: "Token [redacted jwt len=71 sha256=0123456789ab]."}}, nil)
+	html := ProjectHTML([]store.Finding{{ID: 1, Severity: "Low", Status: "verified", Title: "Clean", Summary: "Token [redacted jwt len=71 sha256=0123456789ab]."}})
 	if strings.Contains(html, `class="secret-lint"`) {
 		t.Fatal("clean findings must not render the notice")
 	}

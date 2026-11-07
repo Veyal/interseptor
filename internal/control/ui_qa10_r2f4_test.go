@@ -37,26 +37,12 @@ func TestUIInterceptBinaryTailWarning(t *testing.T) {
 	if !strings.Contains(icpt, "binaryTailWarning($('#heldRaw').value)") || !strings.Contains(icpt, "icpt-body-warn") {
 		t.Error("intercept.js must warn while text sits under a binary message's head")
 	}
-	if !strings.Contains(readUIAsset(t, "panel-scan.css"), ".icpt-body-warn{") {
-		t.Error("panel-scan.css must style the binary warning")
+	if !strings.Contains(readUIAsset(t, "panel-intercept-workbench.css"), ".icpt-body-warn{") {
+		t.Error("the web intercept sheet must style the binary warning")
 	}
 }
 
-// Regression: the desktop scanner note was one clipped line, the Clear note
-// clipped too, no divider may remain over the empty list, and the header must
-// count what the severity chips leave in the list.
-func TestUIScannerMapQA10Round2Polish(t *testing.T) {
-	css := readUIAsset(t, "css/desktop/panel-scanner.css")
-	if !strings.Contains(css, "-webkit-line-clamp:2") || strings.Contains(css, "#scanRescanState{flex:0 1 auto;min-width:0;max-width:260px") {
-		t.Error("panel-scanner.css: the status note must wrap to two lines")
-	}
-	if !strings.Contains(css, ".scan-filterbar:not(:has(>:not([hidden]))){display:none}") {
-		t.Error("panel-scanner.css: an empty filter bar must not leave a divider")
-	}
-	scan := readUIAsset(t, "js/scanner.js")
-	if !strings.Contains(scan, "summaryText(all,scoped,groups)") || !strings.Contains(scan, "delete noteEl.dataset.tooltip") {
-		t.Error("scanner.js: header count follows the chips; a cleared note drops its tooltip")
-	}
+func TestUIMapQA10Round2Polish(t *testing.T) {
 	m := readUIAsset(t, "js/map.js")
 	for _, want := range []string{"graphTipHide(); // the hover tooltip", "if(n && !ctxMenuOpen()) graphTipShow(n, ev)", "mapGraphDisplayEps(filtered).length"} {
 		if !strings.Contains(m, want) {

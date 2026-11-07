@@ -33,7 +33,7 @@ func TestUIHoldQueueKeyboardUsesLiveRows(t *testing.T) {
 func TestUIHoldQueueEmptyStateOnPhones(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/intercept.js"))
 	requireUIContains(t, src, "<p class=\"icpt-list-empty hint\">Nothing on hold. ${esc(hint?hint.textContent:'')}</p>")
-	requireUIContains(t, readUIAsset(t, "panel-scan.css"),
+	requireUIContains(t, readUIAsset(t, "panel-intercept-workbench.css"),
 		".icpt-list-empty{display:none;",
 		".icpt-work[data-mode=\"stack\"] .icpt-list-empty{display:block}",
 	)

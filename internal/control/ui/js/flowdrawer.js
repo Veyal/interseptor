@@ -344,13 +344,6 @@ $('#fdAttachMore').addEventListener('click', (e) => {
 });
 $('#fdRepeater').addEventListener('click', () => import('./tools.js').then((m) => m.sendToRepeater({ id: cur.id })).catch((e) => toastError('Repeater', e)));
 $('#fdIntruder').addEventListener('click', () => import('./tools.js').then((m) => m.sendToIntruder({ id: cur.id })).catch((e) => toastError('Intruder', e)));
-$('#fdScanner').addEventListener('click', async () => {
-  try {
-    const proxy = await import('./proxy.js');
-    await proxy.selectFlow(cur.id);
-    (await import('./scanner.js')).openChecks();
-  } catch (e) { toastError('Scanner check', e); }
-});
 $('#fdMore').addEventListener('click', async (e) => {
   const trigger = e.currentTarget;
   const { COPY_AS_KINDS, copyAs } = await import('./copyas.js');

@@ -46,7 +46,7 @@ var fixtureSecrets = []string{
 // The default export is evidence, verbatim. Masking must be opt-in, so this
 // test fails the moment a mask pass is wired into the default render path.
 func TestProjectKeepsCredentialHeadersVerbatimByDefault(t *testing.T) {
-	md := Project(credentialFixture(), nil)
+	md := Project(credentialFixture())
 	for _, secret := range fixtureSecrets {
 		if !strings.Contains(md, secret) {
 			t.Errorf("default export dropped %q — masking must be opt-in", secret)
@@ -55,14 +55,14 @@ func TestProjectKeepsCredentialHeadersVerbatimByDefault(t *testing.T) {
 	if strings.Contains(md, "[redacted") {
 		t.Error("default export must not contain a placeholder")
 	}
-	if ProjectHTML(credentialFixture(), nil) != HTMLFromMarkdown(md, credentialFixture()) {
+	if ProjectHTML(credentialFixture()) != HTMLFromMarkdown(md, credentialFixture()) {
 		t.Error("HTML render drifted from the Markdown source")
 	}
 }
 
 func TestMaskSensitiveHeadersLeavesNothingRecoverable(t *testing.T) {
 	masked := MaskSensitiveHeaders(credentialFixture())
-	for _, out := range []string{Project(masked, nil), ProjectHTML(masked, nil), ProjectGroupedByTag(masked, nil, nil, nil)} {
+	for _, out := range []string{Project(masked), ProjectHTML(masked), ProjectGroupedByTag(masked, nil, nil)} {
 		for _, secret := range fixtureSecrets {
 			if strings.Contains(out, secret) {
 				t.Errorf("masked export leaked %q", secret)
@@ -82,9 +82,9 @@ func TestMaskSensitiveHeadersLeavesNothingRecoverable(t *testing.T) {
 
 func TestMaskSensitiveHeadersDoesNotMutateInput(t *testing.T) {
 	in := credentialFixture()
-	before := Project(in, nil)
+	before := Project(in)
 	_ = MaskSensitiveHeaders(in)
-	if after := Project(in, nil); after != before {
+	if after := Project(in); after != before {
 		t.Fatal("MaskSensitiveHeaders mutated the caller's findings")
 	}
 }
@@ -98,7 +98,7 @@ func TestMaskSensitiveHeadersKeepsProvenanceAndStructure(t *testing.T) {
 	if bl.Role != "action" || bl.Source != "captured_flow" || bl.Proof == "" || bl.FlowID != 7 {
 		t.Fatalf("provenance grading lost: %+v", bl)
 	}
-	md := Project(masked, nil)
+	md := Project(masked)
 	for _, want := range []string{"role=action", "source=captured_flow", "IDOR on /invoices/{id}"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("masked report lost %q", want)
@@ -110,8 +110,8 @@ func TestMaskSensitiveHeadersIsIdempotentAndHandlesEmpty(t *testing.T) {
 	if got := MaskSensitiveHeaders(nil); got != nil {
 		t.Fatalf("nil input: %+v", got)
 	}
-	once := Project(MaskSensitiveHeaders(credentialFixture()), nil)
-	twice := Project(MaskSensitiveHeaders(MaskSensitiveHeaders(credentialFixture())), nil)
+	once := Project(MaskSensitiveHeaders(credentialFixture()))
+	twice := Project(MaskSensitiveHeaders(MaskSensitiveHeaders(credentialFixture())))
 	if once != twice {
 		t.Fatal("mask pass is not idempotent")
 	}

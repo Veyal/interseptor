@@ -304,7 +304,8 @@ Confidence is independent of severity:
 | `certain` | Direct proof and expected controls establish the claim without a material alternative explanation. |
 
 Status continues to describe workflow: `open`, `needs_verification`, `verified`, `false_positive`,
-`wont_fix`, or `fixed`. Do not mark scanner or AI output `verified` merely because it matched a rule.
+`wont_fix`, or `fixed`. Do not mark agent output `verified` merely because it matched a pattern or a
+guide's expectation.
 Use `verificationInstructions` for confirming an unverified lead; use `retest` for the expected secure
 behavior after remediation.
 

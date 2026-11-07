@@ -235,7 +235,8 @@ func TestUIIconsFixPreviouslyWrongMetaphors(t *testing.T) {
 		"TLS &amp; certificates":       "i-tls",
 		"Mobile devices":               "i-device-mobile",
 		"Scope":                        "i-scope",
-		"Scanner &amp; OOB":            "i-scanner",
+		"Out-of-band (OOB)":            "i-oob",
+		"Payloads &amp; codecs":        "i-codec",
 		"API &amp; MCP":                "i-api-mcp",
 		"Session &amp; authentication": "i-key",
 		"Appearance":                   "i-appearance",
@@ -255,7 +256,7 @@ func TestUIIconsFixPreviouslyWrongMetaphors(t *testing.T) {
 	// Each panel's navigation tab has its own icon, and each is unique.
 	tabs := map[string]string{
 		"proxy": "i-proxy", "intercept": "i-intercept", "repeater": "i-repeater", "intruder": "i-intruder",
-		"scanner": "i-scanner", "map": "i-map", "findings": "i-finding", "notes": "i-notes",
+		"playbooks": "i-book", "map": "i-map", "findings": "i-finding", "notes": "i-notes",
 		"activity": "i-activity", "settings": "i-settings",
 	}
 	used := map[string]string{}
@@ -275,7 +276,7 @@ func TestUIIconsFixPreviouslyWrongMetaphors(t *testing.T) {
 		used[m[1]] = tab
 	}
 	// The mobile dock reuses the nav family (single deduplicated sprite).
-	for dock, id := range map[string]string{"capture": "i-proxy", "test": "i-repeater", "recon": "i-scanner", "report": "i-report", "more": "i-more"} {
+	for dock, id := range map[string]string{"capture": "i-proxy", "test": "i-repeater", "recon": "i-book", "report": "i-report", "more": "i-more"} {
 		if !regexp.MustCompile(`data-dock="` + dock + `"[^>]*><svg class="icon"[^>]*><use href="#` + id + `"/>`).MatchString(index) {
 			t.Errorf("dock button %s should use %s", dock, id)
 		}
@@ -324,7 +325,7 @@ func TestUIIconsNeverUseGlyphsOrEmoji(t *testing.T) {
 	// text, which cannot contain SVG.
 	allowed := "▸★"
 	files := append([]string{"index.html", "login.html"}, uiJSAssets(t)...)
-	for _, css := range []string{"app.css", "findings.css", "flow.css", "mobile.css", "panel-misc.css", "panel-proxy.css", "panel-scan.css", "panel-tools.css", "primitives.css", "report.css", "settings.css", "shell.css", "surfaces.css", "workbench.css"} {
+	for _, css := range []string{"app.css", "findings.css", "flow.css", "mobile.css", "panel-misc.css", "panel-proxy.css", "panel-tools.css", "primitives.css", "report.css", "settings.css", "shell.css", "surfaces.css", "workbench.css"} {
 		files = append(files, css)
 	}
 	for _, name := range files {
@@ -481,9 +482,10 @@ func TestUIIconsCarrySignatureMotifs(t *testing.T) {
 	if !strings.Contains(defs["proxy"], "M3 8h16l-4-4M21 16H5l4 4") || !pad.MatchString(defs["proxy"]) {
 		t.Error("i-proxy must be the two opposed lanes with the tap pad")
 	}
-	// Severity is also shape-coded (never colour alone): four distinct outlines.
+	// Severity is also shape-coded (never colour alone): three distinct outlines
+	// for critical / needs-attention / informational, on top of the severity word.
 	shapes := map[string]string{}
-	for _, id := range []string{"sev-critical", "alert", "alert-circle", "sev-low"} {
+	for _, id := range []string{"sev-critical", "alert", "alert-circle"} {
 		first := iconPathRe.FindStringSubmatch(defs[id])[1]
 		if other, dup := shapes[first]; dup {
 			t.Errorf("severity icons i-%s and i-%s share an outline", id, other)

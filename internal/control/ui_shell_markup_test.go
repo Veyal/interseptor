@@ -26,7 +26,7 @@ func TestUIShellHasLandmarkSkipLinkAndAccessibleNames(t *testing.T) {
 	if strings.Contains(index, `id="crumb" aria-live`) {
 		t.Error("the breadcrumb must not be a bare live region")
 	}
-	for _, dot := range []string{"intrBadge", "scanBadge", "mapBadge"} {
+	for _, dot := range []string{"intrBadge", "mapBadge"} {
 		if !strings.Contains(index, `id="`+dot+`" class="nav-dot" aria-hidden="true"`) {
 			t.Errorf("%s must be decorative; its state is announced through the tab text", dot)
 		}

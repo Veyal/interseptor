@@ -266,8 +266,8 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 				"resources": map[string]any{},
 				"prompts":   map[string]any{},
 			},
-			"serverInfo":      map[string]any{"name": "interseptor", "version": version.String()},
-			"instructions":    instructionsFor(s.profile, s.visibleSet()),
+			"serverInfo":   map[string]any{"name": "interseptor", "version": version.String()},
+			"instructions": instructionsFor(s.profile, s.visibleSet()),
 		}, nil
 	case "tools/list":
 		return map[string]any{"tools": s.toolList()}, nil
@@ -1179,29 +1179,6 @@ func boundJSON(raw string, maxRows int) string {
 	return truncate(raw, maxRows*64)
 }
 
-// listIssuesQuery maps list_issues arguments onto GET /api/scanner/issues.
-// Grouping is on by default: repeated checks on one host are the bulk of a
-// passive scan, and an agent needs the pairs, not every URL they fired on.
-func listIssuesQuery(a map[string]any) url.Values {
-	q := url.Values{}
-	grouped := argBool(a, "grouped", true)
-	limit := 100
-	if grouped {
-		q.Set("group", "host")
-		limit = 50
-	}
-	q.Set("limit", strconv.Itoa(argInt(a, "limit", limit)))
-	if off := argInt(a, "offset", 0); off > 0 {
-		q.Set("offset", strconv.Itoa(off))
-	}
-	for _, k := range []string{"severity", "host", "title"} {
-		if v := argStr(a, k); v != "" {
-			q.Set(k, v)
-		}
-	}
-	return q
-}
-
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -1353,7 +1330,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("analyze_flow",
-		"Compact triage of a flow: URL/status, security headers, query params (injection points), passive findings, in-scope flag. Cheaper than get_flow for deciding what to inspect.",
+		"Compact triage of a flow: URL/status, security headers, query params (injection points), in-scope flag. Cheaper than get_flow for deciding what to inspect.",
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqFlowID(a)
@@ -1364,7 +1341,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("audit_endpoint",
-		"Consolidated endpoint triage: takes a flow id, analyzes its structure, parameters, auth context, and passive findings to return an actionable security assessment with identified attack surfaces and recommended attack vectors.",
+		"Consolidated endpoint triage: takes a flow id, analyzes its structure, parameters and auth context to return an actionable security assessment with identified attack surfaces and recommended attack vectors.",
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqFlowID(a)
@@ -1383,7 +1360,6 @@ func (s *Server) registerTools() {
 				InScope         bool              `json:"inScope"`
 				SecurityHeaders map[string]string `json:"securityHeaders"`
 				QueryParams     []string          `json:"queryParams"`
-				PassiveFindings []string          `json:"passiveFindings"`
 			}
 			_ = json.Unmarshal([]byte(analysisRaw), &analysis)
 
@@ -1457,9 +1433,6 @@ func (s *Server) registerTools() {
 			if len(surfaces) > 0 {
 				recs = append(recs, fmt.Sprintf("Fuzz %d query parameter(s) using start_intruder with sniper or cluster attack.", len(surfaces)))
 			}
-			if len(analysis.PassiveFindings) > 0 {
-				recs = append(recs, fmt.Sprintf("Investigate %d passive scanner finding(s) on this endpoint.", len(analysis.PassiveFindings)))
-			}
 			if authType != "none" {
 				recs = append(recs, "Test authorization boundary: re-issue request without auth header or with another identity's token to check for BOLA/IDOR.")
 			}
@@ -1476,7 +1449,6 @@ func (s *Server) registerTools() {
 				"attackSurfaces":     surfaces,
 				"authType":           authType,
 				"authNotes":          authNotes,
-				"passiveFindings":    analysis.PassiveFindings,
 				"recommendedActions": recs,
 			}
 			b, _ := json.MarshalIndent(outMap, "", "  ")
@@ -2311,23 +2283,22 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("export_report",
-		"Render the engagement report from the canonical finding records and evidence. Passive scan is omitted by default. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract. Responses above the 4 MiB MCP transfer limit return an explicit error and must be narrowed or downloaded through the control API.",
+		"Render the engagement report from the canonical finding records and evidence. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract. Responses above the 4 MiB MCP transfer limit return an explicit error and must be narrowed or downloaded through the control API.",
 		obj(map[string]any{
-			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
-			"mode":          p("string", "final blocks incomplete findings with actionable checks; draft permits incomplete export (default for legacy clients)"),
-			"format":        p("string", "md (default), html, json, or sarif (SARIF 2.1.0); PDF is binary and is downloaded from the control API"),
-			"maskHeaders":   p("boolean", "mask Authorization/Cookie/Set-Cookie and other credential header values in attached raw evidence (default false)"),
-			"statuses":      p("string", "comma-separated finding statuses, or all"),
-			"tag":           p("string", "optional finding tag filter"),
+			"mode":        p("string", "final blocks incomplete findings with actionable checks; draft permits incomplete export (default for legacy clients)"),
+			"format":      p("string", "md (default), html, json, or sarif (SARIF 2.1.0); PDF is binary and is downloaded from the control API"),
+			"maskHeaders": p("boolean", "mask Authorization/Cookie/Set-Cookie and other credential header values in attached raw evidence (default false)"),
+			"statuses":    p("string", "comma-separated finding statuses, or all"),
+			"tag":         p("string", "optional finding tag filter"),
 		}),
 		func(a map[string]any) (string, error) {
+			if argBool(a, "includeIssues", false) {
+				return "", fmt.Errorf("includeIssues is no longer supported; the passive scanner was removed")
+			}
 			p := "/api/findings/report"
 			q := url.Values{}
 			if mode := argStr(a, "mode"); mode != "" {
 				q.Set("mode", mode)
-			}
-			if argBool(a, "includeIssues", false) {
-				q.Set("issues", "1")
 			}
 			format := strings.ToLower(strings.TrimSpace(argStr(a, "format")))
 			if format != "" && format != "md" && format != "html" && format != "json" && format != "sarif" {
@@ -2352,7 +2323,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("export_full_project",
-		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA and custom checks are not included. The archive is always written into Interseptor's exports directory (~/.interseptor/exports) and never overwrites an existing file. Returns the path and size.",
+		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA is not included. The archive is always written into Interseptor's exports directory (~/.interseptor/exports) and never overwrites an existing file. Returns the path and size.",
 		obj(map[string]any{
 			"path":      p("string", "a .zip file name, e.g. acme.zip; it is written to the exports folder under the Interseptor data dir (~/.interseptor/exports/), the only place the AI channel may write archives"),
 			"overwrite": p("boolean", "replace an existing archive of that name (default false)"),
@@ -2552,66 +2523,6 @@ func (s *Server) registerTools() {
 			return s.intruderState(a)
 		})
 
-	s.add("run_scanner",
-		"DEPRECATED: the passive scanner is being retired in favour of Playbooks (list_playbooks), which the agent executes itself. Passive scan of the newest 5000 captured flows; sends nothing. Returns counts only ({total, groupCount, bySeverity, scan:{flows,capped}}); read the rows with list_issues. New work should not depend on it.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/scanner/run?summary=1", nil)
-		})
-
-	s.add("list_issues",
-		"DEPRECATED (passive scanner, retiring in favour of Playbooks). List passive scanner issues. Default: one row per (check, host) with count + 3 example flowIds/targets. grouped=false returns raw issues. Filter by severity (comma list), host, title; page with limit/offset (nextOffset).",
-		obj(map[string]any{
-			"severity": p("string", "comma list, e.g. High,Medium"),
-			"host":     p("string", "exact host"),
-			"title":    p("string", "title substring"),
-			"grouped":  p("boolean", "default true"),
-			"limit":    p("integer", "default 50 (grouped) / 100 (raw), max 1000"),
-			"offset":   pt("integer"),
-		}),
-		func(a map[string]any) (string, error) {
-			return s.apiGet("/api/scanner/issues?" + listIssuesQuery(a).Encode())
-		})
-
-	s.add("scan_report",
-		"Passive findings as a Markdown report, grouped by severity. Long reports are cut at maxBytes (default 20000); prefer list_issues for triage.",
-		obj(map[string]any{"maxBytes": pr("default 20000", 1000, 1000000)}),
-		func(a map[string]any) (string, error) {
-			out, err := s.apiGet("/api/scanner/report")
-			return truncate(out, argInt(a, "maxBytes", 20000)), err
-		})
-
-	s.add("list_checks",
-		"List custom Starlark checks (id, source, compile error). They run on every scan.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/checks") })
-
-	s.add("test_check",
-		"Compile+run a Starlark check against a flow WITHOUT saving. Returns findings, the error if it failed, and logs \u2014 the check's captured print() output, which is how you debug a check that returns an empty list. Iterate, then save_check. Omit flowId for the latest flow. Shape: def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]. flow has method/scheme/host/port/path/status/mime, req_body/res_body, req_header(n)/res_header(n), query_param(n), query_params (name \u2192 list of decoded values) and cookies (name \u2192 value); builtin re_search(pat,text).",
-		obj(map[string]any{
-			"source": p("string", "Starlark source"),
-			"flowId": p("integer", "default latest"),
-		}, "source"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/checks/test", map[string]any{"source": argStr(a, "source"), "flowId": argInt(a, "flowId", 0)})
-		})
-
-	s.add("save_check",
-		"Save a Starlark check by id (letters/digits/-/_); must compile. Runs on every scan. test_check first.",
-		obj(map[string]any{
-			"id":     pt("string"),
-			"source": p("string", "Starlark source"),
-		}, "id", "source"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPut, "/api/checks/"+url.PathEscape(argStr(a, "id")), map[string]any{"source": argStr(a, "source")})
-		})
-
-	s.add("delete_check", "Delete a custom check by id.",
-		obj(map[string]any{"id": pt("string")}, "id"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodDelete, "/api/checks/"+url.PathEscape(argStr(a, "id")), nil)
-		})
-
 	// Project-scoped message codecs: app-layer encrypt/decrypt for History/Repeater.
 	s.add("list_codecs",
 		"List project Starlark message codecs (id, source, meta, compile error). Used to decrypt/encrypt app payloads in History/Repeater — not Content-Encoding and not the one-shot Decoder tool.",
@@ -2695,20 +2606,6 @@ func (s *Server) registerTools() {
 				body["source"] = src
 			}
 			return s.api(http.MethodPost, "/api/codecs/encode", body)
-		})
-
-	// Rule packs are read-only for the agent: installing checks runs code on every
-	// scan, so install/remove stay human-gated (CLI or full-scope REST).
-	s.add("list_packs",
-		"List installed rule packs (bundles of Starlark checks). Each has name, version, and the check ids it owns.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/packs") })
-
-	s.add("pack_info",
-		"Show one installed rule pack's record (name, version, source, owned check ids).",
-		obj(map[string]any{"name": pt("string")}, "name"),
-		func(a map[string]any) (string, error) {
-			return s.apiGet("/api/packs/" + url.PathEscape(argStr(a, "name")))
 		})
 
 	s.add("get_intercept", "Intercept state + current hold queue.", obj(map[string]any{}),
@@ -2849,7 +2746,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scope") })
 
 	s.add("add_scope_rule",
-		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept/scanners and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list needs the operator (request_human_input).",
+		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list needs the operator (request_human_input).",
 		obj(map[string]any{
 			"action":  pe("", "include", "exclude"),
 			"host":    p("string", "e.g. *.acme.com"),
@@ -3299,12 +3196,12 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			var d struct {
-				DryRun      bool            `json:"dryRun"`
-				Matched     int64           `json:"matched"`
-				Bytes       int64           `json:"bytes"`
-				Deleted     int64           `json:"deleted"`
-				PruneID     int64           `json:"pruneId"`
-				UndoExpires int64           `json:"undoExpires"`
+				DryRun      bool  `json:"dryRun"`
+				Matched     int64 `json:"matched"`
+				Bytes       int64 `json:"bytes"`
+				Deleted     int64 `json:"deleted"`
+				PruneID     int64 `json:"pruneId"`
+				UndoExpires int64 `json:"undoExpires"`
 				PerHost     []struct {
 					Host  string `json:"host"`
 					Flows int64  `json:"flows"`
@@ -3352,7 +3249,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("get_playbook",
-		"Read one playbook in full as markdown, with its trust banner. Use it before testing the surface it covers; it names the tools and the evidence the finding needs.",
+		"Read a playbook as markdown with its trust banner, tools and evidence requirements.",
 		obj(map[string]any{"id": p("string", "playbook id from list_playbooks/match_playbooks")}, "id"),
 		func(a map[string]any) (string, error) {
 			id := argStr(a, "id")
@@ -3373,7 +3270,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("match_playbooks",
-		"Which playbooks apply to a captured flow, with the signal that matched. Call it on a flow you are about to test so the corpus picks the checks instead of you guessing.",
+		"Match playbooks to a captured flow and return the signals that matched.",
 		obj(map[string]any{"flowId": p("integer", "flow to match")}, "flowId"),
 		func(a map[string]any) (string, error) {
 			id := argInt(a, "flowId", 0)
@@ -3384,7 +3281,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("record_playbook_coverage",
-		"Record that a playbook was considered, run, found or dismissed against a surface, with the evidence flow ids. This is the 'did we actually test X' ledger the report's coverage section reads.",
+		"Record playbook coverage for a surface and evidence flow ids; reports use this ledger.",
 		obj(map[string]any{
 			"playbookId": p("string", "playbook id"),
 			"host":       p("string", "host tested"),

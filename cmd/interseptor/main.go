@@ -97,18 +97,6 @@ func main() {
 				os.Exit(1)
 			}
 			return
-		case "check":
-			if err := runCheck(os.Args[2:]); err != nil {
-				fmt.Fprintf(os.Stderr, "check failed: %v\n", err)
-				os.Exit(1)
-			}
-			return
-		case "rules":
-			if err := runRules(os.Args[2:]); err != nil {
-				fmt.Fprintf(os.Stderr, "rules failed: %v\n", err)
-				os.Exit(1)
-			}
-			return
 		case "install-chrome", "chrome":
 			subArgs := os.Args[2:]
 			if os.Args[1] == "chrome" && len(subArgs) > 0 && subArgs[0] == "install" {
@@ -269,11 +257,6 @@ func run() error {
 	hub.ScriptRouter = newScriptRouter() // collection scripts run in the isolated worker
 	hub.SetControlRebinder(cm)
 	hub.WireIntruderRunSink() // persist finished Intruder runs for evidence renders
-	// User-authored Starlark scanner checks are global (shared across projects).
-	checksDir := filepath.Join(globalDir, "checks")
-	migrateGlobalChecks(globalDir, filepath.Join(globalDir, "projects"))
-	_ = os.MkdirAll(checksDir, 0o755)
-	hub.ChecksDir = checksDir
 	hub.ProjectName = projectName
 	hub.ProjectDir = dir
 	_ = os.MkdirAll(filepath.Join(dir, "codecs"), 0o755)

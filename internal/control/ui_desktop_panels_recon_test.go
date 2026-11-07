@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// Scanner, Map and Activity on the desktop skin (docs/desktop-design.md, Panels).
+// Map and Activity on the desktop skin (docs/desktop-design.md, Panels).
 // Their stylesheets and scripts only act under html.desktop-app, so a browser tab
 // keeps the web look; these contracts pin that and the moves that must not lose a
 // control.
 
 var desktopReconSheets = []string{
-	"css/desktop/panel-activity.css", "css/desktop/panel-map.css", "css/desktop/panel-scanner.css",
+	"css/desktop/panel-activity.css", "css/desktop/panel-map.css",
 }
 
 func TestUIDesktopReconSheetsAreLinkedAfterTheShellInOrder(t *testing.T) {
@@ -79,7 +79,7 @@ func TestUIDesktopReconSheetsAreScopedAndFollowTheRules(t *testing.T) {
 			}
 		}
 		// A rule that sets display for a [hidden] element must restate [hidden].
-		for _, id := range []string{".scan-progress", ".scan-sev-chips", ".act-chips", ".map-pop"} {
+		for _, id := range []string{".act-chips", ".map-pop"} {
 			if strings.Contains(css, id+"{display") && !strings.Contains(css, id+"[hidden]{display:none}") && !strings.Contains(css, id+"[hidden]{display:none") {
 				t.Errorf("%s: %s sets display without restating [hidden]", name, id)
 			}
@@ -88,7 +88,7 @@ func TestUIDesktopReconSheetsAreScopedAndFollowTheRules(t *testing.T) {
 }
 
 func TestUIDesktopReconScriptsAreGatedOnTheDesktopSkin(t *testing.T) {
-	for _, name := range []string{"js/desktop-panel-scanner.js", "js/desktop-panel-map.js", "js/desktop-panel-activity.js"} {
+	for _, name := range []string{"js/desktop-panel-map.js", "js/desktop-panel-activity.js"} {
 		js := readUIAsset(t, name)
 		// The host check lives once, in the desktop kit.
 		requireUIContains(t, js, "from './desktop-panel-kit.js';", "export const isDesktopSkin = isDesktop;")
@@ -96,13 +96,6 @@ func TestUIDesktopReconScriptsAreGatedOnTheDesktopSkin(t *testing.T) {
 			t.Errorf("%s does not gate on the desktop skin", name)
 		}
 	}
-	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
-	requireUIContains(t, scanner,
-		"if(isDesktopSkin())return scanTargetRowDesktop(",
-		"if(isDesktopSkin()){",
-		"scanDetailDesktopHTML({g,first,",
-		"setTimeout(initScannerDesktop,0);",
-	)
 	activity := executableJS(readUIAsset(t, "js/activity.js"))
 	requireUIContains(t, activity,
 		"isDesktopSkin()?visibleCategories(counts,actFilter.cats):ACTIVITY_CATEGORIES",
@@ -113,13 +106,12 @@ func TestUIDesktopReconScriptsAreGatedOnTheDesktopSkin(t *testing.T) {
 	requireUIContains(t, mapJS, "initMapDesktop();", "setTimeout(initMapDesktop,0);")
 }
 
-// Nothing leaves the panels: the Scanner, Map and Activity controls keep their ids, and the
+// Nothing leaves the panels: the Map and Activity controls keep their ids, and the
 // desktop scripts MOVE existing elements instead of recreating them.
 func TestUIDesktopReconKeepsEveryControl(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, id := range []string{
-		"scanTarget", "scanFilter", "scanRun", "scanClear", "scanToolsBtn", "checksBtn", "codecsBtn", "scanDecoderBtn", "oobBtn",
-		"scanScopeLink", "scanStop", "scanHostFilter", "scanSevChips",
+		"codecsBtn", "decoderBtn", "oobBtn",
 		"mapDomain", "mapSearch", "mapSearchScope", "mapViewSeg", "mapMethod", "mapStatus", "mapTag", "mapHideNoise",
 		"mapCollapseIdentical", "mapDiscoveryHelp", "mapUnlinked", "mapExpand", "mapFit", "mapRefresh", "mapCount", "mapCoverage",
 		"actIntentFilter", "actChips", "actAppendix", "actClear", "actCount",
@@ -135,8 +127,4 @@ func TestUIDesktopReconKeepsEveryControl(t *testing.T) {
 			t.Errorf("desktop-panel-map.js must move the existing controls, not recreate them (%s)", bad)
 		}
 	}
-	scanDesk := readUIAsset(t, "js/desktop-panel-scanner.js")
-	// Every per-target action keeps its data-act hook and an accessible name.
-	requireUIContains(t, scanDesk, `data-act="open"`, `data-act="verify"`, `data-act="attach"`, `aria-label="Open flow #${i.flowId}"`, `aria-label="Verify in Repeater"`, `aria-label="Attach as evidence"`, "data-scan-toggle", "aria-expanded")
-	requireUIContains(t, scanDesk, `id="scanPromote"`)
 }

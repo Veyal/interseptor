@@ -9,8 +9,7 @@ type settingsAPI struct{ *Hub }
 type scopeAPI struct{ *Hub }
 type findingsAPI struct{ *Hub }
 type toolsAPI struct{ *Hub }
-type scannerAPI struct{ *Hub }
-type checksAPI struct{ *Hub }
+type codecsAPI struct{ *Hub }
 type projectAPI struct{ *Hub }
 type playbooksAPI struct{ *Hub }
 type androidAPI struct{ *Hub }

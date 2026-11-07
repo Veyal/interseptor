@@ -108,7 +108,6 @@ func TestUIGenericLoadErrorsUseInnerAlert(t *testing.T) {
 func TestUIDirectLoadErrorsUseScopedAlerts(t *testing.T) {
 	for asset, contracts := range map[string][]string{
 		"js/apipanel.js": {`role="alert"`, `data-key-list-retry`},
-		"js/scanner.js":  {`role="alert"`, `data-check-docs-retry`, `data-checks-list-retry`},
 		"js/codecs.js":   {`role="alert"`, `data-codec-docs-retry`, `data-codecs-list-retry`},
 	} {
 		src := readUIAsset(t, asset)
@@ -123,7 +122,6 @@ func TestUIDirectLoadErrorsUseScopedAlerts(t *testing.T) {
 func TestUICheckAndCodecModesHaveCompleteTabPatterns(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, p := range []struct{ prefix, paneCode, paneDocs string }{
-		{"check", "checkPaneCode", "checkPaneDocs"},
 		{"codec", "codecPaneCode", "codecPaneDocs"},
 	} {
 		if !strings.Contains(index, `id="`+p.prefix+`ModeSeg" role="tablist"`) {
@@ -142,7 +140,7 @@ func TestUICheckAndCodecModesHaveCompleteTabPatterns(t *testing.T) {
 			}
 		}
 	}
-	for asset, fn := range map[string]string{"js/scanner.js": "wireCheckModeKeys", "js/codecs.js": "wireCodecModeKeys"} {
+	for asset, fn := range map[string]string{"js/codecs.js": "wireCodecModeKeys"} {
 		if !strings.Contains(readUIAsset(t, asset), "function "+fn+"(") {
 			t.Errorf("%s must retain keyboard navigation for mode tabs", asset)
 		}

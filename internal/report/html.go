@@ -8,13 +8,13 @@ import (
 
 // ProjectHTML renders the same engagement report as Project, as a self-contained
 // HTML document suitable for download or print-to-PDF.
-func ProjectHTML(findings []store.Finding, issues []store.Issue) string {
-	return projectHTMLFromMD(Project(findings, issues), secretLintNotice(findings))
+func ProjectHTML(findings []store.Finding) string {
+	return projectHTMLFromMD(Project(findings), secretLintNotice(findings))
 }
 
 // ProjectHTMLGroupedByTag is the HTML counterpart of ProjectGroupedByTag.
-func ProjectHTMLGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrder, omitTags []string) string {
-	return projectHTMLFromMD(ProjectGroupedByTag(findings, issues, tagOrder, omitTags), secretLintNotice(findings))
+func ProjectHTMLGroupedByTag(findings []store.Finding, tagOrder, omitTags []string) string {
+	return projectHTMLFromMD(ProjectGroupedByTag(findings, tagOrder, omitTags), secretLintNotice(findings))
 }
 
 // HTMLFromMarkdown wraps an already-rendered engagement report in the HTML shell.

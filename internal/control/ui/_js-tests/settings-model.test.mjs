@@ -97,7 +97,7 @@ test('section health shows text and degrades per segment', () => {
   assert.equal(tls.text, 'TLS: CA not verified');
   assert.match(tls.detail, /trust the CA/);
   assert.equal(sectionHealth('session', { readiness }).text, 'Auth: 2 identities');
-  assert.equal(sectionHealth('scanner', { readiness }).state, 'warn');
+  assert.equal(sectionHealth('oob', { readiness }).state, 'warn');
   assert.equal(sectionHealth('tls', { readiness: null, stale: true }).state, 'unknown');
   assert.equal(sectionHealth('devices', { readiness }), null);
   assert.equal(sectionHealth('project', { readiness }), null);

@@ -15,26 +15,11 @@ func TestFlowHookFires(t *testing.T) {
 	}
 }
 
-func TestScanIssueHookFires(t *testing.T) {
-	Reset()
-	var (
-		gotID        int64
-		gotSev, gotT string
-	)
-	OnScanIssue(func(id int64, sev, title string) { gotID, gotSev, gotT = id, sev, title })
-	EmitScanIssue(7, "High", "Reflected XSS")
-	if gotID != 7 || gotSev != "High" || gotT != "Reflected XSS" {
-		t.Fatalf("got %d %q %q", gotID, gotSev, gotT)
-	}
-}
-
 func TestNilHooksIgnored(t *testing.T) {
 	Reset()
 	OnFlowCaptured(nil)
-	OnScanIssue(nil)
 	// Emitting with no registered hooks must not panic.
 	EmitFlowCaptured(1)
-	EmitScanIssue(1, "Low", "x")
 }
 
 func TestMultipleHooksAllFire(t *testing.T) {

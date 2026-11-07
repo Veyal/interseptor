@@ -358,7 +358,7 @@ func TestUIA11yPreservedShellIDsAndTabs(t *testing.T) {
 			t.Errorf("preserved id #%s is gone", id)
 		}
 	}
-	for _, tab := range []string{"proxy", "intercept", "repeater", "intruder", "scanner", "map", "findings", "notes", "activity", "settings"} {
+	for _, tab := range []string{"proxy", "intercept", "repeater", "intruder", "playbooks", "map", "findings", "notes", "activity", "settings"} {
 		if !strings.Contains(index, `data-tab="`+tab+`"`) {
 			t.Errorf("rail tab data-tab=%q is gone", tab)
 		}
@@ -411,7 +411,7 @@ func TestUIA11yModuleSizeBudget(t *testing.T) {
 	const newModuleLines = 700
 	legacy := map[string]bool{
 		"js/proxy.js": true, "js/settings.js": true, "js/tools.js": true, "js/findings.js": true,
-		"js/core.js": true, "js/map.js": true, "js/scanner.js": true, "js/app.js": true,
+		"js/core.js": true, "js/map.js": true, "js/playbooks.js": true, "js/app.js": true,
 		"js/intercept.js": true, "js/apipanel.js": true, "js/authz.js": true,
 	}
 	for _, name := range uiScriptNames(t) {

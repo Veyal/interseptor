@@ -9,7 +9,7 @@ foundation they build on.
 
 ## The hook API — `internal/plugin`
 
-Two lifecycle hooks are available today. Both pass **only IDs and small
+One lifecycle hook is emitted today. Hooks pass **only IDs and small
 scalars** — never `store` or `proxy` types — so an extension can never create an
 import cycle and never stall the proxy hot path.
 
@@ -17,12 +17,11 @@ import cycle and never stall the proxy hot path.
 // Fired after a flow reaches its final recorded state (request + response, or a
 // terminal error). Fires for every persisted flow, MITM or plain HTTP.
 plugin.OnFlowCaptured(func(flowID int64) { ... })
-
-// Fired after the scanner records an issue against a flow.
-plugin.OnScanIssue(func(flowID int64, severity, title string) { ... })
 ```
 
-### Two rules every hook must follow
+`plugin.OnScanIssue` remains in the registry for source compatibility, but nothing emits it: the
+passive scanner it reported on was removed in favour of Playbooks, which the connected agent runs
+with the ordinary tools.
 
 1. **Never block.** The emitter runs your hook inline, best-effort. By the time
    `OnFlowCaptured` fires the proxy has already answered the client, but a slow

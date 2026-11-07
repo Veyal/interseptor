@@ -29,8 +29,7 @@ struct MainMenu {
         PanelItem(title: "Intruder", id: "intruder", key: "4"),
         PanelItem(title: "Identities", id: "identities", key: ""), // no ⌘-digit: keeps ⌘5–⌘9 where they were
         PanelItem(title: "Collections", id: "collections", key: "5"),
-        PanelItem(title: "Playbooks", id: "playbooks", key: ""), // no ⌘-digit: keeps ⌘6–⌘9 where they were
-        PanelItem(title: "Scanner", id: "scanner", key: "6"),
+        PanelItem(title: "Playbooks", id: "playbooks", key: "6"),
         PanelItem(title: "Map", id: "map", key: "7"),
         PanelItem(title: "Findings", id: "findings", key: "8"),
         PanelItem(title: "Notes", id: "notes", key: "9"),

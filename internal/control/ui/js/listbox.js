@@ -14,7 +14,7 @@ import { wireRowKey } from './core.js';
    Pick exactly one keyboard model per widget via `selectionFollowsFocus`:
      true  — arrows select as they move. Correct when moving *is* the
              selection and it is cheap (Intercept's hold queue, mirroring
-             Scanner's issue list).
+             the findings list).
      false — arrows only move focus, Enter/Space commits. Correct when
              committing is expensive or destructive (Repeater/Intruder
              history reload the editor and hit the network).

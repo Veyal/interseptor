@@ -11,9 +11,9 @@ Decoder tool (base64/url/hex/html/jwt). Codecs are for engagement-specific app c
 ## Where codecs live
 
 `<project>/codecs/*.star` — created automatically under the active project directory.
-They are **not** shared across projects (unlike global scanner checks).
+They are **not** shared across projects: each project carries its own `codecs/` directory.
 
-UI: **Scanner → Codecs**. REST under `/api/codecs` and `/api/flows/{id}/decoded`.
+UI: **Settings → Payloads & codecs**. REST under `/api/codecs` and `/api/flows/{id}/decoded`.
 MCP: `list_codecs`, `test_codec`, `save_codec`, `delete_codec`, `get_flow_decoded`, `encode_codec`.
 
 ## Contract
@@ -43,8 +43,8 @@ everywhere (decode results, encode, Repeater, collections). The `meta` `"id"` is
 label only (used as the title when `"title"` is absent), so a copied codec that kept the
 original `"id"` still encodes with its own file.
 
-`flow` matches the custom-check surface (`method`, `host`, `path`, `req_body` / `res_body`,
-`req_header(n)`, …). See [custom checks](custom-checks.md).
+`flow` exposes `method`, `host`, `path`, `req_body` / `res_body`, `req_header(n)`,
+`res_header(n)`, `query_param(n)` and the rest of the flow attributes.
 
 ## Builtins
 
@@ -57,7 +57,7 @@ Shared Starlark stdlib (`internal/starx`) plus AES helpers:
 | `aes_cbc_decrypt(key, ciphertext, iv, key_format?, data_format?, iv_format?)` | base64/raw/hex ciphertext → CBC → PKCS7 unpad → plaintext |
 | `aes_cbc_encrypt(key, plaintext, iv, key_format?, iv_format?)` | PKCS7 pad → CBC → **base64** ciphertext |
 | `aes_ctr(key, data, iv, key_format?, data_format?, iv_format?)` | unpadded keystream; the same call encrypts and decrypts, returns **base64** |
-| `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | same as checks |
+| `hash`, `hmac`, `b64*`, `json_*`, `re_search`, … | shared Starlark stdlib |
 
 `data_format` / `iv_format` take `"auto"` (default), `"raw"` or `"hex"`. An IV of 32 hex
 characters or exactly 16 raw characters is recognised automatically, which covers the common

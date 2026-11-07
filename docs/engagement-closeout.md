@@ -11,10 +11,11 @@ The goal is a **report-ready project**, not just a pile of History rows.
 
 ## 2. Triage → Findings
 
-- [ ] Run **Scanner** (passive) and triage hits worth promoting
-- [ ] Review scanner and agent evidence, then file findings manually or through MCP using the shared
-  evidence-first envelope: claim/summary, impact, why, target, typed reproduction blocks, fix, retest,
-  and confidence
+- [ ] Work the relevant **Playbooks** — by hand or with the connected agent — and triage the leads
+  worth promoting
+- [ ] Review the playbook coverage ledger and the agent evidence, then file findings manually or
+  through MCP using the shared evidence-first envelope: claim/summary, impact, why, target, typed
+  reproduction blocks, fix, retest, and confidence
 - [ ] Tag findings by deliverable scope (`cms` / `website` / `app` / `api`; use
   `out-of-scope` for adjacent evidence you want to keep out of the client pack)
 - [ ] Attach **PoC flows** (`add_finding_poc` / UI) with a role and exact proof statement
@@ -62,7 +63,7 @@ The goal is a **report-ready project**, not just a pile of History rows.
   example — before posting
 - [ ] Export **full project** zip if the client needs a portable archive
 - [ ] Copy deep links (`/#finding-N`, `/#flow-N`) into notes / ticket system
-- [ ] Install any custom checks you want to reuse as a **rule pack** for next time
+- [ ] Keep the project playbooks you extended or added so the next engagement starts from them
 
 ## 6. Hygiene
 

@@ -247,7 +247,7 @@ function renderStep() {
     $('#setupTrusted').onchange = e => { next.disabled = !e.target.checked; };
     if (cmd) $('#setupCopyCmd').onclick = () => copyText(cmd, 'trust command copied');
   } else if (step === 2) {
-    b.innerHTML = `<p class="u-m-0 u-mb-2">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
+    b.innerHTML = `<p class="u-m-0 u-mb-2">Add the host you're testing so history and the intercept gate focus on it.</p>
       <p class="hint u-m-0 u-mb-3">e.g. <code>*.example.com</code>, <code>api.example.com</code>, or regex <code>.*example\\.com</code>. You can skip this and add it later from Settings → Scope.</p>
       <div class="row u-gap-2">
         <input id="setupScopeHost" class="btn u-bg3 u-mono u-flex-1" aria-label="Scope host" placeholder="*.example.com" spellcheck="false">
@@ -307,7 +307,7 @@ function renderStep() {
     b.innerHTML = `<p class="u-m-0 u-mb-3">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
       <ul class="u-m-0 u-mb-4 u-fg2 u-list-pad">
         <li><b>Repeater</b> / <b>Intruder</b> to replay & fuzz requests</li>
-        <li><b>Scanner</b> for passive checks, <b>Findings</b> to curate vulns</li>
+        <li><b>Playbooks</b> for the tests that apply, <b>Findings</b> to curate vulns</li>
         <li><b>Ctrl/⌘+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
       </ul>
 

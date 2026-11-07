@@ -7,15 +7,8 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
-func TestFindingsEmpty(t *testing.T) {
-	out := Findings(nil)
-	if !strings.Contains(out, "No findings") {
-		t.Fatalf("empty report should say so: %s", out)
-	}
-}
-
 func TestProjectFlowRawChoosesSafeFenceAndRendersEvidenceProvenance(t *testing.T) {
-	out := Project([]store.Finding{{ID: 1, Severity: "High", Status: "open", Title: "Fence", Summary: "short", Retest: "repeat it", Blocks: []store.FindingBlock{{Type: "flow", FlowID: 9, Method: "POST", Host: "example.com", Path: "/x", Role: "result", Proof: "response proves access", Source: "captured_flow", SourceFlowID: 9, ReqRaw: "POST /x HTTP/1.1\r\nX: ````\r\n\r\n"}}}}, nil)
+	out := Project([]store.Finding{{ID: 1, Severity: "High", Status: "open", Title: "Fence", Summary: "short", Retest: "repeat it", Blocks: []store.FindingBlock{{Type: "flow", FlowID: 9, Method: "POST", Host: "example.com", Path: "/x", Role: "result", Proof: "response proves access", Source: "captured_flow", SourceFlowID: 9, ReqRaw: "POST /x HTTP/1.1\r\nX: ````\r\n\r\n"}}}})
 	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result (what changed), proof=response proves access, source=captured_flow") {
 		t.Fatalf("canonical envelope missing: %s", out)
 	}
@@ -35,7 +28,7 @@ func TestProjectGroupsProofByAffectedTarget(t *testing.T) {
 			{Type: "text", Role: "baseline", MD: "An ordinary user sees only their own record."},
 			{Type: "flow", FlowID: 1, Role: "result", Method: "GET", Host: "example.com", Path: "/a", Proof: "target A returned another account", Source: "captured_flow"},
 		},
-	}}, nil)
+	}})
 	shared := strings.Index(out, "**Shared explanation:**")
 	first := strings.Index(out, "**Proof of `https://example.com/a`:**")
 	second := strings.Index(out, "**Proof of `https://example.com/b`:**")
@@ -45,44 +38,14 @@ func TestProjectGroupsProofByAffectedTarget(t *testing.T) {
 	}
 }
 
-func TestFindingsGroupsAndOrders(t *testing.T) {
-	issues := []store.Issue{
-		{Severity: "Low", Title: "Cookie weak", Target: "GET a/b", Detail: "d", Evidence: "Set-Cookie: x", Fix: "harden"},
-		{Severity: "High", Title: "Token leak", Target: "POST a/login", Detail: "leaked", Evidence: "eyJ...", Fix: "use cookie"},
-		{Severity: "Medium", Title: "Missing CSP", Target: "GET a/", Fix: "add csp"},
-	}
-	out := Findings(issues)
-
-	// Summary line reflects counts.
-	if !strings.Contains(out, "3 findings: 1 High, 1 Medium, 1 Low") {
-		t.Fatalf("bad summary: %s", out)
-	}
-	// High section precedes Medium precedes Low.
-	hi, md, lo := strings.Index(out, "## High"), strings.Index(out, "## Medium"), strings.Index(out, "## Low")
-	if !(hi >= 0 && md > hi && lo > md) {
-		t.Fatalf("severity order wrong (hi=%d md=%d lo=%d):\n%s", hi, md, lo, out)
-	}
-	// Fields render.
-	for _, want := range []string{"### 1. Token leak", "- **Target:** `POST a/login`", "- **Remediation:** use cookie", "- **Evidence:** `eyJ...`"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("missing %q in:\n%s", want, out)
-		}
-	}
-	// Deterministic.
-	if Findings(issues) != out {
-		t.Fatal("output not deterministic")
-	}
-}
-
-func TestProjectRendersFindingsAndPoCsAndAppendix(t *testing.T) {
+func TestProjectRendersFindingsAndPoCs(t *testing.T) {
 	findings := []store.Finding{
 		{ID: 2, Severity: "Low", Status: "open", Source: "ai", Title: "Verbose errors", Target: "GET /api/x", Detail: "stack traces", Fix: "hide"},
 		{ID: 1, Severity: "High", Status: "verified", Source: "human", Title: "IDOR on user", Target: "GET /api/user/1",
 			Detail: "swap id", Evidence: "id=2 leaks", Fix: "authorize",
 			Flows: []store.FindingFlow{{FlowID: 7, Method: "GET", Host: "app.test", Path: "/api/user/2", Status: 200, Note: "leaks other user"}}},
 	}
-	issues := []store.Issue{{Severity: "Medium", Title: "Missing CSP", Target: "GET /"}}
-	out := Project(findings, issues)
+	out := Project(findings)
 
 	// Title + summary counts curated findings.
 	if !strings.Contains(out, "# Interseptor — Engagement Report") {
@@ -102,12 +65,11 @@ func TestProjectRendersFindingsAndPoCsAndAppendix(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
-	// Passive-scan appendix is present.
-	if !strings.Contains(out, "## Appendix: Passive Scan Issues") || !strings.Contains(out, "Missing CSP") {
-		t.Fatalf("missing appendix:\n%s", out)
+	if strings.Contains(out, "## Appendix: Passive Scan Issues") {
+		t.Fatalf("unexpected scanner appendix:\n%s", out)
 	}
 	// Deterministic.
-	if Project(findings, issues) != out {
+	if Project(findings) != out {
 		t.Fatal("output not deterministic")
 	}
 }
@@ -120,7 +82,7 @@ func TestProjectSeverityOrderSummaryAndFalsePositives(t *testing.T) {
 		{ID: 4, Severity: "High", Status: "verified", Title: "IDOR", Target: "GET /u/1", Detail: "swap id"},
 		{ID: 5, Severity: "High", Status: "false_positive", Title: "Bogus SQLi", Target: "GET /search", Detail: "not exploitable"},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 
 	// Summary line counts only the 4 active findings (the High false_positive is excluded).
 	if !strings.Contains(out, "4 findings: 1 Critical, 1 High, 1 Medium, 1 Low") {
@@ -169,7 +131,7 @@ func TestProjectSeverityOrderSummaryAndFalsePositives(t *testing.T) {
 	}
 
 	// Deterministic.
-	if Project(findings, nil) != out {
+	if Project(findings) != out {
 		t.Fatal("output not deterministic")
 	}
 }
@@ -178,7 +140,7 @@ func TestProjectAllFalsePositives(t *testing.T) {
 	findings := []store.Finding{
 		{ID: 1, Severity: "High", Status: "false_positive", Title: "Bogus", Target: "GET /x"},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 	if !strings.Contains(out, "all recorded findings were marked false positives") {
 		t.Fatalf("should note all-FP case:\n%s", out)
 	}
@@ -203,7 +165,7 @@ func TestProjectRendersMissingPoCFlow(t *testing.T) {
 				{Type: "flow", FlowID: 42, Note: "purged exploit request", Missing: true},
 			}},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 
 	// Missing flow renders the dedicated note (with its preserved annotation),
 	// not a normal flow quote.
@@ -218,7 +180,7 @@ func TestProjectRendersMissingPoCFlow(t *testing.T) {
 		t.Fatalf("present flow should render normally:\n%s", out)
 	}
 	// Deterministic.
-	if Project(findings, nil) != out {
+	if Project(findings) != out {
 		t.Fatal("output not deterministic")
 	}
 }
@@ -232,7 +194,7 @@ func TestProjectRendersMissingPoCFlowLegacy(t *testing.T) {
 				{FlowID: 8, Note: "gone", Missing: true},
 			}},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 	if !strings.Contains(out, "⚠ PoC flow #8 — evidence no longer in history") {
 		t.Fatalf("legacy missing-PoC note absent:\n%s", out)
 	}
@@ -242,16 +204,9 @@ func TestProjectRendersMissingPoCFlowLegacy(t *testing.T) {
 }
 
 func TestProjectEmpty(t *testing.T) {
-	out := Project(nil, nil)
+	out := Project(nil)
 	if !strings.Contains(out, "No findings recorded") {
 		t.Fatalf("empty project report should say so: %s", out)
-	}
-}
-
-func TestFindingsSanitizesEvidence(t *testing.T) {
-	out := Findings([]store.Issue{{Severity: "Low", Title: "x", Evidence: "line1\nline2`with`ticks"}})
-	if strings.Contains(out, "`with`") || strings.Contains(out, "line1\nline2") {
-		t.Fatalf("evidence not sanitized for inline code: %s", out)
 	}
 }
 
@@ -273,7 +228,7 @@ func TestRenderFindingSanitizesInjectedStructure(t *testing.T) {
 			},
 		},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 
 	// No injected heading or fake status line survives as a genuine line-start
 	// structural marker anywhere in the report.
@@ -324,7 +279,7 @@ func TestRenderFindingNormalContentUnaffected(t *testing.T) {
 			},
 		},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 
 	for _, want := range []string{
 		"Reflected XSS in search",
@@ -341,19 +296,14 @@ func TestRenderFindingNormalContentUnaffected(t *testing.T) {
 	}
 }
 
-// TestProjectImpactRendering verifies that a curated finding with Impact renders
-// "**Impact:**" (not mixed into passive-scan Remediation), while a passive
-// scan issue (store.Issue with Fix) still renders "**Remediation:**" in the appendix.
+// TestProjectImpactRendering verifies impact and root cause rendering.
 func TestProjectImpactRendering(t *testing.T) {
 	findings := []store.Finding{
 		{ID: 1, Severity: "High", Status: "open", Title: "SSRF via redirect",
 			Target: "POST /api/fetch", Impact: "attacker reads internal metadata endpoint",
 			Why: "URL follow does not block link-local / metadata hosts"},
 	}
-	issues := []store.Issue{
-		{Severity: "Medium", Title: "Missing HSTS", Target: "GET /", Fix: "add Strict-Transport-Security header"},
-	}
-	out := Project(findings, issues)
+	out := Project(findings)
 
 	for _, want := range []string{
 		"**Impact:** attacker reads internal metadata endpoint",
@@ -372,18 +322,8 @@ func TestProjectImpactRendering(t *testing.T) {
 		t.Fatalf("section order wrong (impact=%d why=%d target=%d):\n%s", imp, why, tgt, out)
 	}
 
-	appendixIdx := strings.Index(out, "## Appendix")
-	if appendixIdx < 0 {
-		t.Fatalf("appendix section missing:\n%s", out)
-	}
-	mainBody := out[:appendixIdx]
-	if strings.Contains(mainBody, "**Remediation:**") {
-		t.Fatalf("Remediation must not appear when Fix is empty:\n%s", mainBody)
-	}
-
-	appendix := out[appendixIdx:]
-	if !strings.Contains(appendix, "**Remediation:** add Strict-Transport-Security header") {
-		t.Fatalf("passive issue Remediation missing from appendix:\n%s", appendix)
+	if strings.Contains(out, "**Remediation:**") {
+		t.Fatalf("Remediation must not appear when Fix is empty:\n%s", out)
 	}
 }
 
@@ -398,7 +338,7 @@ func TestProjectRendersImageBlock(t *testing.T) {
 					Caption: "gone", Missing: true},
 			}},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 	if !strings.Contains(out, "![XSS alert](/api/findings/images/") {
 		t.Fatalf("image markdown absent:\n%s", out)
 	}
@@ -408,7 +348,7 @@ func TestProjectRendersImageBlock(t *testing.T) {
 }
 
 func TestProjectRendersFindingConfidence(t *testing.T) {
-	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Example", Confidence: "firm"}}, nil)
+	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Example", Confidence: "firm"}})
 	if !strings.Contains(out, "- **Confidence:** firm") {
 		t.Fatalf("finding confidence absent:\n%s", out)
 	}
@@ -425,7 +365,7 @@ func TestProjectIncludesFlowRequestResponseBodies(t *testing.T) {
 					ResRaw: "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"access_token\":\"tok\"}"},
 			}},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 	for _, want := range []string{
 		"POST connect.example.com/auth/sign-in",
 		"**Request**",
@@ -448,7 +388,7 @@ func TestProjectIncludesFlowRequestResponseBodies(t *testing.T) {
 				{Type: "flow", FlowID: 99, Missing: true, Note: "was here"},
 			}},
 	}
-	missOut := Project(missing, nil)
+	missOut := Project(missing)
 	if strings.Contains(missOut, "```http") {
 		t.Fatalf("missing flow should not emit http fences:\n%s", missOut)
 	}
@@ -471,14 +411,14 @@ func TestProjectPreservesUnmatchedLegacyNarrativeWithBlocks(t *testing.T) {
 		},
 	}}
 
-	md := Project(findings, nil)
+	md := Project(findings)
 	for _, want := range []string{"Legacy detail <script>", "**Evidence:** Legacy evidence <proof>"} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("unmatched legacy text %q missing:\n%s", want, md)
 		}
 	}
 
-	html := ProjectHTML(findings, nil)
+	html := ProjectHTML(findings)
 	for _, want := range []string{"Legacy detail &lt;script&gt;", "Legacy evidence &lt;proof&gt;"} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("unmatched legacy text %q missing or unescaped:\n%s", want, html)
@@ -500,7 +440,7 @@ func TestProjectDoesNotDuplicateEquivalentLegacyNarrativeBlocks(t *testing.T) {
 		},
 	}}
 
-	for _, out := range []string{Project(findings, nil), ProjectHTML(findings, nil)} {
+	for _, out := range []string{Project(findings), ProjectHTML(findings)} {
 		for _, want := range []string{"Current narrative", "Current evidence"} {
 			if strings.Count(out, want) != 1 {
 				t.Fatalf("equivalent legacy text %q duplicated:\n%s", want, out)
@@ -518,7 +458,7 @@ func TestProjectHTMLRendersHTTPFences(t *testing.T) {
 					ResRaw: "HTTP/1.1 200 OK\n\n{\"id\":2}"},
 			}},
 	}
-	html := ProjectHTML(findings, nil)
+	html := ProjectHTML(findings)
 	for _, want := range []string{"<pre><code>", "GET /u/2 HTTP/1.1", "HTTP/1.1 200 OK", "{&quot;id&quot;:2}"} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("missing %q in html:\n%s", want, html)
@@ -527,7 +467,7 @@ func TestProjectHTMLRendersHTTPFences(t *testing.T) {
 }
 
 func TestProjectLabelsEvidenceRenderAsGenerated(t *testing.T) {
-	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Rate limit", Summary: "s", Retest: "r", Blocks: []store.FindingBlock{{Type: "image", Hash: "abc", Role: "result", Proof: "timeline of recorded run", Source: "evidence_render", SourceRef: "intruder:run-1"}}}}, nil)
+	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Rate limit", Summary: "s", Retest: "r", Blocks: []store.FindingBlock{{Type: "image", Hash: "abc", Role: "result", Proof: "timeline of recorded run", Source: "evidence_render", SourceRef: "intruder:run-1"}}}})
 	const label = "evidence_render (generated evidence render from recorded data; not browser proof)"
 	if !strings.Contains(out, label) {
 		t.Fatalf("evidence_render label missing: %s", out)
@@ -541,7 +481,7 @@ func TestProjectSummaryIncludesIgnoredStatus(t *testing.T) {
 	findings := []store.Finding{
 		{ID: 1, Severity: "Low", Status: "ignored", Title: "Ignored Finding", Detail: "low impact"},
 	}
-	out := Project(findings, nil)
+	out := Project(findings)
 	if !strings.Contains(out, "| ignored | 1 |") {
 		t.Fatalf("expected ignored status in summary table, got:\n%s", out)
 	}

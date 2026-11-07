@@ -66,7 +66,7 @@ func TestProjectFalsePositiveAppendixNeutralisesTitleAndSeverity(t *testing.T) {
 		Severity: "Low\n- **Target:** `https://attacker.test`",
 		Status:   "false_positive",
 		Target:   "GET /x",
-	}}, nil)
+	}})
 	if strings.Contains(md, "\n## Injected heading") {
 		t.Fatalf("false-positive title forged a heading:\n%s", md)
 	}
@@ -74,7 +74,7 @@ func TestProjectFalsePositiveAppendixNeutralisesTitleAndSeverity(t *testing.T) {
 		t.Fatalf("false-positive severity forged a metadata bullet:\n%s", md)
 	}
 	// The main body path already neutralised it; both must agree.
-	active := Project([]store.Finding{{ID: 5, Title: "T\n## Injected heading", Severity: "High", Status: "open"}}, nil)
+	active := Project([]store.Finding{{ID: 5, Title: "T\n## Injected heading", Severity: "High", Status: "open"}})
 	if strings.Contains(active, "\n## Injected heading") {
 		t.Fatalf("main body title forged a heading:\n%s", active)
 	}

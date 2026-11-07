@@ -5,7 +5,6 @@ import (
 	"net/url"
 
 	"github.com/Veyal/interseptor/internal/netutil"
-	"github.com/Veyal/interseptor/internal/scanner"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -13,30 +12,15 @@ var reqNotableHeaders = []string{"Authorization", "Cookie", "X-Api-Key", "X-Auth
 var resNotableHeaders = []string{"Set-Cookie", "Content-Security-Policy", "Strict-Transport-Security", "Access-Control-Allow-Origin", "Server", "X-Powered-By", "Content-Type", "Location", "Www-Authenticate"}
 
 // analyzeFlow returns a compact, decision-ready summary of a flow: where it is,
-// notable security-relevant headers, parameters (injection points), passive
-// scanner hits, and whether it's in scope. Built for an AI agent so it doesn't
-// have to re-fetch and parse the raw exchange.
+// notable security-relevant headers, parameters (injection points), and whether
+// it is in scope. Built for an AI agent so it does not have to re-fetch and parse
+// the raw exchange. It used to embed passive-scanner hits; detection now belongs
+// to the playbooks the agent runs, so this reports the surface, not a verdict.
 func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return
 	}
-	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
-	if err != nil {
-		httpFileNotFoundOrInternal(w, err, "request body not found")
-		return
-	}
-	resBody, err := h.bodyBytesResult(f.ResBodyHash)
-	if err != nil {
-		httpFileNotFoundOrInternal(w, err, "response body not found")
-		return
-	}
-	issues := scanner.AnalyzeWithDisabled(f, reqBody, resBody, h.checksDisabledSet())
-	findings := make([]map[string]string, 0, len(issues))
-	for _, is := range issues {
-		findings = append(findings, map[string]string{"severity": is.Severity, "title": is.Title})
-	}
-
 	summary := map[string]any{
 		"id": f.ID, "method": f.Method, "url": analyzeURL(f), "status": f.Status,
 		"scheme": f.Scheme, "host": f.Host, "mime": f.Mime,
@@ -47,7 +31,6 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 		"queryParams":            queryParamNames(f.Path),
 		"notableRequestHeaders":  pickHeaders(f.ReqHeaders, reqNotableHeaders),
 		"notableResponseHeaders": pickHeaders(f.ResHeaders, resNotableHeaders),
-		"scannerFindings":        findings,
 	}
 	writeJSON(w, http.StatusOK, summary)
 }
