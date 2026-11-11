@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Readiness and TLS diagnosis no longer scan all of History.** TLS-failure counts, dates and the failure list use a partial index, and the HTTPS-success count avoids a slow index; on 100,000 flows the four queries drop from about 196 ms to about 31 ms. Existing projects get the index on next open. (`internal/store/store.go`, `internal/store/tlsstats.go`, `internal/store/flows_list.go`.)
 - **Retention "keep newest N" is about ten times faster.** The pass deletes below an id cutoff instead of testing every flow, and takes no write lock when nothing is over the limit (546 ms to 48 ms on 100,000 flows). (`internal/store/retention.go`.)
 - **Flow diff reads only the bytes it compares.** `GET /api/flows/diff` loaded and decompressed both response bodies in full before cutting them to `maxBytes`; it now reads the compared prefix only (two 24 MiB bodies: 103 MiB allocated before, under 4 MiB after). (`internal/control/diff.go`.)
+- **The self-update tests wait for the event they assert on.** The job makes a phase visible to `GET /api/update` before it broadcasts the matching event, so on a loaded machine the test read an empty event queue and panicked on an index. The helper now waits for the event. (`internal/control/update_test.go`.)
 
 ### Added
 

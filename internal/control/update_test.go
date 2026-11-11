@@ -121,17 +121,27 @@ func waitPhase(t *testing.T, ts *httptest.Server, want string) map[string]any {
 	return nil
 }
 
-func drainEvents(ch chan string) []map[string]any {
+// drainEvents collects update.progress events up to and including the first one
+// that carries wantPhase. The job makes a phase visible to GET /api/update before
+// it broadcasts the matching event, so a caller that has just polled the phase
+// must still wait for the event rather than read whatever is queued so far.
+func drainEvents(t *testing.T, ch chan string, wantPhase string) []map[string]any {
+	t.Helper()
 	var out []map[string]any
+	deadline := time.After(5 * time.Second)
 	for {
 		select {
 		case s := <-ch:
 			var m map[string]any
 			if json.Unmarshal([]byte(s), &m) == nil && m["type"] == "update.progress" {
 				out = append(out, m)
+				if m["phase"] == wantPhase {
+					return out
+				}
 			}
-		default:
-			return out
+		case <-deadline:
+			t.Fatalf("no update.progress event with phase %q arrived (got %v)", wantPhase, out)
+			return nil
 		}
 	}
 }
@@ -174,7 +184,7 @@ func TestUpdatePostReachesReadyWithProgress(t *testing.T) {
 		t.Fatalf("POST = %d %v", code, out)
 	}
 	waitPhase(t, ts, "ready")
-	events := drainEvents(ch)
+	events := drainEvents(t, ch, "ready")
 	var phases []string
 	for _, e := range events {
 		if p, _ := e["phase"].(string); len(phases) == 0 || phases[len(phases)-1] != p {
@@ -257,7 +267,7 @@ func TestUpdateFailureReportsErrorAndAllowsRetry(t *testing.T) {
 	if !strings.Contains(st["error"].(string), "checksum mismatch") {
 		t.Fatalf("state = %v", st)
 	}
-	events := drainEvents(ch)
+	events := drainEvents(t, ch, "error")
 	if last := events[len(events)-1]; last["phase"] != "error" || !strings.Contains(last["error"].(string), "checksum") {
 		t.Fatalf("last event = %v", last)
 	}
