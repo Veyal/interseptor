@@ -70,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **History no longer goes blank when the list shrinks under a deep scroll position.** After a reload that returned fewer rows (a bulk delete, a live reload under a search) the window started past the last row and mounted nothing until the scroll position had walked back one viewport per frame; it now lands on the last rows at once. (`internal/control/ui/js/core.js`.)
 - **Copy as Go keeps repeated headers.** Every header was written with `Header.Set`, so a request with two values for one header kept only the last; later values now use `Header.Add`. (`internal/control/ui/js/copyas.js`.)
 - **Copy as Raw HTTP keeps a non-default port in `Host`.** Ports 80 and 443 were dropped regardless of scheme, so `https://host:80` was copied as `Host: host`. (`internal/control/ui/js/copyas.js`.)
+- **Map graph no longer drops endpoints that share a method and folder.** Endpoints that differ only by query string or a trailing slash (`GET /search?q=a` and `GET /search?q=b`) overwrote each other in the Graph view, which then showed fewer endpoints than Tree, Table and its own count. (`internal/control/ui/js/map.js`.)
+- **A new project named "Default" is reported as existing.** The server treats `default` as the root project in any letter case, so "Default" passed the picker's check and silently reopened the default project. (`internal/control/ui/js/project-picker-model.js`.)
+- **Map Table action column has an accessible name.** The last header cell was empty; it now carries a visually hidden "Actions" label. (`internal/control/ui/js/map.js`.)
 - **gofmt is clean across the tree.** Six files that had drifted are reformatted; `GOFMT_ALL=1 make fmt-check` passes. No behaviour change.
 
 ### Changed

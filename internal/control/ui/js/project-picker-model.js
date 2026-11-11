@@ -235,8 +235,12 @@ export function validateNewProject({ name = '', path = '', folder = '' } = {}, p
   }
   if (p && !projectPathKey(p, flavor)) return fail('path', 'Save location must be an absolute folder path.');
   if (n && !p) {
-    const existing = (projects || []).find((x) => !x.path && x.name === n);
-    if (existing) return fail('name', 'A project named "' + n + '" already exists.', { existing });
+    // "default" is the root project in any letter case on the server
+    // (strings.EqualFold), so "Default" would reopen it instead of creating one.
+    const reserved = n.toLowerCase() === 'default';
+    const existing = (projects || []).find((x) => !x.path && (x.name === n || (reserved && String(x.name).toLowerCase() === 'default')))
+      || (reserved ? { name: 'default', path: '' } : null);
+    if (existing) return fail('name', 'A project named "' + existing.name + '" already exists.', { existing });
   }
   const fe = folderError(folder);
   if (fe) return fail('folder', fe);

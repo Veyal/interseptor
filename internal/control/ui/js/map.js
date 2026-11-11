@@ -1054,7 +1054,7 @@ function renderMapTable(eps){
     ${th('status', 'Status', '88px')}
     ${th('hits', 'Hits', '52px')}
     <th class="map-th-evidence">Evidence</th>
-    <th style="width:84px"></th>
+    <th style="width:84px"><span class="u-sr">Actions</span></th>
   </tr></thead>`;
 
   if(sorted.length >= MAP_TABLE_VIRTUAL_MIN){
@@ -1233,7 +1233,10 @@ export function buildGraphTree(eps){
     const host = child(root, e.host, e.host, 'host');
     let node = host;
     (e.path || '/').split('?')[0].split('/').filter(Boolean).forEach(seg => { node = child(node, seg, '/'+seg, 'folder'); });
-    child(node, 'ep|'+e.method, e.method, 'ep').ep = e;
+    // The server groups endpoints by host + method + full request path (query
+    // included); the folders above drop the query, so the leaf key carries the
+    // whole path or `GET /s?q=a` and `GET /s?q=b` would overwrite each other.
+    child(node, 'ep|'+e.method+'|'+(e.path || '/'), e.method, 'ep').ep = e;
   });
   root.children = root.children.filter(c => pruneGraphNode(c));
   _gtKey = key; _gtCache = root;

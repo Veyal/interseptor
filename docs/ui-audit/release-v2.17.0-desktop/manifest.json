@@ -162,7 +162,7 @@
   ],
   "runtime": {
     "audit_harness_sha256": "50ad7ce2e3db2790955b93b534f8763020b6ccb76e8fabef658c7f8ac0bfb071",
-    "runtime_files": 887,
-    "runtime_sha256": "4f2fbc59e48b7b97b74d697f77c663d555ff22e8c91b5f80bbc7bd0f2010c856"
+    "runtime_files": 889,
+    "runtime_sha256": "a8471e9e499d6a1313de01075a21475b33c1e1036648cd67f0cc14a3cc536cb7"
   }
 }
