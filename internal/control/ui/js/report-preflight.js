@@ -14,6 +14,7 @@ import { $, esc, escAttr, api, saveFile, toast, projectStorageKey } from './core
 import { handleAppHash, settleFindingsBeforeExport } from './findings.js';
 import { setShellApi, setReportOpen, TAB_CHANGE_EVENT } from './shell-hooks.js';
 import { projectState } from './project-state.js';
+import { isImeKeyEvent } from './keys.js';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
   exportURL, readinessURL, exportFilename, sanitizeOptions, previewRows, STATUS_CHOICES, FORMAT_CHOICES, hiddenNotice,
@@ -156,6 +157,7 @@ function wireActions() {
   const go = () => { if (overrideConfirmed(S.typed) && draftGate(gateInput()).available) runExport('draft'); };
   type?.addEventListener('input', () => { S.typed = type.value; $('#reportDraftGo')?.setAttribute('aria-disabled', overrideConfirmed(S.typed) ? 'false' : 'true'); });
   type?.addEventListener('keydown', (e) => {
+    if (isImeKeyEvent(e)) { e.stopPropagation(); return; }
     if (e.key === 'Enter') { e.preventDefault(); go(); }
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelConfirm(); }
   });

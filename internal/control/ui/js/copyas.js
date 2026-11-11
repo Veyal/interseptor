@@ -10,7 +10,10 @@
 //
 // Flow shape: {id, method, scheme, host, port, path, httpVersion, status,
 // reqHeaders:{Name:[value]}, resHeaders, reqBody, resBody, mime, startedAt,
-// durationMs, reqBodyTruncated, resBodyTruncated}.
+// durationMs, reqBodyTruncated, resBodyTruncated, reqBodyBytes, resBodyBytes}.
+// reqBodyBytes / resBodyBytes (a Uint8Array) are set only when that body is not
+// UTF-8 text; reqBody / resBody then hold a lossy decode for display, and every
+// generator that produces something runnable sends the bytes instead.
 
 export const MAX_BODY_BYTES = 1024 * 1024;
 const SENSITIVE = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
@@ -74,6 +77,43 @@ export function truncateBody(text, limit = MAX_BODY_BYTES) {
   return { text: s, truncated: false };
 }
 
+// decodeBody turns captured body bytes into {text} when they are UTF-8 text and
+// {text, bytes} when they are not. Decoding binary as text replaces every
+// invalid byte with U+FFFD (three different bytes when re-encoded), and a NUL
+// cannot be carried in a shell argument, so such a body must travel as bytes.
+// ignoreBOM keeps a leading EF BB BF, which TextDecoder drops by default.
+// `truncated` says the bytes were cut at a size limit: a multibyte character
+// split by that cut is dropped rather than making the whole body "binary".
+export function decodeBody(bytes, truncated = false) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(u8, { stream: !!truncated });
+    if (!text.includes('\u0000')) return { text };
+  } catch (e) { /* not UTF-8 */ }
+  return { text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(u8), bytes: u8 };
+}
+const bodyBytes = (f, side = 'req') => {
+  const b = f[side + 'BodyBytes'];
+  return b instanceof Uint8Array && b.length ? b : null;
+};
+const utf8Length = (s) => new TextEncoder().encode(s).length;
+function base64(u8) {
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+// byteLiteral writes bytes inside a double-quoted literal that Python (b"…") and
+// Go ("…") both read byte for byte: printable ASCII as is, the rest as \xNN.
+function byteLiteral(u8) {
+  let out = '';
+  for (const b of u8) {
+    if (b === 0x22 || b === 0x5c) out += '\\' + String.fromCharCode(b);
+    else if (b >= 0x20 && b < 0x7f) out += String.fromCharCode(b);
+    else out += '\\x' + b.toString(16).padStart(2, '0');
+  }
+  return `"${out}"`;
+}
+
 export function redactHeaders(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers || {})) out[k] = SENSITIVE.has(k.toLowerCase()) ? (Array.isArray(v) ? v : [v]).map(() => '<redacted>') : v;
@@ -90,7 +130,7 @@ const headerPairs = (headers, { skip = [] } = {}) => {
   return out;
 };
 const reqPairs = (f, redact) => headerPairs(redact ? redactHeaders(f.reqHeaders) : f.reqHeaders, { skip: ['content-length', 'host'] });
-const hasBody = (f) => typeof f.reqBody === 'string' && f.reqBody.length > 0;
+const hasBody = (f) => !!bodyBytes(f) || (typeof f.reqBody === 'string' && f.reqBody.length > 0);
 const method = (f) => (f.method || 'GET').toUpperCase();
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`; // POSIX single-quote
 const psq = (s) => `'${String(s).replace(/'/g, "''")}'`; // PowerShell single-quote
@@ -100,14 +140,22 @@ const jq = (s) => JSON.stringify(String(s));
 // methods stay bare so the usual command reads as before.
 const shellMethod = (f, q) => (/^[A-Za-z0-9_-]+$/.test(method(f)) ? method(f) : q(method(f)));
 const TRUNC = 'body truncated at 1 MB';
+// A binary body is piped in, decoded from base64: nothing else survives a shell
+// argument (a NUL ends it) or the clipboard (invalid UTF-8 is replaced).
+const b64Pipe = (u8) => `printf %s ${sq(base64(u8))} | base64 --decode |\n  `;
 
 function curl(f, redact, ps) {
   const q = ps ? psq : sq;
   const bare = method(f) === 'GET' && !hasBody(f);
+  const bin = bodyBytes(f);
   const parts = [`${ps ? 'curl.exe' : 'curl'} ${bare ? '' : `-X ${shellMethod(f, q)} `}${q(flowURL(f))}`];
   for (const [k, v] of reqPairs(f, redact)) parts.push(`-H ${q(`${k}: ${v}`)}`);
-  if (hasBody(f)) parts.push(`--data-raw ${q(f.reqBody)}`);
+  // PowerShell re-encodes bytes piped to a native command, so they go through a file.
+  if (bin) parts.push(ps ? '--data-binary "@$bodyFile"' : '--data-binary @-');
+  else if (hasBody(f)) parts.push(`--data-raw ${q(f.reqBody)}`);
   let out = parts.join(ps ? ' `\n  ' : ' \\\n  ');
+  if (bin && ps) out = `$bodyFile = [IO.Path]::GetTempFileName()\n[IO.File]::WriteAllBytes($bodyFile, [Convert]::FromBase64String(${psq(base64(bin))}))\n${out}\nRemove-Item $bodyFile`;
+  else if (bin) out = b64Pipe(bin) + out;
   if (f.reqBodyTruncated) out += `\n# ${TRUNC}`;
   return out;
 }
@@ -115,7 +163,9 @@ function fetchSnippet(f, redact) {
   const lines = [`fetch(${jq(flowURL(f))}, {`, `  method: ${jq(method(f))},`];
   const pairs = reqPairs(f, redact);
   if (pairs.length) { lines.push('  headers: {'); pairs.forEach(([k, v]) => lines.push(`    ${jq(k)}: ${jq(v)},`)); lines.push('  },'); }
-  if (hasBody(f)) lines.push(`  body: ${jq(f.reqBody)},`);
+  const bin = bodyBytes(f);
+  if (bin) lines.push(`  body: Uint8Array.from(atob(${jq(base64(bin))}), (c) => c.charCodeAt(0)),`);
+  else if (hasBody(f)) lines.push(`  body: ${jq(f.reqBody)},`);
   lines.push('});');
   if (f.reqBodyTruncated) lines.push(`// ${TRUNC}`);
   return lines.join('\n');
@@ -124,7 +174,9 @@ function python(f, redact) {
   const lines = ['import requests', '', 'response = requests.request(', `    ${jq(method(f))},`, `    ${jq(flowURL(f))},`];
   const pairs = reqPairs(f, redact);
   if (pairs.length) { lines.push('    headers={'); pairs.forEach(([k, v]) => lines.push(`        ${jq(k)}: ${jq(v)},`)); lines.push('    },'); }
-  if (hasBody(f)) lines.push(`    data=${jq(f.reqBody)}.encode("utf-8"),`);
+  const bin = bodyBytes(f);
+  if (bin) lines.push(`    data=b${byteLiteral(bin)},`);
+  else if (hasBody(f)) lines.push(`    data=${jq(f.reqBody)}.encode("utf-8"),`);
   lines.push(')', 'print(response.status_code, response.text)');
   if (f.reqBodyTruncated) lines.push(`# ${TRUNC}`);
   return lines.join('\n');
@@ -132,7 +184,7 @@ function python(f, redact) {
 function goSnippet(f, redact) {
   const body = hasBody(f);
   const lines = ['package main', '', 'import (', '\t"fmt"', '\t"io"', '\t"net/http"', ...(body ? ['\t"strings"'] : []), ')', '', 'func main() {',
-    `\treq, err := http.NewRequest(${jq(method(f))}, ${jq(flowURL(f))}, ${body ? `strings.NewReader(${jq(f.reqBody)})` : 'nil'})`,
+    `\treq, err := http.NewRequest(${jq(method(f))}, ${jq(flowURL(f))}, ${body ? `strings.NewReader(${bodyBytes(f) ? byteLiteral(bodyBytes(f)) : jq(f.reqBody)})` : 'nil'})`,
     '\tif err != nil {', '\t\tpanic(err)', '\t}'];
   // Set replaces, so a repeated header (two Cookie or X-Forwarded-For lines) kept
   // only its last value; net/http canonicalizes names, so compare without case.
@@ -150,8 +202,10 @@ function goSnippet(f, redact) {
 function httpie(f, redact) {
   const parts = [`http ${shellMethod(f, sq)} ${sq(flowURL(f))}`];
   for (const [k, v] of reqPairs(f, redact)) parts.push(sq(`${k}:${v}`));
-  if (hasBody(f)) parts.push(`--raw ${sq(f.reqBody)}`);
-  let out = parts.join(' \\\n  ');
+  const bin = bodyBytes(f);
+  if (!bin && hasBody(f)) parts.push(`--raw ${sq(f.reqBody)}`);
+  // httpie sends redirected stdin as the raw request body.
+  let out = (bin ? b64Pipe(bin) : '') + parts.join(' \\\n  ');
   if (f.reqBodyTruncated) out += `\n# ${TRUNC}`;
   return out;
 }
@@ -181,22 +235,28 @@ function harEntry(f, redact) {
   const mime = (f.mime || '').split(';')[0];
   const reqType = headerPairs(f.reqHeaders).find(([k]) => k.toLowerCase() === 'content-type');
   const resText = typeof f.resBody === 'string' ? f.resBody : '';
+  // HAR 1.2: a body that is not text is base64 with encoding:"base64" (the form
+  // Interseptor's own HAR export writes and its importer reads); sizes are bytes.
+  const reqBin = bodyBytes(f), resBin = bodyBytes(f, 'res');
+  const resSize = resBin ? resBin.length : utf8Length(resText);
   const entry = {
     startedDateTime: startedISO(f),
     time: f.durationMs || 0,
     request: {
       method: method(f), url, httpVersion: f.httpVersion || 'HTTP/1.1', cookies: [],
       headers: harHeaders(redact ? redactHeaders(f.reqHeaders) : f.reqHeaders), queryString: q,
-      headersSize: -1, bodySize: hasBody(f) ? f.reqBody.length : 0,
+      headersSize: -1, bodySize: reqBin ? reqBin.length : hasBody(f) ? utf8Length(f.reqBody) : 0,
     },
     response: {
       status: f.status || 0, statusText: '', httpVersion: f.httpVersion || 'HTTP/1.1', cookies: [],
       headers: harHeaders(redact ? redactHeaders(f.resHeaders) : f.resHeaders),
-      content: { size: resText.length, mimeType: mime, text: resText }, redirectURL: '', headersSize: -1, bodySize: resText.length,
+      content: resBin ? { size: resSize, mimeType: mime, text: base64(resBin), encoding: 'base64' } : { size: resSize, mimeType: mime, text: resText },
+      redirectURL: '', headersSize: -1, bodySize: resSize,
     },
     cache: {}, timings: { send: 0, wait: f.durationMs || 0, receive: 0 },
   };
-  if (hasBody(f)) entry.request.postData = { mimeType: reqType ? reqType[1] : '', text: f.reqBody };
+  if (reqBin) entry.request.postData = { mimeType: reqType ? reqType[1] : '', text: base64(reqBin), encoding: 'base64' };
+  else if (hasBody(f)) entry.request.postData = { mimeType: reqType ? reqType[1] : '', text: f.reqBody };
   return entry;
 }
 function fence(body) {
@@ -233,6 +293,12 @@ export function buildCopyAs(kind, flows, opts = {}) {
     if (f.reqBodyTruncated) notices.push(`Request body of flow ${f.id} truncated at 1 MB`);
     if (f.resBodyTruncated) notices.push(`Response body of flow ${f.id} truncated at 1 MB`);
   }
+  // Formats that are text by nature cannot hold a binary body: say so instead of
+  // handing over U+FFFD in place of the captured bytes without a word.
+  const lossy = kind === 'raw' ? ['req'] : kind === 'markdown' ? ['req', 'res'] : kind === 'body' ? [side] : [];
+  for (const f of flows) {
+    for (const s of lossy) if (bodyBytes(f, s)) notices.push(`${s === 'res' ? 'Response' : 'Request'} body of flow ${f.id} is binary: bytes that are not UTF-8 text are shown as U+FFFD`);
+  }
   const each = (fn, sep = '\n\n') => flows.map((f) => fn(f, redact)).join(sep);
   let text;
   switch (kind) {
@@ -260,7 +326,7 @@ export function buildCopyAs(kind, flows, opts = {}) {
     case 'repro':
       text = JSON.stringify({
         interseptor_repro: 1,
-        requests: flows.map((f) => ({ method: method(f), url: flowURL(f), headers: Object.fromEntries(reqPairs(f, redact)), body: hasBody(f) ? f.reqBody : '' })),
+        requests: flows.map((f) => ({ method: method(f), url: flowURL(f), headers: Object.fromEntries(reqPairs(f, redact)), body: hasBody(f) ? f.reqBody : '', ...(bodyBytes(f) ? { bodyBase64: base64(bodyBytes(f)) } : {}) })),
       }, null, 2);
       break;
   }
@@ -271,7 +337,7 @@ const fmtSize = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixe
 
 async function streamBody(id, side, limit = MAX_BODY_BYTES) {
   const r = await fetch(`/api/flows/${id}/body?side=${side}`, { credentials: 'same-origin' });
-  if (r.status === 404 || r.status === 204) return { text: '', truncated: false };
+  if (r.status === 404 || r.status === 204 || !r.body) return { text: '', truncated: false };
   if (!r.ok) throw new Error(`body request failed (${r.status})`);
   const reader = r.body.getReader();
   const chunks = [];
@@ -291,7 +357,7 @@ async function streamBody(id, side, limit = MAX_BODY_BYTES) {
   const buf = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let off = 0;
   for (const c of chunks) { buf.set(c, off); off += c.length; }
-  return { text: new TextDecoder().decode(buf), truncated };
+  return { ...decodeBody(buf, truncated), truncated };
 }
 async function defaultDeps() {
   const core = await import('./core.js');
@@ -322,6 +388,13 @@ export async function copyAs(kind, flows, deps = {}) {
         const k = s + 'Body';
         if (typeof f[k] === 'string') { const t = truncateBody(f[k]); f[k] = t.text; if (t.truncated) f[k + 'Truncated'] = true; continue; }
         const got = await d.fetchBody(f.id, s);
+        // A binary body is already cut in bytes by the reader; cutting its lossy
+        // text again would count each U+FFFD as three bytes.
+        if (got.bytes instanceof Uint8Array && got.bytes.length) {
+          f[k] = got.text; f[k + 'Bytes'] = got.bytes;
+          if (got.truncated) f[k + 'Truncated'] = true;
+          continue;
+        }
         const t = truncateBody(got.text);
         f[k] = t.text;
         if (got.truncated || t.truncated) f[s + 'BodyTruncated'] = true;

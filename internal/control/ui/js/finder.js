@@ -4,7 +4,26 @@
 // text-node ranges in <mark>, so syntax highlighting is preserved and nothing is
 // re-rendered through innerHTML. At most 5,000 matches are highlighted.
 
+import { isImeKeyEvent } from './keys.js';
+
 export const MAX_HIGHLIGHTS = 5000;
+
+// finderKeyAction maps a keydown in the find field to 'next' | 'prev' | 'close' |
+// 'regex' | 'case' | null. The Alt shortcuts match the physical key: on macOS
+// Option+R types "®" and Option+C types "ç", so e.key never equals the letter.
+// Ctrl+Alt is AltGr on Windows (it types a character) and is left alone, and so
+// is every key of an IME composition.
+export function finderKeyAction(e) {
+  if (!e || isImeKeyEvent(e)) return null;
+  if (e.key === 'Enter') return e.shiftKey ? 'prev' : 'next';
+  if (e.key === 'Escape') return 'close';
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const letter = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase() : String(e.key || '').toLowerCase();
+    if (letter === 'r') return 'regex';
+    if (letter === 'c') return 'case';
+  }
+  return null;
+}
 
 const isHighSurrogate = (c) => c >= 0xd800 && c <= 0xdbff;
 const isLowSurrogate = (c) => c >= 0xdc00 && c <= 0xdfff;
@@ -132,10 +151,12 @@ export function createFinder(container, opts = {}) {
     bar.append(input, count, prev, next, rx, cs, close);
     input.addEventListener('input', () => { state.query = input.value; clearTimeout(state.timer); state.timer = setTimeout(run, 120); });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close_(); }
-      else if (e.altKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); toggle('regex'); }
-      else if (e.altKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); toggle('caseSensitive'); }
+      const action = finderKeyAction(e);
+      if (!action) return;
+      // Escape closes only the bar and never reaches the dialog or drawer under it.
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close_(); }
+      else if (action === 'next' || action === 'prev') { e.preventDefault(); step(action === 'prev' ? -1 : 1); }
+      else { e.preventDefault(); toggle(action === 'regex' ? 'regex' : 'caseSensitive'); }
     });
     prev.addEventListener('click', () => step(-1));
     next.addEventListener('click', () => step(1));

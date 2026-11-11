@@ -50,21 +50,42 @@ function setNotesStatus(kind){
   else s.textContent='';
 }
 
+// notesAcked is the notebook text the server is known to hold: the last text it
+// accepted from this tab, or the last copy read from it. The autosave baseline
+// is reset to it before every save, because createAutosave records the
+// submitted text as saved whenever save() returns, and a 409 merge returns
+// without the server having accepted that text.
+let notesAcked='';
+const NOTES_MERGE_ATTEMPTS=3;
 const notesAutosave=createAutosave({
   delay:800,
   onStatus:setNotesStatus,
   save:async (v,opts)=>{
-    let r;
-    try{r=await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(notesState.rev?{notes:v,baseRev:notesState.rev}:{notes:v}),...(opts&&opts.keepalive?{keepalive:true}:{})});}
-    catch(e){
-      if(e.status===409){
-        try{await mergeRemoteNotes();return;}
-        catch(err){notesSaveError=err.message||'Could not merge notes';throw err;}
+    notesAutosave.setBaseline(notesAcked,{preserveCurrent:true});
+    for(let attempt=1;;attempt++){
+      let r;
+      try{r=await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(notesState.rev?{notes:v,baseRev:notesState.rev}:{notes:v}),...(opts&&opts.keepalive?{keepalive:true}:{})});}
+      catch(e){
+        if(e.status===409){
+          let merged;
+          try{merged=await mergeRemoteNotes();}
+          catch(err){notesSaveError=err.message||'Could not merge notes';throw err;}
+          // A merge that changed the draft is queued; the autosave loop saves it next.
+          if(merged!==v)return;
+          // The server already holds exactly this text (the same edit landed elsewhere).
+          if(v===notesAcked)return;
+          // The merge kept the draft as submitted, and the server refused it:
+          // send it again against the fresh revision instead of reporting "Saved".
+          if(attempt<NOTES_MERGE_ATTEMPTS)continue;
+          notesSaveError='Notes keep changing elsewhere';throw new Error(notesSaveError);
+        }
+        notesSaveError=e.message||'Could not save notes';throw e;
       }
-      notesSaveError=e.message||'Could not save notes';throw e;
+      notesState.loaded=v;
+      notesState.rev=r&&r.rev?r.rev:'';
+      notesAcked=v;
+      return;
     }
-    notesState.loaded=v;
-    notesState.rev=r&&r.rev?r.rev:'';
   },
 });
 
@@ -74,7 +95,7 @@ flushOnClose({isDirty:()=>notesAutosave.isDirty(),flush:o=>notesAutosave.flush(o
 // mergeRemoteNotes runs when a save is refused because the notebook changed on
 // the server (typically an agent's append_notes while the user was typing). It
 // merges the server copy into the live draft and queues the merged text, which
-// the autosave loop then saves against the fresh revision.
+// the autosave loop then saves against the fresh revision. Returns the merged text.
 async function mergeRemoteNotes(){
   const d=await api('/api/notes');
   const remote=d.notes||'';
@@ -82,6 +103,7 @@ async function mergeRemoteNotes(){
   const m=mergeNotes(notesState.loaded,remote,ta?ta.value:'');
   notesState.loaded=remote;
   notesState.rev=d.rev||'';
+  notesAcked=remote;
   if(ta&&ta.value!==m.text){
     const start=ta.selectionStart,end=ta.selectionEnd;
     ta.value=m.text;
@@ -91,6 +113,7 @@ async function mergeRemoteNotes(){
   if(notesState.mode==='view')showNotesPreview();
   if(m.conflict)toast('Notes were changed elsewhere while you were editing. Both versions are kept: review the "Conflicting copy" section.','error');
   notesAutosave.schedule(m.text);
+  return m.text;
 }
 
 export async function loadNotes(){
@@ -107,6 +130,7 @@ export async function loadNotes(){
     const loaded=d.notes||'';
     const preserveLocal=dirty||notesEditGeneration!==generation||(ta&&ta.value!==current);
     notesAutosave.setBaseline(loaded,{preserveCurrent:preserveLocal});
+    notesAcked=loaded;
     // With a local draft, keep loaded/rev at the version the draft is based on:
     // the next save then either succeeds (this was our own save echoing back)
     // or gets a 409 and merges the remote change instead of overwriting it.

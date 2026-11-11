@@ -145,6 +145,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Repeater and Intruder tablists own only tabs.** The tab strip no longer carries `role="tablist"` over its Close and "+" buttons; a separate tablist element owns the tab buttons through `aria-owns`, and tabs report their position in the set. (`internal/control/ui/js/core.js`, `internal/control/ui/app.css`.)
 - **The finding properties rail is not a nested landmark.** It is a labelled group instead of an `<aside>` inside `<main>`. (`internal/control/ui/js/findings.js`.)
 - **Four phone-width touch targets reach 24 px.** The History search field, row tag chips (an invisible hit area; the row height is unchanged), the Intercept condition checkbox and the Map breadcrumb links. (`internal/control/ui/app.css`, `internal/control/ui/panel-proxy.css`.)
+- **Notes no longer report "Saved" for text the server refused.** After a save conflict the merged notebook is sent again until the server accepts exactly the text in the editor; a notebook that keeps changing ends in "Save failed" with Retry instead of a false "Saved". (`internal/control/ui/js/notes.js`.)
+- **Copy-as keeps binary request bodies byte for byte.** A body that is not UTF-8 text is emitted as a base64 pipe for curl and httpie, a temporary file for PowerShell, a byte literal for Python and Go, a `Uint8Array` for fetch and `encoding: "base64"` in HAR; Raw HTTP, Body only and Markdown say that the body is binary. HAR sizes are now bytes. (`internal/control/ui/js/copyas.js`.)
+- **The message-codec editor asks before discarding unsaved Starlark.** Opening another codec or pressing New prompts first, and reopening the dialog keeps the draft. (`internal/control/ui/js/codecs.js`.)
+- **Enter that confirms an IME composition no longer submits.** The agent-prompt answer field, the command palette, the evidence picker, the draft-export confirmation, the find bar and registered shortcuts ignore composition keys. (`internal/control/ui/js/keys.js`, `humaninput.js`, `cmdk.js`, `evidence-attach.js`, `report-preflight.js`, `finder.js`, `findings.js`.)
+- **Find bar Alt+R and Alt+C work on macOS.** The shortcuts match the physical key, since Option changes the typed character. (`internal/control/ui/js/finder.js`.)
 
 ### Changed
 
@@ -176,6 +181,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **History filtered by status class returns the first page without sorting the whole class.** When the class is common the list walks flows newest-first and stops at a full page: `status=2xx` on 500,000 flows went from 1.2 s to 7 ms. A rare class still uses the status index. (`internal/store/flows_list.go`, `internal/store/rules.go`.)
 - **Body garbage collection builds its reference set in one pass.** One scan of the four hash columns replaces a four-way `UNION`: 1.0 s to 0.26 s on 500,000 flows. (`internal/store/retention.go`.)
 - **Delete closes the focused Repeater or Intruder tab.** It does nothing while the tab's Close button is disabled (an Intruder run in progress). (`internal/control/ui/js/core.js`.)
+- **Finding status and evidence-button attributes use the attribute escaper.** A source scan test now fails when the text escaper is used inside a quoted attribute. (`internal/control/ui/js/findings.js`.)
 
 ### Added
 

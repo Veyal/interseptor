@@ -18,6 +18,7 @@ import { projectState } from './project-state.js';
 import { buildResults, dedupeCommands, flattenResults, flattenCheatsheet, resultCountText, emptyText, modeHint, parseQuery, loadRecents, saveRecents, pushRecent } from './cmdk-logic.js';
 import { builtinActions, selectionActions, openFlowFor, openFindingRoute, setIdentity } from './cmdk-actions.js';
 import { shortcutSheet, mountShortcutSheet } from './keyboard.js';
+import { isImeKeyEvent } from './keys.js';
 
 const cmdk = { el: null, input: null, list: null, hint: null, live: null, items: [], res: null, sel: 0, open: false, prefill: '', findings: null, findingsBusy: false, remote: [], remoteQ: '', keepRemote: false, flowTimer: 0, flowEpoch: 0, remotePending: false, liveTimer: 0, recents: null };
 const cmdkEnv = { commands: () => [], ready: () => true, blocked: () => false, openFlow: () => {} };
@@ -42,6 +43,8 @@ function cmdkBuild(){
   cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');cmdk.hint=o.querySelector('#cmdkHint');cmdk.live=o.querySelector('#cmdkLive');
   cmdk.input.oninput=cmdkRender;
   cmdk.input.onkeydown=e=>{
+    // A key of an IME composition is the IME's: Enter commits the text, it does not run a command.
+    if(isImeKeyEvent(e)){e.stopPropagation();return;}
     if(e.key==='ArrowDown'){e.preventDefault();cmdk.sel=Math.min(cmdk.items.length-1,cmdk.sel+1);cmdkPaint();}
     else if(e.key==='ArrowUp'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.sel-1);cmdkPaint();}
     else if(e.key==='Home'&&!cmdk.input.value){e.preventDefault();cmdk.sel=0;cmdkPaint();}

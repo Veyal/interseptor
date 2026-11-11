@@ -1051,8 +1051,8 @@ function renderBlockEl(b, i, total) {
        </button>
        <p class="find-preview-note">Generated request and response. Not a browser screenshot.</p>
        <div class="find-evidence-actions">
-        <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}" aria-label="Generate report image for attached flow #${esc(String(b.flowId))}">Generate report image</button>
-         <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
+        <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}" aria-label="Generate report image for attached flow #${escAttr(String(b.flowId))}">Generate report image</button>
+         <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${escAttr(String(b.flowId))} to Repeater">Send to Repeater →</button>
          ${copyImageButton(flowPreviewURL(b.flowId), 'request and response preview of flow #' + b.flowId, 'flow-' + b.flowId + '-preview')}
        </div>
      </div>
@@ -1820,7 +1820,7 @@ function renderFindingDetail() {
         <button class="btn find-mobile-back" id="findBackToList" type="button" aria-label="Back to findings"><svg class="icon icon-back" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span class="lbl-long"> Findings</span></button>
         <span class="find-id-badge">#${f.id}</span>
         <span class="sev find-sev-chip ${sevClass(f.severity)}" id="findSeverityChip" data-severity="${escAttr(f.severity)}">${esc(f.severity)}${f.cvssScore != null ? `<span class="find-sev-score">${esc(Number(f.cvssScore).toFixed(1))}</span>` : ''}</span>
-        <button type="button" class="sev find-status-badge find-status-trigger ${statusBadgeClass(f.status)}" id="findStatusBadge" aria-haspopup="menu" aria-expanded="false" title="Change status: ${esc(statusLabel(f.status))}">${esc(statusLabel(f.status))}<svg class="icon icon-chevron-sm" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+        <button type="button" class="sev find-status-badge find-status-trigger ${statusBadgeClass(f.status)}" id="findStatusBadge" aria-haspopup="menu" aria-expanded="false" title="Change status: ${escAttr(statusLabel(f.status))}">${esc(statusLabel(f.status))}<svg class="icon icon-chevron-sm" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
         ${findingModeChipHTML()}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
@@ -2055,7 +2055,7 @@ function renderFindingDetail() {
           }
         } catch (err) { toast(err.message, 'error'); }
       });
-      ignoreEl.addEventListener('keydown', e => { if (e.key === 'Enter') ignoreEl.blur(); });
+      ignoreEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) ignoreEl.blur(); });
     }
     const statusSelect = $('#findStatus');
     if (statusSelect) {

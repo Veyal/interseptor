@@ -41,6 +41,18 @@ let codecLoadEpoch = 0;
 let codecDocsLoadEpoch = 0;
 let codecListLoadEpoch = 0;
 
+// codecCleanSource is the editor text that is not a draft: the template, or the
+// source last loaded from or saved to the server. Anything else in #codecSrc is
+// unsaved work, which opening another codec, New or reopening the dialog used
+// to replace without a word.
+// null until the dialog first fills the editor.
+let codecCleanSource = null;
+const codecDirty = () => codecCleanSource !== null && (($('#codecSrc') || {}).value || '') !== codecCleanSource;
+async function codecDiscardDraft(next) {
+  if (!codecDirty()) return true;
+  return uiConfirm('Discard unsaved changes', `The codec editor has unsaved changes. Discard them and ${next}?`, 'Discard', 'btn danger', 'var(--red)');
+}
+
 function codecEditorMatches(epoch, id, source) {
   return epoch === codecLoadEpoch
     && ($('#codecId').value || '').trim() === id
@@ -210,7 +222,8 @@ export async function loadCodecsList() {
   }
 }
 
-async function openCodec(id) {
+export async function openCodec(id) {
+  if (!await codecDiscardDraft(`open <b>${esc(id)}</b>`)) return;
   const epoch = ++codecLoadEpoch;
   codecSel = id;
   try {
@@ -218,6 +231,7 @@ async function openCodec(id) {
     if (epoch!==codecLoadEpoch || codecSel!==id) return;
     $('#codecId').value = d.id || id;
     $('#codecSrc').value = d.source || '';
+    codecCleanSource = d.source || '';
     const out = $('#codecOut');
     if (out) {
       out.innerHTML = d.error
@@ -234,21 +248,27 @@ export function openCodecs() {
   openModal($('#codecsModal'));
   const s = $('#codecsSearch');
   if (s) s.value = '';
-  codecSel = '';
-  $('#codecId').value = '';
-  $('#codecSrc').value = TEMPLATE;
-  const out = $('#codecOut');
-  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
+  // A draft left in the editor when the dialog was closed is still there.
+  if (!codecDirty()) {
+    codecSel = '';
+    $('#codecId').value = '';
+    $('#codecSrc').value = TEMPLATE;
+    codecCleanSource = TEMPLATE;
+    const out = $('#codecOut');
+    if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
+  }
   updateCodecFlowHint();
   codecSetMode('code');
   loadCodecsList();
 }
 
-function codecNew() {
+export async function codecNew({ force = false } = {}) {
+  if (!force && !await codecDiscardDraft('start a new codec')) return;
   codecLoadEpoch++;
   codecSel = '';
   $('#codecId').value = 'aes-content-field';
   $('#codecSrc').value = TEMPLATE;
+  codecCleanSource = TEMPLATE;
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   codecSetMode('code');
@@ -256,7 +276,7 @@ function codecNew() {
   $('#codecId')?.focus();
 }
 
-async function codecSave() {
+export async function codecSave() {
   if (codecBusy) return;
   const id = ($('#codecId').value || '').trim();
   const source = $('#codecSrc').value || '';
@@ -274,6 +294,7 @@ async function codecSave() {
     });
     if (codecEditorMatches(epoch, id, source)) {
       codecSel = id;
+      codecCleanSource = source;
       if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> — available in History / Repeater <b>Decoded</b> views.</div>';
     }
     toast('codec saved');
@@ -299,7 +320,7 @@ async function codecDelete() {
   try {
     await api('/api/codecs/' + encodeURIComponent(id), { method: 'DELETE' });
     toast('deleted');
-    if (codecEditorMatches(epoch, id, source)) codecNew();
+    if (codecEditorMatches(epoch, id, source)) codecNew({ force: true });
     loadCodecsList();
   } catch (e) { toast(e.message); }
   finally { setCodecBusy(false); }
@@ -349,7 +370,7 @@ async function codecTest() {
 
 if ($('#codecsBtn')) $('#codecsBtn').onclick = openCodecs;
 if ($('#codecsClose')) $('#codecsClose').onclick = () => closeModal($('#codecsModal'));
-if ($('#codecNew')) $('#codecNew').onclick = codecNew;
+if ($('#codecNew')) $('#codecNew').onclick = () => codecNew();
 if ($('#codecSave')) $('#codecSave').onclick = codecSave;
 if ($('#codecDelete')) $('#codecDelete').onclick = codecDelete;
 if ($('#codecTest')) $('#codecTest').onclick = codecTest;

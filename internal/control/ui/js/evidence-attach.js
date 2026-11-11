@@ -16,6 +16,8 @@
 // Findings are agent-maintained: attachEvidence and send() refuse (core.js owns
 // the wording of the toast) unless the UI-editing setting is on, so the `e` key, drag-and-drop and any stale caller are inert.
 
+import { isImeKeyEvent } from './keys.js';
+
 export const EVIDENCE_KINDS = ['flow', 'shot', 'ws', 'note'];
 export const MAX_REFS = 32;
 export const UNDO_MS = 5000;
@@ -349,6 +351,8 @@ function pickFinding(core, anchor) {
     };
     input.addEventListener('input', render);
     root.addEventListener('keydown', (e) => {
+      // Enter that commits an IME composition must not attach to the highlighted finding.
+      if (isImeKeyEvent(e)) { e.stopPropagation(); return; }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }

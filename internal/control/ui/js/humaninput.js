@@ -1,4 +1,5 @@
 import { $, esc, escAttr, api, toast, toastError } from './core.js';
+import { isImeKeyEvent } from './keys.js';
 
 // AI→human handoff: when the AI calls request_human_input, a prompt shows in the
 // top banner so the operator can answer/approve. Loaded on boot and refreshed on
@@ -55,6 +56,8 @@ function renderHumanInput(prompts) {
     respond(b.dataset.id, inp ? inp.value : '');
   });
   bar.querySelectorAll('.hi-input').forEach(inp => inp.onkeydown = e => {
+    // Enter that commits an IME composition is not "send the answer to the agent".
+    if (isImeKeyEvent(e)) return;
     if (e.key === 'Enter') { e.preventDefault(); respond(inp.dataset.id, inp.value); }
   });
   humanInputPending.forEach(id=>setPromptPending(id,true));

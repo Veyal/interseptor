@@ -45,6 +45,15 @@ export function isShortcutTypingTarget(t) {
   return !!t.closest('[role="listbox"]') && !t.closest(SHORTCUT_LISTBOXES);
 }
 
+// isImeKeyEvent: a keydown that belongs to an input-method composition
+// (Japanese, Chinese, Korean…). Enter there commits the composed text and
+// Escape cancels it; neither is a shortcut or a submit. Chrome and Firefox set
+// isComposing; Safari and WKWebView send the committing Enter after
+// compositionend, recognisable only by keyCode 229.
+export function isImeKeyEvent(e) {
+  return !!e && (e.isComposing === true || e.keyCode === 229 || e.key === 'Process');
+}
+
 const KEY_ALIASES ={ esc: 'Escape', escape: 'Escape', return: 'Enter', enter: 'Enter', space: ' ', spacebar: ' ', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 
 function canonicalStep(mods, key) {
@@ -155,7 +164,7 @@ export function createKeyRegistry(opts = {}) {
   }
   function handle(e, ctx = {}) {
     const scopes = ctx.scopes || ['global'];
-    if (e.repeat) return false;
+    if (e.repeat || isImeKeyEvent(e)) return false;
     const step = eventStep(e);
     let idx = 0;
     let pool = null;
