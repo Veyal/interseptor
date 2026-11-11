@@ -817,6 +817,11 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		Body                     *string                     `json:"body"`   // JSON blocks (PoC timeline)
 		Blocks                   *[]store.FindingBlock       `json:"blocks"` // canonical structured alternative to body
 		Tags                     *[]string                   `json:"tags"`   // when present (incl. []), replaces the tag set
+		// BaseUpdatedTS names the version the editor rendered from. A save that
+		// names it is refused with 409 when the finding changed since (an agent
+		// adding evidence while the operator types), instead of silently
+		// overwriting the change. Omitted = unconditional, as before.
+		BaseUpdatedTS *int64 `json:"baseUpdatedTs"`
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -893,7 +898,25 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, findingBodySizeStatus(msg), msg)
 		return
 	}
-	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, CvssV3: in.CvssV3}); err != nil {
+	var baseUpdatedTS int64
+	if in.BaseUpdatedTS != nil {
+		baseUpdatedTS = *in.BaseUpdatedTS
+	}
+	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, CvssV3: in.CvssV3, IfUpdatedTS: baseUpdatedTS}); err != nil {
+		if errors.Is(err, store.ErrFindingChanged) {
+			// Tell the client what it collided with, so it can refresh its base
+			// and let the operator decide instead of losing a silent overwrite.
+			cur, gerr := h.st.GetFinding(id)
+			if gerr != nil {
+				httpErr(w, http.StatusConflict, "this finding changed since it was read; reload it")
+				return
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":   "this finding changed since it was read; your change was not saved",
+				"finding": findingAPIResponse(cur, nil),
+			})
+			return
+		}
 		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return

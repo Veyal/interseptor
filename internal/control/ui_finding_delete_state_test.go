@@ -27,6 +27,8 @@ func TestFindingDeleteSharedWriteBoundary(t *testing.T) {
  let bodySavesInFlight=0,findingWritesInFlight=0,findingsLoadEpoch=0,guard;
  const findingWriteQueues=new Map(),bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),cvssApplyDraftTokens=new Map(),findingEvidenceWrites=new Map();
  const findingDeletesPending=new Set(),findingAttachPending=new Set();
+ // Transport metadata for the base-version check on a body save.
+ const findingEditBases=new Map();
  const findingDrafts=createFindingDraftStore(),cvssPreviewDrafts=createFindingDraftStore();
  const findingsEditable=()=>true,assertFindingsWritable=()=>{},FINDINGS_EDITING_OFF='off';
  const controls={findDetail:{inert:false},findSaveState:{},findSaveRecovery:{},findSaveRetry:{focus(){}}};

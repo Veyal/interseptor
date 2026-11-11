@@ -459,7 +459,7 @@ if(!errTitle||errTitle.message!==MSG)throw Error('title edit must reject when ag
 // coalesced write must fold the reason into the review before it is sent.
 func TestUIFindingWriteQueueFoldsIgnoreReasonIntoProofReview(t *testing.T) {
 	src := readUIAsset(t, "js/findings.js")
-	drain := sliceBetween(t, src, "async function drainFindingWrites(", "const payload = JSON.stringify(fields);")
+	drain := sliceBetween(t, src, "async function drainFindingWrites(", "const payload = JSON.stringify(")
 	for _, want := range []string{
 		"fields.proofReview && Object.prototype.hasOwnProperty.call(fields, 'ignoreReason')",
 		"fields.proofReview = { ...fields.proofReview, ignoreReason: fields.ignoreReason };",

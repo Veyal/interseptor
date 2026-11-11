@@ -141,6 +141,11 @@ function activateFindingSection(section, { navigate = true, focus = false } = {}
 // Body editor state for the active finding.
 let bodyBlocks = [];
 let bodyFindingId = null;
+// The updatedTs each open editor rendered from. A body save names it, so a
+// finding an agent changed meanwhile (a new evidence block, say) is refused with
+// 409 instead of being silently overwritten by the whole-block autosave.
+const findingEditBases = new Map();
+export function findingEditBase(id) { return findingEditBases.get(Number(id)) || 0; }
 let bodySaveTimers = new Map();
 let bodySaveSnapshots = new Map();
 // Debounced autosave of the single-field editors (impact, root cause, ...):
@@ -1281,6 +1286,7 @@ function applyFindingEvidenceResponse(updated) {
   // Pre-seed the authoritative blocks before a focused editor node is replaced.
   // Any blur handler caused by that replacement will therefore snapshot the
   // attached evidence as well as the last typed value, never an older body.
+  findingEditBases.set(id, Number(updated.updatedTs) || 0);
   if (bodyFindingId === id) bodyBlocks = (updated.blocks || []).map(block => ({ ...block }));
   renderFindings();
   if (findingDetailRefreshDeferred) {
@@ -1400,7 +1406,9 @@ function acknowledgedFindingValue(id, key, fallback) {
 
 // True while the window is closing or hidden: writes then use fetch keepalive.
 let findingClosing = false;
-function enqueueFindingPatch(id, fields, onStaged) {
+function enqueueFindingPatch(id, fields, onStaged, extra) {
+  // `extra` rides in the request body only: it is transport metadata
+  // (baseUpdatedTs), not a draft field, so it must not be staged or acknowledged.
   const patchKeys = Object.keys(fields || {});
   const isStatusPatch = patchKeys.length > 0 && patchKeys.every(k => k === 'status' || k === 'ignoreReason');
   if (!findingsEditable() && !isStatusPatch) return Promise.reject(new Error(FINDINGS_EDITING_OFF));
@@ -1414,6 +1422,7 @@ function enqueueFindingPatch(id, fields, onStaged) {
   }
   if (!queue.pendingFields) queue.pendingFields = {};
   Object.assign(queue.pendingFields, fields);
+  if (extra) queue.pendingExtra = { ...(queue.pendingExtra || {}), ...extra };
   const result = new Promise((resolve, reject) => queue.pendingWaiters.push({ resolve, reject, tokens }));
   void drainFindingWrites(id);
   return result;
@@ -1440,7 +1449,9 @@ async function drainFindingWrites(id) {
         if (!isStatusPatch) {
           assertFindingsWritable(); // editing may have been switched off while this save waited
         }
-        const payload = JSON.stringify(fields);
+        const extra = queue.pendingExtra;
+        queue.pendingExtra = null;
+        const payload = JSON.stringify(extra ? { ...fields, ...extra } : fields);
         // While the window is closing, keepalive lets the request outlive the page
         // (browsers cap keepalive bodies at 64 KiB, so larger writes go as usual).
         await api('/api/findings/' + id, {
@@ -1473,13 +1484,39 @@ async function flushBodySave(fid, snapshot) {
   const stateEl = $('#findSaveState');
   if (stateEl && bodyFindingId === fid) stateEl.textContent = 'Saving…';
   try {
-    const result = await enqueueFindingPatch(fid, { blocks: snapshot });
+    const base = findingEditBases.get(fid) || 0;
+    const result = await enqueueFindingPatch(fid, { blocks: snapshot }, null, base ? { baseUpdatedTs: base } : null);
     if (result?.latest && !bodySaveTimers.has(fid) && !bodySaveSnapshots.has(fid)) {
       const current = $('#findSaveState');
       if (current && bodyFindingId === fid) current.textContent = 'Saved';
     }
-  } catch (e) { const s = $('#findSaveState'); if (s && bodyFindingId === fid) s.textContent = 'Save failed'; toast('body save: ' + e.message, 'error'); throw e; }
+  } catch (e) {
+    const s = $('#findSaveState');
+    if (s && bodyFindingId === fid) s.textContent = 'Save failed';
+    if (e && e.status === 409) {
+      // Someone (an agent over MCP, another tab) changed this finding after this
+      // editor rendered it. Keep the draft, refresh the base from the server and
+      // let the operator decide: Retry overwrites, Discard reloads the server text.
+      await refreshFindingEditBase(fid);
+      toast('This finding changed elsewhere (an agent may have added evidence). Your edit was not saved: Retry to overwrite, or Discard to load the newer version.', 'error');
+      throw e;
+    }
+    toast('body save: ' + e.message, 'error'); throw e;
+  }
   finally { bodySavesInFlight--; updateFindingSaveFeedback(fid); setTimeout(refreshDeferredFindingDetail, 0); }
+}
+
+// refreshFindingEditBase re-reads one finding after a conflict so the next save
+// names the version that is actually stored.
+async function refreshFindingEditBase(id) {
+  try {
+    const fresh = await api('/api/findings/' + id);
+    if (!fresh || typeof fresh !== 'object') return;
+    findingEditBases.set(id, Number(fresh.updatedTs) || 0);
+    const at = findings.findIndex(item => item.id === id);
+    if (at >= 0) findings[at] = { ...findings[at], ...fresh };
+    else findings.unshift(fresh);
+  } catch (e) { /* the base stays as it was; the next save reports again */ }
 }
 
 // ---- detail pane ---------------------------------------------------------
@@ -1938,6 +1975,7 @@ function renderFindingDetail() {
   });
 
   bodyFindingId = f.id;
+  if (!findingEditBases.has(f.id)) findingEditBases.set(f.id, Number(f.updatedTs) || 0);
   bodyBlocks = (f.blocks || []).map(b => ({ ...b }));
   updateFindingSaveFeedback(f.id);
   $('#findSaveRetry').onclick=()=>retryFindingSaves(f.id);

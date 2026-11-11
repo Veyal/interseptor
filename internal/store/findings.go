@@ -20,6 +20,22 @@ var ErrFlowNotFound = errors.New("flow not found")
 // ErrInvalidFinding identifies caller-correctable finding validation failures.
 var ErrInvalidFinding = errors.New("invalid finding")
 
+// nextUpdatedTS returns a version stamp strictly greater than prev. Millisecond
+// resolution is not enough on its own: two writes in the same millisecond would
+// share a stamp, and a save that names the version it rendered from could then
+// pass a check it should fail (and a client could not tell the two apart).
+func nextUpdatedTS(prev int64) int64 {
+	ts := time.Now().UnixMilli()
+	if ts <= prev {
+		return prev + 1
+	}
+	return ts
+}
+
+// ErrFindingChanged reports that a finding changed after the caller read it, so
+// the write it asked for was refused. The caller re-reads and decides.
+var ErrFindingChanged = errors.New("finding changed since it was read")
+
 // maxFindingBodyBytes is the maximum serialized size of the canonical finding
 // narrative. Keep this guard in the store as well as at the HTTP boundary: AI,
 // MCP, imports, and legacy partial updates must all observe the same limit.
@@ -1382,6 +1398,17 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if len(metadata) > 0 {
 		patch = metadata[0]
 	}
+	// Optimistic concurrency: a caller that names the version it rendered from
+	// must not overwrite a change made after it (an agent adding evidence while
+	// the operator types). Checked inside the transaction, before any write, so
+	// a refusal leaves the row exactly as it was.
+	var storedTS int64
+	if err := tx.QueryRow(`SELECT updated_ts FROM findings WHERE id=?`, id).Scan(&storedTS); err != nil {
+		return err
+	}
+	if patch.IfUpdatedTS != 0 && storedTS != patch.IfUpdatedTS {
+		return ErrFindingChanged
+	}
 	if patch.Targets != nil {
 		resulting.Targets = *patch.Targets
 		if len(resulting.Targets) == 0 {
@@ -1458,7 +1485,7 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	}
 
 	sets := []string{"updated_ts=?"}
-	args := []any{time.Now().UnixMilli()}
+	args := []any{nextUpdatedTS(storedTS)}
 	if patch.Targets != nil {
 		sets = append(sets, "targets=?")
 		args = append(args, resulting.Targets)
@@ -1741,7 +1768,7 @@ func (s *Store) AttachFlowWithMetadata(findingID, flowID int64, note string, pos
 	detailSync := firstTextMD(newBody)
 	if _, err := tx.Exec(
 		`UPDATE findings SET body=?, detail=CASE WHEN ?<>'' THEN ? ELSE detail END, updated_ts=? WHERE id=?`,
-		newBody, detailSync, detailSync, time.Now().UnixMilli(), findingID); err != nil {
+		newBody, detailSync, detailSync, nextUpdatedTS(narrative.UpdatedTS), findingID); err != nil {
 		return err
 	}
 	if err := appendFindingRevision(tx, findingID, "update", firstFindingChange(changes)); err != nil {
@@ -1768,7 +1795,13 @@ func (s *Store) DetachFlow(findingID, flowID int64, changes ...FindingChange) er
 		return err
 	}
 	newBody := removeFlowFromBody(bodyJSON, flowID)
-	if _, err := tx.Exec(`UPDATE findings SET body=?, updated_ts=? WHERE id=?`, newBody, time.Now().UnixMilli(), findingID); err != nil {
+	// Removing a flow from the body is a write like any other: bump the version so
+	// an editor that rendered the previous one is refused rather than losing it.
+	var prevTS int64
+	if err := tx.QueryRow(`SELECT updated_ts FROM findings WHERE id=?`, findingID).Scan(&prevTS); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE findings SET body=?, updated_ts=? WHERE id=?`, newBody, nextUpdatedTS(prevTS), findingID); err != nil {
 		return err
 	}
 	if err := appendFindingRevision(tx, findingID, "update", firstFindingChange(changes)); err != nil {

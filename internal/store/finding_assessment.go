@@ -62,6 +62,11 @@ type FindingMetadataPatch struct {
 	NotExecuted     *[]FindingNotExecuted
 	RelatedFindings *[]FindingRelation
 	CvssV3          *string // "" clears the optional CVSS v3.1 vector
+	// IfUpdatedTS, when non-zero, requires the stored finding to still carry
+	// that updated_ts; a mismatch returns ErrFindingChanged and writes nothing.
+	// Zero keeps the old unconditional behaviour, which MCP tools, imports and
+	// legacy clients rely on.
+	IfUpdatedTS int64
 }
 
 func scanFindingJSON(value any, out any) error {
