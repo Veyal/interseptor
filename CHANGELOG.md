@@ -132,6 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Host size breakdown tolerates missing lengths.** A flow row with a NULL request or response length dropped its other length from the host total, and a host with only such rows failed the whole breakdown. (`internal/store/retention.go`.)
 - **"Allow this IP" accepts bracketed and zoned IPv6.** `[fd7a::5]` and `fe80::1%en0` were rejected as invalid addresses. (`internal/store/allowlist.go`.)
 - **Prune preview lists each host once.** A prune covering more than 400 flows reported a host once per internal batch. (`internal/store/retention.go`.)
+- **Merging collections from a project whose path contains `?`, `#` or `%` no longer silently merges nothing.** Two read-only opens of another project's database still built their SQLite URI from the raw path, so the collections merge reported success with zero collections and the default project's API keys were not carried into the global key store. (`internal/store/collections_merge.go`, `internal/store/keys_global.go`.)
 
 ### Changed
 

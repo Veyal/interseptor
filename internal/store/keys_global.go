@@ -70,7 +70,7 @@ func (s *Store) AttachGlobalKeys(globalDir string) error {
 	if filepath.Clean(globalDir) != projectRoot {
 		defaultDB := resolveProjectDB(globalDir)
 		if _, err := os.Stat(defaultDB); err == nil {
-			src, err := sql.Open("sqlite", "file:"+defaultDB+"?mode=ro&_pragma=busy_timeout(5000)")
+			src, err := sql.Open("sqlite", "file:"+dsnPathEscaper.Replace(defaultDB)+"?mode=ro&_pragma=busy_timeout(5000)")
 			if err == nil {
 				_ = migrateAPIKeysInto(db, src)
 				src.Close()

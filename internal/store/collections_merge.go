@@ -27,7 +27,7 @@ type CollectionMergeStats struct {
 // call this after the flow/finding union so one project merge carries
 // collections too.
 func (s *Store) MergeCollectionsFrom(peerDBPath string) (CollectionMergeStats, error) {
-	peer, err := sql.Open("sqlite", "file:"+peerDBPath+"?mode=ro&_pragma=busy_timeout(5000)")
+	peer, err := sql.Open("sqlite", "file:"+dsnPathEscaper.Replace(peerDBPath)+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return CollectionMergeStats{}, fmt.Errorf("open peer db: %w", err)
 	}
