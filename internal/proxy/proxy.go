@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,6 +70,8 @@ type Server struct {
 	scopeOnly                atomic.Bool   // when set, only in-scope flows are persisted
 	budget                   *byteBudget   // nil → sharedTransformBudget
 	clientHandshake          time.Duration // 0 → clientHandshakeTimeout
+	upgradeResponse          time.Duration // 0 → upgradeResponseTimeout
+	halfCloseIdle            time.Duration // 0 → rawHalfCloseIdleTimeout
 	suppressTelemetry        atomic.Bool   // browser background traffic bypasses capture processing when set
 	suppressed               suppressedLog // recent drops, so a filtered capture is not silent
 	suppressAndroidTelemetry atomic.Bool   // Android background traffic bypasses capture processing when set
@@ -380,7 +383,23 @@ func (s *Server) SetUpstreamProxy(raw string) error {
 
 // Serve accepts connections on ln until it is closed.
 func (s *Server) Serve(ln net.Listener) error {
-	return (&http.Server{Handler: s}).Serve(ln)
+	return newListenerServer(s).Serve(ln)
+}
+
+// clientHeaderTimeout bounds how long a client may take to send a request head.
+const clientHeaderTimeout = 30 * time.Second
+
+// newListenerServer returns the http.Server Serve runs. It bounds the request
+// head and the wait between keep-alive requests, so a slowloris-style or
+// abandoned client cannot pin a goroutine and a descriptor forever. Neither
+// bound applies to request bodies, responses, or hijacked CONNECT/upgrade
+// connections. (cmd/interseptor builds its own server with the same bounds.)
+func newListenerServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: clientHeaderTimeout,
+		IdleTimeout:       tunnelIdleTimeout,
+	}
 }
 
 // hopHeaders are stripped when forwarding (RFC 7230 §6.1).
@@ -510,8 +529,26 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// negotiates TLS (and its pinning) with the real origin. Lets a pinned-but-
 	// unimportant domain keep working while other domains are still intercepted.
 	if s.shouldBypassTLS(dialHost) {
-		s.tunnelRaw(clientConn, dialHost, port, r, suppression)
+		s.tunnelRaw(clientConn, dialHost, dialHost, port, r, suppression)
 		return
+	}
+	// A client that resolves DNS itself sends "CONNECT <IP>" and names the host
+	// only in its ClientHello SNI. Passthrough rules, and the entries auto-bypass
+	// adds after a pinning failure, are hostnames, so for an IP target the
+	// decision must also look at the SNI: peek it without consuming the
+	// handshake, then replay the bytes into whichever leg takes the tunnel.
+	if net.ParseIP(dialHost) != nil && s.hasBypassHosts() {
+		_ = clientConn.SetReadDeadline(time.Now().Add(s.clientHandshakeBound()))
+		sni, replay, perr := peekClientHelloSNI(clientConn)
+		_ = clientConn.SetReadDeadline(time.Time{})
+		clientConn = replay
+		if isTimeout(perr) {
+			return // silent client: reaped like a silent MITM handshake below
+		}
+		if sni != "" && s.shouldBypassTLS(sni) {
+			s.tunnelRaw(clientConn, dialHost, sni, port, r, suppression)
+			return
+		}
 	}
 
 	cfg := &tls.Config{
@@ -601,6 +638,18 @@ func (s *Server) clientHandshakeBound() time.Duration {
 		return s.clientHandshake
 	}
 	return clientHandshakeTimeout
+}
+
+// upgradeResponseTimeout bounds how long an upstream may take to answer an
+// upgrade (WebSocket) handshake. Generous on purpose: some origins authenticate
+// before sending 101. Server.upgradeResponse overrides it (tests shorten it).
+const upgradeResponseTimeout = 60 * time.Second
+
+func (s *Server) upgradeResponseBound() time.Duration {
+	if s.upgradeResponse > 0 {
+		return s.upgradeResponse
+	}
+	return upgradeResponseTimeout
 }
 
 // isTimeout reports whether err is a deadline/timeout error.
@@ -841,8 +890,15 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 		return
 	}
 
+	// Bound the wait for the handshake response only: an origin that accepts
+	// the connection and never answers the upgrade would otherwise hold the
+	// client (and both sockets) until TCP keepalive gives up. The deadline is
+	// cleared before the upgraded stream is spliced, so an idle WebSocket is
+	// never cut off.
+	_ = up.SetReadDeadline(time.Now().Add(s.upgradeResponseBound()))
 	upReader := bufio.NewReader(up)
 	resp, err := http.ReadResponse(upReader, r)
+	_ = up.SetReadDeadline(time.Time{})
 	if err != nil {
 		s.recordUpgradeError(clientConn, flow, "upgrade response: "+err.Error())
 		return
@@ -1097,8 +1153,8 @@ func isSupportedUpstreamScheme(scheme string) bool {
 // carry no deadline (a request context, or context.Background() on the upgrade
 // and TLS-passthrough paths), so a SOCKS server that accepts and then stays
 // silent would otherwise hang the request forever. The returned conn has no
-// deadline.
-const socksSetupTimeout = upstreamConnectTimeout
+// deadline. A var so tests can exercise every caller quickly.
+var socksSetupTimeout = upstreamConnectTimeout
 
 func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string) (net.Conn, error) {
 	return dialViaSOCKSWithin(ctx, up, network, addr, socksSetupTimeout)
@@ -1418,9 +1474,23 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	} else if transformed {
 		copyHeader(w.Header(), hdr)
 		w.WriteHeader(st)
-		w.Write(body)
+		_, werr := w.Write(body)
+		if werr == nil {
+			// A small body sits in the server's write buffer; push it out so a
+			// client that is already gone is noticed here, not silently later.
+			if ferr := http.NewResponseController(w).Flush(); ferr != nil && !errors.Is(ferr, http.ErrNotSupported) {
+				werr = ferr
+			}
+		}
 		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
 		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
+		if werr != nil {
+			// The client went away before the rewritten response was delivered.
+			// Flag it like the streaming path does, or History shows a response
+			// the client never received as a normal completed exchange.
+			flow.Flags |= store.FlagCaptureError
+			flow.Error = "stream resp: " + werr.Error()
+		}
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		return
@@ -1505,7 +1575,11 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
 		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
-		_, werr := conn.Write(buildRawResponse(st, hdr, body))
+		werr := writeRawResponse(conn, st, hdr, body)
+		if werr != nil {
+			flow.Flags |= store.FlagCaptureError
+			flow.Error = "stream resp: " + werr.Error()
+		}
 		s.record(flow)
 		return werr
 	}
@@ -1672,13 +1746,14 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		budget.release(held)
 		flow.budgetHeld -= held
 		held = 0
-		if errors.Is(rerr, errTransformBudget) {
-			noteOverBudget(budget, "response", flow.Host, flow.Path)
-		}
 		// Too large to buffer/transform (or a mid-body read error) — restore the
 		// stream and forward it untransformed, rather than buffering unbounded or
 		// forwarding a silently-truncated body. Rules/hold don't apply over the cap.
-		if hasRules {
+		// An exhausted budget is reported as such, not as a body over a rule's
+		// scan limit (which would point the operator at the wrong setting).
+		if errors.Is(rerr, errTransformBudget) {
+			noteOverBudget(budget, "response", flow.Host, flow.Path)
+		} else if hasRules {
 			s.eng.NoteSkippedResponseBodyRules()
 		}
 		resp.Body = restoreBody(b, resp.Body)
@@ -1687,13 +1762,34 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 	h := resp.Header.Clone()
 	removeHopHeaders(h)
 	st := resp.StatusCode
-	originalBody := append([]byte(nil), b...)
+	// Rules never edit their input (a rewrite returns a new slice), so the read
+	// buffer itself is the original: no second copy of the body is needed.
+	originalBody := b
 	originalHeaders := h.Clone()
 	if hasRules {
-		h, b = s.eng.ApplyResponseRules(h, b, skipLargeBody && int64(len(b)) > intercept.RuleScanLimit)
-		if !bytes.Equal(originalBody, b) {
+		skipBody := skipLargeBody && int64(len(b)) > intercept.RuleScanLimit
+		h, b = s.eng.ApplyResponseRules(h, b, skipBody)
+		bodyChanged := !sameBytes(originalBody, b) && !bytes.Equal(originalBody, b)
+		if !bodyChanged {
+			b = originalBody // nothing was rewritten: keep the one buffer
+		} else {
+			// The rewrite is a second body next to the one that was read.
+			// Charge it for as long as both are held.
+			s.rechargeBuffered(flow, held+int64(len(b)))
+		}
+		// Record the origin's head whenever a rule changed the response, not
+		// only when the body changed: a header rule that fires next to a body
+		// rule that does not match must still show up as "original vs modified".
+		if bodyChanged || !reflect.DeepEqual(originalHeaders, h) {
 			flow.OriginalResHeaders = cloneHeaders(originalHeaders)
-			flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
+		}
+		if bodyChanged {
+			if flow.OriginalResBodyHash, _ = s.storeBytes(originalBody); flow.OriginalResBodyHash != "" {
+				// The original now lives in the body store: drop the in-memory
+				// copy, leaving only the rewritten body charged.
+				originalBody = nil
+				s.rechargeBuffered(flow, int64(len(b)))
+			}
 		}
 	}
 	if hold {
@@ -1702,7 +1798,20 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		if resp.Request != nil {
 			ctx = resp.Request.Context()
 		}
-		d := s.eng.HoldResponseContext(ctx, flow.Flow, buildRawResponse(st, h, b))
+		// The held snapshot is the only long-lived copy: the body (and the
+		// original, when rules left it alone) alias its tail instead of keeping
+		// a second buffer alive for as long as the operator holds the response.
+		raw := buildRawResponse(st, h, b)
+		body := raw[len(raw)-len(b):]
+		holding := int64(len(raw))
+		if sameBytes(originalBody, b) {
+			originalBody = body
+		} else {
+			holding += int64(len(originalBody)) // a rewrite whose original could not be stored
+		}
+		b = body
+		s.rechargeBuffered(flow, holding)
+		d := s.eng.HoldResponseContext(ctx, flow.Flow, raw)
 		if d.Drop {
 			flow.Flags |= store.FlagDropped
 			flow.Error = errResponseDroppedByUser
@@ -1726,6 +1835,8 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 				}
 				st, h, b = nst, nh, nb
 				flow.Flags |= store.FlagResponseEdited
+				// The edited bytes replace the held snapshot.
+				s.rechargeBuffered(flow, int64(len(d.Raw)))
 			}
 		}
 	}
@@ -1791,6 +1902,24 @@ func buildRawResponse(status int, h http.Header, body []byte) []byte {
 	b.WriteString("\r\n")
 	b.Write(body)
 	return b.Bytes()
+}
+
+// coalesceBodyLimit is the largest body sent in the same write as its head.
+const coalesceBodyLimit = 16 << 10
+
+// writeRawResponse sends a buffered response. A small body rides in the same
+// write as the head (one TLS record, one syscall); a large one is written from
+// the caller's buffer directly instead of being copied behind the head first.
+func writeRawResponse(w io.Writer, status int, h http.Header, body []byte) error {
+	if len(body) <= coalesceBodyLimit {
+		_, err := w.Write(buildRawResponse(status, h, body))
+		return err
+	}
+	if _, err := w.Write(buildRawResponse(status, h, nil)); err != nil {
+		return err
+	}
+	_, err := w.Write(body)
+	return err
 }
 
 // parseRawResponse parses an (edited) raw response: status line + headers via
@@ -2102,6 +2231,25 @@ func (s *Server) releaseBuffered(flow *proxyFlow) {
 		s.transformBudget().release(flow.budgetHeld)
 		flow.budgetHeld = 0
 	}
+}
+
+// rechargeBuffered sets the exchange's reservation to n bytes: what it holds
+// now. Shrinking returns the difference. Growing is charged unconditionally,
+// because the memory is already in use; an over-full budget then makes later
+// bodies stream through instead of being buffered.
+func (s *Server) rechargeBuffered(flow *proxyFlow, n int64) {
+	if n < 0 {
+		n = 0
+	}
+	s.transformBudget().used.Add(n - flow.budgetHeld)
+	flow.budgetHeld = n
+}
+
+// sameBytes reports whether a and b are the same slice (same backing array and
+// length), which is how an untouched body is told from a rewritten one without
+// comparing it byte by byte.
+func sameBytes(a, b []byte) bool {
+	return len(a) == len(b) && (len(a) == 0 || &a[0] == &b[0])
 }
 
 func isChunked(te []string, h http.Header) bool {

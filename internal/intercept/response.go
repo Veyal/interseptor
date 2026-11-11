@@ -334,6 +334,12 @@ func (e *Engine) ApplyResponseRules(h http.Header, body []byte, skipLargeBody bo
 				logSkippedBodyRule(cr.id, cr.typ)
 				continue
 			}
+			// ReplaceAll copies its input even when nothing matches. Skip the
+			// rule then, so an untouched body is returned as the same slice
+			// instead of a second full copy.
+			if !cr.re.Match(body) {
+				continue
+			}
 			body = cr.re.ReplaceAll(body, []byte(cr.replace))
 		}
 	}

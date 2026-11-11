@@ -86,6 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Auth timeline and session inspection hide path-parameter values.** A session id carried in the URL (`/home;jsessionid=…`) was returned in `path` and `redirect` although these views return fingerprints only. (`internal/control/session_inspection.go`.)
 - **Auth timeline caps an oversized `windowSeconds`.** A value large enough to overflow the duration returned only the first flow instead of the 600-second window. (`internal/control/auth_timeline_api.go`.)
 - **Cross-host token replay finds tokens under lower-case header names.** `authorization` and `cookie` headers from HTTP/2 or imported captures were skipped. (`internal/auth/jwtextract/jwtextract.go`.)
+- **TLS passthrough and auto-bypass now work for clients that connect by IP.** A client that resolves DNS itself sends `CONNECT <IP>` and names the host only in its ClientHello SNI, so hostname passthrough rules never matched and a host auto-bypassed after a pinning failure was still intercepted on every retry. For an IP target the proxy now peeks the SNI without consuming the handshake and matches it against the same list. (`internal/proxy/proxy.go`, `internal/proxy/tlsbypass.go`.)
+- **TLS passthrough tunnels support half-close.** A client that sent its request and shut down its write side lost the response, because the tunnel was torn down as soon as either direction ended. The remaining direction now keeps flowing and is reaped after 3 minutes of silence. (`internal/proxy/tlsbypass.go`, `internal/proxy/prefixconn.go`.)
+- **An upstream that never answers a WebSocket upgrade no longer holds the client.** The wait for the handshake response is bounded at 60 s and reported as a 502; an established stream is never timed out. (`internal/proxy/proxy.go`.)
+- **A rewritten response that never reached the client is flagged.** The match-and-replace and held-response write paths ignored the write error and recorded a normal completed exchange. (`internal/proxy/proxy.go`.)
+- **A header rule that changes a buffered response keeps the original head.** When a body rule was also enabled but did not match, History had no original to compare against. Lost in merge #121. (`internal/proxy/proxy.go`.)
+- **An exhausted transform budget is no longer logged as a body over the rule scan limit.** Lost in merge #121. (`internal/proxy/proxy.go`.)
+- **`proxy.Server.Serve` bounds the request head and idle keep-alive connections.** Lost in merge #121; the binary's own listener already had both. (`internal/proxy/proxy.go`.)
 
 ### Changed
 
@@ -104,6 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The self-update tests wait for the event they assert on.** The job makes a phase visible to `GET /api/update` before it broadcasts the matching event, so on a loaded machine the test read an empty event queue and panicked on an index. The helper now waits for the event. (`internal/control/update_test.go`.)
 - **Playbook matching reads a bounded part of each body.** It reads 64 KiB of the response and 256 KiB of the request instead of both bodies whole (275 MiB to 2 MiB allocated for a 32 MiB upload and download); parameter names past the limit are not reported. (`internal/control/playbooks.go`.)
 - **Codecs receive at most 24 MiB of each body.** The Decoded view, selection decode and codec test no longer load whole captures; `GET /api/flows/{id}/decoded` reports `inputTruncated` when the codec saw a prefix. (`internal/control/codecs.go`.)
+- **Buffered response bodies are held once, and the transform budget charges what is held.** Rewriting a 32 MiB response allocated 301.8 MB and now allocates 234.7 MB; a held 16 MiB response kept 48 MiB alive and now keeps 16 MiB. A body rule that does not match no longer copies the body. (`internal/proxy/proxy.go`, `internal/intercept/response.go`.)
+- **Scope path patterns can be classified.** `scope.ClassifyPathPattern` reports whether a pattern is a literal prefix or a regex and warns when a regex reads like a plain directory (`/admin/`). Matching is unchanged; the UI does not show the warning yet. (`internal/scope/scope.go`.)
 
 ### Added
 

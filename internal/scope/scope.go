@@ -232,6 +232,48 @@ func compilePathPattern(pattern string) (exact string, re *regexp.Regexp) {
 	return pattern, nil
 }
 
+// PathPatternKind says how a scope rule's path pattern is matched.
+type PathPatternKind string
+
+const (
+	PathPatternAny    PathPatternKind = "any"    // empty: every path
+	PathPatternPrefix PathPatternKind = "prefix" // literal path prefix
+	PathPatternRegex  PathPatternKind = "regex"  // unanchored regular expression
+)
+
+// ClassifyPathPattern reports how pattern will be matched and, when it is read
+// as a regex although it looks like a plain directory, a warning to show next
+// to the field. It does not change matching: "/admin/" is slash-wrapped, so it
+// is the unanchored regex "/admin/" and also matches "/x/admin/y"; a prefix
+// such as "/search?q=" contains "?" and is a regex too. The warning names the
+// anchored form that means "paths under this directory".
+func ClassifyPathPattern(pattern string) (kind PathPatternKind, warning string) {
+	if pattern == "" {
+		return PathPatternAny, ""
+	}
+	if _, re := compilePathPattern(pattern); re == nil {
+		return PathPatternPrefix, ""
+	}
+	if looksLikePlainPath(pattern) {
+		return PathPatternRegex, fmt.Sprintf("%q is read as an unanchored regular expression, so it matches that text anywhere in a path, not only at the start; use %q for paths under it", pattern, "^"+regexp.QuoteMeta(pattern))
+	}
+	return PathPatternRegex, ""
+}
+
+// looksLikePlainPath reports whether s reads as a literal path: it starts with
+// "/" and carries no regex syntax beyond the characters ordinary URLs use.
+func looksLikePlainPath(s string) bool {
+	if !strings.HasPrefix(s, "/") {
+		return false
+	}
+	for _, lit := range []string{".*", "^", "$", "(", ")", "[", "]", "|", `\`, "{", "}", "*"} {
+		if strings.Contains(s, lit) {
+			return false
+		}
+	}
+	return true
+}
+
 func looksLikeRegex(s string) bool {
 	if len(s) >= 2 && s[0] == '/' && s[len(s)-1] == '/' {
 		return true

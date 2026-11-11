@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"errors"
 	"net"
 )
 
@@ -22,6 +23,15 @@ func (c *prefixedConn) Read(p []byte) (int, error) {
 		return n, nil
 	}
 	return c.Conn.Read(p)
+}
+
+// CloseWrite half-closes the underlying connection when it supports it, so a
+// replayed-prefix conn can still take part in a half-closed tunnel.
+func (c *prefixedConn) CloseWrite() error {
+	if cw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+	return errors.ErrUnsupported
 }
 
 // withBufferedPrefix returns conn unchanged when the hijacked reader holds no

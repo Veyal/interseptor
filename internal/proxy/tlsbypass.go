@@ -1,13 +1,17 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/hostpattern"
@@ -95,6 +99,56 @@ func normalizeHosts(hosts []string) *[]string {
 	return &out
 }
 
+// hasBypassHosts reports whether any passthrough pattern is configured.
+func (s *Server) hasBypassHosts() bool {
+	p := s.bypassHosts.Load()
+	return p != nil && len(*p) > 0
+}
+
+// errSNIPeeked aborts the throwaway handshake peekClientHelloSNI runs.
+var errSNIPeeked = errors.New("proxy: client hello peeked")
+
+// sniffConn feeds a throwaway tls.Server: every byte read from the client is
+// kept for replay and nothing is ever written back, so the client cannot tell
+// its ClientHello was looked at.
+type sniffConn struct {
+	net.Conn
+	seen bytes.Buffer
+}
+
+func (c *sniffConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.seen.Write(p[:n])
+	return n, err
+}
+
+func (c *sniffConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c *sniffConn) Close() error                { return nil }
+
+// peekClientHelloSNI reads the client's TLS ClientHello from conn and returns
+// its server name ("" when it carries none) together with a conn that replays
+// the consumed bytes first, so a real handshake (ours, or the origin's on a
+// passthrough) still sees the whole stream. crypto/tls does the parsing, so
+// fragmented and oversized hellos are handled exactly as the MITM handshake
+// would. err is the read/parse failure when no ClientHello arrived; the replay
+// conn is valid either way.
+func peekClientHelloSNI(conn net.Conn) (sni string, replay net.Conn, err error) {
+	sc := &sniffConn{Conn: conn}
+	parsed := false
+	err = tls.Server(sc, &tls.Config{GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+		sni, parsed = chi.ServerName, true
+		return nil, errSNIPeeked
+	}}).Handshake()
+	if parsed {
+		err = nil
+	}
+	replay = conn
+	if sc.seen.Len() > 0 {
+		replay = &prefixedConn{Conn: conn, prefix: sc.seen.Bytes()}
+	}
+	return sni, replay, err
+}
+
 // shouldBypassTLS reports whether CONNECTs to host should skip MITM.
 func (s *Server) shouldBypassTLS(host string) bool {
 	p := s.bypassHosts.Load()
@@ -149,8 +203,12 @@ func (s *Server) notifyBypassAdded(cb func([]string)) {
 // without terminating TLS, so the client's handshake (and pinning) reaches the
 // real server. The first passthrough per host is recorded as an informational
 // flow so the operator can see the domain is intentionally not intercepted.
-func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Request, suppression suppressionSnapshot) {
-	up, err := s.dialRawUpstream(host, port)
+//
+// dialHost is the CONNECT target and is what gets dialled; host is the name the
+// passthrough is recorded under, which differs for "CONNECT <IP>" matched by
+// its ClientHello SNI (the client chose that IP, so it is dialled as given).
+func (s *Server) tunnelRaw(client net.Conn, dialHost, host string, port int, r *http.Request, suppression suppressionSnapshot) {
+	up, err := s.dialRawUpstream(dialHost, port)
 	if err != nil {
 		writeSimpleResponse(client, http.StatusBadGateway, "tls-bypass dial: "+err.Error())
 		return
@@ -159,10 +217,78 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 
 	s.recordBypassOnce(host, port, client.RemoteAddr().String(), r, suppression)
 
-	done := make(chan struct{}, 2)
-	go func() { io.Copy(up, client); done <- struct{}{} }()
-	go func() { io.Copy(client, up); done <- struct{}{} }()
-	<-done // one side closed; unblock and tear the tunnel down (defers close both)
+	spliceHalfClose(client, up, s.halfCloseIdleBound())
+}
+
+// rawHalfCloseIdleTimeout bounds how long a passthrough tunnel may stay silent
+// once one side has finished sending. It only applies after a half-close; an
+// open tunnel in both directions has no application-level timeout.
+const rawHalfCloseIdleTimeout = tunnelIdleTimeout
+
+func (s *Server) halfCloseIdleBound() time.Duration {
+	if s.halfCloseIdle > 0 {
+		return s.halfCloseIdle
+	}
+	return rawHalfCloseIdleTimeout
+}
+
+// spliceHalfClose relays bytes between a and b until both directions are done.
+// When one direction reaches a clean EOF its peer's write side is shut down
+// (TCP FIN), and the other direction keeps flowing: a client that sends its
+// request and half-closes still receives the response. From then on the
+// remaining direction must make progress within idle, so a peer that never
+// answers and never closes cannot pin the tunnel. An error on either
+// direction, or a conn that cannot half-close, tears the tunnel down at once.
+// The caller closes both conns.
+func spliceHalfClose(a, b net.Conn, idle time.Duration) {
+	type result struct {
+		dst, src net.Conn
+		err      error
+	}
+	var lingering atomic.Bool
+	done := make(chan result, 2)
+	relay := func(dst, src net.Conn) {
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := src.Read(buf)
+			if n > 0 {
+				if lingering.Load() {
+					_ = dst.SetWriteDeadline(time.Now().Add(idle))
+				}
+				if _, werr := dst.Write(buf[:n]); werr != nil {
+					done <- result{dst, src, werr}
+					return
+				}
+				if lingering.Load() {
+					_ = src.SetReadDeadline(time.Now().Add(idle))
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				done <- result{dst, src, err}
+				return
+			}
+		}
+	}
+	go relay(b, a)
+	go relay(a, b)
+	first := <-done
+	if first.err != nil || !closeWrite(first.dst) {
+		return // defers in the caller close both; the other relay unblocks
+	}
+	// first.dst is the conn the remaining direction reads from.
+	lingering.Store(true)
+	_ = first.dst.SetReadDeadline(time.Now().Add(idle))
+	_ = first.src.SetWriteDeadline(time.Now().Add(idle))
+	<-done
+}
+
+// closeWrite shuts down the write side of c, reporting whether c supports it.
+func closeWrite(c net.Conn) bool {
+	cw, ok := c.(interface{ CloseWrite() error })
+	return ok && cw.CloseWrite() == nil
 }
 
 // dialRawUpstream opens a plain TCP connection to the origin (through the chained
