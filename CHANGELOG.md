@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement.
+
 ### Changed
 
 - **Go 1.26 is the minimum, built with a patched toolchain.** `golang.org/x/net` 0.57 to 0.62, `golang.org/x/crypto` 0.54 to 0.58, `klauspost/compress` 1.18.6 to 1.20.4 and `andybalholm/brotli` 1.2.1 to 1.3.0 clear the reachable advisories in those modules; the fixed `x/net` and `x/crypto` releases require Go 1.26, and `toolchain go1.26.11` carries the standard-library fixes. `govulncheck` reports 0 reachable vulnerabilities (25 before). (`go.mod`, `go.sum`, `README.md`, `docs/getting-started.md`, `docs/agents.md`.)

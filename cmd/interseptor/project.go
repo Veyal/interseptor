@@ -48,9 +48,8 @@ func sanitizeProjectName(v string) (string, error) {
 
 // isBareProjectName reports whether v is a plain, switchable project name (no
 // path separators, "~", or leading "-") rather than a filesystem path. Only
-// bare names — and "default" — are remembered as the active project, so a later
-// plain launch can resume them; explicit --project /paths are treated as
-// one-off and never overwrite the remembered name.
+// bare names — and "default" — are stored by name; paths are stored by their
+// resolved absolute directory.
 func isBareProjectName(v string) bool {
 	v = strings.TrimSpace(v)
 	return v != "" && v != "." && v != ".." &&
@@ -74,8 +73,7 @@ func listProjects(projectsDir string) []string {
 	return names
 }
 
-// lastProjectPath is the file under globalDir that records the most recently
-// active project name, so a plain (no-flag) launch can resume it.
+// lastProjectPath records the most recently active name or absolute directory.
 func lastProjectPath(globalDir string) string {
 	return filepath.Join(globalDir, "active-project")
 }
@@ -101,6 +99,18 @@ func writeLastProject(globalDir, name string) {
 	_ = os.WriteFile(lastProjectPath(globalDir), []byte(name+"\n"), 0o644)
 }
 
+// rememberActiveProject persists paths by directory, not their ambiguous basename.
+func rememberActiveProject(globalDir, projectArg, name, dir string) {
+	if projectArg == "" {
+		projectArg = readLastProject(globalDir)
+	}
+	if projectArg != "" && !isBareProjectName(projectArg) {
+		writeLastProject(globalDir, dir)
+		return
+	}
+	writeLastProject(globalDir, name)
+}
+
 // selectProject decides which project directory to use, with no terminal
 // interaction — selecting, creating, and switching projects all happen in the
 // web UI. Precedence: an explicit --project/INTERSEPTOR_PROJECT value wins;
@@ -112,8 +122,15 @@ func selectProject(globalDir, flagOrEnv, homeDir string) (name, dir string, err 
 
 	v := strings.TrimSpace(flagOrEnv)
 	if v == "" {
-		// No explicit project: resume whatever the UI last switched to.
+		// Do not silently create an empty replacement for a missing external project.
 		v = readLastProject(globalDir)
+		if filepath.IsAbs(v) {
+			if info, err := os.Stat(v); err != nil {
+				return "", "", fmt.Errorf("resume project %q: %w", v, err)
+			} else if !info.IsDir() {
+				return "", "", fmt.Errorf("resume project %q: not a directory", v)
+			}
+		}
 	}
 	// "default" always means the global root, matching the no-flag default — so
 	// switching to "default" returns to the original project, not a separate

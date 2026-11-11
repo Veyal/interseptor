@@ -131,6 +131,38 @@ func TestSelectProjectDefaultFlagIsRoot(t *testing.T) {
 	}
 }
 
+func TestRememberExternalProjectResumesExactDirectory(t *testing.T) {
+	root := t.TempDir()
+	external := filepath.Join(t.TempDir(), "engagement")
+	name, dir, err := selectProject(root, external, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rememberActiveProject(root, external, name, dir)
+	name, dir, err = selectProject(root, "", root)
+	if err != nil || name != "engagement" || dir != external {
+		t.Fatalf("resume external: got (%q, %q, %v), want engagement in %q", name, dir, err, external)
+	}
+	// Another restart must not turn the external path into a same-named project.
+	rememberActiveProject(root, "", name, dir)
+	name, dir, err = selectProject(root, "", root)
+	if err != nil || name != "engagement" || dir != external {
+		t.Fatalf("second resume: got (%q, %q, %v)", name, dir, err)
+	}
+}
+
+func TestResumeMissingExternalProjectDoesNotCreateIt(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "missing")
+	writeLastProject(root, missing)
+	if _, _, err := selectProject(root, "", root); err == nil {
+		t.Fatal("missing remembered external project must return an error")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("missing project was recreated or inaccessible: %v", err)
+	}
+}
+
 func TestSelectProjectResumesLastProject(t *testing.T) {
 	root := t.TempDir()
 	// The UI switched to "saved1" earlier, recorded in active-project. A plain

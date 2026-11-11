@@ -212,12 +212,8 @@ func run() error {
 	if err := st.AttachGlobalKeys(globalDir); err != nil {
 		return fmt.Errorf("global API keys: %w", err)
 	}
-	// Remember the active project so the next plain launch resumes it. Only bare
-	// names (and "default") are remembered — an explicit --project /path is a
-	// one-off and must not clobber the UI-selected project.
-	if projectArg == "" || isBareProjectName(projectArg) {
-		writeLastProject(globalDir, projectName)
-	}
+	// Save only after the project and global keys have opened successfully.
+	rememberActiveProject(globalDir, projectArg, projectName, dir)
 
 	// Control-plane listen address: CLI → env → persisted setting → default.
 	controlCLI := strings.TrimSpace(*controlAddrFlag)
