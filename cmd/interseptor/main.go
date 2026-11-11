@@ -486,6 +486,7 @@ const (
 	controlIdleTimeout       = 120 * time.Second
 	controlMaxHeaderBytes    = 1 << 20
 	proxyReadHeaderTimeout   = 30 * time.Second
+	proxyIdleTimeout         = 3 * time.Minute
 )
 
 func newControlServer(h http.Handler) *http.Server {
@@ -497,10 +498,18 @@ func newControlServer(h http.Handler) *http.Server {
 	}
 }
 
-// newProxyServer bounds only the request-head read; the deadline is cleared
-// once headers arrive, so bodies, CONNECT tunnels and long polls are unaffected.
+// newProxyServer bounds the request-head read and the wait between requests on
+// a keep-alive connection. The head deadline is cleared once headers arrive and
+// the idle limit applies only while no request is in flight, so bodies, CONNECT
+// tunnels (hijacked) and long polls are unaffected. Without IdleTimeout the
+// server falls back to ReadTimeout, which is unset: an idle client would hold
+// its goroutine and descriptor for the life of the process.
 func newProxyServer(h http.Handler) *http.Server {
-	return &http.Server{Handler: h, ReadHeaderTimeout: proxyReadHeaderTimeout}
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: proxyReadHeaderTimeout,
+		IdleTimeout:       proxyIdleTimeout,
+	}
 }
 
 func (m *controlManager) serve(ln net.Listener) *http.Server {
