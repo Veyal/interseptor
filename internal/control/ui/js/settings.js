@@ -1,4 +1,5 @@
 import { configureProjectPicker, openProjectPicker, setProjectSwitchModalBusy, showProjectSwitchError } from './project-picker.js';
+import { syncStartupNotice } from './startup-notice.js';
 import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './project-picker-model.js';
 import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, onHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
@@ -1532,6 +1533,9 @@ export async function loadProject(){
     projectPathFlavor=projectPathFlavorFor(d.dir);
     if(loadState)loadState.style.display='none';
     paintProjectIdentity(d.current||'default',d.dir||'');
+    // The same payload says whether the server opened a fallback project (see
+    // startup-notice.js): explaining it costs no extra request.
+    syncStartupNotice(d);
     projectDataLoaded=true;markProjectDataStale(false);
     setProjectControlsDisabled(!d.canSwitch,d.canSwitch?'':'project switching is unavailable in this build');
   }catch(e){

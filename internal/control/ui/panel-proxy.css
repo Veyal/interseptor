@@ -177,6 +177,15 @@
 .insp-image{display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
 .insp-image-img{max-width:100%;max-height:60vh;border:1px solid var(--line);border-radius:var(--r-sm);background:repeating-conic-gradient(var(--bg2) 0% 25%,var(--bg3) 0% 50%) 0 0/16px 16px}
 .insp-image-meta{color:var(--fg2)}
+/* Why the server opened a project other than the remembered one
+   (startup-notice.js). A shell-level explanation with the same shape as the
+   capture-loss row, in the accent rather than the warning colour. */
+.startup-notice{display:flex;gap:var(--sp-2);align-items:flex-start;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);border-left:3px solid var(--accent);background:var(--accentDim);font-size:var(--fs-sm)}
+.startup-notice[hidden]{display:none}
+.startup-notice>.icon{flex:none;margin-top:2px;color:var(--accent)}
+.startup-notice-text{min-width:0;overflow-wrap:anywhere;flex:1}
+.startup-notice .btn{flex:none}
+
 .capture-loss-banner{display:flex;gap:var(--sp-2);align-items:flex-start;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);border-left:3px solid var(--amber);background:color-mix(in srgb,var(--amber) 10%,var(--bg2));font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--fg)}
 .capture-loss-banner[hidden]{display:none}
 .capture-loss-banner>.icon{flex:none;margin-top:2px;color:var(--amber)}
