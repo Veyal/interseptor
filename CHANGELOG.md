@@ -80,6 +80,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Main navigation is valid for assistive technology.** The rail `tablist` contained the project button and the releases link, which a tablist may not own, and sat outside every landmark; the page had no `h1`; the phone destination strip was outside every landmark; the Identities "Run access test" button had no name once its label is hidden on phones; and the Map breadcrumb links were distinguishable from the text around them by colour alone at 1.7:1. The rail is now a `nav` landmark holding the tablist and, separately, the project and version controls; the brand is the `h1`. An axe-core 4.10 pass over all 12 panels in both themes at desktop and phone width went from 302 flagged nodes to 202; excluding the History rows' `nested-interactive` (192, unchanged) that is 110 to 10. (`internal/control/ui/index.html`, `internal/control/ui/app.css`, `internal/control/ui/js/dock.js`.)
 - **Stray dividers on the phone Intruder bar.** A separator that landed at the end of a wrapped row is hidden at phone width. (`internal/control/ui/mobile.css`.)
 - **gofmt is clean across the tree.** Six files that had drifted are reformatted; `GOFMT_ALL=1 make fmt-check` passes. No behaviour change.
+- **Authz replay no longer sends a captured header beside the identity's.** An identity header now replaces every spelling of the same name in the captured request; a lower-case `x-tenant` from an HTTP/2 or imported capture used to go out together with the identity's `X-Tenant`. (`internal/control/authz.go`.)
+- **A rule line in finding text no longer ends the finding card.** `---`, `***`, `___` and setext underlines in text blocks, detail, evidence and flow notes are escaped, so the rest of the finding stays inside its card in the HTML and PDF report and Jira gets no rule. Rule lines inside a code fence are kept as written. (`internal/report/report.go`.)
+- **An unclosed code fence in finding text no longer swallows the findings after it.** The fence is closed at the end of the text; before, every later finding rendered as preformatted text inside the first one. (`internal/report/report.go`.)
+- **Auth timeline and session inspection hide path-parameter values.** A session id carried in the URL (`/home;jsessionid=…`) was returned in `path` and `redirect` although these views return fingerprints only. (`internal/control/session_inspection.go`.)
+- **Auth timeline caps an oversized `windowSeconds`.** A value large enough to overflow the duration returned only the first flow instead of the 600-second window. (`internal/control/auth_timeline_api.go`.)
+- **Cross-host token replay finds tokens under lower-case header names.** `authorization` and `cookie` headers from HTTP/2 or imported captures were skipped. (`internal/auth/jwtextract/jwtextract.go`.)
 
 ### Changed
 
@@ -96,6 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Starlark codecs and search scripts compile with explicit dialect options.** The deprecated `starlark.ExecFile` is replaced by `ExecFileOptions`; the accepted dialect is unchanged. (`internal/msgcodec/msgcodec.go`, `internal/searchscript/searchscript.go`.)
 - **`scripts/bench.sh` uses private ports and a bounded wait.** The cold-start probe sleeps between attempts, has a per-request timeout and a 30-second deadline, and no longer measures an Interseptor that is already running on the default ports. (`scripts/bench.sh`.)
 - **The self-update tests wait for the event they assert on.** The job makes a phase visible to `GET /api/update` before it broadcasts the matching event, so on a loaded machine the test read an empty event queue and panicked on an index. The helper now waits for the event. (`internal/control/update_test.go`.)
+- **Playbook matching reads a bounded part of each body.** It reads 64 KiB of the response and 256 KiB of the request instead of both bodies whole (275 MiB to 2 MiB allocated for a 32 MiB upload and download); parameter names past the limit are not reported. (`internal/control/playbooks.go`.)
+- **Codecs receive at most 24 MiB of each body.** The Decoded view, selection decode and codec test no longer load whole captures; `GET /api/flows/{id}/decoded` reports `inputTruncated` when the codec saw a prefix. (`internal/control/codecs.go`.)
 
 ### Added
 

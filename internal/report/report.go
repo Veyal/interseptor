@@ -286,7 +286,7 @@ func renderFindingSection(b *strings.Builder, n int, f store.Finding, titles map
 			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
 		if f.Evidence != "" && !hasEvidenceBlock {
-			b.WriteString("**Evidence:** " + sanitizeBody(f.Evidence) + "\n\n")
+			b.WriteString("**Evidence:** " + sanitizeBodyInline(f.Evidence) + "\n\n")
 		}
 	} else {
 		// Legacy fallback: separate detail / evidence / flows sections. These
@@ -296,7 +296,7 @@ func renderFindingSection(b *strings.Builder, n int, f store.Finding, titles map
 			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
 		}
 		if f.Evidence != "" {
-			b.WriteString("**Evidence:** " + sanitizeBody(f.Evidence) + "\n\n")
+			b.WriteString("**Evidence:** " + sanitizeBodyInline(f.Evidence) + "\n\n")
 		}
 		if len(f.Flows) > 0 {
 			b.WriteString("**PoC flows:**\n")
@@ -422,7 +422,7 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 			if bl.Missing {
 				line := fmt.Sprintf("> ⚠ PoC flow #%d — evidence no longer in history", bl.FlowID)
 				if bl.Note != "" {
-					line += " — " + sanitizeBody(bl.Note)
+					line += " — " + sanitizeBodyInline(bl.Note)
 				}
 				b.WriteString(line + "\n\n")
 				continue
@@ -432,7 +432,7 @@ func renderFindingBlocks(b *strings.Builder, blocks []store.FindingBlock, detail
 				line += fmt.Sprintf(" → **%d**", bl.Status)
 			}
 			if bl.Note != "" {
-				line += " — " + sanitizeBody(bl.Note)
+				line += " — " + sanitizeBodyInline(bl.Note)
 			}
 			b.WriteString(line + "\n\n")
 			if st.printed[bl.FlowID] {
@@ -622,19 +622,44 @@ func sanitizeLine(s string) string {
 //   - a leading "#" (would start a heading, e.g. faking "## Fake Heading")
 //   - a leading "- **" (would start a metadata bullet, e.g. faking our own
 //     "- **Status:** verified" line)
+//   - a horizontal rule ("---", "***", "___", spaced or longer). The report
+//     separates its own sections with rules, and the HTML/PDF converter ends a
+//     finding card at one, so the rest of the finding would render outside it
+//   - a setext underline ("===" or "-" under a text line), which makes the
+//     line above it a heading
+//
+// A code fence the text opens and never closes is closed at the end, so it
+// cannot swallow the findings that follow it.
 //
 // Escaping with a backslash keeps the character visible (so the author's
 // intent is still legible) while stopping a Markdown renderer — and a human
 // skimming the raw .md — from treating it as genuine document structure.
 // Ordinary prose, code spans, and other Markdown (bullets not styled like our
 // metadata lines, bold text mid-sentence, etc.) is left exactly as written.
-func sanitizeBody(s string) string {
+//
+// sanitizeBody is for text written at the start of a line. Text appended to a
+// line the report has already begun goes through sanitizeBodyInline.
+func sanitizeBody(s string) string { return sanitizeBodyAt(s, true) }
+
+// sanitizeBodyInline is sanitizeBody for text that continues a line the report
+// already started ("**Evidence:** …", a flow citation's note): its first line
+// is not at a line start, so it cannot open a code fence there.
+func sanitizeBodyInline(s string) string { return sanitizeBodyAt(s, false) }
+
+func sanitizeBodyAt(s string, lineStart bool) string {
 	if s == "" {
 		return s
 	}
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	lines := strings.Split(s, "\n")
+	// fence is the backtick run of the code fence the report converters are
+	// inside (0 outside one). They open a fence at any line starting with three
+	// or more backticks and close it only at a line of exactly that many.
+	// verbatim is true while every Markdown renderer agrees it is a fence; only
+	// then are rule lines left alone (a YAML "---" in a code sample).
+	fence, verbatim := 0, false
+	prevBlank := lineStart
 	for i, line := range lines {
 		// Trim what the HTML and Jira converters trim (strings.TrimSpace, i.e.
 		// every Unicode space) before they look for a line marker. Trimming only
@@ -642,14 +667,67 @@ func sanitizeBody(s string) string {
 		// em space pass here unescaped and still open a heading there.
 		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
 		indent := line[:len(line)-len(trimmed)]
+		trim := strings.TrimSpace(trimmed)
+		// The first line of inline text continues a report line: it is never at
+		// a line start itself, and the line under it is always under text.
+		atLineStart := lineStart || i > 0
+		underText := !prevBlank
+		prevBlank = trim == "" && atLineStart
+		run := backtickFenceLen(trim)
+		if fence > 0 {
+			if run == len(trim) && run == fence {
+				fence = 0
+				continue
+			}
+			if run == len(trim) && run > fence {
+				// CommonMark closes a fence at a longer run; the report
+				// converters do not. From here the two disagree.
+				verbatim = false
+			}
+		} else if run >= 3 && atLineStart {
+			fence = run
+			verbatim = !strings.Contains(trim[run:], "`") && len(indent) <= 3 && strings.Trim(indent, " ") == ""
+			continue
+		}
 		switch {
 		case strings.HasPrefix(trimmed, "#"):
 			lines[i] = indent + "\\" + trimmed
 		case strings.HasPrefix(trimmed, "- **"):
 			lines[i] = indent + "- \\**" + strings.TrimPrefix(trimmed, "- **")
+		case fence > 0 && verbatim:
+		case !atLineStart:
+		case isRuleLine(trim), underText && isSetextUnderline(trim):
+			lines[i] = indent + "\\" + trimmed
 		}
 	}
+	if fence > 0 {
+		lines = append(lines, strings.Repeat("`", fence))
+	}
 	return strings.Join(lines, "\n")
+}
+
+// isRuleLine reports whether a trimmed line is a Markdown horizontal rule:
+// three or more of one of "-", "*", "_", optionally separated by whitespace.
+func isRuleLine(trim string) bool {
+	var marker rune
+	n := 0
+	for _, r := range trim {
+		switch {
+		case unicode.IsSpace(r):
+		case (r == '-' || r == '*' || r == '_') && (marker == 0 || r == marker):
+			marker = r
+			n++
+		default:
+			return false
+		}
+	}
+	return n >= 3
+}
+
+// isSetextUnderline reports whether a trimmed line is only "=" or only "-",
+// which turns a text line directly above it into a heading.
+func isSetextUnderline(trim string) bool {
+	return trim != "" && (strings.Trim(trim, "=") == "" || strings.Trim(trim, "-") == "")
 }
 
 func orVal(s, def string) string {

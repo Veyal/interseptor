@@ -134,17 +134,60 @@ func (h *Hub) observedForFlow(f *store.Flow) playbooks.Observed {
 			obs.Headers[name] = values[0]
 		}
 	}
-	req, _ := h.bodyBytesResult(f.ReqBodyHash)
-	res, _ := h.bodyBytesResult(f.ResBodyHash)
+	// Bounded reads: a match needs the head of the response and the request's
+	// parameter names, never a whole upload or download in memory. This runs
+	// for the newest flow on every readiness refresh.
+	_, res, _, _ := h.bodyForDisplayLimit(f.ResBodyHash, f.ResHeaders, playbookResponseScan)
 	obs.Body = string(res)
-	if len(obs.Body) > 64*1024 {
-		obs.Body = obs.Body[:64*1024]
-	}
-	for _, name := range paramNamesFromBody(string(req)) {
-		obs.Params = append(obs.Params, name)
+	_, req, cut, _ := h.bodyForDisplayLimit(f.ReqBodyHash, f.ReqHeaders, playbookRequestScan)
+	if cut {
+		obs.Params = append(obs.Params, paramNamesFromTruncatedBody(string(req))...)
+	} else {
+		obs.Params = append(obs.Params, paramNamesFromBody(string(req))...)
 	}
 	obs.Params = dedupeStrings(obs.Params)
 	return obs
+}
+
+const (
+	// playbookResponseScan is how much of the response a body signal sees.
+	playbookResponseScan = 64 * 1024
+	// playbookRequestScan is how much of the request is read for its parameter
+	// names; names past it are not reported.
+	playbookRequestScan = 256 * 1024
+)
+
+// paramNamesFromTruncatedBody is paramNamesFromBody for a body cut at the read
+// limit: it reports the names that are complete in the prefix. For JSON those
+// are the top-level keys read before the cut; for a form, every pair before
+// the last "&" (the final segment may be half a name).
+func paramNamesFromTruncatedBody(body string) []string {
+	if strings.HasPrefix(strings.TrimSpace(body), "{") {
+		dec := json.NewDecoder(strings.NewReader(body))
+		var names []string
+		if _, err := dec.Token(); err == nil {
+			for dec.More() {
+				key, err := dec.Token()
+				name, ok := key.(string)
+				if err != nil || !ok {
+					break
+				}
+				names = append(names, name)
+				var skip json.RawMessage
+				if dec.Decode(&skip) != nil {
+					break
+				}
+			}
+		}
+		if len(names) > 0 {
+			return names
+		}
+	}
+	i := strings.LastIndexByte(body, '&')
+	if i < 0 {
+		return nil
+	}
+	return paramNamesFromBody(body[:i])
 }
 
 // paramNamesFromBody lists form and JSON top-level keys, which is where a

@@ -18,23 +18,32 @@ func (h *Hub) CodecsDir() string {
 	return filepath.Join(h.ProjectDir, "codecs")
 }
 
+// flowForCodec builds the flow a codec matches and decodes. Each body is read
+// through the display limit (decodeMax, what the inspector shows): a capture
+// larger than that reaches the codec as its first decodeMax bytes instead of
+// being loaded whole, twice, for every decode.
 func (h *Hub) flowForCodec(f *store.Flow) (msgcodec.Flow, error) {
-	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	flow, _, err := h.flowForCodecLimit(f, decodeMax)
+	return flow, err
+}
+
+// flowForCodecLimit is flowForCodec with an explicit per-body limit. truncated
+// reports that a body (after decompression) was cut at it.
+func (h *Hub) flowForCodecLimit(f *store.Flow, max int) (flow msgcodec.Flow, truncated bool, err error) {
+	_, reqBody, reqCut, err := h.bodyForDisplayLimit(f.ReqBodyHash, f.ReqHeaders, max)
 	if err != nil {
-		return msgcodec.Flow{}, err
+		return msgcodec.Flow{}, false, err
 	}
-	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	_, resBody, resCut, err := h.bodyForDisplayLimit(f.ResBodyHash, f.ResHeaders, max)
 	if err != nil {
-		return msgcodec.Flow{}, err
+		return msgcodec.Flow{}, false, err
 	}
-	_, reqBody = decodeForDisplay(f.ReqHeaders, reqBody)
-	_, resBody = decodeForDisplay(f.ResHeaders, resBody)
 	return msgcodec.Flow{
 		Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
 		Path: f.Path, Status: f.Status, Mime: f.Mime,
 		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
 		ReqBody: string(reqBody), ResBody: string(resBody),
-	}, nil
+	}, reqCut || resCut, nil
 }
 
 func (h *Hub) loadCodecs() []*msgcodec.Codec {
@@ -294,7 +303,7 @@ func (h *flowAPI) getFlowDecoded(w http.ResponseWriter, r *http.Request) {
 	if side == "" {
 		side = "req"
 	}
-	flow, err := h.flowForCodec(f)
+	flow, truncated, err := h.flowForCodecLimit(f, decodeMax)
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
 		return
@@ -310,6 +319,10 @@ func (h *flowAPI) getFlowDecoded(w http.ResponseWriter, r *http.Request) {
 		"matched": true, "flowId": f.ID, "side": side,
 		"codecId": res.CodecID, "title": res.Title,
 		"plaintext": res.Plaintext, "fields": res.Fields, "note": res.Note,
+	}
+	if truncated {
+		// The codec decoded a prefix, not the whole capture: say so.
+		out["inputTruncated"] = true
 	}
 	if res.Error != "" {
 		out["error"] = res.Error

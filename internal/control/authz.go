@@ -567,6 +567,15 @@ func applyIdentityHeaders(base map[string][]string, id identity) map[string][]st
 			continue
 		}
 		if k = strings.TrimSpace(k); k != "" {
+			// Header names are case-insensitive, and a captured request keeps the
+			// spelling it arrived with (HTTP/2 and imported captures are
+			// lower-case). Drop every spelling first, or the replay carries the
+			// captured value beside the identity's.
+			for existing := range out {
+				if strings.EqualFold(existing, k) {
+					delete(out, existing)
+				}
+			}
 			out[http.CanonicalHeaderKey(k)] = []string{strings.TrimSpace(v)}
 		}
 	}

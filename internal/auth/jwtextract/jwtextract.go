@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -54,7 +55,7 @@ func bearer(hdrs map[string][]string) string {
 	if hdrs == nil {
 		return ""
 	}
-	for _, v := range hdrs["Authorization"] {
+	for _, v := range headerValues(hdrs, "Authorization") {
 		v = strings.TrimSpace(v)
 		if len(v) > 7 && strings.EqualFold(v[:7], "bearer ") {
 			t := strings.TrimSpace(v[7:])
@@ -64,6 +65,25 @@ func bearer(hdrs map[string][]string) string {
 		}
 	}
 	return ""
+}
+
+// headerValues returns the values of a header whatever the case of its stored
+// name. Captures keep the spelling they arrived with (lower-case for HTTP/2
+// and imported flows), so an exact-key lookup missed their tokens. The
+// canonical spelling comes first so the result is stable.
+func headerValues(hdrs map[string][]string, name string) []string {
+	out := append([]string(nil), hdrs[name]...)
+	var others []string
+	for k := range hdrs {
+		if k != name && strings.EqualFold(k, name) {
+			others = append(others, k)
+		}
+	}
+	sort.Strings(others)
+	for _, k := range others {
+		out = append(out, hdrs[k]...)
+	}
+	return out
 }
 
 var jsonKeys = []string{"login_token", "token", "access_token", "jwt", "id_token", "login_url"}
@@ -147,7 +167,7 @@ func fromCookies(hdrs map[string][]string) (token, source string) {
 	if hdrs == nil {
 		return "", ""
 	}
-	for _, line := range hdrs["Cookie"] {
+	for _, line := range headerValues(hdrs, "Cookie") {
 		for _, part := range strings.Split(line, ";") {
 			part = strings.TrimSpace(part)
 			k, v, ok := strings.Cut(part, "=")

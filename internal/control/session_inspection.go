@@ -414,6 +414,7 @@ func safeFlowPath(path string) string {
 	if u.Path == "" {
 		u.Path = "/"
 	}
+	u.Path = maskPathParameters(u.Path)
 	if len(u.Query()) == 0 {
 		return u.Path
 	}
@@ -423,6 +424,27 @@ func safeFlowPath(path string) string {
 	}
 	sort.Strings(keys)
 	return u.Path + "?" + strings.Join(keys, "=…&") + "=…"
+}
+
+// maskPathParameters hides the value of every ";name=value" path parameter and
+// keeps its name. Servlet URL rewriting carries the session cookie's own value
+// there ("/home;jsessionid=…"), so a path shown as-is returned the very value
+// this view promises to withhold.
+func maskPathParameters(path string) string {
+	if !strings.Contains(path, ";") {
+		return path
+	}
+	segments := strings.Split(path, "/")
+	for i, segment := range segments {
+		parts := strings.Split(segment, ";")
+		for j := 1; j < len(parts); j++ {
+			if name, _, ok := strings.Cut(parts[j], "="); ok {
+				parts[j] = name + "=…"
+			}
+		}
+		segments[i] = strings.Join(parts, ";")
+	}
+	return strings.Join(segments, "/")
 }
 
 func containsAny(value string, needles ...string) bool {
