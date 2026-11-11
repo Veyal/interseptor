@@ -72,10 +72,13 @@ export function outlierChips(r, baseline) {
   }
   if (r.flagged) chips.push({ kind: 'flag', label: 'Flagged' });
   if (r.matched) chips.push({ kind: 'match', label: 'Matched' });
+  // Grep reads a bounded prefix of each body; on a cut row "no match" only
+  // covers that prefix, so the row has to say it.
+  if (r.grepTruncated) chips.push({ kind: 'partial', label: 'Grep covered only the first 8 MiB of this response' });
   return chips;
 }
 
-const CHIP_ICON = { error: 'alert', status: 'alert', length: 'diff', time: 'clock', flag: 'finding', match: 'status-done' };
+const CHIP_ICON = { error: 'alert', status: 'alert', length: 'diff', time: 'clock', flag: 'finding', match: 'status-done', partial: 'info' };
 
 // chipsHTML renders chips with icon + text. In result rows the text is hidden
 // by CSS (icon only, so a chip never covers the payload); the full label stays

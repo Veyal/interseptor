@@ -184,6 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Body garbage collection builds its reference set in one pass.** One scan of the four hash columns replaces a four-way `UNION`: 1.0 s to 0.26 s on 500,000 flows. (`internal/store/retention.go`.)
 - **Delete closes the focused Repeater or Intruder tab.** It does nothing while the tab's Close button is disabled (an Intruder run in progress). (`internal/control/ui/js/core.js`.)
 - **Finding status and evidence-button attributes use the attribute escaper.** A source scan test now fails when the text escaper is used inside a quoted attribute. (`internal/control/ui/js/findings.js`.)
+- **Intruder marks a result whose grep was cut short.** Grep inspects the first 8 MiB of a response; a row over that limit now carries a chip saying so, since "no match" on such a row only covers the part that was read. (`internal/control/ui/js/intruder.js`, `internal/control/ui/panel-tools.css`.)
 
 ### Added
 
