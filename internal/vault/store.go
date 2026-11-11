@@ -77,6 +77,7 @@ func Open(dir string, keep int) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(abs, "projects"), 0o700); err != nil {
 		return nil, err
 	}
+	removeStaleUploads(filepath.Join(abs, "projects"))
 	st := &Store{Dir: abs, Keep: keep}
 	metaPath := filepath.Join(abs, "meta.json")
 	if _, err := os.Stat(metaPath); os.IsNotExist(err) {
@@ -96,10 +97,13 @@ func (s *Store) projectDir(id string) (string, error) {
 }
 
 // Put stores r as a new revision of project id. Returns the revision metadata.
+//
+// The upload is received and validated into a temp file without the store
+// lock: an archive can be gigabytes arriving over a slow link, and holding the
+// lock for that long blocked every other vault operation, reads included. The
+// lock is taken only to number the revision and publish it, so the revision
+// number is assigned when the upload completes, not when it starts.
 func (s *Store) Put(id, label, source string, r io.Reader) (RevInfo, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	pdir, err := s.projectDir(id)
 	if err != nil {
 		return RevInfo{}, err
@@ -107,37 +111,85 @@ func (s *Store) Put(id, label, source string, r io.Reader) (RevInfo, error) {
 	if err := os.MkdirAll(pdir, 0o700); err != nil {
 		return RevInfo{}, err
 	}
-
-	next := s.nextRevLocked(pdir)
-	tmp := filepath.Join(pdir, fmt.Sprintf(".tmp-rev-%06d.zip", next))
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	tmp, n, sum, err := receiveArchive(pdir, r)
 	if err != nil {
 		return RevInfo{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commitRevLocked(pdir, id, label, source, tmp, n, sum)
+}
+
+// receiveArchive streams r into a uniquely named temp file in pdir (the same
+// directory, so publishing it is a rename) and validates it as a project
+// archive. On error nothing is left behind.
+func receiveArchive(pdir string, r io.Reader) (tmp string, n int64, sum string, err error) {
+	f, err := os.CreateTemp(pdir, tmpRevPrefix+"*.zip") // created 0600
+	if err != nil {
+		return "", 0, "", err
+	}
+	tmp = f.Name()
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), r)
+	n, err = io.Copy(io.MultiWriter(f, h), r)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
+	if err == nil && n == 0 {
+		err = fmt.Errorf("empty archive")
+	}
+	if err == nil {
+		err = validateProjectZip(tmp)
+	}
 	if err != nil {
 		os.Remove(tmp)
-		return RevInfo{}, err
+		return "", 0, "", err
 	}
-	if n == 0 {
-		os.Remove(tmp)
-		return RevInfo{}, fmt.Errorf("empty archive")
+	return tmp, n, hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// tmpRevPrefix starts the name of an upload that has not been published.
+const tmpRevPrefix = ".tmp-rev-"
+
+// staleUploadAge is how old an unpublished upload must be before Open removes
+// it. An upload is a single HTTP request, so a temp file this old was left by
+// a process that died mid-upload.
+const staleUploadAge = 24 * time.Hour
+
+// removeStaleUploads deletes temp files left by uploads that never finished.
+func removeStaleUploads(projects string) {
+	dirs, err := os.ReadDir(projects)
+	if err != nil {
+		return
 	}
-	if err := validateProjectZip(tmp); err != nil {
-		os.Remove(tmp)
-		return RevInfo{}, err
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(projects, d.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !strings.HasPrefix(f.Name(), tmpRevPrefix) {
+				continue
+			}
+			if info, err := f.Info(); err == nil && time.Since(info.ModTime()) > staleUploadAge {
+				_ = os.Remove(filepath.Join(projects, d.Name(), f.Name()))
+			}
+		}
 	}
+}
+
+// commitRevLocked publishes a received archive as the project's next revision.
+func (s *Store) commitRevLocked(pdir, id, label, source, tmp string, n int64, sum string) (RevInfo, error) {
+	next := s.nextRevLocked(pdir)
 	final := filepath.Join(pdir, fmt.Sprintf("rev-%06d.zip", next))
 	if err := os.Rename(tmp, final); err != nil {
 		os.Remove(tmp)
 		return RevInfo{}, err
 	}
 	info := RevInfo{
-		Rev: next, Size: n, SHA256: hex.EncodeToString(h.Sum(nil)),
+		Rev: next, Size: n, SHA256: sum,
 		At: time.Now().UnixMilli(), Label: label, Source: source,
 		Filename: filepath.Base(final),
 	}

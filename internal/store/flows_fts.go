@@ -197,3 +197,52 @@ func appendFTSSearch(where []string, args []any, term string) ([]string, []any) 
 	args = append(args, q)
 	return where, args
 }
+
+// ftsDrivenListQuery builds an id-ordered History page for a full-text search
+// by walking the index in rowid order (a flow's id is its index rowid) and
+// looking each match up in flows, so the query stops at a full page. The
+// "id IN (SELECT rowid ... MATCH ?)" form appendFTSSearch produces reads every
+// match into a temporary list before the first row is returned: for a term
+// present in 450,000 of 500,000 flows that was 165 ms a page, and 430 ms for
+// a later page, against 34 ms and 40 ms here; a rare term costs the same
+// either way. CROSS JOIN fixes the join order, the subquery exposes only the
+// rowid so the unqualified column names of the other filters still mean
+// flows, and the page cursor and scan bound are applied to the index rowid so
+// the walk starts (and ends) there instead of reading matches it will discard.
+// ok is false when the search is an id lookup, the list is sorted by another
+// column, or the filter names the flows by id (a handful of primary-key
+// lookups beats walking every match to find them: 274 ms against 438 ms for
+// three ids); those keep the IN form.
+func ftsDrivenListQuery(f FlowFilter, columns string, limit int) (string, []any, bool) {
+	if _, isID := flowSearchAsID(f.Search, f.SearchScope); isID || len(f.FlowIDs) > 0 {
+		return "", nil, false
+	}
+	match := ftsMatchQuery(f.Search)
+	key, dir := normalizedFlowSort(f)
+	if match == "" || key != "id" {
+		return "", nil, false
+	}
+	order, past, bound := "DESC", "<", ">="
+	if dir > 0 {
+		order, past, bound = "ASC", ">", "<="
+	}
+	sub := "SELECT rowid AS fts_id FROM flows_fts WHERE flows_fts MATCH ?"
+	args := []any{match}
+	if cursor := flowPageCursorID(f); cursor != 0 {
+		sub += " AND rowid " + past + " ?"
+		args = append(args, cursor)
+	}
+	if f.ScanBoundID > 0 {
+		sub += " AND rowid " + bound + " ?"
+		args = append(args, f.ScanBoundID)
+	}
+	rest := f
+	rest.Search = ""
+	where, whereArgs := buildFlowFilterWhere(rest)
+	q := "SELECT " + columns + " FROM (" + sub + ") AS fts_match CROSS JOIN flows ON flows.id = fts_match.fts_id"
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += " ORDER BY fts_match.fts_id " + order + " LIMIT " + strconv.Itoa(limit)
+	return q, append(args, whereArgs...), true
+}

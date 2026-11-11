@@ -380,7 +380,7 @@ CREATE TABLE IF NOT EXISTS authz_runs (
   raw TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_authz_runs_ts ON authz_runs(ts);
-`
+` + pruneChunkSchema
 
 // storePragmas is applied via the DSN so every pooled connection gets it.
 // busy_timeout, synchronous and cache_size are all per-connection, so setting

@@ -38,6 +38,9 @@ func (s *Store) QueryFlowsListFilter(f FlowFilter) ([]*Flow, error) {
 
 // flowListQuery builds one page of the History list for f.
 func (s *Store) flowListQuery(f FlowFilter, columns string, limit int) (string, []any) {
+	if q, args, ok := ftsDrivenListQuery(f, columns, limit); ok {
+		return q, args
+	}
 	where, args := buildFlowFilterWhere(f)
 	if s.statusClassIsCommon(f) {
 		for i, w := range where {

@@ -583,13 +583,18 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "too many flows")
 		return
 	}
-	if err := h.st.MutateFlowTags(in.FlowIDs, in.Add, in.Remove); err != nil {
+	// One set-based transaction; changed lists the flows whose tags differ
+	// afterwards, so a repeat of the same command repaints and reloads nothing.
+	changed, err := h.st.MutateFlowTagsBulk(in.FlowIDs, in.Add, in.Remove)
+	if err != nil {
 		httpInternalErr(w, err)
 		return
 	}
-	h.broadcastFlowTagsBulk(in.FlowIDs)
-	h.broadcast(map[string]any{"type": "tags.update"})
-	writeJSON(w, http.StatusOK, map[string]any{"count": len(in.FlowIDs)})
+	if len(changed) > 0 {
+		h.broadcastFlowTagsBulk(changed)
+		h.broadcast(map[string]any{"type": "tags.update"})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(in.FlowIDs), "changed": len(changed)})
 }
 
 // bulkTagRowEvents is the most flows a bulk tag change announces row by row. It

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"sort"
 	"strings"
 )
@@ -149,32 +150,146 @@ func writeFlowTagsExec(ex flowExec, flowID int64, tags []string) ([]string, erro
 // MutateFlowTags applies one add/remove command to every selected flow in one
 // transaction. Remove wins when the same normalized tag appears in both sets.
 func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
-	for _, id := range flowIDs {
-		s.waitFlow(id)
+	_, err := s.MutateFlowTagsBulk(flowIDs, add, remove)
+	return err
+}
+
+// tagBulkChunk is how many flow ids one bulk tag statement names. With up to
+// maxTagsPerRow tags bound beside them a statement stays far below SQLite's
+// bound-parameter limit.
+const tagBulkChunk = 400
+
+// MutateFlowTagsBulk applies one add/remove command to every selected flow in
+// one transaction and returns the flows whose tag set changed, in the order
+// they were given. Remove wins when the same normalized tag appears in both
+// sets. Every flow must exist, or nothing is written. The work is one
+// statement per chunk of tagBulkChunk flows (and per added tag), not one per
+// flow: tagging 100,000 flows is a few hundred statements instead of several
+// hundred thousand. Tags are not part of the full-text index (flows_fts holds
+// host, path, method and note), so only flow_tags and its tag index change,
+// and SQLite keeps those two in step.
+func (s *Store) MutateFlowTagsBulk(flowIDs []int64, add, remove []string) ([]int64, error) {
+	ids := uniqueFlowIDs(flowIDs)
+	// Queued capture writes are drained first so a tag cannot land before its
+	// row. With an idle queue there is nothing to wait for.
+	if s.flowsBusy() {
+		for _, id := range ids {
+			s.waitFlow(id)
+		}
 	}
-	add = NormalizeTags(add)
 	remove = NormalizeTags(remove)
+	add = tagsWithout(NormalizeTags(add), remove)
 	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	st := &txStmts{tx: tx}
+	changed := make(map[int64]struct{})
+	for start := 0; start < len(ids); start += tagBulkChunk {
+		if err := mutateTagChunk(st, ids[start:min(start+tagBulkChunk, len(ids))], add, remove, changed); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	out := make([]int64, 0, len(changed))
+	for _, id := range ids {
+		if _, ok := changed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// mutateTagChunk tags and untags one chunk of distinct flow ids, recording in
+// changed every flow that gained or lost a row.
+func mutateTagChunk(st *txStmts, ids []int64, add, remove []string, changed map[int64]struct{}) error {
+	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids)+len(remove)+1)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	// flow_tags has no foreign key: a stale id would create an orphan tag row.
+	var found int
+	if err := st.QueryRow(`SELECT COUNT(*) FROM flows WHERE id IN (`+ph+`)`, args...).Scan(&found); err != nil {
+		return err
+	}
+	if found != len(ids) {
+		return sql.ErrNoRows
+	}
+	insert := `INSERT OR IGNORE INTO flow_tags (flow_id, tag) SELECT id, ? FROM flows WHERE id IN (` + ph + `) RETURNING flow_id`
+	for _, tag := range add {
+		if err := collectChangedFlows(st, changed, insert, append([]any{tag}, args...)...); err != nil {
+			return err
+		}
+	}
+	if len(remove) == 0 {
+		return nil
+	}
+	for _, tag := range remove {
+		args = append(args, tag)
+	}
+	tagPH := strings.TrimRight(strings.Repeat("?,", len(remove)), ",")
+	return collectChangedFlows(st, changed,
+		`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`) AND tag IN (`+tagPH+`) RETURNING flow_id`, args...)
+}
+
+// collectChangedFlows runs a statement that returns the flow id of every row
+// it wrote and adds those ids to changed.
+func collectChangedFlows(st *txStmts, changed map[int64]struct{}, query string, args ...any) error {
+	rows, err := st.Query(query, args...)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	for _, flowID := range flowIDs {
-		if err := requireFlowForTags(tx, flowID); err != nil {
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return err
 		}
-		for _, tag := range add {
-			if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, tag); err != nil {
-				return err
-			}
+		changed[id] = struct{}{}
+	}
+	// A statement that fails while stepping (a constraint, a trigger) reports
+	// it here, not from Query.
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	return rows.Close()
+}
+
+// uniqueFlowIDs drops repeated ids, keeping the first occurrence's position.
+func uniqueFlowIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
 		}
-		for _, tag := range remove {
-			if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, tag); err != nil {
-				return err
-			}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+// tagsWithout returns the tags that are not in drop.
+func tagsWithout(tags, drop []string) []string {
+	if len(drop) == 0 {
+		return tags
+	}
+	skip := make(map[string]struct{}, len(drop))
+	for _, t := range drop {
+		skip[t] = struct{}{}
+	}
+	out := tags[:0:0]
+	for _, t := range tags {
+		if _, ok := skip[t]; !ok {
+			out = append(out, t)
 		}
 	}
-	return tx.Commit()
+	return out
 }
 
 func requireFlowForTags(ex flowExec, flowID int64) error {

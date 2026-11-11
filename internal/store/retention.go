@@ -631,8 +631,11 @@ func (o PruneOptions) filterSQL() (string, []any) {
 
 // pruneSnapshotSchema keeps a pruned batch restorable. Body files are not
 // copied: content-addressed bodies stay on disk while the snapshot lives,
-// because referencedBodyHashes counts prune_body_hashes too.
-const pruneSnapshotSchema = `
+// because referencedBodyHashes counts prune_body_hashes too. The pruned rows
+// themselves are in prune_snapshot_chunks; prune_snapshots.flows is empty,
+// except in a snapshot written by a build that kept the whole batch in that
+// one cell.
+const pruneSnapshotSchema = pruneChunkSchema + `
 CREATE TABLE IF NOT EXISTS prune_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
@@ -645,6 +648,20 @@ CREATE TABLE IF NOT EXISTS prune_body_hashes (
   snapshot_id INTEGER NOT NULL,
   hash TEXT NOT NULL,
   PRIMARY KEY (snapshot_id, hash)
+);
+`
+
+// pruneChunkSchema holds the rows of a prune-undo snapshot, pruneChunkFlows
+// flows per row (one JSON array each), so no cell grows with the size of a
+// prune; n is the number of flows in the chunk. It is part of the schema Open
+// applies, so a database from a build without it gains the table on open.
+const pruneChunkSchema = `
+CREATE TABLE IF NOT EXISTS prune_snapshot_chunks (
+  snapshot_id INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  n INTEGER NOT NULL,
+  flows TEXT NOT NULL,
+  PRIMARY KEY (snapshot_id, seq)
 );
 `
 
@@ -730,11 +747,7 @@ func (s *Store) PruneFlows(op PruneOptions) (PruneResult, error) {
 		window = DefaultPruneUndoWindow
 	}
 	expires := time.Now().Add(window).UnixMilli()
-	pruneID, err := s.snapshotPrune(ids, op.Dir(), expires)
-	if err != nil {
-		return res, err
-	}
-	deleted, err := s.deleteFlowsByIDs(ids)
+	pruneID, deleted, err := s.pruneWithSnapshot(ids, op.Dir(), expires)
 	if err != nil {
 		return res, err
 	}
