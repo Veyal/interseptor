@@ -6,8 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/Veyal/interseptor/internal/chromemgr"
 )
@@ -73,11 +75,22 @@ func runInstallChrome(args []string) error {
 		fmt.Printf(format+"\n", a...)
 	}
 
-	path, err := installer.Install(context.Background(), targetDir, progress, logStep)
+	// Ctrl-C (or a termination request) cancels the download and extraction, so
+	// the temporary archive and the staging directory are removed on the way out
+	// instead of being left behind by a process killed mid-write.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	path, err := installer.Install(ctx, targetDir, progress, logStep)
 	if err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("install Chrome: interrupted, nothing was installed: %w", context.Canceled)
+		}
 		return fmt.Errorf("install Chrome: %w", err)
 	}
 
 	fmt.Printf("Chrome installed successfully at %s\n", path)
 	return nil
 }
+
+// isInterrupted reports whether err is an install the operator interrupted.
+func isInterrupted(err error) bool { return errors.Is(err, context.Canceled) }

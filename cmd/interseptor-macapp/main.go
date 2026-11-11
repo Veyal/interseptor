@@ -55,14 +55,14 @@ func main() {
 		// server it owns; ignored, the write just fails with EPIPE.
 		signal.Ignore(syscall.SIGPIPE)
 		pw := newProtocolWriter(os.Stdout)
-		if err := runLauncher(pw.ready, watchEOF(os.Stdin)); err != nil {
+		if err := runLauncher(pw.ready, pw.notice, watchEOF(os.Stdin)); err != nil {
 			pw.fail(err.Error())
 			fmt.Fprintln(os.Stderr, "interseptor-macapp:", err)
 			os.Exit(1)
 		}
 		return
 	}
-	if err := runLauncher(openURL, nil); err != nil {
+	if err := runLauncher(openURL, notify, nil); err != nil {
 		alert(err.Error())
 		fmt.Fprintln(os.Stderr, "interseptor-macapp:", err)
 		os.Exit(1)
@@ -70,9 +70,10 @@ func main() {
 }
 
 // runLauncher wires the real process environment into a launcher. onReady
-// receives the control URL once it accepts connections; parentGone is nil in
-// window mode and the stdin-EOF lifeline in shell mode.
-func runLauncher(onReady func(string), parentGone <-chan struct{}) error {
+// receives the control URL once it accepts connections and onNotice any startup
+// notice the server logged; parentGone is nil in window mode and the stdin-EOF
+// lifeline in shell mode.
+func runLauncher(onReady, onNotice func(string), parentGone <-chan struct{}) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate launcher: %w", err)
@@ -103,6 +104,7 @@ func runLauncher(onReady func(string), parentGone <-chan struct{}) error {
 		signals:      sigCh,
 		parentGone:   parentGone,
 		onReady:      onReady,
+		onNotice:     onNotice,
 		readyTimeout: readyTimeout,
 	}
 	return l.run()
@@ -118,6 +120,7 @@ type launcher struct {
 	signals      <-chan os.Signal
 	parentGone   <-chan struct{} // nil: no parent to watch (window mode)
 	onReady      func(url string)
+	onNotice     func(msg string) // nil: startup notices stay in the log only
 	readyTimeout time.Duration
 }
 
@@ -141,10 +144,11 @@ func (l *launcher) run() error {
 	// env/default guess above can be wrong. Watch the child's output for the URL
 	// it actually bound and switch to that as soon as it appears.
 	sniffer := newURLSniffer()
-	out := io.MultiWriter(l.log, sniffer)
+	notices := &noticeSniffer{}
+	out := io.MultiWriter(l.log, sniffer, notices)
 
 	cmd := exec.Command(l.bin)
-	cmd.Env = append(os.Environ(), "INTERSEPTOR_NO_BROWSER=1", lifelineEnv)
+	cmd.Env = append(os.Environ(), "INTERSEPTOR_NO_BROWSER=1", lifelineEnv, resumeFallbackEnv)
 	cmd.Stdout = out
 	cmd.Stderr = out
 	// The child's lifeline: this process holds the write end of its stdin until
@@ -194,6 +198,13 @@ func (l *launcher) run() error {
 		}
 	}
 	l.onReady(*target.Load())
+	// The server logs its notices before the control URL, so they are all in by
+	// now. They follow READY because only then is there a window to show them in.
+	if l.onNotice != nil {
+		for _, n := range notices.take() {
+			l.onNotice(n)
+		}
+	}
 
 	select {
 	case err := <-exited:
@@ -251,6 +262,20 @@ func openURL(url string) {
 	}
 	if path, err := exec.LookPath("open"); err == nil {
 		_ = exec.Command(path, url).Start()
+	}
+}
+
+// notify shows a startup notice in window mode, without holding up the
+// supervisor: the server is running and must stay supervised meanwhile.
+func notify(msg string) {
+	path, err := exec.LookPath("osascript")
+	if err != nil {
+		return
+	}
+	script := fmt.Sprintf("display alert %q message %q", "Interseptor", msg)
+	cmd := exec.Command(path, "-e", script)
+	if cmd.Start() == nil {
+		go func() { _ = cmd.Wait() }()
 	}
 }
 

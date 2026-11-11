@@ -59,6 +59,8 @@ Usage:
 
 Common flags / env:
   --project <name|path>    open a specific project (or INTERSEPTOR_PROJECT)
+  --resume-fallback default  with no --project: open the default project when the remembered
+                           external folder is unavailable (or INTERSEPTOR_RESUME_FALLBACK)
   --install-chrome         download and install Chrome before starting if missing
   --headless               don't open the UI window on start (or INTERSEPTOR_HEADLESS)
   --open                   open the UI window even over SSH (or INTERSEPTOR_OPEN_BROWSER)

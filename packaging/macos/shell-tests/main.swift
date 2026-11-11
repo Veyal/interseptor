@@ -48,6 +48,9 @@ if case .ready(let u)? = Supervisor.parse("INTERSEPTOR_READY http://127.0.0.1:9\
 else { check(false, "parse READY") }
 if case .error(let m)? = Supervisor.parse("INTERSEPTOR_ERROR boom") { check(m == "boom", "parse ERROR") }
 else { check(false, "parse ERROR") }
+if case .notice(let m)? = Supervisor.parse("INTERSEPTOR_NOTICE The project folder /Volumes/x is not available\n") {
+    check(m == "The project folder /Volumes/x is not available", "parse NOTICE")
+} else { check(false, "parse NOTICE") }
 check(Supervisor.parse("noise") == nil, "parse ignores other lines")
 
 // 2. clean start / stop: completion only after the process exited
@@ -86,6 +89,7 @@ do {
         case .ready(let u): events.append("ready:\(u.port ?? 0)")
         case .exited: events.append("exited")
         case .error: events.append("error")
+        case .notice: events.append("notice")
         }
     }
     try s.start(executable: stubborn, environment: env, arguments: [])
@@ -166,6 +170,7 @@ do {
         case .error(let m): events.append("error:\(m)")
         case .exited(let c): events.append("exited:\(c)")
         case .ready: events.append("ready")
+        case .notice: events.append("notice")
         }
     }
     try s.start(executable: lateError, environment: env, arguments: [])
@@ -182,6 +187,7 @@ do {
         case .error: events.append("error")
         case .exited: events.append("exited")
         case .ready: events.append("ready")
+        case .notice: events.append("notice")
         }
     }
     try s.start(executable: lateError, environment: env, arguments: [])
@@ -204,6 +210,7 @@ do {
         case .ready(let u): events.append("ready:\(u.port ?? 0)")
         case .error: events.append("error")
         case .exited: events.append("exited")
+        case .notice: events.append("notice")
         }
     }
     try s.start(executable: polite, environment: env, arguments: [])
@@ -535,6 +542,32 @@ do {
     }
 } catch {
     check(false, "verify: setup (\(error))")
+}
+
+// 21b. a startup notice follows READY and is delivered while the run is live
+do {
+    let noticing = script("notice.sh", """
+    trap 'exit 0' TERM
+    echo "INTERSEPTOR_READY http://127.0.0.1:3"
+    echo "INTERSEPTOR_NOTICE The project folder /Volumes/x is not available"
+    while true; do sleep 0.1; done
+    """)
+    let s = Supervisor()
+    var events: [String] = []
+    s.onEvent = {
+        switch $0 {
+        case .ready(let u): events.append("ready:\(u.port ?? 0)")
+        case .notice(let m): events.append("notice:\(m)")
+        case .error: events.append("error")
+        case .exited: events.append("exited")
+        }
+    }
+    try s.start(executable: noticing, environment: env, arguments: [])
+    check(spin(until: { events.count == 2 }, timeout: 5), "notice: delivered (\(events))")
+    check(events == ["ready:3", "notice:The project folder /Volumes/x is not available"], "notice: READY then NOTICE (\(events))")
+    var done = false
+    s.stop(timeout: 3) { done = true }
+    _ = spin(until: { done }, timeout: 5)
 }
 
 // 22. optional: verify a real built bundle, e.g.

@@ -13,12 +13,15 @@ import (
 //
 //	INTERSEPTOR_READY <control url>   once the control UI accepts connections
 //	INTERSEPTOR_ERROR <message>       when startup (or supervision) fails
+//	INTERSEPTOR_NOTICE <message>      after READY: the server started, but not
+//	                                  the way the operator last left it
 //
 // Stdin is the parent's lifeline: when it reaches EOF the shell has gone away,
 // and a server this process started is stopped gracefully.
 const (
-	readyPrefix = "INTERSEPTOR_READY "
-	errorPrefix = "INTERSEPTOR_ERROR "
+	readyPrefix  = "INTERSEPTOR_READY "
+	errorPrefix  = "INTERSEPTOR_ERROR "
+	noticePrefix = "INTERSEPTOR_NOTICE "
 )
 
 type options struct {
@@ -51,6 +54,11 @@ func errorLine(msg string) string {
 	return errorPrefix + strings.Join(strings.Fields(msg), " ") + "\n"
 }
 
+// noticeLine folds msg onto one line, like errorLine.
+func noticeLine(msg string) string {
+	return noticePrefix + strings.Join(strings.Fields(msg), " ") + "\n"
+}
+
 // watchEOF returns a channel closed once r reaches EOF (or fails), draining and
 // discarding anything written to it.
 func watchEOF(r io.Reader) <-chan struct{} {
@@ -73,6 +81,8 @@ func newProtocolWriter(w io.Writer) *protocolWriter { return &protocolWriter{w: 
 func (p *protocolWriter) ready(url string) { p.write(readyLine(url)) }
 
 func (p *protocolWriter) fail(msg string) { p.write(errorLine(msg)) }
+
+func (p *protocolWriter) notice(msg string) { p.write(noticeLine(msg)) }
 
 func (p *protocolWriter) write(line string) {
 	p.mu.Lock()

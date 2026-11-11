@@ -114,14 +114,25 @@ func runLauncher(args []string) error {
 		return err
 	}
 
+	// Bind first. Everything below changes state a launcher that is already
+	// running depends on (its dashboard token above all: rotating it and then
+	// failing with "address already in use" would leave the running launcher
+	// checking a token that is no longer on disk).
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("launcher listen on %s: %w", addr, err)
+	}
+
 	reg, err := launcher.Open(filepath.Join(globalDir, "instances.json"))
 	if err != nil {
+		_ = ln.Close()
 		return fmt.Errorf("open instance registry: %w", err)
 	}
 	_ = reg.Reconcile(launcherAlive)
 
 	token, err := loadOrCreateLauncherToken(globalDir)
 	if err != nil {
+		_ = ln.Close()
 		return fmt.Errorf("create launcher token: %w", err)
 	}
 
@@ -135,10 +146,6 @@ func runLauncher(args []string) error {
 		bindHost:    launcherBindHost(addr),
 	}
 
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("launcher listen on %s: %w", addr, err)
-	}
 	srv := newControlServer(lh.routes())
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -353,7 +360,7 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command(lh.exe, "--project", project, "--control-port", strconv.Itoa(controlPort))
+	cmd := lh.instanceCommand("--project", project, "--control-port", strconv.Itoa(controlPort))
 	cmd.Env = append(os.Environ(),
 		"INTERSEPTOR_PROXY_ADDR="+proxyAddr,
 		"INTERSEPTOR_NO_BROWSER=1",
@@ -400,6 +407,16 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeLauncherJSON(w, http.StatusOK, runningView(inst))
+}
+
+// instanceCommand builds the command for one project instance, detached from
+// the launcher's terminal (see detachInstance): instances are independent
+// processes that outlive the dashboard, so a Ctrl-C or a closed terminal aimed
+// at the launcher must not reach them.
+func (lh *launcherServer) instanceCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command(lh.exe, args...)
+	detachInstance(cmd)
+	return cmd
 }
 
 // waitForBind polls addr with short TCP dials until something accepts a

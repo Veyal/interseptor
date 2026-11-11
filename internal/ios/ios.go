@@ -22,6 +22,11 @@ import (
 // process (flaky USB, simulator waiting on Xcode).
 var execTimeout = 30 * time.Second
 
+// execWaitDelay bounds the wait for a tool's output pipe after the deadline
+// killed it: a descendant that inherited the pipe keeps it open, and
+// CombinedOutput would otherwise wait on it without limit.
+var execWaitDelay = 2 * time.Second
+
 // simctlCommandName, ideviceCommandNames, and execExtraEnv are overridden in
 // tests to point simctlExec/ideviceExec at a fake binary instead of the real
 // tools.
@@ -35,6 +40,7 @@ var simctlExec = func(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, simctlCommandName, append([]string{"simctl"}, args...)...)
+	cmd.WaitDelay = execWaitDelay
 	if len(execExtraEnv) > 0 {
 		cmd.Env = append(os.Environ(), execExtraEnv...)
 	}
@@ -53,6 +59,7 @@ var ideviceExec = func(tool string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, tool, args...)
+	cmd.WaitDelay = execWaitDelay
 	if len(execExtraEnv) > 0 {
 		cmd.Env = append(os.Environ(), execExtraEnv...)
 	}

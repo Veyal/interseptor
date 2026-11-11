@@ -84,7 +84,8 @@ func stubNetworkSetup(t *testing.T, fn func(args ...string) ([]byte, error)) {
 	t.Helper()
 	orig := networkSetup
 	networkSetup = fn
-	t.Cleanup(func() { networkSetup = orig })
+	resetDarwinState() // a prior recorded by another test must not change this one's commands
+	t.Cleanup(func() { networkSetup = orig; resetDarwinState() })
 }
 
 func TestRunSuccess(t *testing.T) {
@@ -224,6 +225,9 @@ func TestEnableMacOSBuildsCorrectCommands(t *testing.T) {
 
 	wantCalls := [][]string{
 		{"-listallnetworkservices"},
+		// The prior setting is read first, so Disable can put it back.
+		{"-getwebproxy", "Wi-Fi"},
+		{"-getsecurewebproxy", "Wi-Fi"},
 		{"-setwebproxy", "Wi-Fi", "127.0.0.1", "8080"},
 		{"-setsecurewebproxy", "Wi-Fi", "127.0.0.1", "8080"},
 		{"-setwebproxystate", "Wi-Fi", "on"},

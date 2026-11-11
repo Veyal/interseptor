@@ -46,7 +46,12 @@ The shell runs `interseptor-macapp --shell` with pipes. The supervisor resolves
 the sibling `interseptor`, starts it with `INTERSEPTOR_NO_BROWSER=1`, reads the
 URL the server actually bound, waits until it answers, and prints exactly one
 line to stdout: `INTERSEPTOR_READY <url>`. If anything fails it prints
-`INTERSEPTOR_ERROR <message>`. It then supervises until SIGTERM/SIGINT or until
+`INTERSEPTOR_ERROR <message>`. It starts the server with
+`INTERSEPTOR_RESUME_FALLBACK=default`, so a remembered external project folder
+that is unavailable (an unplugged drive) opens the default project instead of
+failing every launch; the server's `startup notice:` log line is relayed after
+READY as `INTERSEPTOR_NOTICE <message>` and the shell shows it as a sheet. The
+folder stays remembered, so reconnecting it and relaunching resumes it. It then supervises until SIGTERM/SIGINT or until
 its stdin reaches EOF, which means the shell died, and stops the server
 gracefully (SIGTERM, then SIGKILL after 6s). The server gets the same kind of
 lifeline: its stdin is a pipe the supervisor holds open, and

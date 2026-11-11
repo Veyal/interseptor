@@ -16,12 +16,41 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
 
 // quickTunnelURL matches the assigned trycloudflare URL in cloudflared's stderr.
 var quickTunnelURL = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
+
+// quickTunnelHost captures the host label of a candidate URL.
+var quickTunnelHost = regexp.MustCompile(`https://([a-z0-9-]+)\.trycloudflare\.com`)
+
+// publicURL returns the quick-tunnel URL in one line of cloudflared's output, or
+// "". The match must be the whole host: cloudflared also prints its own API
+// endpoint (https://api.trycloudflare.com/tunnel) when a request fails, and a
+// longer name can merely begin with the suffix (x.trycloudflare.com.example.com).
+// Whatever is returned here becomes the address the UI shows and the host the
+// control plane trusts as its forwarder, so a near miss must not qualify.
+func publicURL(line string) string {
+	for _, m := range quickTunnelHost.FindAllStringSubmatchIndex(line, -1) {
+		label := line[m[2]:m[3]]
+		if label == "api" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			continue
+		}
+		if end := m[1]; end < len(line) && isHostByte(line[end]) {
+			continue
+		}
+		return line[m[0]:m[1]]
+	}
+	return ""
+}
+
+// isHostByte reports whether c would continue a host name.
+func isHostByte(c byte) bool {
+	return c == '.' || c == '-' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
 
 // ErrClosed is returned when Start is called after Manager.Close.
 var ErrClosed = errors.New("tunnel manager is closed")
@@ -177,7 +206,7 @@ func (m *Manager) scanForURL(cmd *exec.Cmd, generation uint64, r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		if u := quickTunnelURL.FindString(sc.Text()); u != "" {
+		if u := publicURL(sc.Text()); u != "" {
 			m.publishURL(cmd, generation, u)
 		}
 	}

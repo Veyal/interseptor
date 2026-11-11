@@ -1,7 +1,8 @@
 import Foundation
 
 /// Runs `interseptor-macapp --shell` and translates its stdout protocol
-/// (INTERSEPTOR_READY <url> / INTERSEPTOR_ERROR <message>) into events.
+/// (INTERSEPTOR_READY <url> / INTERSEPTOR_ERROR <message> /
+/// INTERSEPTOR_NOTICE <message>) into events.
 ///
 /// The supervisor's stdin is a pipe this process never writes to: if the shell
 /// dies, the pipe closes and the supervisor stops the server it started.
@@ -9,6 +10,9 @@ final class Supervisor {
     enum Event {
         case ready(URL)
         case error(String)
+        /// The server started, but not the way the user last left it (for
+        /// example the default project in place of an unplugged folder).
+        case notice(String)
         /// The supervisor exited without being asked to.
         case exited(Int32)
     }
@@ -191,6 +195,9 @@ final class Supervisor {
         }
         if trimmed.hasPrefix("INTERSEPTOR_ERROR ") {
             return .error(String(trimmed.dropFirst("INTERSEPTOR_ERROR ".count)))
+        }
+        if trimmed.hasPrefix("INTERSEPTOR_NOTICE ") {
+            return .notice(String(trimmed.dropFirst("INTERSEPTOR_NOTICE ".count)))
         }
         return nil
     }

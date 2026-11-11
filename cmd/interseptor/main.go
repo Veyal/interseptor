@@ -161,6 +161,7 @@ func run() error {
 	dataDirFlag := fs.String("data-dir", "", "global data directory (default ~/.interseptor; also INTERSEPTOR_DATA_DIR)")
 	proxyPortFlag := fs.Int("proxy-port", 0, "proxy listen TCP port on loopback (default 8080)")
 	installChromeFlag := fs.Bool("install-chrome", false, "install Chrome for Testing before starting if missing")
+	resumeFallbackFlag := fs.String("resume-fallback", "", "with no --project: open this project when the remembered external folder is unavailable (only \"default\"; also INTERSEPTOR_RESUME_FALLBACK)")
 	if err := fs.Parse(normalizeCLIArgs(os.Args[1:])); err != nil {
 		return err
 	}
@@ -197,9 +198,22 @@ func run() error {
 	// No terminal prompt: selecting/creating/switching projects all happen in the
 	// web UI (top-bar project badge). A plain launch resumes the last project the
 	// UI switched to; --project still forces a specific one for scripts/CI.
-	projectName, dir, err := selectProject(globalDir, projectArg, home)
+	resumeFallback, err := resolveResumeFallback(*resumeFallbackFlag, os.Getenv(envResumeFallback))
+	if err != nil {
+		return err
+	}
+	sel, err := selectStartupProject(globalDir, projectArg, home, resumeFallback)
 	if err != nil {
 		return fmt.Errorf("select project: %w", err)
+	}
+	sel = carryResumeFallback(sel, globalDir, os.Getenv(envResumeFellBack) != "")
+	projectName, dir := sel.name, sel.dir
+	if sel.notice != "" {
+		// The desktop supervisor relays this line to the app; see startupNoticePrefix.
+		log.Print(startupNoticePrefix + sel.notice)
+		_ = os.Setenv(envResumeFellBack, "1")
+	} else {
+		_ = os.Unsetenv(envResumeFellBack)
 	}
 
 	st, err := store.Open(dir)
@@ -213,7 +227,7 @@ func run() error {
 		return fmt.Errorf("global API keys: %w", err)
 	}
 	// Save only after the project and global keys have opened successfully.
-	rememberActiveProject(globalDir, projectArg, projectName, dir)
+	sel.remember(globalDir, projectArg)
 
 	// Control-plane listen address: CLI → env → persisted setting → default.
 	controlCLI := strings.TrimSpace(*controlAddrFlag)
@@ -412,9 +426,10 @@ func run() error {
 	}
 
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, shutdownSignals(signal.Ignored)...)
 	select {
-	case <-stop:
+	case sig := <-stop:
+		log.Printf("received %v", sig)
 	case <-stdinLifeline(os.Getenv, os.Stdin):
 		log.Println("supervisor gone (stdin closed)")
 	}
@@ -425,6 +440,21 @@ func run() error {
 	<-retentionDone
 	shutdownRuntime(5*time.Second, cm, hub, pm)
 	return nil
+}
+
+// shutdownSignals lists the signals that start a graceful shutdown. SIGHUP is
+// what a closed terminal (or a dropped SSH session) sends: left to its default
+// action it killed the process without releasing the system proxy, which then
+// pointed every app on the machine at a dead port until the next start. It is
+// left alone when the process was started with it ignored (nohup, setsid -f):
+// Notify would re-enable it and defeat that. On Windows SIGHUP is never
+// delivered; a closed console arrives as SIGTERM.
+func shutdownSignals(ignored func(os.Signal) bool) []os.Signal {
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !ignored(syscall.SIGHUP) {
+		sigs = append(sigs, syscall.SIGHUP)
+	}
+	return sigs
 }
 
 // settingStore is the settings surface loadOriginTLSVerify needs.

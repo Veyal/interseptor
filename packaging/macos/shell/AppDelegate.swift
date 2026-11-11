@@ -92,10 +92,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard !quitting else { return }
             lastError = message
             showSupervisorFailure(message)
+        case .notice(let message):
+            guard !quitting else { return }
+            showStartupNotice(message)
         case .exited(let code):
             guard !quitting else { return }
             showSupervisorFailure(lastError ?? "The proxy stopped unexpectedly (exit status \(code)).")
             lastError = nil
+        }
+    }
+
+    /// The proxy is running, so this is a sheet on the main window rather than
+    /// the failure screen: it explains what was opened and never blocks the UI
+    /// from loading behind it.
+    private func showStartupNotice(_ message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Interseptor opened a different project"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        if let window = windowController.window {
+            alert.beginSheetModal(for: window, completionHandler: nil)
+        } else {
+            alert.runModal()
         }
     }
 

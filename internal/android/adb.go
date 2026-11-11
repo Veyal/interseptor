@@ -32,6 +32,11 @@ const (
 // waiting on an on-device prompt).
 var adbTimeout = 30 * time.Second
 
+// adbWaitDelay bounds the wait for adb's output pipe after the deadline killed
+// it. adb forks a daemon on first use; a descendant that inherited the pipe
+// keeps it open, and CombinedOutput would otherwise wait on it without limit.
+var adbWaitDelay = 2 * time.Second
+
 // adbCommandName and adbExtraEnv are overridden in tests to point adbExec at
 // a fake binary instead of the real "adb" on PATH.
 var (
@@ -44,6 +49,7 @@ var adbExec = func(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), adbTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, adbCommandName, args...)
+	cmd.WaitDelay = adbWaitDelay
 	if len(adbExtraEnv) > 0 {
 		cmd.Env = append(os.Environ(), adbExtraEnv...)
 	}

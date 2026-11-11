@@ -12,16 +12,43 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/proc"
 )
 
 // DefaultMetadataURL is Google Chrome Labs' authoritative endpoint for last-known-good CfT releases.
 const DefaultMetadataURL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+
+// The archive is fetched from the Chrome for Testing bucket. Google publishes no
+// checksum or signature for it (the metadata lists a platform and a URL only),
+// so what can be enforced is where it comes from and how large it is. (A
+// damaged transfer is still caught: every zip member carries a CRC-32 that the
+// extractor checks.)
+const (
+	officialDownloadHost   = "storage.googleapis.com"
+	officialDownloadPrefix = "/chrome-for-testing-public/"
+	// maxMetadataBytes bounds the metadata document (about 10 KB today).
+	maxMetadataBytes = 4 << 20
+)
+
+// Size bounds: the archive is about 200 MB and unpacks to under 1 GB today.
+// Variables so tests can lower them.
+var (
+	maxArchiveBytes  int64 = 1 << 30
+	maxUnpackedBytes int64 = 4 << 30
+)
+
+// installLockPoll is how long one attempt to take the install lock waits before
+// the caller's context is checked again.
+const installLockPoll = 200 * time.Millisecond
 
 // ErrNotInstalled reports that managed Chrome is not installed in the target directory.
 var ErrNotInstalled = errors.New("managed Chrome is not installed")
@@ -209,8 +236,15 @@ func (i *Installer) ResolveDownloadURL(ctx context.Context, platform string) (ve
 		return "", "", fmt.Errorf("fetch CfT metadata: HTTP %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetadataBytes+1))
+	if err != nil {
+		return "", "", fmt.Errorf("read CfT metadata: %w", err)
+	}
+	if len(body) > maxMetadataBytes {
+		return "", "", fmt.Errorf("CfT metadata is larger than %d bytes", maxMetadataBytes)
+	}
 	var meta cftMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+	if err := json.Unmarshal(body, &meta); err != nil {
 		return "", "", fmt.Errorf("decode CfT metadata: %w", err)
 	}
 
@@ -221,6 +255,80 @@ func (i *Installer) ResolveDownloadURL(ctx context.Context, platform string) (ve
 		}
 	}
 	return "", "", fmt.Errorf("platform %q not found in Chrome for Testing stable channel", platform)
+}
+
+// validateDownloadURL decides whether the archive may be fetched from raw. With
+// the official metadata endpoint only the Chrome for Testing bucket over HTTPS
+// qualifies: the metadata is plain JSON, so a tampered or mistaken entry must
+// not be able to point the download (an executable that is then run) at another
+// host or at another tenant's bucket on the same host. A configured mirror may
+// serve the archive only from its own origin.
+func (i *Installer) validateDownloadURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("download URL %q: %w", raw, err)
+	}
+	if u.User != nil || u.Host == "" || u.Opaque != "" {
+		return fmt.Errorf("download URL %q is not a plain http(s) URL", raw)
+	}
+	metaURL := i.MetadataURL
+	if metaURL == "" {
+		metaURL = DefaultMetadataURL
+	}
+	if metaURL == DefaultMetadataURL {
+		if u.Scheme != "https" || u.Host != officialDownloadHost {
+			return fmt.Errorf("download URL %q is not on https://%s", raw, officialDownloadHost)
+		}
+		if !strings.HasPrefix(u.Path, officialDownloadPrefix) || path.Clean(u.Path) != u.Path || u.RawPath != "" {
+			return fmt.Errorf("download URL %q is outside the Chrome for Testing bucket", raw)
+		}
+		return nil
+	}
+	m, err := url.Parse(metaURL)
+	if err != nil {
+		return fmt.Errorf("metadata URL %q: %w", metaURL, err)
+	}
+	if u.Scheme != m.Scheme || u.Host != m.Host {
+		return fmt.Errorf("download URL %q is not on the metadata origin %s://%s", raw, m.Scheme, m.Host)
+	}
+	return nil
+}
+
+// downloadClient is i.Client with every redirect hop held to the same rule as
+// the download URL itself, so a redirect cannot carry the fetch elsewhere.
+func (i *Installer) downloadClient() *http.Client {
+	base := i.Client
+	if base == nil {
+		base = http.DefaultClient
+	}
+	c := *base
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errors.New("too many redirects")
+		}
+		return i.validateDownloadURL(req.URL.String())
+	}
+	return &c
+}
+
+// lockInstall takes the cross-process install lock for targetDir, waiting for
+// another install (a second `interseptor install-chrome`, or the UI's button in
+// a running server) to finish, or for ctx to end. Without it two installs
+// shared `<target>.old` and each could delete or roll back the other's swap.
+func lockInstall(ctx context.Context, targetDir string) (*proc.FileLock, error) {
+	lockPath := filepath.Clean(targetDir) + ".lock"
+	for {
+		lock, err := proc.LockFile(lockPath, installLockPoll)
+		if err == nil {
+			return lock, nil
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("waiting for another Chrome install to finish: %w", ctx.Err())
+		}
+		if !errors.Is(err, proc.ErrLockHeld) {
+			return nil, err
+		}
+	}
 }
 
 // Install downloads and extracts Chrome for Testing into targetDir.
@@ -243,8 +351,18 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 	if logStep != nil {
 		logStep("Querying Chrome for Testing metadata for %s…", platform)
 	}
+	// One install at a time per directory, across processes.
+	lock, err := lockInstall(ctx, targetDir)
+	if err != nil {
+		return "", err
+	}
+	defer lock.Unlock()
+
 	ver, dlURL, err := i.ResolveDownloadURL(ctx, platform)
 	if err != nil {
+		return "", fmt.Errorf("resolve Chrome download: %w", err)
+	}
+	if err := i.validateDownloadURL(dlURL); err != nil {
 		return "", fmt.Errorf("resolve Chrome download: %w", err)
 	}
 
@@ -252,17 +370,12 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 		logStep("Downloading Chrome for Testing v%s…", ver)
 	}
 
-	client := i.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("create download request: %w", err)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := i.downloadClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download Chrome archive: %w", err)
 	}
@@ -270,6 +383,9 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("download Chrome archive: HTTP %d", resp.StatusCode)
+	}
+	if resp.ContentLength > maxArchiveBytes {
+		return "", fmt.Errorf("Chrome archive is too large: %d bytes (limit %d)", resp.ContentLength, maxArchiveBytes)
 	}
 
 	// Create temp file for the zip archive
@@ -286,6 +402,9 @@ func (i *Installer) Install(ctx context.Context, targetDir string, progress func
 	for {
 		n, rerr := resp.Body.Read(buf)
 		if n > 0 {
+			if done+int64(n) > maxArchiveBytes {
+				return "", fmt.Errorf("Chrome archive is too large: more than %d bytes", maxArchiveBytes)
+			}
 			if _, werr := tmpZip.Write(buf[:n]); werr != nil {
 				return "", fmt.Errorf("write temp archive: %w", werr)
 			}
@@ -380,6 +499,9 @@ func extractZip(ctx context.Context, zipPath, destDir string) error {
 	defer r.Close()
 
 	destDir = filepath.Clean(destDir)
+	// The compressed size is bounded by the download; this bounds what it may
+	// expand to, so a small archive cannot fill the disk.
+	remaining := maxUnpackedBytes
 	for _, f := range r.File {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -413,7 +535,7 @@ func extractZip(ctx context.Context, zipPath, destDir string) error {
 			}
 			continue
 		}
-		if err := extractFile(f, targetPath); err != nil {
+		if err := extractFile(f, targetPath, &remaining); err != nil {
 			return err
 		}
 	}
@@ -467,7 +589,9 @@ func extractSymlink(f *zip.File, destDir, targetPath string) error {
 	return os.Symlink(link, targetPath)
 }
 
-func extractFile(f *zip.File, targetPath string) error {
+// extractFile writes one member, drawing its size from *remaining (the bytes
+// the whole archive may still unpack to).
+func extractFile(f *zip.File, targetPath string, remaining *int64) error {
 	rc, err := f.Open()
 	if err != nil {
 		return err
@@ -483,7 +607,11 @@ func extractFile(f *zip.File, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(out, rc)
+	n, err := io.Copy(out, io.LimitReader(rc, *remaining+1))
+	if err == nil && n > *remaining {
+		err = fmt.Errorf("archive unpacks to more than %d bytes", maxUnpackedBytes)
+	}
+	*remaining -= n
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
