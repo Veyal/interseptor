@@ -2960,6 +2960,8 @@ wireSelectionDecode($('#resView'),$('#resDecode'),{onDecoder:openDecoder,getCont
 export function flowURL(f){return flowUrl(f);}
 export function copyURL(f){copyText(flowURL(f),'URL copied');}
 function shq(s){return "'"+String(s).replace(/'/g,"'\\''")+"'";}
+// shellWord leaves a plain word bare and single-quotes anything else: an HTTP method is any token, and a captured "X`id`" pasted unquoted would run in the operator's shell.
+function shellWord(s){return /^[A-Za-z0-9_-]+$/.test(String(s))?String(s):shq(s);}
 export async function copyFlowRaw(f,side='req'){
   try{
     const raw=await api('/api/flows/'+f.id+'/raw?side='+side);
@@ -2985,7 +2987,7 @@ export async function copyCurl(f){
     const d=await api('/api/flows/'+f.id);
     const parts=[`curl -x http://${state.proxyAddr}`];
     if(f.scheme==='https')parts.push('--cacert interseptor-ca.crt');
-    parts.push('-X '+f.method);
+    parts.push('-X '+shellWord(f.method));
     const headers=d.reqHeaders||{};
     Object.keys(headers).sort().forEach(k=>{if(k.toLowerCase()==='host')return;(headers[k]||[]).forEach(v=>parts.push('-H '+shq(k+': '+v)));});
     if(f.reqLen>0){const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';if(body)parts.push('--data-raw '+shq(body));}

@@ -1286,8 +1286,13 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
     if(total<threshold){active=false;return null;}
     active=true;
     const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0,h=rowH();
-    const start=Math.max(0,Math.floor(scrollTop/h)-buffer);
-    const end=Math.min(total,start+Math.ceil(viewH/h)+2*buffer);
+    const visible=Math.ceil(viewH/h);
+    // Clamp to the last full viewport: when the list shrinks under a deep scroll
+    // position (bulk delete, a reload with fewer rows) the window would start past
+    // the end and mount no rows under a top pad taller than the whole list; the
+    // list was blank while the browser clamped scrollTop one viewport per frame.
+    const start=Math.max(0,Math.min(Math.floor(scrollTop/h)-buffer,Math.max(0,total-visible)));
+    const end=Math.min(total,start+visible+2*buffer);
     return {start,end,topPad:start*h,bottomPad:(total-end)*h};
   }
   return {computeWindow,isActive:()=>active};
@@ -1492,18 +1497,49 @@ export const FLAG_DISCOVERY=4096;
 export const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light
 export const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)
 
+// Indentation grows with nesting depth, so a small hostile body can reformat
+// into something enormous: 12 KB of "[[[[…" is 72 MB once indented, and a few
+// KB of nested tags is megabytes. A reformat past this size is refused and the
+// body is shown as received.
+const beautifyMaxOut=len=>Math.max(RENDER_CAP,16*len);
+// jsonIndentCost estimates the whitespace JSON.stringify(v,null,2) adds to
+// compact JSON text: one newline plus the indent per value and per closing
+// bracket (the space after each key's colon is not counted). It stops counting
+// once past `limit`.
+function jsonIndentCost(t,limit){
+  let depth=0,cost=0,inStr=false;
+  for(let i=0;i<t.length;i++){
+    const c=t.charCodeAt(i);
+    if(inStr){if(c===92)i++;else if(c===34)inStr=false;continue;}
+    if(c===34){inStr=true;continue;}
+    if(c===123||c===91)depth++;
+    else if(c===125||c===93)depth=Math.max(0,depth-1);
+    else if(c!==44)continue;
+    cost+=2*depth+1;
+    if(cost>limit)return cost;
+  }
+  return cost;
+}
 export function beautifyBody(body){
   const t=body.replace(/^﻿/,'').trim();
-  if(t&&(t[0]==='{'||t[0]==='[')){try{return JSON.stringify(JSON.parse(t),null,2);}catch(e){}}
+  const maxOut=beautifyMaxOut(t.length);
+  if(t&&(t[0]==='{'||t[0]==='[')){
+    if(t.length+jsonIndentCost(t,maxOut)>maxOut)return body;
+    try{return JSON.stringify(JSON.parse(t),null,2);}catch(e){}
+  }
   if(t&&t[0]==='<'){try{
-    let depth=0,out='';
-    t.replace(/>\s*</g,'>\n<').split('\n').forEach(ln=>{
-      ln=ln.trim();if(!ln)return;
+    let depth=0,tooBig=false;const out=[];let size=0;
+    for(let ln of t.replace(/>\s*</g,'>\n<').split('\n')){
+      ln=ln.trim();if(!ln)continue;
       if(/^<\//.test(ln))depth=Math.max(0,depth-1);
-      out+='  '.repeat(depth)+ln+'\n';
-      if(/^<[^!?\/][^>]*[^\/]>$/.test(ln)&&!/^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b/i.test(ln))depth++;
-    });
-    return out.replace(/\s+$/,'');
+      size+=2*depth+ln.length+1;
+      if(size>maxOut){tooBig=true;break;}
+      out.push('  '.repeat(depth)+ln);
+      // An opening tag indents what follows; a one-letter name (<p>, <a>, <b>) counts too.
+      if(/^<[^!?\/>](?:[^>]*[^\/>])?>$/.test(ln)&&!/^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b/i.test(ln))depth++;
+    }
+    if(tooBig)return body;
+    return out.join('\n');
   }catch(e){}}
   return body;
 }
@@ -1585,31 +1621,120 @@ export function highlightBodyText(body,mime){return highlightBody(String(body),t
 // Color a (pretty-printed) JSON body: keys, string / number / literal values.
 // Escapes first, then tokenizes the escaped text, so the result is safe for
 // innerHTML even though the body is arbitrary captured bytes.
+// A quote that never closes used to be retried from every later quote, each try
+// scanning to the end again: 256 KB of \" took about 17 s. The third alternative
+// takes such an unterminated run in one step; literals and numbers inside it are
+// still colored, so the output is unchanged.
+const JSON_TOKEN_RE=/("(?:\\.|[^"\\])*")(\s*:)?|("(?:\\.|[^"\\])*)|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+const JSON_ATOM_RE=/\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+const jsonAtomHTML=(m,lit,num)=>lit!==undefined?'<span class="js-lit">'+lit+'</span>':'<span class="js-num">'+num+'</span>';
 export function highlightJSON(s){
-  return esc(s).replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,(m,str,colon,lit,num)=>{
+  return esc(s).replace(JSON_TOKEN_RE,(m,str,colon,open,lit,num)=>{
     if(str!==undefined)return colon!=null?'<span class="js-key">'+str+'</span>'+colon:'<span class="js-str">'+str+'</span>';
-    if(lit!==undefined)return '<span class="js-lit">'+lit+'</span>';
-    return '<span class="js-num">'+num+'</span>';
+    if(open!==undefined)return open.replace(JSON_ATOM_RE,jsonAtomHTML);
+    return jsonAtomHTML(m,lit,num);
   });
 }
 // Color HTML / XML markup (tags, attributes, comments).
+// One pass over the raw text, escaping each piece as it is emitted. The previous
+// chain of regexes over already-escaped text looked for &quot; (esc() keeps
+// quotes), so a quoted value was colored only up to its first g, t, & or ;, and
+// it rescanned from every position: a tag holding 256 KB of spaces took ~30 s.
+const MARKUP_NAME_RE=/[\w:.-]+/y;
+// A whitespace run and a bare word are each taken whole, so no position is rescanned.
+const MARKUP_ATTR_RE=/(\s+)([\w:.-]+)(\s*=\s*)("[^"]*"|'[^']*'|[^\s>]+)|\s+|\S+/g;
+const hlSpan=(cls,text)=>'<span class="'+cls+'">'+esc(text)+'</span>';
 export function highlightMarkup(s){
-  const e=esc(s);
-  return e.replace(/&lt;!--[\s\S]*?--&gt;/g,m=>'<span class="hl-cmt">'+m+'</span>')
-    .replace(/&lt;(\/?)([\w:.-]+)([\s\S]*?)&gt;/g,(m,slash,tag,rest)=>{
-      const attrs=rest.replace(/(\s+)([\w:.-]+)(\s*=\s*)(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;|[^\s&gt;]+)/g,
-        '$1<span class="hl-attr">$2</span>$3<span class="hl-str">$4</span>');
-      return '&lt;'+slash+'<span class="hl-tag">'+tag+'</span>'+attrs+'&gt;';
-    });
+  s=String(s);
+  let out='',last=0,noCommentEnd=false;
+  let i=s.indexOf('<');
+  while(i>=0){
+    if(!noCommentEnd&&s.startsWith('<!--',i)){
+      const end=s.indexOf('-->',i+4);
+      if(end>=0){
+        out+=esc(s.slice(last,i))+hlSpan('hl-cmt',s.slice(i,end+3));
+        last=end+3;i=s.indexOf('<',last);continue;
+      }
+      noCommentEnd=true; // no later comment can close either
+    }
+    const slash=s.charCodeAt(i+1)===47?1:0;
+    MARKUP_NAME_RE.lastIndex=i+1+slash;
+    const name=MARKUP_NAME_RE.exec(s);
+    if(!name){i=s.indexOf('<',i+1);continue;}
+    const nameEnd=MARKUP_NAME_RE.lastIndex;
+    const close=s.indexOf('>',nameEnd);
+    if(close<0)break; // nothing after this point can end a tag
+    const attrs=s.slice(nameEnd,close).replace(MARKUP_ATTR_RE,(m,ws,attr,eq,val)=>
+      attr===undefined?esc(m):esc(ws)+hlSpan('hl-attr',attr)+esc(eq)+hlSpan('hl-str',val));
+    out+=esc(s.slice(last,i))+'&lt;'+(slash?'/':'')+hlSpan('hl-tag',name[0])+attrs+'&gt;';
+    last=close+1;i=s.indexOf('<',last);
+  }
+  return out+esc(s.slice(last));
 }
 // Color CSS (comments, at-rules, selectors, properties, values).
+// The text is cut into comments, at-keywords, the delimiters { } ; and the runs
+// between them; a run that ends at "{" is a selector, any other run is a
+// declaration. The previous chain of regexes ran each pass over the markup the
+// pass before had inserted, so the selector pass matched the "span>" of a
+// closing tag ("</<span class=…>span> h1 </span>{") and printed tag debris
+// after every at-rule or comment, and its nested quantifiers backtracked
+// without bound: 1.6 KB of spaces took 0.7 s and 32 KB did not finish in minutes.
+const CSS_AT_RE=/[\w-]+/y;
+const CSS_VALUE_RE=/^(\s*)("[^"\n]*"|'[^'\n]*'|#[0-9a-fA-F]{3,8}(?![\w-])|\d+(?:\.\d+)?(?:px|em|rem|%|s|ms|deg|vh|vw|ch|ex)?(?![\w.%-]))/;
+function cssTokens(s){
+  const toks=[],n=s.length;
+  let i=0,from=0,noCommentEnd=false;
+  const text=end=>{if(end>from)toks.push(['text',s.slice(from,end)]);};
+  while(i<n){
+    const c=s.charCodeAt(i);
+    if(c===47&&s.charCodeAt(i+1)===42&&!noCommentEnd){ // /*
+      const end=s.indexOf('*/',i+2);
+      if(end>=0){text(i);toks.push(['cmt',s.slice(i,end+2)]);i=from=end+2;continue;}
+      noCommentEnd=true; // no later comment can close either
+    }else if(c===64){ // @
+      CSS_AT_RE.lastIndex=i+1;
+      if(CSS_AT_RE.test(s)){text(i);toks.push(['at',s.slice(i,CSS_AT_RE.lastIndex)]);i=from=CSS_AT_RE.lastIndex;continue;}
+    }else if(c===123||c===125||c===59){ // { } ;
+      text(i);toks.push(['delim',s[i]]);i=from=i+1;continue;
+    }
+    i++;
+  }
+  text(n);
+  return toks;
+}
+// cssTrimmedSpan wraps the text without its surrounding whitespace.
+function cssTrimmedSpan(cls,v){
+  const t=v.trim();
+  if(!t)return esc(v);
+  const lead=v.length-v.trimStart().length;
+  return esc(v.slice(0,lead))+hlSpan(cls,t)+esc(v.slice(lead+t.length));
+}
+function cssDeclaration(v){
+  const c=v.indexOf(':'),head=v.slice(0,c),tail=v.slice(c+1);
+  const m=CSS_VALUE_RE.exec(tail);
+  return (/^[\w-]+$/.test(head.trim())?cssTrimmedSpan('hl-prop',head):esc(head))+':'
+    +(m?esc(m[1])+hlSpan('hl-val',m[2])+esc(tail.slice(m[0].length)):esc(tail));
+}
 export function highlightCSS(s){
-  const e=esc(s);
-  return e.replace(/\/\*[\s\S]*?\*\//g,m=>'<span class="hl-cmt">'+m+'</span>')
-    .replace(/@[\w-]+/g,m=>'<span class="hl-at">'+m+'</span>')
-    .replace(/([\w#.: \[\]()>+~*,\\-]+)(\s*\{)/g,'<span class="hl-sel">$1</span>$2')
-    .replace(/([\w-]+)(\s*:)/g,'<span class="hl-prop">$1</span>$2')
-    .replace(/(:\s*)(&quot;[^&]*?&quot;|#[0-9a-fA-F]{3,8}|\b\d+(?:\.\d+)?(?:px|em|rem|%|s|ms|deg|vh|vw|ch|ex)?\b)/g,'$1<span class="hl-val">$2</span>');
+  const toks=cssTokens(String(s));
+  let out='',k=0;
+  while(k<toks.length){
+    let end=k;
+    while(end<toks.length&&toks[end][0]!=='delim')end++;
+    const selector=end<toks.length&&toks[end][1]==='{';
+    let declared=false;
+    for(;k<end;k++){
+      const type=toks[k][0],v=toks[k][1];
+      if(type==='cmt')out+=hlSpan('hl-cmt',v);
+      else if(type==='at')out+=hlSpan('hl-at',v);
+      else if(selector)out+=cssTrimmedSpan('hl-sel',v);
+      else if(!declared&&v.includes(':')){declared=true;out+=cssDeclaration(v);}
+      else out+=esc(v);
+    }
+    if(end<toks.length)out+=esc(toks[end][1]);
+    k=end+1;
+  }
+  return out;
 }
 export function hlStartLine(ln){
   let m=ln.match(/^(HTTP\/[\d.]+)\s+(\d{3})(.*)$/);            // response status line

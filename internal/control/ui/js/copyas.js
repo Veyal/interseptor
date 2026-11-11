@@ -95,12 +95,16 @@ const method = (f) => (f.method || 'GET').toUpperCase();
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`; // POSIX single-quote
 const psq = (s) => `'${String(s).replace(/'/g, "''")}'`; // PowerShell single-quote
 const jq = (s) => JSON.stringify(String(s));
+// A method is any RFC 9110 token, and a token may hold ` $ & | ' ! * and more: a
+// captured "X`id`" pasted unquoted would run in the operator's shell. Plain
+// methods stay bare so the usual command reads as before.
+const shellMethod = (f, q) => (/^[A-Za-z0-9_-]+$/.test(method(f)) ? method(f) : q(method(f)));
 const TRUNC = 'body truncated at 1 MB';
 
 function curl(f, redact, ps) {
   const q = ps ? psq : sq;
   const bare = method(f) === 'GET' && !hasBody(f);
-  const parts = [`${ps ? 'curl.exe' : 'curl'} ${bare ? '' : `-X ${method(f)} `}${q(flowURL(f))}`];
+  const parts = [`${ps ? 'curl.exe' : 'curl'} ${bare ? '' : `-X ${shellMethod(f, q)} `}${q(flowURL(f))}`];
   for (const [k, v] of reqPairs(f, redact)) parts.push(`-H ${q(`${k}: ${v}`)}`);
   if (hasBody(f)) parts.push(`--data-raw ${q(f.reqBody)}`);
   let out = parts.join(ps ? ' `\n  ' : ' \\\n  ');
@@ -130,14 +134,21 @@ function goSnippet(f, redact) {
   const lines = ['package main', '', 'import (', '\t"fmt"', '\t"io"', '\t"net/http"', ...(body ? ['\t"strings"'] : []), ')', '', 'func main() {',
     `\treq, err := http.NewRequest(${jq(method(f))}, ${jq(flowURL(f))}, ${body ? `strings.NewReader(${jq(f.reqBody)})` : 'nil'})`,
     '\tif err != nil {', '\t\tpanic(err)', '\t}'];
-  for (const [k, v] of reqPairs(f, redact)) lines.push(`\treq.Header.Set(${jq(k)}, ${jq(v)})`);
+  // Set replaces, so a repeated header (two Cookie or X-Forwarded-For lines) kept
+  // only its last value; net/http canonicalizes names, so compare without case.
+  const seen = new Set();
+  for (const [k, v] of reqPairs(f, redact)) {
+    const name = k.toLowerCase();
+    lines.push(`\treq.Header.${seen.has(name) ? 'Add' : 'Set'}(${jq(k)}, ${jq(v)})`);
+    seen.add(name);
+  }
   lines.push('\tresp, err := http.DefaultClient.Do(req)', '\tif err != nil {', '\t\tpanic(err)', '\t}', '\tdefer resp.Body.Close()',
     '\tdata, _ := io.ReadAll(resp.Body)', '\tfmt.Println(resp.StatusCode, string(data))', '}');
   if (f.reqBodyTruncated) lines.push(`// ${TRUNC}`);
   return lines.join('\n');
 }
 function httpie(f, redact) {
-  const parts = [`http ${method(f)} ${sq(flowURL(f))}`];
+  const parts = [`http ${shellMethod(f, sq)} ${sq(flowURL(f))}`];
   for (const [k, v] of reqPairs(f, redact)) parts.push(sq(`${k}:${v}`));
   if (hasBody(f)) parts.push(`--raw ${sq(f.reqBody)}`);
   let out = parts.join(' \\\n  ');
@@ -146,7 +157,12 @@ function httpie(f, redact) {
 }
 function rawHTTP(f, redact) {
   const headers = headerPairs(redact ? redactHeaders(f.reqHeaders) : f.reqHeaders, { skip: ['host'] });
-  let out = `${method(f)} ${f.path || '/'} ${f.httpVersion || 'HTTP/1.1'}\r\nHost: ${urlHost(f.host)}${f.port && ![80, 443].includes(f.port) ? ':' + f.port : ''}\r\n`;
+  // The default port depends on the scheme: https on :80 (or http on :443) must
+  // keep its port, or the replayed Host names a different origin. A flow without
+  // a scheme keeps the old rule (both well-known ports are dropped).
+  const port = Number(f.port) || 0;
+  const def = f.scheme === 'https' ? port === 443 : f.scheme === 'http' ? port === 80 : port === 80 || port === 443;
+  let out = `${method(f)} ${f.path || '/'} ${f.httpVersion || 'HTTP/1.1'}\r\nHost: ${urlHost(f.host)}${port && !def ? ':' + port : ''}\r\n`;
   for (const [k, v] of headers) out += `${k}: ${v}\r\n`;
   out += '\r\n' + (hasBody(f) ? f.reqBody : '');
   return out;

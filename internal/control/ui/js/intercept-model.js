@@ -308,7 +308,9 @@ export function createPrettyBridge({ beautify }) {
 
 // squashJSONish drops whitespace outside double-quoted strings, so two texts that
 // differ only in indentation compare equal.
-const squashJSONish = s => s.replace(/"(?:\\.|[^"\\])*"|\s+/g, m => (m[0] === '"' ? m : ''));
+// A quote that never closes is taken as one run (its whitespace still dropped):
+// retrying from every later quote, each try scanning to the end, was quadratic.
+const squashJSONish = s => s.replace(/("(?:\\.|[^"\\])*")|("(?:\\.|[^"\\])*)|\s+/g, (m, str, open) => (str !== undefined ? str : open !== undefined ? open.replace(/\s+/g, '') : ''));
 // losslessBeautify returns beautify(body) only when the reformat changes nothing
 // but whitespace; otherwise (big integers, duplicate or reordered keys, 1.0,
 // \u escapes, a throwing formatter) it returns body unchanged. Pretty edits are
