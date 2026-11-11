@@ -185,6 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Delete closes the focused Repeater or Intruder tab.** It does nothing while the tab's Close button is disabled (an Intruder run in progress). (`internal/control/ui/js/core.js`.)
 - **Finding status and evidence-button attributes use the attribute escaper.** A source scan test now fails when the text escaper is used inside a quoted attribute. (`internal/control/ui/js/findings.js`.)
 - **Intruder marks a result whose grep was cut short.** Grep inspects the first 8 MiB of a response; a row over that limit now carries a chip saying so, since "no match" on such a row only covers the part that was read. (`internal/control/ui/js/intruder.js`, `internal/control/ui/panel-tools.css`.)
+- **Three skills record what this review round learned.** `sqlite-uri-paths` (never concatenate a path into a `file:` DSN), `state-then-broadcast-tests` (a test that asserts on an event waits for it) and `roles-that-own-children` (what a listbox option, a tablist and `main` may contain). (`.claude/skills/`.)
 
 ### Added
 
