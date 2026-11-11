@@ -915,10 +915,16 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	original := r.URL.Query().Get("variant") == "original"
 	var raw []byte
 	var err error
-	if r.URL.Query().Get("side") == "res" {
+	// An unknown side must not fall through to the request: side=response used
+	// to answer 200 with the request, which a caller cannot tell from the truth.
+	switch side := r.URL.Query().Get("side"); side {
+	case "res":
 		raw, err = h.rawResponseVariantResult(f, original)
-	} else {
+	case "", "req":
 		raw, err = h.rawRequestVariantResult(f, original)
+	default:
+		httpErr(w, http.StatusBadRequest, "side must be req or res")
+		return
 	}
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
