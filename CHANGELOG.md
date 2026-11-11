@@ -235,6 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Bulk tagging is set-based.** `POST /api/flows/tags` tags or untags the selection with one statement per 400 flows instead of one per flow (10,000 flows: 59 ms to 18 ms), announces a change only when a flow's tags actually changed, and reports how many did as `changed`. (`internal/store/tags.go`, `internal/control/control.go`.)
 - **History search for a common term walks the full-text index newest first** and stops at a full page instead of listing every match first: 178 ms to 39 ms for a term present in all of 500,000 flows, 501 ms to 52 ms for a later page; rare terms are unchanged. (`internal/store/flows_fts.go`, `internal/store/flows_list.go`.)
 - **Host-filtered TLS diagnosis resolves the matching hosts first** and reads only their flows, so asking about a host with no intercepted traffic costs under 2 ms instead of 250–390 ms on 500,000 flows. No index was added. (`internal/store/tlsstats.go`.)
+- **`POST /api/flows/tags` reports how many flows changed.** The response carries `changed`, so a bulk tag that matched nothing is distinguishable from one that applied; the route catalogue says so. (`internal/control/api.go`.)
 
 ### Added
 

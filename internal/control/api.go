@@ -246,7 +246,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/flows/diff", "Diff two flows' responses (?a=&b=, optional maxBytes, format=text): status, length, headers, body"},
 	{"PUT", "/api/flows/{id}/note", "Set or clear a flow note. Body: {note} — \"\" clears it"},
 	{"PUT", "/api/flows/{id}/tags", "Replace a flow's tags. Body: {tags: []}"},
-	{"POST", "/api/flows/tags", "Add or remove tags on many flows. Body: {flowIds: [], add?: [], remove?: []} — at least one of add/remove required. More than 32 flows are announced as one payload-less flow.update event instead of one per flow"},
+	{"POST", "/api/flows/tags", "Add or remove tags on many flows. Body: {flowIds: [], add?: [], remove?: []} — at least one of add/remove required. Response: {changed} — the number of flows whose tags actually changed; more than 32 flows are announced as one payload-less flow.update event instead of one per flow"},
 	{"GET", "/api/tags", "List tags in use with flow counts and colors"},
 	{"PUT", "/api/tags/{tag}/color", "Set or clear a tag's display color. Body: {color} — hex like #4aa8ff, or \"\" to clear"},
 	{"GET", "/api/endpoints", "Unique endpoints map (searchScope: path|headers|body|all)"},
