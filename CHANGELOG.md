@@ -124,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The endpoints cache no longer keeps a result computed before an invalidation.** An aggregation that started before an import or delete could store its stale result afterwards. (`internal/control/endpoints_cache.go`.)
 - **Unknown API paths answer a JSON 404, and static paths reject non-GET methods.** Unknown `/api/…` paths returned a `text/plain` 404, and a POST or DELETE to an asset path was served like a GET; it is now a 405 with `Allow: GET, HEAD`. (`internal/control/routes_register.go`.)
 - **`GET /api/flows/prune/pending` no longer returns raw storage errors.** (`internal/control/retention.go`.)
+- **Activity rows are masked where they are stored.** The MCP server masks credentials in what it reports, but `POST /api/activity` also takes rows from an out-of-process reporter that may be an older binary. Summary, result and intent are now masked at the single place rows are stored. (`internal/control/activity.go`.)
 
 ### Changed
 

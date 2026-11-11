@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -13,6 +14,11 @@ import (
 // feed survives restarts; callers must broadcast only after persistence succeeds.
 func (h *metaAPI) recordActivity(a store.Activity) (store.Activity, error) {
 	a.TS = time.Now().UnixMilli()
+	// Every Activity row passes through here, whichever transport reported it.
+	// The feed is copied into report appendices, so credentials are masked at
+	// rest; redact.Text is idempotent, so a row the reporter already masked is
+	// unchanged.
+	a.Summary, a.Result, a.Intent = redact.Text(a.Summary), redact.Text(a.Result), redact.Text(a.Intent)
 	_, err := h.st.InsertActivity(&a)
 	return a, err
 }
