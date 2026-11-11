@@ -265,7 +265,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/activity", "AI/MCP activity feed"},
 	{"POST", "/api/activity", "MCP-only activity transport; external HTTP requests are rejected."},
 	{"DELETE", "/api/activity", "Clear activity feed"},
-	{"GET", "/api/project", "Active project + switch targets. Each project includes category, createdAt, and openedAt (unix seconds). category is a display folder such as Clients/Acme and does not share data between projects."},
+	{"GET", "/api/project", "Active project + switch targets. Each project includes category, createdAt, and openedAt (unix seconds). category is a display folder such as Clients/Acme and does not share data between projects. Carries startupNotice when the server opened a fallback project because the remembered folder was unavailable"},
 	{"POST", "/api/project/folder", "Set or clear a project's display folder. Body: {target} or {path}, plus {category}. category is a slash-separated label of at most 3 segments; empty clears it."},
 	{"POST", "/api/project/switch", "Switch to another named project (re-exec). Body: {target} (plain project name) or {path} (absolute external folder) — mutually exclusive; target rejects path-like strings"},
 	{"GET", "/api/oob/state", "OOB catcher state + interactions"},

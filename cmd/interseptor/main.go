@@ -269,6 +269,7 @@ func run() error {
 	hub.WireIntruderRunSink() // persist finished Intruder runs for evidence renders
 	hub.ProjectName = projectName
 	hub.ProjectDir = dir
+	hub.StartupNotice = sel.notice
 	_ = os.MkdirAll(filepath.Join(dir, "codecs"), 0o755)
 	hub.GlobalDir = globalDir
 	recoverSystemProxy(hub) // undo an OS proxy left on by a crashed previous run

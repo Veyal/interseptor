@@ -131,6 +131,11 @@ type Hub struct {
 	// surfaced at GET /api/version so the UI can show which project is loaded.
 	ProjectName string
 	ProjectDir  string
+	// StartupNotice explains a start that did not open what the operator last
+	// had open (the remembered external project folder was unavailable and a
+	// fallback project was opened instead). Empty on a normal start. It is
+	// returned by GET /api/project so the UI can say why the project changed.
+	StartupNotice string
 	// GlobalDir is ~/.interseptor (named projects live in GlobalDir/projects).
 	// SwitchProject re-launches Interseptor into another project; nil if unsupported.
 	GlobalDir     string

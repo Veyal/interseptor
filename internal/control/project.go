@@ -499,12 +499,16 @@ func scopeRuleIdentity(r store.ScopeRule) string {
 // apiProject reports the active project and the projects available to switch to.
 func (h *projectAPI) apiProject(w http.ResponseWriter, r *http.Request) {
 	h.rememberCurrentProjectOpen()
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"current":   h.ProjectName,
 		"dir":       h.ProjectDir,
 		"projects":  h.projectEntries(),
 		"canSwitch": h.SwitchProject != nil,
-	})
+	}
+	if h.StartupNotice != "" {
+		out["startupNotice"] = h.StartupNotice
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // projectEntry is one row in the switcher: a named project (Path empty,
