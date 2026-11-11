@@ -16,7 +16,7 @@ func TestSuppressedEndpointReportsDroppedTraffic(t *testing.T) {
 	h.SetSuppressedProvider(func(window time.Duration) proxy.SuppressedReport {
 		return proxy.SuppressedReport{
 			WindowSec: int(window.Seconds()), Total: 3,
-			Hosts: []proxy.SuppressedHostStat{{Host: "pos.example", Reason: proxy.SuppressedOutOfScope, Count: 3, NewestTS: time.Now().UnixMilli()}},
+			Hosts:   []proxy.SuppressedHostStat{{Host: "pos.example", Reason: proxy.SuppressedOutOfScope, Count: 3, NewestTS: time.Now().UnixMilli()}},
 			Samples: []proxy.SuppressedRequest{{Host: "pos.example", Method: "GET", Path: "/screen", Reason: proxy.SuppressedOutOfScope}},
 		}
 	})

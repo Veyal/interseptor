@@ -124,7 +124,7 @@ func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
 }
 
 func TestUICheckToggleOwnsListReconciliation(t *testing.T) {
-	}
+}
 
 func TestUILoginMacroTestDoesNotMutateLiveSession(t *testing.T) {
 	settings := readUIAsset(t, "js/settings.js")
@@ -397,7 +397,7 @@ func TestUIBulkScopeReportsPartialFailures(t *testing.T) {
 }
 
 func TestUICheckToggleWaitsForAcknowledgementAndRollsBack(t *testing.T) {
-	}
+}
 
 func TestUIIntruderHistoryRestoresTheWholeAttackConfiguration(t *testing.T) {
 	requireUIContracts(t, "js/tools.js",

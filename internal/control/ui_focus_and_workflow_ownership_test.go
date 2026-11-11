@@ -17,7 +17,7 @@ func TestUIHighFrequencyListsPreserveKeyboardFocus(t *testing.T) {
 		"const focusedHeld=document.activeElement?.closest?.('#heldList .icpt-item[data-id][data-side]')",
 		"target?.focus({preventScroll:true})",
 	)
-		requireUIContracts(t, "js/tools.js",
+	requireUIContracts(t, "js/tools.js",
 		"const focusedHistoryID=focusedHistory?.dataset.id||''",
 		"if(restoreHistoryFocus)",
 		"data-hid=\"${h.id}\"",

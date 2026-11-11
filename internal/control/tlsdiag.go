@@ -38,12 +38,12 @@ type tlsFailureSummary struct {
 
 // tlsDiagnosisReport helps operators tell pinning/CA rejection from silent proxy bypass.
 type tlsDiagnosisReport struct {
-	Verdict         string              `json:"verdict"`
-	Detail          string              `json:"detail"`
-	Fix             string              `json:"fix,omitempty"`
-	CanBypass       bool                `json:"canBypass"` // always false — Interseptor is a proxy, not a pin bypass tool
-	BypassHints     []string            `json:"bypassHints,omitempty"`
-	TLSFailureCount int64               `json:"tlsFailureCount"`
+	Verdict         string   `json:"verdict"`
+	Detail          string   `json:"detail"`
+	Fix             string   `json:"fix,omitempty"`
+	CanBypass       bool     `json:"canBypass"` // always false — Interseptor is a proxy, not a pin bypass tool
+	BypassHints     []string `json:"bypassHints,omitempty"`
+	TLSFailureCount int64    `json:"tlsFailureCount"`
 	// RecentFailureCount counts rejections inside tlsFailureWindow; a stale
 	// rejection must not keep the checklist red after interception started
 	// working. NewestFailureAge is human-readable ("3h12m") and empty when there
@@ -51,10 +51,10 @@ type tlsDiagnosisReport struct {
 	RecentFailureCount int64               `json:"recentFailureCount"`
 	NewestFailureTS    int64               `json:"newestFailureTs,omitempty"`
 	NewestFailureAge   string              `json:"newestFailureAge,omitempty"`
-	HTTPSOkCount    int64               `json:"httpsOkCount"`
-	TotalFlows      int64               `json:"totalFlows"`
-	RecentFailures  []tlsFailureSummary `json:"recentFailures,omitempty"`
-	HostsBlocked    []string            `json:"hostsBlocked,omitempty"`
+	HTTPSOkCount       int64               `json:"httpsOkCount"`
+	TotalFlows         int64               `json:"totalFlows"`
+	RecentFailures     []tlsFailureSummary `json:"recentFailures,omitempty"`
+	HostsBlocked       []string            `json:"hostsBlocked,omitempty"`
 }
 
 // tlsFailureWindow is how recent a rejection must be to count as current. A

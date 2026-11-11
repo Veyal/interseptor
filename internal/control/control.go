@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/bind"
-	"github.com/Veyal/interseptor/internal/proxy"
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/intruder"
@@ -35,6 +34,7 @@ import (
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/oob"
 	"github.com/Veyal/interseptor/internal/proc"
+	"github.com/Veyal/interseptor/internal/proxy"
 	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/scriptworker"
 	"github.com/Veyal/interseptor/internal/sender"

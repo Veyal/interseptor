@@ -117,8 +117,8 @@ func (s *Store) ListPlaybookCoverage(f PlaybookCoverageFilter) ([]PlaybookCovera
 	var out []PlaybookCoverage
 	for rows.Next() {
 		var (
-			c    PlaybookCoverage
-			ids  string
+			c   PlaybookCoverage
+			ids string
 		)
 		if err := rows.Scan(&c.PlaybookID, &c.Host, &c.Endpoint, &c.Param, &c.Status, &ids, &c.Note, &c.TS); err != nil {
 			return nil, err
@@ -131,12 +131,12 @@ func (s *Store) ListPlaybookCoverage(f PlaybookCoverageFilter) ([]PlaybookCovera
 
 // PlaybookCoverageCounts is one playbook's rollup: how many surfaces at each status.
 type PlaybookCoverageCounts struct {
-	PlaybookID  string `json:"playbookId"`
-	Considered  int64  `json:"considered"`
-	Run         int64  `json:"run"`
-	Found       int64  `json:"found"`
-	Dismissed   int64  `json:"dismissed"`
-	LastTS      int64  `json:"lastTs"`
+	PlaybookID string `json:"playbookId"`
+	Considered int64  `json:"considered"`
+	Run        int64  `json:"run"`
+	Found      int64  `json:"found"`
+	Dismissed  int64  `json:"dismissed"`
+	LastTS     int64  `json:"lastTs"`
 }
 
 // CoverageSummary rolls coverage up per playbook.

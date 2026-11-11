@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement.
+- **gofmt is clean across the tree.** Six files that had drifted are reformatted; `GOFMT_ALL=1 make fmt-check` passes. No behaviour change.
 
 ### Changed
 
