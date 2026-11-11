@@ -37,18 +37,23 @@ func (s *Server) knownProject() (name, dir string, ok bool) {
 
 // activeProject fetches the active project from the control plane. Used only by
 // the destructive guard, when a caller pins a project: ordinary results learn it
-// from the header of the response they were already making.
-func (s *Server) activeProject() (name, dir string, ok bool) {
+// from the header of the response they were already making. It does not fall
+// back to the cached name: the cache is what an earlier response said, and the
+// pin exists precisely because the project can change between two calls.
+func (s *Server) activeProject() (name, dir string, err error) {
 	raw, err := s.apiGet("/api/project")
 	if err != nil {
-		return s.knownProject()
+		return "", "", err
 	}
 	var meta projectMeta
-	if json.Unmarshal([]byte(raw), &meta) != nil || meta.Current == "" {
-		return s.knownProject()
+	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+		return "", "", fmt.Errorf("unreadable /api/project reply: %w", err)
+	}
+	if meta.Current == "" {
+		return "", "", fmt.Errorf("the control API names no active project")
 	}
 	s.noteProject(meta.Current, meta.Dir)
-	return meta.Current, meta.Dir, true
+	return meta.Current, meta.Dir, nil
 }
 
 // projectFooter is appended to every successful tool result.
@@ -64,7 +69,9 @@ func (s *Server) projectFooter() string {
 }
 
 // destructiveTools are refused when the caller pins a different project than the
-// one that is active, so a switch cannot silently redirect a delete.
+// one that is active, so a switch cannot silently redirect a delete or a
+// whole-record replacement. set_authz is pinned only in mode=replace (see
+// pinApplies): its default merge mode keeps every other identity.
 var destructiveTools = map[string]bool{
 	"prune_history":            true,
 	"prune_undo":               true,
@@ -73,12 +80,30 @@ var destructiveTools = map[string]bool{
 	"delete_codec":             true,
 	"delete_rule":              true,
 	"import_full_project":      true,
+	"set_notes":                true, // replaces the whole notebook
+	"set_engagement_brief":     true, // replaces the brief; omitted fields are cleared
+	"remove_authz_identity":    true,
+	"set_authz":                true, // mode=replace only
+}
+
+// pinApplies reports whether this call is one the project pin guards.
+func pinApplies(toolName string, args map[string]any) bool {
+	if !destructiveTools[toolName] {
+		return false
+	}
+	if toolName == "set_authz" {
+		return strings.EqualFold(strings.TrimSpace(argStr(args, "mode")), "replace")
+	}
+	return true
 }
 
 // requireExpectedProject rejects a destructive call that pinned a project other
 // than the active one, naming what is active so the agent can correct course.
+// It fails closed: a caller that supplied the pin asked for verification, so
+// when the active project cannot be determined the call is refused rather than
+// run unverified. A call without the pin is not checked.
 func (s *Server) requireExpectedProject(toolName string, args map[string]any) error {
-	if !destructiveTools[toolName] {
+	if !pinApplies(toolName, args) {
 		return nil
 	}
 	want := strings.TrimSpace(argStr(args, "expectedProject"))
@@ -86,9 +111,9 @@ func (s *Server) requireExpectedProject(toolName string, args map[string]any) er
 		return nil
 	}
 	// A pin is the caller opting into verification, so it costs one request.
-	name, dir, ok := s.activeProject()
-	if !ok || name == "" {
-		return nil
+	name, dir, err := s.activeProject()
+	if err != nil {
+		return fmt.Errorf("expectedProject %q could not be verified, so %s was not run: the active project is unknown (%v) — retry once the control API answers", want, toolName, err)
 	}
 	if !strings.EqualFold(want, name) && !strings.EqualFold(want, dir) {
 		return fmt.Errorf("active project is %q (%s), not %q: the project changed since your last call — re-run against the right project or refresh with list_flows", name, dir, want)
@@ -98,6 +123,10 @@ func (s *Server) requireExpectedProject(toolName string, args map[string]any) er
 
 // expectedProjectDesc is the schema text of the optional project pin.
 const expectedProjectDesc = "optional project pin: the active project's name (or directory) from the `project:` line of an earlier result; the call is rejected, naming the active project, when it no longer matches"
+
+// expectedProjectReplaceDesc is the pin's schema text on set_authz, where it
+// only guards the destructive mode.
+const expectedProjectReplaceDesc = "optional project pin, checked only with mode=replace: the active project's name (or directory) from the `project:` line of an earlier result; the call is rejected, naming the active project, when it no longer matches"
 
 // advertiseExpectedProject adds the expectedProject pin to the input schema of
 // every destructive tool. requireExpectedProject already honours it and the
@@ -114,7 +143,11 @@ func (s *Server) advertiseExpectedProject() {
 			continue
 		}
 		if _, exists := props["expectedProject"]; !exists {
-			props["expectedProject"] = p("string", expectedProjectDesc)
+			desc := expectedProjectDesc
+			if name == "set_authz" {
+				desc = expectedProjectReplaceDesc
+			}
+			props["expectedProject"] = p("string", desc)
 		}
 	}
 }

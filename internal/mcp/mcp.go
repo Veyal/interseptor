@@ -86,10 +86,10 @@ func activitySummary(tool string, args map[string]any) string {
 		if sv == "" {
 			continue
 		}
-		if len(sv) > 60 {
-			sv = sv[:60] + "…"
-		}
-		parts = append(parts, k+"="+sv)
+		// The feed is shown to the operator and copied into report appendices:
+		// mask credentials first (a secret cut at the cap is no longer
+		// recognisable), then cut on a rune boundary.
+		parts = append(parts, k+"="+truncRunes(activityMask(sv), activitySummaryMax))
 		if len(parts) >= 3 {
 			break
 		}
@@ -194,26 +194,124 @@ type rpcError struct {
 }
 
 func (s *Server) handleLine(line []byte, out io.Writer) {
-	var req struct {
-		ID     json.RawMessage `json:"id"`
-		Method string          `json:"method"`
-		Params json.RawMessage `json:"params"`
+	if resp := s.handleMessage(line); resp != nil {
+		out.Write(append(resp, '\n'))
 	}
-	if err := json.Unmarshal(line, &req); err != nil {
-		s.write(out, nil, nil, &rpcError{Code: -32700, Message: "parse error"})
-		return
+}
+
+// rpcRequest is one decoded JSON-RPC request or notification.
+type rpcRequest struct {
+	ID     json.RawMessage // nil for a notification
+	Method string
+	Params json.RawMessage
+	// response is true for a message carrying result/error and no method: a
+	// reply to a request this server never sends, which is dropped unanswered.
+	response bool
+}
+
+func invalidRequest(msg string) *rpcError {
+	return &rpcError{Code: -32600, Message: "Invalid Request: " + msg}
+}
+
+// parseRPCRequest validates one message against JSON-RPC 2.0 (which MCP
+// requires of every message): it must be an object whose jsonrpc member, when
+// present, is exactly "2.0" and whose method is a string; an id, when present,
+// is a string or a number. raw must already be valid JSON. On error the returned request
+// still carries the id when one could be read, so the error can name it.
+func parseRPCRequest(raw []byte) (rpcRequest, *rpcError) {
+	var req rpcRequest
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return req, invalidRequest("a message must be a JSON object")
 	}
-	notification := len(req.ID) == 0 || string(req.ID) == "null"
+	if id := bytes.TrimSpace(m["id"]); len(id) > 0 && !bytes.Equal(id, []byte("null")) {
+		if c := id[0]; c != '"' && c != '-' && (c < '0' || c > '9') {
+			return req, invalidRequest("id must be a string or a number")
+		}
+		req.ID = id
+	}
+	// An absent jsonrpc member is tolerated: hand-rolled clients and curl
+	// examples that omit it have always worked. One that is present must be
+	// the string "2.0".
+	if rawVer, present := m["jsonrpc"]; present {
+		var ver string
+		if json.Unmarshal(rawVer, &ver) != nil || ver != "2.0" {
+			return req, invalidRequest(`jsonrpc must be exactly "2.0"`)
+		}
+	}
+	rawMethod, hasMethod := m["method"]
+	if !hasMethod {
+		_, hasResult := m["result"]
+		_, hasError := m["error"]
+		if hasResult || hasError {
+			req.response = true
+			return req, nil
+		}
+		return req, invalidRequest("method is required")
+	}
+	if len(rawMethod) == 0 || rawMethod[0] != '"' || json.Unmarshal(rawMethod, &req.Method) != nil {
+		return req, invalidRequest("method must be a string")
+	}
+	req.Params = m["params"]
+	return req, nil
+}
+
+// handleMessage answers one transport message — a single JSON-RPC message or a
+// batch — and returns the marshaled reply, or nil when nothing is to be sent
+// (notifications only). Both transports share it so they cannot drift.
+//
+// Batches stay supported: the advertised revision (2024-11-05) requires every
+// message to follow JSON-RPC 2.0, which defines them, and 2025-03-26 made
+// receiving them a MUST; only 2025-06-18 removed them.
+func (s *Server) handleMessage(raw []byte) []byte {
+	raw = bytes.TrimSpace(raw)
+	if !json.Valid(raw) {
+		return s.marshalResponse(nil, nil, &rpcError{Code: -32700, Message: "parse error"})
+	}
+	if raw[0] != '[' {
+		return s.handleOne(raw)
+	}
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(raw, &msgs); err != nil || len(msgs) == 0 {
+		return s.marshalResponse(nil, nil, invalidRequest("a batch must contain at least one message"))
+	}
+	responses := make([]json.RawMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if resp := s.handleOne(m); resp != nil {
+			responses = append(responses, resp)
+		}
+	}
+	if len(responses) == 0 {
+		return nil // all notifications
+	}
+	b, _ := json.Marshal(responses)
+	return b
+}
+
+// handleOne dispatches one JSON-RPC message and returns the marshaled
+// response, or nil if the message is a notification (no id).
+func (s *Server) handleOne(raw json.RawMessage) (out []byte) {
+	req, rerr := parseRPCRequest(raw)
+	if rerr != nil {
+		return s.marshalResponse(req.ID, nil, rerr)
+	}
+	if req.response {
+		return nil
+	}
+	notification := req.ID == nil
 	defer func() {
-		if rec := recover(); rec != nil && !notification {
-			s.write(out, req.ID, nil, &rpcError{Code: -32603, Message: fmt.Sprintf("internal error: %v", rec)})
+		if rec := recover(); rec != nil {
+			out = nil
+			if !notification {
+				out = s.marshalResponse(req.ID, nil, &rpcError{Code: -32603, Message: fmt.Sprintf("internal error: %v", rec)})
+			}
 		}
 	}()
 	result, rerr := s.dispatch(req.Method, req.Params)
 	if notification {
-		return // notifications get no response
+		return nil // notifications get no response
 	}
-	s.write(out, req.ID, result, rerr)
+	return s.marshalResponse(req.ID, result, rerr)
 }
 
 // mcpInstructions is the guidance surfaced to an AI agent on connect: the
@@ -455,7 +553,7 @@ func (s *Server) runTool(name string, args map[string]any) (text string, err err
 		text += s.projectFooter()
 	}
 	if s.report != nil {
-		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
+		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil && !activityFailed(name, text), Ms: time.Since(start).Milliseconds(), Intent: activityMask(argStr(args, "intent"))}
 		if err != nil {
 			a.Result = activityResult(err.Error())
 		} else {
@@ -550,53 +648,12 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A JSON-RPC batch (array) or a single message.
-	if body[0] == '[' {
-		var msgs []json.RawMessage
-		if err := json.Unmarshal(body, &msgs); err != nil {
-			s.writeJSON(w, s.marshalResponse(nil, nil, &rpcError{Code: -32700, Message: "parse error"}))
-			return
-		}
-		responses := make([]json.RawMessage, 0, len(msgs))
-		for _, m := range msgs {
-			if resp := s.handleHTTPMessage(m); resp != nil {
-				responses = append(responses, resp)
-			}
-		}
-		if len(responses) == 0 {
-			w.WriteHeader(http.StatusAccepted) // all notifications
-			return
-		}
-		b, _ := json.Marshal(responses)
-		s.writeJSON(w, b)
-		return
-	}
-
-	resp := s.handleHTTPMessage(body)
+	resp := s.handleMessage(body)
 	if resp == nil {
-		w.WriteHeader(http.StatusAccepted) // a notification — nothing to return
+		w.WriteHeader(http.StatusAccepted) // notifications only — nothing to return
 		return
 	}
 	s.writeJSON(w, resp)
-}
-
-// handleHTTPMessage dispatches one JSON-RPC message and returns the marshaled
-// response, or nil if the message is a notification (no id).
-func (s *Server) handleHTTPMessage(raw json.RawMessage) json.RawMessage {
-	var req struct {
-		ID     json.RawMessage `json:"id"`
-		Method string          `json:"method"`
-		Params json.RawMessage `json:"params"`
-	}
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return s.marshalResponse(nil, nil, &rpcError{Code: -32700, Message: "parse error"})
-	}
-	notification := len(req.ID) == 0 || string(req.ID) == "null"
-	result, rerr := s.dispatch(req.Method, req.Params)
-	if notification {
-		return nil
-	}
-	return s.marshalResponse(req.ID, result, rerr)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, b []byte) {
@@ -994,6 +1051,8 @@ func intArg(v any) (int, bool) {
 		return x, true
 	case int64:
 		n = x
+	case float32:
+		return intArg(float64(x))
 	case float64:
 		if math.IsNaN(x) || math.IsInf(x, 0) || x != math.Trunc(x) || x < minInt64Float || x >= maxInt64Float {
 			return 0, false
@@ -1006,9 +1065,16 @@ func intArg(v any) (int, bool) {
 		}
 		n = i
 	case string:
-		i, err := strconv.ParseInt(strings.TrimSpace(x), 10, 64)
+		t := strings.TrimSpace(x)
+		i, err := strconv.ParseInt(t, 10, 64)
 		if err != nil {
-			return 0, false
+			// "7.0" and "1e3" are whole numbers an agent may quote; "1.5" and
+			// "1e300" fall to the float rule above and are refused.
+			f, ferr := strconv.ParseFloat(t, 64)
+			if ferr != nil {
+				return 0, false
+			}
+			return intArg(f)
 		}
 		n = i
 	default:
@@ -1033,6 +1099,20 @@ func reqInt(a map[string]any, key string) (int, error) {
 		return n, nil
 	}
 	return 0, fmt.Errorf("%s must be an integer (got %T %s)", key, v, describeValue(key, v))
+}
+
+// reqID returns a required object id (rule, held message, prune batch, flow):
+// a whole number in int range, greater than zero. Ids are never 0 or negative,
+// so an unusable value is a tool error here instead of a request for object 0.
+func reqID(a map[string]any, key string) (int, error) {
+	n, err := reqInt(a, key)
+	if err != nil {
+		return 0, err
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer id (got %s)", key, describeValue(key, a[key]))
+	}
+	return n, nil
 }
 
 // reqFlowID returns the required flow id from "id" or "flowId" (agents guess
@@ -2635,12 +2715,20 @@ func (s *Server) registerTools() {
 			if r := argStr(a, "raw"); r != "" {
 				body["raw"] = r
 			}
-			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/forward", argInt(a, "id", 0)), body)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/forward", id), body)
 		})
 
 	s.add("drop_request", "Drop a held request. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/drop", argInt(a, "id", 0)), nil)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/drop", id), nil)
 		})
 
 	s.add("forward_response", "Forward a held response (optionally with edited raw bytes). "+liveInterceptDeprecation,
@@ -2650,13 +2738,21 @@ func (s *Server) registerTools() {
 			if r := argStr(a, "raw"); r != "" {
 				body["raw"] = r
 			}
-			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/forward", argInt(a, "id", 0)), body)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/forward", id), body)
 			return boundJSON(out, 200), err
 		})
 
 	s.add("drop_response", "Drop a held response. "+liveInterceptDeprecation, obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
-			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/drop", argInt(a, "id", 0)), nil)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/drop", id), nil)
 			return boundJSON(out, 200), err
 		})
 
@@ -2691,7 +2787,10 @@ func (s *Server) registerTools() {
 			"bigBody": ruleProps["bigBody"],
 		}, "id"),
 		func(a map[string]any) (string, error) {
-			id := argInt(a, "id", 0)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
 			payload, err := s.mergedRulePayload(id, a)
 			if err != nil {
 				return "", err
@@ -2703,14 +2802,22 @@ func (s *Server) registerTools() {
 	s.add("delete_rule", "Delete a match-&-replace rule.",
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
-			out, err := s.api(http.MethodDelete, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), nil)
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			out, err := s.api(http.MethodDelete, fmt.Sprintf("/api/rules/%d", id), nil)
 			return boundJSON(out, 200), err
 		})
 
 	s.add("list_ws_frames", "List a flow's WebSocket frames (dir/opcode/length/preview).",
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
-			out, err := s.apiGet(fmt.Sprintf("/api/flows/%d/ws", argInt(a, "id", 0)))
+			id, err := reqID(a, "id")
+			if err != nil {
+				return "", err
+			}
+			out, err := s.apiGet(fmt.Sprintf("/api/flows/%d/ws", id))
 			return boundJSON(out, 200), err
 		})
 
@@ -3276,9 +3383,9 @@ func (s *Server) registerTools() {
 		"Match playbooks to a captured flow and return the signals that matched.",
 		obj(map[string]any{"flowId": p("integer", "flow to match")}, "flowId"),
 		func(a map[string]any) (string, error) {
-			id := argInt(a, "flowId", 0)
-			if id <= 0 {
-				return "", fmt.Errorf("flowId is required")
+			id, err := reqID(a, "flowId")
+			if err != nil {
+				return "", err
 			}
 			return s.apiGet("/api/playbooks/match?flowId=" + strconv.Itoa(id))
 		})
@@ -3353,7 +3460,11 @@ func (s *Server) registerTools() {
 		"Restore a pruned batch inside its undo window (default 30 minutes). Use prune_pending to see what is restorable.",
 		obj(map[string]any{"pruneId": pt("integer")}, "pruneId"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/flows/prune/undo", map[string]any{"pruneId": argInt(a, "pruneId", 0)})
+			id, err := reqID(a, "pruneId")
+			if err != nil {
+				return "", err
+			}
+			return s.api(http.MethodPost, "/api/flows/prune/undo", map[string]any{"pruneId": id})
 		})
 
 	s.add("prune_pending",
@@ -3470,9 +3581,9 @@ func (s *Server) registerTools() {
 			"max":           p("integer", "max flows in the chain (default 40, max 100)"),
 		}, "flowId"),
 		func(a map[string]any) (string, error) {
-			id := argInt(a, "flowId", 0)
-			if id <= 0 {
-				return "", fmt.Errorf("flowId required")
+			id, err := reqID(a, "flowId")
+			if err != nil {
+				return "", err
 			}
 			q := url.Values{}
 			if v := argInt(a, "windowSeconds", 0); v > 0 {
@@ -3537,7 +3648,11 @@ func (s *Server) registerTools() {
 			"mode":      pe("auto picks path replay for SSO URL/path tokens", "auto", "bearer", "path"),
 		}, "flowId"),
 		func(a map[string]any) (string, error) {
-			body := map[string]any{"flowId": argInt(a, "flowId", 0)}
+			flowID, err := reqID(a, "flowId")
+			if err != nil {
+				return "", err
+			}
+			body := map[string]any{"flowId": flowID}
 			if v := argInt(a, "jwtFlowId", 0); v > 0 {
 				body["jwtFlowId"] = v
 			}

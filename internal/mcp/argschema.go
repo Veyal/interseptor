@@ -3,7 +3,6 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -190,8 +189,11 @@ func matchType(t string, v any) (any, bool) {
 		}
 		return v, false
 	case "integer":
-		n, ok := numeric(v)
-		return v, ok && n == math.Trunc(n)
+		// One rule for every integer argument: a whole number in int range
+		// (intArg). "1e300", 9.3e18 and 2.5 are numbers but not usable integers;
+		// letting them through meant the tool read its default, or id 0.
+		_, ok := intArg(v)
+		return v, ok
 	case "number":
 		_, ok := numeric(v)
 		return v, ok

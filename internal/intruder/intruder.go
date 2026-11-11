@@ -97,6 +97,10 @@ type Result struct {
 	Matched   bool   `json:"matched"`   // any grep-match rule hit in the response
 	Extracted string `json:"extracted"` // first non-empty grep-extract capture from the response
 	Binary    bool   `json:"binary"`    // true when the body is binary/undecodable and grep did not apply
+	// GrepTruncated is true when the (decoded) response body is larger than
+	// MaxGrepBytes, so grep-match/extract only saw its first MaxGrepBytes: a
+	// non-match on such a row is not proof the pattern is absent.
+	GrepTruncated bool `json:"grepTruncated,omitempty"`
 
 	// Matches / Extracts carry the per-rule results when more than one match or
 	// extract rule is configured (aligned to the run's rule order). Omitted for
@@ -145,6 +149,9 @@ type State struct {
 type Engine struct {
 	snd  *sender.Sender
 	body func(hash string) ([]byte, error) // reads a stored response body (for grep); may be nil
+	// bodyPrefix reads at most max bytes of a stored body; preferred over body
+	// when set, because it never loads more than the grep cap into memory.
+	bodyPrefix func(hash string, max int64) (b []byte, truncated bool, err error)
 
 	mu      sync.Mutex
 	running bool
@@ -198,6 +205,40 @@ func (e *Engine) SetBodyReader(fn func(hash string) []byte) {
 // SetBodyReaderResult wires an error-aware response-body reader. The engine has
 // no store dependency, so the control plane supplies this adapter.
 func (e *Engine) SetBodyReaderResult(fn func(hash string) ([]byte, error)) { e.body = fn }
+
+// MaxGrepBytes is how much of each response body grep-match and grep-extract
+// inspect: the first 8 MiB of the stored body, and the first 8 MiB of its
+// decoded form when it is Content-Encoding compressed. An attack runs up to 64
+// requests at once, so an uncapped grep holds 64 whole bodies (and their
+// inflated copies) in memory and runs every regex over all of them. A result
+// cut here carries GrepTruncated. A variable so tests can lower it.
+var MaxGrepBytes = 8 << 20
+
+// SetBodyPrefixReader wires a bounded response-body reader: fn returns at most
+// max bytes of the body and reports whether the body is longer. When set it is
+// used instead of the whole-body reader, so grep never loads more than
+// MaxGrepBytes of a response.
+func (e *Engine) SetBodyPrefixReader(fn func(hash string, max int64) (b []byte, truncated bool, err error)) {
+	e.bodyPrefix = fn
+}
+
+// grepBody returns the bytes grep may inspect for a stored body: at most
+// MaxGrepBytes, with truncated set when the body is longer.
+func (e *Engine) grepBody(hash string) (b []byte, truncated bool, err error) {
+	limit := MaxGrepBytes
+	if e.bodyPrefix != nil {
+		b, truncated, err = e.bodyPrefix(hash, int64(limit))
+	} else {
+		b, err = e.body(hash)
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > limit {
+		b, truncated = b[:limit], true
+	}
+	return b, truncated, nil
+}
 
 // processPayload applies the configured transforms to a payload value, in order.
 // Blank rules are skipped; any non-blank rule reaching this point has already
@@ -789,28 +830,31 @@ func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 	// a binary payload (image, audio, video, …) grep is skipped and res.Binary is
 	// set so the caller can surface a warning to the user.
 	doGrep := func(res *Result, hash string, resHeaders map[string][]string) {
-		if (len(matchRules) == 0 && len(extractRules) == 0) || e.body == nil || hash == "" {
+		if (len(matchRules) == 0 && len(extractRules) == 0) || (e.body == nil && e.bodyPrefix == nil) || hash == "" {
 			return
 		}
-		raw, err := e.body(hash)
-		if err != nil {
-			res.Error = "response body unavailable"
-			return
-		}
-
 		// Skip grep on known-binary content types; flag the result so the UI can
-		// show an informational badge rather than a silent non-match.
+		// show an informational badge rather than a silent non-match. Decided from
+		// the headers, before the body is read at all.
 		if ct := headerVal(resHeaders, "Content-Type"); codec.IsBinaryContentType(ct) {
 			res.Binary = true
 			return
 		}
+		raw, truncated, err := e.grepBody(hash)
+		if err != nil {
+			res.Error = "response body unavailable"
+			return
+		}
+		res.GrepTruncated = truncated
 
-		// Decompress if the response was Content-Encoding compressed. Fall back
-		// gracefully to raw bytes on any decompression error.
+		// Decompress if the response was Content-Encoding compressed, keeping at
+		// most MaxGrepBytes of the decoded form. Fall back gracefully to raw
+		// bytes on any decompression error.
 		bodyBytes := raw
 		if ce := headerVal(resHeaders, "Content-Encoding"); ce != "" && ce != "identity" {
-			if dec, ok := codec.DecompressBody(ce, raw); ok {
+			if dec, ok, cut := codec.DecompressBodyLimit(ce, raw, MaxGrepBytes); ok {
 				bodyBytes = dec
+				res.GrepTruncated = res.GrepTruncated || cut
 			}
 			// else: fall through — grep the raw bytes rather than returning nothing
 		}

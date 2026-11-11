@@ -86,7 +86,36 @@ func Save(dir, id, src string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, id+".star"), []byte(src), 0o644)
+	return writeFileAtomic(filepath.Join(dir, id+".star"), []byte(src), 0o644)
+}
+
+// writeFileAtomic writes data to a temporary file beside path and renames it
+// into place, so a crash or a concurrent reader sees the previous codec or the
+// new one, never a truncated file. The temporary name does not end in .star,
+// so LoadDir and List ignore one left behind by a crash.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Chmod(perm)
+	}
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmpPath, path)
+	}
+	if err != nil {
+		_ = os.Remove(tmpPath)
+	}
+	return err
 }
 
 // Delete removes a codec.

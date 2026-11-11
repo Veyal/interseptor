@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -572,7 +573,15 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 		flow.Flags |= store.FlagCaptureError
 	}
 
+	// Without a User-Agent in the request the Go transport writes its own, so
+	// the flow would not be what the target received. Watch what is written.
+	var wireUA sentUserAgent
+	if _, set := req.Header["User-Agent"]; !set {
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), wireUA.trace()))
+	}
+
 	resp, err := s.do(r, req)
+	wireUA.recordOn(flow)
 	if err != nil {
 		flow.Status = http.StatusBadGateway
 		flow.Error = err.Error()
@@ -673,6 +682,44 @@ func (s *Sender) storeBody(b []byte) (string, int64, error) {
 		return "", 0, ferr
 	}
 	return h, n, nil
+}
+
+// sentUserAgent captures the User-Agent the transport itself wrote for a
+// request that carried none ("Go-http-client/1.1", or "/2.0" over HTTP/2). It
+// reads the value from the transport's own write hook rather than assuming it,
+// so a request that was never written (dial refused) records nothing, and the
+// hand-written raw wire path, which sends no such header, records nothing.
+type sentUserAgent struct {
+	mu    sync.Mutex
+	value string
+	sent  bool
+}
+
+func (u *sentUserAgent) trace() *httptrace.ClientTrace {
+	return &httptrace.ClientTrace{WroteHeaderField: func(key string, value []string) {
+		// HTTP/2 reports the lower-case field name. The hook runs on the
+		// transport's write goroutine, which can outlive a cancelled send.
+		if !strings.EqualFold(key, "User-Agent") || len(value) == 0 {
+			return
+		}
+		u.mu.Lock()
+		u.value, u.sent = value[0], true
+		u.mu.Unlock()
+	}}
+}
+
+// recordOn adds the captured header to the flow's recorded request headers.
+func (u *sentUserAgent) recordOn(flow *store.Flow) {
+	u.mu.Lock()
+	value, sent := u.value, u.sent
+	u.mu.Unlock()
+	if !sent {
+		return
+	}
+	if flow.ReqHeaders == nil {
+		flow.ReqHeaders = map[string][]string{}
+	}
+	flow.ReqHeaders["User-Agent"] = []string{value}
 }
 
 func reqHeaders(req *http.Request) map[string][]string {

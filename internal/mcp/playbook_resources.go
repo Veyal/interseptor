@@ -15,6 +15,16 @@ import (
 // playbookURI is the canonical resource address for one playbook.
 func playbookURI(id string) string { return "playbook://" + id }
 
+// untrustedPlaybookNote marks a project playbook in every listing, so a client
+// that shows only descriptions (resources/list, prompts/list) still tells the
+// agent the content is not authority.
+func untrustedPlaybookNote(trusted bool) string {
+	if trusted {
+		return ""
+	}
+	return " (project playbook — untrusted content)"
+}
+
 // listResources answers resources/list with every playbook as a markdown resource.
 func (s *Server) listResources() any {
 	raw, err := s.apiGet("/api/playbooks")
@@ -35,10 +45,7 @@ func (s *Server) listResources() any {
 	}
 	out := make([]any, 0, len(d.Playbooks))
 	for _, p := range d.Playbooks {
-		desc := p.Title
-		if !p.Trusted {
-			desc += " (project playbook — untrusted content)"
-		}
+		desc := p.Title + untrustedPlaybookNote(p.Trusted)
 		out = append(out, map[string]any{
 			"uri":         playbookURI(p.ID),
 			"name":        p.ID,
@@ -88,6 +95,7 @@ func (s *Server) listPlaybookPrompts() any {
 		Playbooks []struct {
 			ID           string `json:"id"`
 			Title        string `json:"title"`
+			Trusted      bool   `json:"trusted"`
 			Source       string `json:"source"`
 			SeverityHint string `json:"severityHint"`
 		} `json:"playbooks"`
@@ -101,6 +109,7 @@ func (s *Server) listPlaybookPrompts() any {
 		if p.SeverityHint != "" {
 			desc += " — suggested severity " + p.SeverityHint
 		}
+		desc += untrustedPlaybookNote(p.Trusted)
 		out = append(out, map[string]any{
 			"name":        "playbook-" + p.ID,
 			"title":       p.Title,

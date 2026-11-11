@@ -108,6 +108,7 @@ func predeclared() starlark.StringDict {
 func Compile(id, src string) (*Codec, error) {
 	thread := &starlark.Thread{Name: "compile-codec:" + id}
 	thread.SetMaxExecutionSteps(maxSteps)
+	defer guard(thread)()
 	globals, err := starlark.ExecFileOptions(fileOptions, thread, id+".star", src, predeclared())
 	if err != nil {
 		return nil, budgetFormatted(starx.ScriptError(fmt.Sprintf("codec %q", id), err), thread.ExecutionSteps())
@@ -194,6 +195,7 @@ func (c *Codec) Match(flow Flow, side string) (bool, error) {
 	side = normalizeSide(side)
 	thread := &starlark.Thread{Name: "match:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
+	defer guard(thread)()
 	v, err := starlark.Call(thread, c.fnM, starlark.Tuple{flowValue(flow), starlark.String(side)}, nil)
 	if err != nil {
 		return false, budgetFormatted(starx.ScriptError("match", err), thread.ExecutionSteps())
@@ -210,10 +212,14 @@ func (c *Codec) Decode(flow Flow, side string) (Result, error) {
 	raw := bodyFor(flow, side)
 	thread := &starlark.Thread{Name: "decode:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
+	defer guard(thread)()
 	v, err := starlark.Call(thread, c.fnD, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(raw)}, nil)
 	if err != nil {
 		return Result{CodecID: c.Meta.ID, Title: c.Meta.Title, Error: budgetError(err, thread.ExecutionSteps()).Error()},
 			budgetFormatted(starx.ScriptError("decode", err), thread.ExecutionSteps())
+	}
+	if err := resultTooLarge("decode", valueTextSize(v)); err != nil {
+		return Result{CodecID: c.Meta.ID, Title: c.Meta.Title, Error: err.Error()}, err
 	}
 	return parseDecodeResult(c, v)
 }
@@ -232,6 +238,7 @@ func (c *Codec) Sign(flow Flow, side, raw string) (map[string]string, error) {
 	side = normalizeSide(side)
 	thread := &starlark.Thread{Name: "sign:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
+	defer guard(thread)()
 	v, err := starlark.Call(thread, c.fnS, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(raw)}, nil)
 	if err != nil {
 		return nil, budgetFormatted(starx.ScriptError("sign", err), thread.ExecutionSteps())
@@ -243,6 +250,15 @@ func (c *Codec) Sign(flow Flow, side, raw string) (map[string]string, error) {
 	d, ok := v.(*starlark.Dict)
 	if !ok {
 		return nil, fmt.Errorf("sign must return a dict of header names to values")
+	}
+	total := 0
+	for _, item := range d.Items() {
+		name, _ := starlark.AsString(item[0])
+		value, _ := starlark.AsString(item[1])
+		total += len(name) + len(value)
+	}
+	if err := resultTooLarge("sign", total); err != nil {
+		return nil, err
 	}
 	for _, item := range d.Items() {
 		name, okName := starlark.AsString(item[0])
@@ -266,6 +282,7 @@ func (c *Codec) Encode(flow Flow, side, plaintext string) (string, error) {
 	}
 	thread := &starlark.Thread{Name: "encode:" + c.Meta.ID}
 	thread.SetMaxExecutionSteps(maxSteps)
+	defer guard(thread)()
 	v, err := starlark.Call(thread, c.fnE, starlark.Tuple{flowValue(flow), starlark.String(side), starlark.String(plaintext)}, nil)
 	if err != nil {
 		return "", budgetFormatted(starx.ScriptError("encode", err), thread.ExecutionSteps())
@@ -273,6 +290,9 @@ func (c *Codec) Encode(flow Flow, side, plaintext string) (string, error) {
 	s, ok := starlark.AsString(v)
 	if !ok {
 		return "", fmt.Errorf("encode must return a string")
+	}
+	if err := resultTooLarge("encode", len(s)); err != nil {
+		return "", err
 	}
 	return s, nil
 }

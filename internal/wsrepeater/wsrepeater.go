@@ -238,6 +238,7 @@ func Send(req Request) (*Result, error) {
 		// messages (a new data frame before FIN) pile up 64 of them.
 		if total+len(msg) > maxReplyBytes {
 			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
+			msg, msgOp = nil, -1
 			break
 		}
 		if !fin {
@@ -250,6 +251,12 @@ func Send(req Request) (*Result, error) {
 		if total > maxReplyBytes {
 			break
 		}
+	}
+	// A message still in progress when the window closed, the peer went away or
+	// a frame cap was reached is kept as received: dropping it showed "no
+	// reply" for a server that had in fact answered.
+	if msgOp >= 0 {
+		res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
 	}
 	return res, nil
 }

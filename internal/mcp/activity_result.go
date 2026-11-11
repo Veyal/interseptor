@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/Veyal/interseptor/internal/redact"
 )
 
 // activityResultMax caps the Activity result snippet (the feed shows one line).
@@ -18,11 +21,42 @@ var (
 	uiFlowLink = regexp.MustCompile(`/#flow-(\d+)\b`)
 )
 
+// activitySummaryMax caps one argument value in the Activity summary, in runes.
+const activitySummaryMax = 60
+
+// activityMaskWindow bounds how much of a value is scanned for credentials: a
+// template or script can be megabytes and only its start is ever shown.
+const activityMaskWindow = 16 << 10
+
+// activityMask masks credential-shaped text before it reaches the Activity
+// feed, which the operator reads and may paste into a report appendix. It uses
+// the shared free-text redactor, then the finding secret lint: that lint has
+// no locator, so when it still flags something only its placeholders are kept.
+func activityMask(s string) string {
+	if len(s) > activityMaskWindow {
+		n := activityMaskWindow
+		for n > 0 && !utf8.RuneStart(s[n]) {
+			n--
+		}
+		s = s[:n] + "…"
+	}
+	s = redact.Text(s)
+	hits := redact.Scan(s)
+	if len(hits) == 0 {
+		return s
+	}
+	parts := make([]string, 0, len(hits))
+	for _, h := range hits {
+		parts = append(parts, h.Suggest)
+	}
+	return strings.Join(parts, " ")
+}
+
 // activityResult turns a tool's text (or error) into the Activity result: the
 // first informative line, with a lone "Label:" joined to the line after it, and
 // "flow #N" appended when the output links a flow, so the feed can open it.
 func activityResult(text string) string {
-	snippet := informativeLine(text)
+	snippet := activityMask(informativeLine(text))
 	m := uiFlowLink.FindStringSubmatch(text)
 	if m == nil || strings.Contains(strings.ToLower(snippet), "flow #"+m[1]) {
 		return capRunes(snippet, activityResultMax)
