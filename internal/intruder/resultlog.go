@@ -26,7 +26,11 @@ type resultLog struct {
 
 	n       int      // total appended
 	flushed int      // number of chunk files on disk
-	buf     []Result // current unflushed chunk (len <= chunkSize), or everything in memory mode
+	buf     []Result // every result after the flushed chunks: the current chunk, or the whole tail once spilled
+	// spilled is set when a chunk could not be written. From then on nothing is
+	// flushed for this run and buf holds every later result, so chunk files stay
+	// exactly chunkSize long and an offset still maps to one place.
+	spilled bool
 	head    []Result // first headCap results, kept for live snapshots
 
 	acc       anomalyAcc
@@ -64,7 +68,7 @@ func (l *resultLog) append(r Result) {
 	l.acc.add(r)
 	l.buf = append(l.buf, r)
 	// In memory mode buf holds everything; on disk flush full chunks out of RAM.
-	if l.dir != "" && len(l.buf) >= l.chunkSize {
+	if l.dir != "" && !l.spilled && len(l.buf) >= l.chunkSize {
 		l.flushLocked()
 	}
 }
@@ -82,7 +86,11 @@ func (l *resultLog) flushLocked() {
 		}
 	}
 	// On any disk failure keep the chunk in memory rather than losing results;
-	// future appends simply grow buf (the memory bound is best-effort).
+	// future appends simply grow buf (the memory bound is best-effort). The
+	// flush is not retried: a later success would write a chunk longer than
+	// chunkSize and shift every offset after it, and retrying on each append
+	// re-marshals the whole growing buffer.
+	l.spilled = true
 }
 
 func (l *resultLog) chunkPath(i int) string {
@@ -124,17 +132,18 @@ func (l *resultLog) readRange(off, limit int) []Result {
 	}
 	out := make([]Result, 0, max(0, end-off))
 	idx := off
+	// Everything past the flushed chunks lives in buf: one partial chunk in the
+	// normal case, the whole run in memory-only mode (no temp dir) and the whole
+	// tail after a failed flush. An offset there indexes buf relative to the
+	// flushed prefix; idx%chunkSize is only right for a chunk file.
+	tailStart := l.flushed * l.chunkSize
 	for idx < end {
-		chunk := idx / l.chunkSize
-		data := l.chunkData(chunk)
-		within := idx % l.chunkSize
-		if l.dir == "" {
-			// Memory-only mode (the temp dir could not be created): buf holds
-			// every result, not one chunk-sized slice, so an offset must index
-			// buf directly. Using idx%chunkSize here returned the first rows of
-			// the buffer for any offset past zero — a page repeated the head.
-			within = idx
-			data = l.buf
+		var data []Result
+		var within int
+		if idx >= tailStart {
+			data, within = l.buf, idx-tailStart
+		} else {
+			data, within = l.chunkData(idx/l.chunkSize), idx%l.chunkSize
 		}
 		for within < len(data) && idx < end {
 			r := data[within]
@@ -155,11 +164,10 @@ func (l *resultLog) readRange(off, limit int) []Result {
 	return out
 }
 
-// chunkData returns the results of chunk i: a flushed file, or the in-memory buf
-// for the current (last) chunk. Caller holds l.mu.
+// chunkData returns the results of flushed chunk i from disk. Caller holds l.mu.
 func (l *resultLog) chunkData(i int) []Result {
 	if i >= l.flushed {
-		return l.buf
+		return nil
 	}
 	raw, err := os.ReadFile(l.chunkPath(i))
 	if err != nil {

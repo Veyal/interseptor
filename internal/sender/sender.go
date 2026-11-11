@@ -128,9 +128,13 @@ func (s *Sender) macroToken(parent context.Context) (token, name, mode string) {
 	if err != nil {
 		return "", "", ""
 	}
+	macroURL, err := TargetURL(m.Target, path)
+	if err != nil {
+		return "", "", ""
+	}
 	ctx, cancel := macroContext(parent)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, macroURL, bytes.NewReader(body))
 	if err != nil {
 		return "", "", ""
 	}
@@ -373,6 +377,12 @@ func (s *Sender) dialVia(up *url.URL, ctx context.Context, network, addr string)
 		d.Control = s.refuseOwnListener
 		return d.DialContext(ctx, network, addr)
 	}
+	// The Control hook above only sees the address this process connects to,
+	// which here is the SOCKS proxy: vet the destination itself, as the
+	// HTTP-proxy hop does in proxyForRequest.
+	if err := s.checkSOCKSOwnPort(ctx, addr); err != nil {
+		return nil, err
+	}
 	if up.Scheme == "socks5" {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
@@ -401,6 +411,20 @@ func (s *Sender) dialVia(up *url.URL, ctx context.Context, network, addr string)
 		return nil, fmt.Errorf("SOCKS dialer does not support context")
 	}
 	return contextDialer.DialContext(ctx, network, addr)
+}
+
+// checkSOCKSOwnPort refuses a SOCKS-proxied destination that lands on one of
+// the tool's own listener ports on a loopback, unspecified or local address.
+func (s *Sender) checkSOCKSOwnPort(ctx context.Context, addr string) error {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil // the dial reports the malformed address
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil
+	}
+	return checkProxiedOwnPort(ctx, s.ownPortList(), nil, host, port)
 }
 
 func (s *Sender) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {

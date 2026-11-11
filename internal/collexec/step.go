@@ -527,7 +527,11 @@ func nextHop(r sender.Request, f *store.Flow) (sender.Request, bool) {
 	if dropBody {
 		n.Method, n.Body = http.MethodGet, nil
 	}
-	cross := !strings.EqualFold(base.Host, target.Host)
+	// An https -> http hop would put credentials on the wire in clear text, so
+	// a scheme downgrade is treated like a cross-host hop (as the sender's own
+	// redirect handling does); base.Host equals target.Host for such a hop.
+	downgrade := strings.EqualFold(base.Scheme, "https") && strings.EqualFold(target.Scheme, "http")
+	cross := !strings.EqualFold(base.Host, target.Host) || downgrade
 	skip := func(k string) bool {
 		c := http.CanonicalHeaderKey(k)
 		if c == "Host" || dropBody && (c == "Content-Length" || c == "Content-Type" || c == "Transfer-Encoding") {

@@ -88,9 +88,13 @@ func runLoginMacroReq(parent context.Context, cl *http.Client, m LoginMacro) (in
 	if err != nil {
 		return 0, nil, err
 	}
+	loginURL, err := TargetURL(m.Target, path)
+	if err != nil {
+		return 0, nil, fmt.Errorf("login macro: %w", err)
+	}
 	ctx, cancel := macroContext(parent)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, loginURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
 	}

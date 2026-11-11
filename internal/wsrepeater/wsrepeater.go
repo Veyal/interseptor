@@ -13,6 +13,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"net/textproto"
 	"net/url"
@@ -41,9 +43,11 @@ const (
 // maxReplyFrames bounds the raw frames read, so a fragmented stream cannot loop
 // forever.
 const (
-	maxReplyBytes    = 32 << 20
-	maxReplyMessages = 64
-	maxReplyFrames   = 4096
+	// maxHandshakeBytes bounds the upgrade response (status line and headers).
+	maxHandshakeBytes = 256 << 10
+	maxReplyBytes     = 32 << 20
+	maxReplyMessages  = 64
+	maxReplyFrames    = 4096
 )
 
 // Request is one WebSocket send.
@@ -106,6 +110,17 @@ func Send(req Request) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL %q", req.URL)
 	}
+	// A URL without a host would be dialled as ":80", which the OS takes to
+	// mean this machine; a foreign scheme would silently be sent as plain ws.
+	switch strings.ToLower(u.Scheme) {
+	case "ws", "wss", "http", "https":
+	default:
+		return nil, fmt.Errorf("invalid URL %q: scheme must be ws, wss, http or https", req.URL)
+	}
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid URL %q: no host", req.URL)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
 	secure := u.Scheme == "wss" || u.Scheme == "https"
 	host := u.Host
 	if u.Port() == "" {
@@ -139,11 +154,20 @@ func Send(req Request) (*Result, error) {
 		return nil, err
 	}
 
-	br := bufio.NewReader(conn)
+	// The handshake is read through a byte budget: textproto buffers a header
+	// line until its newline, so a server that never sends one would otherwise
+	// grow the buffer until the deadline. Frames have their own caps, so the
+	// budget is lifted once the handshake is in.
+	lim := &io.LimitedReader{R: conn, N: maxHandshakeBytes}
+	br := bufio.NewReader(lim)
 	status, resHeaders, err := readHandshake(br)
 	if err != nil {
+		if lim.N <= 0 {
+			return nil, fmt.Errorf("handshake response too large (over %d bytes)", maxHandshakeBytes)
+		}
 		return nil, err
 	}
+	lim.N = math.MaxInt64
 	res := &Result{Status: status, ReqHeaders: headerMap(handshakeHeaders(u, key, req.Headers)), ResHeaders: resHeaders}
 	accept := resHeaders.Get("Sec-WebSocket-Accept")
 	if status != 101 {
@@ -209,7 +233,10 @@ func Send(req Request) (*Result, error) {
 			msgOp = op
 		}
 		msg = append(msg, payload...)
-		if len(msg) > maxReplyBytes {
+		// The cap is on everything kept so far plus the message in progress.
+		// Counting only finished messages let a peer that keeps abandoning
+		// messages (a new data frame before FIN) pile up 64 of them.
+		if total+len(msg) > maxReplyBytes {
 			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: msgOp, Text: string(msg), Len: len(msg)})
 			break
 		}

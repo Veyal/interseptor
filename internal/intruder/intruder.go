@@ -4,6 +4,7 @@
 package intruder
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/sha1"
@@ -275,11 +276,11 @@ type grepRule struct {
 	lit string
 }
 
-func (g grepRule) match(body string) bool {
+func (g grepRule) match(body []byte) bool {
 	if g.re != nil {
-		return g.re.MatchString(body)
+		return g.re.Match(body)
 	}
-	return g.lit != "" && strings.Contains(body, g.lit)
+	return g.lit != "" && bytes.Contains(body, []byte(g.lit))
 }
 
 // prependNonEmpty puts a legacy single value ahead of the rule list, dropping it
@@ -319,6 +320,30 @@ func compileExtractRules(pats []string) []*regexp.Regexp {
 		}
 	}
 	return out
+}
+
+// applyGrep runs the match and extract rules over a (decoded) response body.
+// It matches on the bytes as they are: converting the body to a string first
+// copied every response once more per result, on every worker at the same time.
+func applyGrep(res *Result, body []byte, matchRules []grepRule, extractRules []*regexp.Regexp) {
+	if len(matchRules) > 0 {
+		res.Matches = make([]bool, len(matchRules))
+		for i, g := range matchRules {
+			res.Matches[i] = g.match(body)
+			res.Matched = res.Matched || res.Matches[i]
+		}
+	}
+	if len(extractRules) > 0 {
+		res.Extracts = make([]string, len(extractRules))
+		for i, re := range extractRules {
+			if m := re.FindSubmatch(body); len(m) >= 2 {
+				res.Extracts[i] = string(m[1]) // a copy: the result outlives the body
+				if res.Extracted == "" {
+					res.Extracted = res.Extracts[i]
+				}
+			}
+		}
+	}
 }
 
 // SetNotifier registers a callback fired as the attack progresses.
@@ -736,7 +761,6 @@ func planJobs(spec Spec, nPositions int, baselines []string) jobPlan {
 }
 
 func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
-	base := strings.TrimRight(spec.Target, "/")
 	threads := clampThreads(spec.Threads) // bounded so a race test can't exhaust sockets/goroutines
 	runStart := time.Now()                // monotonic origin for StartUs/EndUs
 	backoff := backoffCap(spec.MaxBackoffMs)
@@ -791,25 +815,7 @@ func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 			// else: fall through — grep the raw bytes rather than returning nothing
 		}
 
-		body := string(bodyBytes)
-		if len(matchRules) > 0 {
-			res.Matches = make([]bool, len(matchRules))
-			for i, g := range matchRules {
-				res.Matches[i] = g.match(body)
-				res.Matched = res.Matched || res.Matches[i]
-			}
-		}
-		if len(extractRules) > 0 {
-			res.Extracts = make([]string, len(extractRules))
-			for i, re := range extractRules {
-				if m := re.FindStringSubmatch(body); len(m) >= 2 {
-					res.Extracts[i] = m[1]
-					if res.Extracted == "" {
-						res.Extracted = m[1]
-					}
-				}
-			}
-		}
+		applyGrep(res, bodyBytes, matchRules, extractRules)
 	}
 
 	slots := make(chan int, threads) // free worker slots 1..threads
@@ -865,11 +871,20 @@ func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 				e.appendResult(res)
 				return
 			}
+			// The request line decides the path only. A payload (or template)
+			// that turns the request target into something other than an
+			// origin-form path would otherwise move the send to another host.
+			sendURL, uerr := sender.TargetURL(spec.Target, path)
+			if uerr != nil {
+				res.Error = "parse: " + uerr.Error()
+				e.appendResult(res)
+				return
+			}
 			sendStart := time.Now()
 			res.StartUs = sendStart.Sub(runStart).Microseconds()
 			flow, sendErr := e.snd.Send(sender.Request{
 				Method:  method,
-				URL:     base + path,
+				URL:     sendURL,
 				Headers: headers,
 				Body:    body,
 				Flags:   store.FlagIntruder | spec.ExtraFlags,
@@ -918,7 +933,6 @@ func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 	cancel := e.cancel
 	e.cancel = nil
 	done := e.doneCh
-	close(done)
 	// Snapshot the record under this same lock, before running=false is published.
 	// A Start() the moment the UI sees running=false replaces e.log and e.spec, and
 	// reading them afterwards emitted this run's record under the next run's id
@@ -931,6 +945,10 @@ func (e *Engine) run(ctx context.Context, spec Spec, plan jobPlan) {
 	if sink != nil {
 		sink(record)
 	}
+	// Released last: Close waits on this before the caller tears down the store
+	// the sink writes the run record to. A new Start is gated on running, not on
+	// this channel, so the next run is not held up by a slow sink.
+	close(done)
 }
 
 // median returns the median of a slice of int64 values without modifying the
