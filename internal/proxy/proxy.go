@@ -51,7 +51,8 @@ type proxyFlow struct {
 	*store.Flow
 	suppressCapture bool
 	suppressedBy    string // which suppression dropped it, empty when none
-	budgetHeld      int64 // transform-buffer bytes reserved for this exchange
+	budgetHeld      int64  // transform-buffer bytes reserved for this exchange
+	suppressNoted   bool   // already counted in the suppressed ring
 }
 
 // Server is the intercepting forward-proxy HTTP handler.
@@ -65,12 +66,13 @@ type Server struct {
 	tr                       *http.Transport
 	upstream                 atomic.Pointer[url.URL] // optional chained upstream proxy
 	upstreamProxyRoots       atomic.Pointer[x509.CertPool]
-	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
-	budget                   *byteBudget // nil → sharedTransformBudget
-	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
+	scopeOnly                atomic.Bool   // when set, only in-scope flows are persisted
+	budget                   *byteBudget   // nil → sharedTransformBudget
+	clientHandshake          time.Duration // 0 → clientHandshakeTimeout
+	suppressTelemetry        atomic.Bool   // browser background traffic bypasses capture processing when set
 	suppressed               suppressedLog // recent drops, so a filtered capture is not silent
-	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
-	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
+	suppressAndroidTelemetry atomic.Bool   // Android background traffic bypasses capture processing when set
+	invisible                atomic.Bool   // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
@@ -523,7 +525,15 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	tlsConn := tls.Server(clientConn, cfg)
-	if err := tlsConn.Handshake(); err != nil {
+	_ = clientConn.SetDeadline(time.Now().Add(s.clientHandshakeBound()))
+	err = tlsConn.Handshake()
+	_ = clientConn.SetDeadline(time.Time{})
+	if err != nil {
+		if isTimeout(err) {
+			// A silent client is not a pinning signal: reap the connection
+			// without recording a TLS failure or auto-bypassing the host.
+			return
+		}
 		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err, suppression)
 		// The client rejected our leaf (pinning or untrusted CA). If auto-bypass is
 		// on, add this host so the app's next attempt tunnels through and works.
@@ -577,6 +587,26 @@ func connectUpstreamHost(connectHost, sni string) string {
 		return sni
 	}
 	return connectHost
+}
+
+// clientHandshakeTimeout bounds the client's TLS handshake on a MITM tunnel. A
+// client that opens a CONNECT and then never sends a ClientHello (a port
+// scanner, a health probe, an abandoned connection) would otherwise pin a
+// goroutine and a file descriptor until the process exits. Server.clientHandshake
+// overrides it per Server (tests shorten it).
+const clientHandshakeTimeout = 30 * time.Second
+
+func (s *Server) clientHandshakeBound() time.Duration {
+	if s.clientHandshake > 0 {
+		return s.clientHandshake
+	}
+	return clientHandshakeTimeout
+}
+
+// isTimeout reports whether err is a deadline/timeout error.
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 // tunnelIdleTimeout bounds how long a CONNECT tunnel may sit between requests.
@@ -1062,7 +1092,22 @@ func isSupportedUpstreamScheme(scheme string) bool {
 	return scheme == "http" || scheme == "https" || scheme == "socks5" || scheme == "socks5h"
 }
 
+// socksSetupTimeout bounds the whole SOCKS setup: local DNS for socks5, the
+// TCP connect to the SOCKS server and its handshake. The callers' contexts
+// carry no deadline (a request context, or context.Background() on the upgrade
+// and TLS-passthrough paths), so a SOCKS server that accepts and then stays
+// silent would otherwise hang the request forever. The returned conn has no
+// deadline.
+const socksSetupTimeout = upstreamConnectTimeout
+
 func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string) (net.Conn, error) {
+	return dialViaSOCKSWithin(ctx, up, network, addr, socksSetupTimeout)
+}
+
+// dialViaSOCKSWithin is dialViaSOCKS with an explicit setup bound.
+func dialViaSOCKSWithin(ctx context.Context, up *url.URL, network, addr string, timeout time.Duration) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	if up.Scheme == "socks5" {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
@@ -1360,8 +1405,10 @@ func isBodylessResponse(resp *http.Response) bool {
 // while tee'ing the body to the store, then records the flow.
 func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *proxyFlow) {
 	defer resp.Body.Close()
+	// The transform buffer is reserved by maybeInterceptResponse and is only
+	// free again once the buffered body has been written (or dropped).
+	defer s.releaseBuffered(flow)
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
-		defer s.releaseBuffered(flow)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		http.Error(w, "response dropped by interseptor", http.StatusBadGateway)
@@ -1445,8 +1492,9 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *proxyFlow) error {
 	upstream := resp.Body
 	defer upstream.Close()
+	// See writeResponseHTTP: release the transform buffer on every path.
+	defer s.releaseBuffered(flow)
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
-		defer s.releaseBuffered(flow)
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
 		writeSimpleResponse(conn, http.StatusBadGateway, "response dropped by interseptor")
@@ -1805,18 +1853,28 @@ func (s *Server) persistable(flow *proxyFlow) bool {
 		if reason == "" {
 			reason = SuppressedBrowserTelemetry
 		}
-		s.recordSuppressed(SuppressedRequest{
-			Host: flow.Flow.Host, Method: flow.Flow.Method, Path: flow.Flow.Path, Reason: reason,
-		})
+		s.noteSuppressed(flow, reason)
 		return false
 	}
 	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow.Flow) {
-		s.recordSuppressed(SuppressedRequest{
-			Host: flow.Flow.Host, Method: flow.Flow.Method, Path: flow.Flow.Path, Reason: SuppressedOutOfScope,
-		})
+		s.noteSuppressed(flow, SuppressedOutOfScope)
 		return false
 	}
 	return true
+}
+
+// noteSuppressed counts a filtered exchange once. persistable is consulted
+// several times per exchange (the request row, both body tees, the final
+// record), and each of those used to add its own entry, so one filtered request
+// showed up as up to four and pushed real entries out of the bounded ring.
+func (s *Server) noteSuppressed(flow *proxyFlow, reason string) {
+	if flow.suppressNoted {
+		return
+	}
+	flow.suppressNoted = true
+	s.recordSuppressed(SuppressedRequest{
+		Host: flow.Flow.Host, Method: flow.Flow.Method, Path: flow.Flow.Path, Reason: reason,
+	})
 }
 
 // teeBody captures a body to the content-addressed store and returns a reader to
@@ -1956,7 +2014,7 @@ func dumpRequestWithin(r *http.Request, budget *byteBudget) (raw []byte, truncat
 			truncated = true
 		} else {
 			r.Body.Close()
-			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.Body = bufferedBody(body)
 			r.ContentLength = int64(len(body))
 			if isChunked(r.TransferEncoding, r.Header) {
 				r.TransferEncoding = nil
@@ -1984,6 +2042,17 @@ func dumpRequestWithin(r *http.Request, budget *byteBudget) (raw []byte, truncat
 	b.WriteString("\r\n")
 	b.Write(body)
 	return b.Bytes(), truncated, held
+}
+
+// bufferedBody wraps a fully-buffered request body. An empty one must be
+// http.NoBody: net/http's transport treats any other non-nil body with
+// ContentLength 0 as "length unknown" and sends a body-less POST/PUT with
+// "Transfer-Encoding: chunked" instead of the client's "Content-Length: 0".
+func bufferedBody(body []byte) io.ReadCloser {
+	if len(body) == 0 {
+		return http.NoBody
+	}
+	return io.NopCloser(bytes.NewReader(body))
 }
 
 // releaseBuffered returns the exchange's transform-buffer reservation.

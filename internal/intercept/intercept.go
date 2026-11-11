@@ -557,7 +557,7 @@ func parseEditedRequest(raw []byte, orig *http.Request) (*http.Request, error) {
 	if !isChunked(r.TransferEncoding, r.Header) {
 		body, _ := rawBody(raw)
 		if len(body) > 0 || r.Header.Get("Content-Length") != "" {
-			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.Body = bufferedBody(body)
 			r.ContentLength = int64(len(body))
 			r.Header.Set("Content-Length", strconv.Itoa(len(body)))
 		}
@@ -680,10 +680,25 @@ func applyRequestBodyRules(req *http.Request, rules []compiledRule) error {
 		body = cr.re.ReplaceAll(body, []byte(cr.replace))
 	}
 	req.Body.Close()
-	req.Body = io.NopCloser(bytes.NewReader(body))
+	req.Body = bufferedBody(body)
 	req.ContentLength = int64(len(body))
-	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	// A request that had no body and no declared length (every GET) keeps its
+	// header block: the rule did not give it a body, so it gains no length.
+	if len(body) > 0 || req.Header.Get("Content-Length") != "" {
+		req.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	}
 	return nil
+}
+
+// bufferedBody wraps a fully-buffered request body. An empty one must be
+// http.NoBody: net/http's transport treats any other non-nil body with
+// ContentLength 0 as "length unknown" and sends a body-less POST/PUT with
+// "Transfer-Encoding: chunked" instead of "Content-Length: 0".
+func bufferedBody(body []byte) io.ReadCloser {
+	if len(body) == 0 {
+		return http.NoBody
+	}
+	return io.NopCloser(bytes.NewReader(body))
 }
 
 func logSkippedBodyRule(id int64, kind string) {

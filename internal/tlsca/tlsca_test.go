@@ -110,7 +110,7 @@ func TestLeafForHostVerifiesAgainstCA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LeafForHost cached: %v", err)
 	}
-	if &leaf.Certificate[0] == nil || string(leaf.Certificate[0]) != string(leaf2.Certificate[0]) {
+	if string(leaf.Certificate[0]) != string(leaf2.Certificate[0]) {
 		t.Fatal("expected cached leaf to be reused")
 	}
 }

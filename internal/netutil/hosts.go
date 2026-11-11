@@ -77,8 +77,8 @@ func ListListenHosts() HostsResult {
 					}
 					addrStr := ip4.String()
 					kind := "lan"
-					label := ifaceLabel + " (IPv4)"
-					prio := 10
+					var label string
+					var prio int
 					if ip4.IsLinkLocalUnicast() {
 						kind = "link_local"
 						label = ifaceLabel + " (link-local IPv4)"

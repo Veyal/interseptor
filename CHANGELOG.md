@@ -12,11 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement.
+- **Response rules and the response hold keep working after 256 MB of rewritten traffic.** A response buffered for match-&-replace or a forwarded hold never returned its bytes to the shared transform budget, so the budget drained for the life of the process and later responses (and held requests) were forwarded untouched with a misleading "in use by other in-flight bodies" log line. The reservation is now released on every response path. (`internal/proxy/proxy.go`.)
+- **A body-less POST keeps `Content-Length: 0` through a body rule or an intercept hold.** With a request body rule enabled, or intercept on, an empty request body was re-sent as `Transfer-Encoding: chunked`, which origins that reject chunked requests answer with 411/400; a body rule also stamped `Content-Length: 0` onto every GET. (`internal/proxy/proxy.go`, `internal/intercept/intercept.go`.)
+- **A filtered request is counted once.** One out-of-scope or telemetry-suppressed request added up to four entries to the suppressed-request report, inflating the History banner about fourfold and shrinking the window it covers; the samples shown were also stale once more than 512 requests had been filtered. (`internal/proxy/proxy.go`, `internal/proxy/suppressed.go`.)
+- **A client that opens a CONNECT and never starts TLS is reaped after 30 s.** It used to hold a goroutine and a file descriptor until exit, and is no longer recorded as a pinning failure or auto-bypassed. (`internal/proxy/proxy.go`.)
+- **A SOCKS upstream that accepts and stays silent fails in 30 s.** WebSocket upgrades and TLS passthrough dialed it with no deadline, so a stalled SOCKS proxy hung the request and its client indefinitely. (`internal/proxy/proxy.go`.)
 - **gofmt is clean across the tree.** Six files that had drifted are reformatted; `GOFMT_ALL=1 make fmt-check` passes. No behaviour change.
 
 ### Changed
 
 - **Go 1.26 is the minimum, built with a patched toolchain.** `golang.org/x/net` 0.57 to 0.62, `golang.org/x/crypto` 0.54 to 0.58, `klauspost/compress` 1.18.6 to 1.20.4 and `andybalholm/brotli` 1.2.1 to 1.3.0 clear the reachable advisories in those modules; the fixed `x/net` and `x/crypto` releases require Go 1.26, and `toolchain go1.26.11` carries the standard-library fixes. `govulncheck` reports 0 reachable vulnerabilities (25 before). (`go.mod`, `go.sum`, `README.md`, `docs/getting-started.md`, `docs/agents.md`.)
+- **Dead code flagged by staticcheck removed.** Unused initial label/priority values in the listen-host picker and an always-false comparison in a CA test; no behaviour change. (`internal/netutil/hosts.go`, `internal/tlsca/tlsca_test.go`.)
 
 ### Added
 

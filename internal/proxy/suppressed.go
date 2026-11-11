@@ -20,11 +20,11 @@ type SuppressedRequest struct {
 // Suppression reasons. Self traffic (our own loopback listeners) is expected and
 // is not recorded: it would drown the signal.
 const (
-	SuppressedOutOfScope        = "out-of-scope"
-	SuppressedBrowserTelemetry  = "browser-telemetry"
-	SuppressedAndroidTelemetry  = "android-telemetry"
-	suppressedRingSize          = 512
-	suppressedSampleLimit       = 25
+	SuppressedOutOfScope       = "out-of-scope"
+	SuppressedBrowserTelemetry = "browser-telemetry"
+	SuppressedAndroidTelemetry = "android-telemetry"
+	suppressedRingSize         = 512
+	suppressedSampleLimit      = 25
 )
 
 // suppressedLog is a bounded ring of recently dropped requests.
@@ -101,8 +101,10 @@ func (s *Server) RecentSuppressed(window time.Duration) SuppressedReport {
 	// Newest first, then by count, so the banner and the list agree.
 	sortSuppressed(rep.Hosts)
 	// Samples: the newest few distinct requests, for "what exactly was dropped".
-	for i := len(sl.ring) - 1; i >= 0 && len(rep.Samples) < suppressedSampleLimit; i-- {
-		e := sl.ring[i]
+	// Once the ring has wrapped, next is the oldest slot, so the newest entry
+	// sits just before it rather than at the end of the backing slice.
+	for k, n := 1, len(sl.ring); k <= n && len(rep.Samples) < suppressedSampleLimit; k++ {
+		e := sl.ring[(sl.next-k+n)%n]
 		if e.TS >= cutoff {
 			rep.Samples = append(rep.Samples, e)
 		}
