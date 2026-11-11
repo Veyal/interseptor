@@ -1336,7 +1336,7 @@ func (s *Server) registerTools() {
 			"tag":          p("string", "filter by tag (exact, case-insensitive)"),
 			"tlsFailed":    p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
 			"includeTools": p("boolean", "include Repeater/Intruder and other tool-generated flows (default true for agents; false = History UI filter)"),
-			"cursor":       map[string]any{"type": "integer", "minimum": 1, "description": "page older flows: pass the smallest id from the previous page"},
+			"cursor":       map[string]any{"type": "integer", "minimum": 1, "description": "page older flows: the smallest id from the previous page, or its searchCursor when set"},
 			"limit":        pr("default 50", 1, 5000),
 		}),
 		func(a map[string]any) (string, error) {

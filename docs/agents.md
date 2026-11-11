@@ -1263,7 +1263,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | DELETE | `/api/flow-searches/{name}` | Delete one project-scoped saved flow search |
 | PUT | `/api/flow-searches/{name}` | Compile and replace a project-scoped saved flow search. |
 | GET | `/api/flow-searches/{name}/source` | Get source for one project-scoped saved flow search |
-| GET | `/api/flows` | List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host... |
+| GET | `/api/flows` | List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}. |
 | POST | `/api/flows/delete` | Delete flows by id. |
 | GET | `/api/flows/diff` | Diff two flows' responses (?a=&b=, optional maxBytes, format=text): status, length, headers, body |
 | POST | `/api/flows/gc` | Reclaim orphaned body files (no flows deleted, no body). |
