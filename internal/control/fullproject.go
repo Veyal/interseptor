@@ -405,7 +405,7 @@ func installFullArchiveWithOps(zipPath, destDir string, overwrite bool, ops proj
 		if err := os.MkdirAll(parent, 0o755); err != nil {
 			return err
 		}
-		stage, err := os.MkdirTemp(parent, "."+filepath.Base(destDir)+"-staging-*")
+		stage, err := os.MkdirTemp(parent, stagingDirPrefix(destDir, "staging"))
 		if err != nil {
 			return err
 		}
@@ -423,7 +423,7 @@ func installFullArchiveWithOps(zipPath, destDir string, overwrite bool, ops proj
 			return os.Rename(stage, destDir)
 		}
 
-		backup, err := os.MkdirTemp(parent, "."+filepath.Base(destDir)+"-rollback-*")
+		backup, err := os.MkdirTemp(parent, stagingDirPrefix(destDir, "rollback"))
 		if err != nil {
 			return err
 		}
@@ -450,8 +450,28 @@ func swapProjectDirectories(stage, dest, backup string, ops projectDirOps) error
 	return nil
 }
 
+// readOnlySQLiteDSN is the SQLite URI for opening path read-only. The path is a
+// URI path: '?' starts the query and '#' the fragment, so an unescaped project
+// directory such as "client#2" or "what?now" cut the filename short and the
+// handle opened (and could create) a different file. '%' is escaped first
+// because SQLite decodes %HH in URI filenames.
+func readOnlySQLiteDSN(path string) string {
+	return "file:" + sqliteURIPathEscaper.Replace(path) + "?mode=ro"
+}
+
+var sqliteURIPathEscaper = strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23")
+
+// stagingDirPrefix names the staging/rollback directory for a project. The
+// project name's URI metacharacters are replaced: the staged database is opened
+// by path-built SQLite URIs (here and in store.QuarantineImportedProject), and
+// a '?' or '#' in the directory name would point them at another file.
+func stagingDirPrefix(destDir, kind string) string {
+	base := strings.NewReplacer("%", "_", "?", "_", "#", "_").Replace(filepath.Base(destDir))
+	return "." + base + "-" + kind + "-*"
+}
+
 func validateImportedProject(dir string) error {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, archiveDBName)+"?mode=ro")
+	db, err := sql.Open("sqlite", readOnlySQLiteDSN(filepath.Join(dir, archiveDBName)))
 	if err != nil {
 		return fmt.Errorf("open imported project: %w", err)
 	}
@@ -525,7 +545,7 @@ func validateImportedProject(dir string) error {
 // password when authentication is on, and the upstream proxy password when one
 // was removed. Auth stays on (fail closed); the caller tells the operator.
 func restoredCredentialGaps(dir string) []string {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, archiveDBName)+"?mode=ro")
+	db, err := sql.Open("sqlite", readOnlySQLiteDSN(filepath.Join(dir, archiveDBName)))
 	if err != nil {
 		return nil
 	}

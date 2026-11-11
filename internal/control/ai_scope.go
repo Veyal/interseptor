@@ -27,6 +27,10 @@ const aiMaxIntruderThreads = 10
 // aiScopeFix is the remediation every out-of-scope refusal carries.
 const aiScopeFix = "ask the operator (request_human_input) to add the host to scope in the UI; the AI channel cannot send outside scope"
 
+// aiInvalidTargetPrefix starts the refusal for a target that cannot be
+// scope-checked at all; writeAIScopeRefusal reports it as code invalid_target.
+const aiInvalidTargetPrefix = "invalid_target: "
+
 // aiScopeRefusal returns a refusal message when an AI-originated send (flags
 // carries store.FlagAI) targets rawURL outside the project scope, or "" when
 // the send may proceed. pathHint overrides the URL path (Intruder targets
@@ -37,7 +41,10 @@ func (h *Hub) aiScopeRefusal(flags int64, rawURL, pathHint string) string {
 	}
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || u.Hostname() == "" {
-		return "" // malformed targets fail later with the send path's own error
+		// Fail closed: a target whose host cannot be read cannot be shown to be
+		// in scope. Allowing it left the decision to whatever the send path made
+		// of the same string later.
+		return aiInvalidTargetPrefix + "the target URL must be absolute with a host (scheme://host[:port]/path) so it can be checked against the project scope"
 	}
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme { // WebSocket targets are scoped like their HTTP origin
@@ -66,6 +73,15 @@ func writeAIScopeRefusal(w http.ResponseWriter, msg, rawURL string) {
 	host := ""
 	if u, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
 		host = u.Hostname()
+	}
+	if strings.HasPrefix(msg, aiInvalidTargetPrefix) {
+		writeJSON(w, http.StatusForbidden, map[string]any{
+			"error": msg,
+			"code":  "invalid_target",
+			"host":  host,
+			"fix":   "send an absolute http(s) or ws(s) URL with a host",
+		})
+		return
 	}
 	writeJSON(w, http.StatusForbidden, map[string]any{
 		"error": msg,

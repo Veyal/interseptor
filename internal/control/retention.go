@@ -105,7 +105,7 @@ func (h *flowAPI) pruneOptions(in purgeRequest) store.PruneOptions {
 func (h *flowAPI) listPendingPrunes(w http.ResponseWriter, r *http.Request) {
 	items, err := h.st.PendingPrunes()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"prunes": items})

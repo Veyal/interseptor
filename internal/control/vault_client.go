@@ -104,15 +104,15 @@ func (h *Hub) vaultList(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	req, err := http.NewRequest(http.MethodGet, base+"/api/vault/projects", nil)
+	req, err := h.peerRequest(r.Context(), http.MethodGet, base+"/api/vault/projects", nil)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	resp, err := peerHTTPClient.Do(req)
+	resp, err := h.peerDo(req)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "vault unreachable: "+err.Error())
+		httpErr(w, peerErrStatus(err), "vault unreachable: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -188,7 +188,7 @@ func (h *Hub) vaultBackup(w http.ResponseWriter, r *http.Request) {
 	if in.Label != "" {
 		u += "?label=" + url.QueryEscape(in.Label)
 	}
-	req, err := http.NewRequest(http.MethodPut, u, f)
+	req, err := h.peerRequest(r.Context(), http.MethodPut, u, f)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -199,9 +199,9 @@ func (h *Hub) vaultBackup(w http.ResponseWriter, r *http.Request) {
 	if h.ProjectName != "" {
 		req.Header.Set("X-Interseptor-Source-Host", h.ProjectName)
 	}
-	resp, err := peerHTTPClient.Do(req)
+	resp, err := h.peerDo(req)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "vault unreachable: "+err.Error())
+		httpErr(w, peerErrStatus(err), "vault unreachable: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -251,9 +251,9 @@ func (h *Hub) vaultImport(w http.ResponseWriter, r *http.Request) {
 	if in.Rev > 0 {
 		dl = fmt.Sprintf("%s/api/vault/projects/%s/revs/%d", base, url.PathEscape(in.ID), in.Rev)
 	}
-	tmpPath, err := downloadPeerArchive(dl, key)
+	tmpPath, err := h.downloadPeerArchive(r.Context(), dl, key)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "download failed: "+err.Error())
+		httpErr(w, peerErrStatus(err), "download failed: "+err.Error())
 		return
 	}
 	defer os.Remove(tmpPath)
@@ -289,9 +289,9 @@ func (h *Hub) vaultMerge(w http.ResponseWriter, r *http.Request) {
 	if in.Rev > 0 {
 		dl = fmt.Sprintf("%s/api/vault/projects/%s/revs/%d", base, url.PathEscape(in.ID), in.Rev)
 	}
-	tmpPath, err := downloadPeerArchive(dl, key)
+	tmpPath, err := h.downloadPeerArchive(r.Context(), dl, key)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "download failed: "+err.Error())
+		httpErr(w, peerErrStatus(err), "download failed: "+err.Error())
 		return
 	}
 	defer os.Remove(tmpPath)

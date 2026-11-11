@@ -165,6 +165,11 @@ type Hub struct {
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
+	// clientLag holds, per /api/events subscriber, the one-slot signal broadcast
+	// raises when it drops a message for that subscriber (guarded by mu).
+	clientLag map[chan string]chan struct{}
+	// inScopeMemo caches the hasInScopeTraffic scan (flows_inscope.go).
+	inScopeMemo inScopeMemo
 	// streamStop ends every long-lived event stream (CloseStreams) so a
 	// graceful server shutdown is not held open by the UI's /api/events.
 	streamStop     chan struct{}
@@ -574,11 +579,35 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	for _, id := range in.FlowIDs {
-		h.broadcastFlowTags(id)
-	}
+	h.broadcastFlowTagsBulk(in.FlowIDs)
 	h.broadcast(map[string]any{"type": "tags.update"})
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(in.FlowIDs)})
+}
+
+// bulkTagRowEvents is the most flows a bulk tag change announces row by row. It
+// stays under the 64-message subscriber queue (events.go): a larger burst is
+// dropped for the very clients it is meant for.
+const bulkTagRowEvents = 32
+
+// broadcastFlowTagsBulk announces a bulk tag change. A small selection gets one
+// flow.update per row (two queries in total, not two per flow) so open lists
+// repaint in place; a large one gets a single payload-less flow.update, which
+// every client already answers with one debounced list reload.
+func (h *flowAPI) broadcastFlowTagsBulk(ids []int64) {
+	if len(ids) > bulkTagRowEvents {
+		h.epsCache.invalidateDebounced()
+		h.broadcast(map[string]any{"type": "flow.update", "count": len(ids)})
+		return
+	}
+	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{FlowIDs: ids, Limit: len(ids)})
+	if err != nil {
+		h.broadcast(map[string]any{"type": "flow.update", "count": len(ids)})
+		return
+	}
+	_ = h.st.AttachTags(flows)
+	for _, f := range flows {
+		h.FlowUpdated(f)
+	}
 }
 
 // listTags returns every tag in use with flow counts and colors.
@@ -672,10 +701,14 @@ func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
+	gen := h.epsCache.generation() // before the query: see endpointsCache.setAt
 	eps, note, err := h.st.Endpoints(f)
 	if err != nil {
 		httpInternalErr(w, err)
 		return
+	}
+	if h.epsCache.afterQuery != nil {
+		h.epsCache.afterQuery()
 	}
 	if eps == nil {
 		eps = []store.Endpoint{}
@@ -686,7 +719,7 @@ func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 		eps = eps[:maxEndpointList]
 		truncated = true
 	}
-	h.epsCache.set(key, eps, note, total, truncated)
+	h.epsCache.setAt(gen, key, eps, note, total, truncated)
 	out := map[string]any{"endpoints": eps, "total": total}
 	if truncated {
 		out["truncated"] = true
@@ -754,6 +787,16 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	if curID := int64(atoiOr(q.Get("curId"), 0)); curID > 0 {
 		f.CursorID = curID
 		f.CursorVal = q.Get("curVal")
+		if !q.Has("curVal") && f.SortKey != "id" {
+			// A bare curId (the scan cursor a stopped in-scope scan hands out) names
+			// a row; its sort value is read here so the keyset is complete.
+			cur, cerr := h.st.GetFlow(curID)
+			if cerr != nil {
+				httpErr(w, http.StatusBadRequest, "cursor flow no longer exists; reload the list")
+				return
+			}
+			f.CursorVal = store.FlowSortValue(cur, f.SortKey)
+		}
 	} else {
 		f.BeforeID = int64(atoiOr(q.Get("before"), 0)) // legacy id-DESC cursor
 	}
@@ -833,13 +876,13 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	inScopeOnly := q.Get("inScope") == "1"
 	if inScopeOnly {
 		want := limit + 1
-		matched, more, qerr := h.queryInScopeFlows(f, want)
+		matched, scan, qerr := h.queryInScopeFlows(f, want)
 		if qerr != nil {
 			httpInternalErr(w, qerr)
 			return
 		}
-		truncated := more || len(matched) > limit
-		if len(matched) > limit {
+		truncated := len(matched) > limit
+		if truncated {
 			matched = matched[:limit]
 		}
 		_ = h.st.AttachTags(matched)
@@ -847,7 +890,12 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		for _, fl := range matched {
 			out = append(out, toFlowJSON(fl))
 		}
-		resp := withSearchMore(map[string]any{"flows": out, "truncated": truncated}, truncated, f.ScanBoundID)
+		resp := map[string]any{"flows": out, "truncated": truncated || scan.Stopped}
+		if scan.Stopped {
+			withScanStopped(resp, scan, f.SortKey)
+		} else {
+			withSearchMore(resp, truncated, f.ScanBoundID)
+		}
 		if searchNote != "" {
 			resp["searchNote"] = searchNote
 		}

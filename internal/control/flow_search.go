@@ -259,6 +259,21 @@ func withSearchMore(resp map[string]any, truncated bool, bound int64) map[string
 	return resp
 }
 
+// withScanStopped marks a History page whose in-scope scan ran out of budget
+// before the page was full: every in-scope flow down to searchCursor is listed,
+// older flows were not looked at, and the client continues from searchCursor
+// (with searchCursorVal as curVal for a non-id sort) even though the page is
+// short or empty. It reuses the body-search fields the History client follows.
+func withScanStopped(resp map[string]any, scan inScopeScan, sortKey string) map[string]any {
+	resp["searchMore"] = true
+	resp["searchCursor"] = scan.CursorID
+	if store.NormalizeFlowSortKey(sortKey) != "id" {
+		resp["searchCursorVal"] = scan.CursorVal
+	}
+	resp["scanStopped"] = true
+	return resp
+}
+
 func (h *flowAPI) matchFlowScript(r *http.Request, filter *store.FlowFilter, source string) (string, error) {
 	script, err := searchscript.Compile(source)
 	if err != nil {

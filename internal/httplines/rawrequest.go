@@ -2,6 +2,8 @@ package httplines
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -46,5 +48,25 @@ func ParseRawRequest(raw string) (method, path string, headers map[string][]stri
 	if p == "" {
 		p = "/"
 	}
+	// The second result is a path that callers append to scheme://host. A
+	// request target that is neither origin-form (/path), absolute-form
+	// (http://host/path, reduced to its path above) nor asterisk-form (*) has
+	// no path: "GET x:@other.example/a" is an opaque URI whose RequestURI is
+	// "@other.example/a", and appended to a target that moves the authority to
+	// other.example. Refuse it here so no caller ever sees it as a path.
+	if req.URL.Opaque != "" || (p != "*" && !strings.HasPrefix(p, "/")) {
+		return "", "", nil, nil, fmt.Errorf("%w: %q (use /path, http://host/path or *)", ErrRequestTarget, clip(req.RequestURI, 80))
+	}
 	return req.Method, p, h, []byte(bodyStr), nil
+}
+
+// ErrRequestTarget is wrapped by ParseRawRequest when the request line's target
+// is not something a path can be taken from.
+var ErrRequestTarget = errors.New("request target is not a path")
+
+func clip(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }

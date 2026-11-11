@@ -17,6 +17,17 @@ type endpointsCache struct {
 	items         map[string]endpointsCacheEntry
 	order         []string // LRU order, oldest first
 	debounceTimer *time.Timer
+	// gen counts invalidations. A caller reads it (generation) before it runs an
+	// aggregation and hands it back to setAt, which drops a result computed
+	// before an invalidation that landed while the query was running.
+	gen uint64
+	// bulkGen counts immediate invalidations only (import, merge, delete, prune,
+	// prune undo): the changes that can add or remove flows anywhere in the id
+	// range, unlike live capture, which only appends. See bulkGeneration.
+	bulkGen uint64
+	// afterQuery, when set by a test, runs between listEndpoints' aggregation and
+	// its cache write, to interleave an invalidation there.
+	afterQuery func()
 }
 
 type endpointsCacheEntry struct {
@@ -40,9 +51,30 @@ func (c *endpointsCache) get(key string) ([]store.Endpoint, string, int, bool, b
 	return e.eps, e.note, e.total, e.truncated, true
 }
 
-func (c *endpointsCache) set(key string, eps []store.Endpoint, note string, total int, truncated bool) {
+// generation returns the current invalidation count; read it before computing a
+// value for setAt.
+func (c *endpointsCache) generation() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.gen
+}
+
+// setAt stores a value computed while the cache was at generation gen. It is a
+// no-op when the cache was invalidated since: the aggregation ran outside the
+// lock, so its result may predate the change that invalidated the cache, and
+// storing it would serve stale endpoints until the next invalidation.
+func (c *endpointsCache) setAt(gen uint64, key string, eps []store.Endpoint, note string, total int, truncated bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if gen != c.gen {
+		return false
+	}
+	c.store(key, eps, note, total, truncated)
+	return true
+}
+
+// store writes one entry; the caller holds c.mu.
+func (c *endpointsCache) store(key string, eps []store.Endpoint, note string, total int, truncated bool) {
 	if c.items == nil {
 		c.items = map[string]endpointsCacheEntry{}
 	}
@@ -65,8 +97,19 @@ func (c *endpointsCache) invalidate() {
 		c.debounceTimer.Stop()
 		c.debounceTimer = nil
 	}
+	c.gen++
+	c.bulkGen++
 	c.items = nil
 	c.order = nil
+}
+
+// bulkGeneration identifies the current set of non-append flow changes. A value
+// derived from history that only needs topping up with newly captured flows
+// (hasInScopeTraffic) is valid while it is unchanged.
+func (c *endpointsCache) bulkGeneration() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.bulkGen
 }
 
 // invalidateDebounced clears the cache after a short quiet period so high traffic
@@ -80,6 +123,7 @@ func (c *endpointsCache) invalidateDebounced() {
 	c.debounceTimer = time.AfterFunc(2*time.Second, func() {
 		c.mu.Lock()
 		c.debounceTimer = nil
+		c.gen++
 		c.items = nil
 		c.order = nil
 		c.mu.Unlock()

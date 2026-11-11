@@ -198,8 +198,8 @@ var localNetworkSettingKeys = []string{"upstream.proxy", "upstream.proxyCA"}
 
 // importProject merges a project into the current session. It is additive and
 // idempotent for flows (by content signature), match-and-replace rules and
-// scope rules (by their fields), so importing the same bundle twice adds
-// nothing. Network settings stay local (see localNetworkSettingKeys) and are
+// scope rules (by their fields) and saved authz identities (by name; a local
+// identity is never replaced), so importing the same bundle twice adds nothing. Network settings stay local (see localNetworkSettingKeys) and are
 // reported in keptLocalSettings when the bundle carried a different value.
 func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	data, ok := readLimitedBody(w, r, maxPortableProjectImportBytes)
@@ -227,6 +227,15 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Decoded before anything is applied, like the collections section.
+	var bundleIdentities []identity
+	if raw := bundle.Settings["authz.identities"]; raw != "" {
+		if err := json.Unmarshal([]byte(raw), &bundleIdentities); err != nil {
+			httpErr(w, http.StatusBadRequest, "project contains invalid authz identities: "+err.Error())
+			return
+		}
+	}
+
 	flows, flowsSkipped := 0, 0
 	if harData := bytes.TrimSpace(bundle.HAR); len(harData) > 0 && !bytes.Equal(harData, []byte("null")) {
 		entries, err := harx.Parse(harData)
@@ -246,7 +255,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 			}
 			inserted, err := h.insertImportedFlowOnce(fl, e.ReqBody, e.ResBody, seen)
 			if err != nil {
-				httpInternalErr(w, err)
+				h.importFailed(w, err, flows)
 				return
 			}
 			if inserted {
@@ -309,11 +318,10 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
-		if err := h.st.SetSetting("authz.identities", authz); err != nil {
-			httpInternalErr(w, err)
-			return
-		}
+	authzImported, authzKept, err := h.importAuthzIdentities(bundleIdentities)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
 	}
 	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok {
 		if raw != "0" && raw != "1" {
@@ -362,7 +370,47 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
 		"skippedFlows": flowsSkipped, "skippedRules": rulesSkipped, "skippedScope": scopeSkipped,
 		"importedCollections": collStats, "keptLocalSettings": keptLocal, "notes": notesOutcome,
+		"importedIdentities": authzImported, "keptIdentities": authzKept,
 	})
+}
+
+// importAuthzIdentities adds the bundle's saved authz identities to the local
+// list by name. An identity that already exists locally is kept as it is (its
+// headers are this machine's live session), so the import is additive and
+// idempotent like the rest of the bundle: it used to overwrite the whole local
+// list with the bundle's.
+func (h *projectAPI) importAuthzIdentities(incoming []identity) (imported, kept int, err error) {
+	if len(incoming) == 0 {
+		return 0, 0, nil
+	}
+	_, err = (&authzAPI{h.Hub}).mutateIdentities(func(cur []identity) ([]identity, error) {
+		imported, kept = 0, 0
+		have := make(map[string]bool, len(cur))
+		for _, id := range cur {
+			have[id.Name] = true
+		}
+		for _, id := range incoming {
+			id.Name = strings.TrimSpace(id.Name)
+			if id.Name == "" {
+				continue
+			}
+			if have[id.Name] {
+				kept++
+				continue
+			}
+			have[id.Name] = true
+			cur = append(cur, id)
+			imported++
+		}
+		return cur, nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	if imported > 0 {
+		h.broadcast(map[string]any{"type": "authz.update", "what": "identities"})
+	}
+	return imported, kept, nil
 }
 
 // Notes import outcomes reported as "notes" in the import result.

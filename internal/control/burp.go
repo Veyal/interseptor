@@ -71,7 +71,7 @@ func (h *projectAPI) importBurp(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if importFailure != nil {
-			httpInternalErr(w, importFailure)
+			h.importFailed(w, importFailure, imported)
 			return
 		}
 		var tooLarge *http.MaxBytesError

@@ -2,6 +2,7 @@ package control
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,7 +33,7 @@ func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 		if want < 1 {
 			want = 200 // the store's default page for a non-positive limit
 		}
-		flows, _, err = h.queryInScopeFlowsFull(filter, want)
+		flows, _, err = h.queryAllInScopeFlowsFull(filter, want)
 	} else {
 		flows, err = h.st.QueryFlowsFilter(filter)
 	}
@@ -63,7 +64,7 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
-			httpInternalErr(w, err)
+			h.importFailed(w, err, n)
 			return
 		}
 		n++
@@ -73,6 +74,25 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "flow.new"}) // nudge the UI to refresh history
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
+}
+
+// importFailed answers an import that stopped on a storage error after
+// `imported` flows were already stored. Imports are not transactional (each flow
+// is its own insert, and bodies are content-addressed files), so the flows stay;
+// what was wrong is that the failure hid them: the 500 said nothing about them,
+// and the Map cache and the History nudge were skipped, so the UI did not show
+// rows that were in the project. The count is reported and the views refreshed.
+func (h *projectAPI) importFailed(w http.ResponseWriter, err error, imported int) {
+	log.Printf("control: 500: import stopped after %d flow(s): %v", imported, err)
+	if imported > 0 {
+		h.epsCache.invalidate()
+		h.broadcast(map[string]any{"type": "flow.new"})
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]any{
+		"error":    fmt.Sprintf("import stopped on a storage error after %d flow(s) were imported; they were kept", imported),
+		"imported": imported,
+		"partial":  imported > 0,
+	})
 }
 
 // harEntryFlow maps one HAR entry to an imported flow. Like the Burp import it

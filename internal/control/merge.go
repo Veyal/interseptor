@@ -1,16 +1,21 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -141,9 +146,9 @@ func (h *Hub) mergePull(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "peerUrl and key are required")
 		return
 	}
-	tmpPath, err := downloadPeerArchive(base+"/api/export/full", in.Key)
+	tmpPath, err := h.downloadPeerArchive(r.Context(), base+"/api/export/full", in.Key)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "pull failed: "+err.Error())
+		httpErr(w, peerErrStatus(err), "pull failed: "+err.Error())
 		return
 	}
 	defer os.Remove(tmpPath)
@@ -230,9 +235,9 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 	}
 	arc.Close()
 
-	stats, err := uploadPeerArchive(base+"/api/merge/file?"+url.Values{"label": {label}}.Encode(), in.Key, arcPath)
+	stats, err := h.uploadPeerArchive(r.Context(), base+"/api/merge/file?"+url.Values{"label": {label}}.Encode(), in.Key, arcPath)
 	if err != nil {
-		httpErr(w, http.StatusBadGateway, "push failed: "+err.Error())
+		httpErr(w, peerErrStatus(err), "push failed: "+err.Error())
 		return
 	}
 	h.recordMergePresence("push", base, label)
@@ -243,14 +248,90 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 // covers large archive transfers.
 var peerHTTPClient = &http.Client{Timeout: 10 * time.Minute}
 
+// errPeerTarget marks a peer/vault URL that was refused before any request was
+// sent (bad scheme, no host, or one of our own listeners): the caller's fault,
+// not the peer's.
+var errPeerTarget = errors.New("peer URL refused")
+
+// peerErrStatus is the HTTP status for a failed peer fetch: 400 when the URL
+// itself was refused, 502 when the peer could not be reached or answered badly.
+func peerErrStatus(err error) int {
+	if errors.Is(err, errPeerTarget) || errors.Is(err, sender.ErrGuardBlocked) {
+		return http.StatusBadRequest
+	}
+	return http.StatusBadGateway
+}
+
+// maxPeerStatsBytes bounds the JSON a peer answers a push with.
+const maxPeerStatsBytes = 1 << 20
+
+// peerRequest builds a server-side request to a peer or vault URL. The request
+// carries ctx, so the transfer stops when the caller that asked for it goes
+// away, and the target is vetted first: only http/https with a host, and never
+// one of Interseptor's own listeners (the URL is caller-supplied and fetched
+// with a caller-supplied key, so without this the control API could be pointed
+// at itself or at the proxy port).
+func (h *Hub) peerRequest(ctx context.Context, method, rawURL string, body io.Reader) (*http.Request, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: not a valid URL", errPeerTarget)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return nil, fmt.Errorf("%w: it must be an http or https URL with a host", errPeerTarget)
+	}
+	if err := h.ownGuard().CheckHost(ctx, u.Hostname(), atoiOr(u.Port(), defaultPortFor(u.Scheme))); err != nil {
+		if errors.Is(err, sender.ErrGuardBlocked) {
+			return nil, fmt.Errorf("%w: it points at this Interseptor instance", errPeerTarget)
+		}
+		// A name that does not resolve here fails at dial time with the
+		// resolver's own error (or resolves through an outbound proxy).
+	}
+	return http.NewRequestWithContext(ctx, method, rawURL, body)
+}
+
+// peerDo sends a peerRequest. Redirect hops and the dialled address are checked
+// against our own listeners too, so a peer cannot bounce the fetch back here.
+func (h *Hub) peerDo(req *http.Request) (*http.Response, error) {
+	base, _ := peerHTTPClient.Transport.(*http.Transport)
+	if base == nil {
+		base, _ = http.DefaultTransport.(*http.Transport)
+	}
+	if base == nil { // a test replaced the transport: keep it
+		return peerHTTPClient.Do(req)
+	}
+	tr := base.Clone()
+	tr.DisableKeepAlives = true // one transfer per client; nothing to pool
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && h.isOwnDialTarget(ip, atoiOr(port, 0)) {
+			return fmt.Errorf("%w: peer URL resolves to this Interseptor instance", sender.ErrGuardBlocked)
+		}
+		return nil
+	}}
+	tr.DialContext = dialer.DialContext
+	client := &http.Client{Timeout: peerHTTPClient.Timeout, Transport: tr, CheckRedirect: func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("stopped after 5 redirects")
+		}
+		if h.targetsOwnListener(next.URL.String()) {
+			return fmt.Errorf("%w: the peer redirected to this Interseptor instance", errPeerTarget)
+		}
+		return nil
+	}}
+	return client.Do(req)
+}
+
 // downloadPeerArchive GETs a peer's project export to a temp file, returning its path.
-func downloadPeerArchive(url, key string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (h *Hub) downloadPeerArchive(ctx context.Context, url, key string) (string, error) {
+	req, err := h.peerRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	resp, err := peerHTTPClient.Do(req)
+	resp, err := h.peerDo(req)
 	if err != nil {
 		return "", err
 	}
@@ -282,20 +363,20 @@ func downloadPeerArchive(url, key string) (string, error) {
 
 // uploadPeerArchive POSTs a project archive to a peer's merge endpoint and returns
 // the peer's decoded MergeStats.
-func uploadPeerArchive(url, key, archivePath string) (store.MergeStats, error) {
+func (h *Hub) uploadPeerArchive(ctx context.Context, url, key, archivePath string) (store.MergeStats, error) {
 	var stats store.MergeStats
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return stats, err
 	}
 	defer f.Close()
-	req, err := http.NewRequest(http.MethodPost, url, f)
+	req, err := h.peerRequest(ctx, http.MethodPost, url, f)
 	if err != nil {
 		return stats, err
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/zip")
-	resp, err := peerHTTPClient.Do(req)
+	resp, err := h.peerDo(req)
 	if err != nil {
 		return stats, err
 	}
@@ -304,7 +385,7 @@ func uploadPeerArchive(url, key, archivePath string) (store.MergeStats, error) {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return stats, fmt.Errorf("peer returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxPeerStatsBytes)).Decode(&stats); err != nil {
 		return stats, err
 	}
 	return stats, nil

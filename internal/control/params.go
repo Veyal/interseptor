@@ -50,7 +50,9 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 	var err error
 	capped := false
 	if inScope {
-		flows, capped, err = h.queryInScopeFlowsFull(f, limit)
+		var scan inScopeScan
+		flows, scan, err = h.queryInScopeFlowsFull(f, limit)
+		capped = scan.More
 	} else {
 		f.Limit = limit + 1
 		flows, err = h.st.QueryFlowsFilter(f)

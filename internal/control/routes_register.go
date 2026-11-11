@@ -1,5 +1,10 @@
 package control
 
+import (
+	"net/http"
+	"strings"
+)
+
 func (h *Hub) routes() {
 	f := &flowAPI{h}
 	ic := &interceptAPI{h}
@@ -31,7 +36,27 @@ func (h *Hub) routes() {
 	h.registerMetaRoutes(meta)
 	h.registerCollectionRoutes()
 
-	h.mux.HandleFunc("/", h.serveUI)
+	h.mux.HandleFunc("/", h.serveFallback)
+}
+
+// serveFallback is the catch-all behind every registered route. It has no method
+// pattern, so it also receives requests no API route matched: those used to fall
+// into the static-asset handler, which answered an unknown /api/ path with a
+// text/plain 404 (API clients expect the JSON error envelope) and served a POST
+// or DELETE to an asset path as if it were a GET.
+func (h *Hub) serveFallback(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+		// 404 also for a known path under another method: an existing contract
+		// (TestControlRoutesRejectMalformedBodiesWithout5xx) forbids 405 here.
+		httpErr(w, http.StatusNotFound, "no such API route: "+r.Method+" "+r.URL.Path)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		httpErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	h.serveUI(w, r)
 }
 
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
