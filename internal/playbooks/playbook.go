@@ -10,7 +10,6 @@
 package playbooks
 
 import (
-	"bufio"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -84,6 +83,9 @@ func Parse(name, src, source string) (Playbook, error) {
 	p := Playbook{Source: source, Trusted: source == SourceBundled}
 	id := strings.TrimSuffix(filepath.Base(name), ".md")
 	p.ID = id
+	// A UTF-8 byte order mark (editors on Windows add one) is not whitespace, so
+	// it would hide the frontmatter and leave the whole file as the body.
+	src = strings.TrimPrefix(src, "\ufeff")
 	body := src
 	if strings.HasPrefix(strings.TrimSpace(src), "---") {
 		front, rest, err := splitFrontmatter(src)
@@ -110,34 +112,34 @@ func Parse(name, src, source string) (Playbook, error) {
 	return p, nil
 }
 
-// splitFrontmatter separates the leading --- block from the markdown body.
+// splitFrontmatter separates the leading --- block from the markdown body. The
+// body starts after the closing --- line. Line endings may be LF or CRLF, and
+// blank lines before the opening --- are skipped.
 func splitFrontmatter(src string) (front, body string, err error) {
-	sc := bufio.NewScanner(strings.NewReader(src))
-	sc.Buffer(make([]byte, 64*1024), 1<<20)
 	var b strings.Builder
 	started := false
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.TrimSpace(src) == "" {
-			continue
+	for pos := 0; pos < len(src); {
+		line, next := src[pos:], len(src)
+		if i := strings.IndexByte(line, '\n'); i >= 0 {
+			line, next = line[:i], pos+i+1
 		}
+		pos = next
+		trimmed := strings.TrimSpace(line)
 		if !started {
-			if strings.TrimSpace(line) != "---" {
+			if trimmed == "" {
+				continue
+			}
+			if trimmed != "---" {
 				return "", src, fmt.Errorf("frontmatter must start with ---")
 			}
 			started = true
 			continue
 		}
-		if strings.TrimSpace(line) == "---" {
-			// Everything after this line is the body.
-			rest := src[len(b.String())+len(line)+1:]
-			return b.String(), rest, nil
+		if trimmed == "---" {
+			return b.String(), src[next:], nil
 		}
-		b.WriteString(line)
+		b.WriteString(strings.TrimSuffix(line, "\r"))
 		b.WriteByte('\n')
-	}
-	if err := sc.Err(); err != nil {
-		return "", src, err
 	}
 	return "", src, fmt.Errorf("frontmatter is not closed with ---")
 }

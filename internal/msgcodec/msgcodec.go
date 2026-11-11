@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 
 	"github.com/Veyal/interseptor/internal/starx"
 )
@@ -92,6 +93,12 @@ type Codec struct {
 	fnS  starlark.Value // sign (optional)
 }
 
+// fileOptions is the codec dialect: the library defaults (set() allowed; no
+// while loops, recursion, top-level control flow or global reassignment),
+// spelled out so compilation does not read the deprecated process-wide
+// resolver flags that starlark.ExecFile depends on.
+var fileOptions = &syntax.FileOptions{Set: true}
+
 func predeclared() starlark.StringDict {
 	return starx.Predeclared()
 }
@@ -101,7 +108,7 @@ func predeclared() starlark.StringDict {
 func Compile(id, src string) (*Codec, error) {
 	thread := &starlark.Thread{Name: "compile-codec:" + id}
 	thread.SetMaxExecutionSteps(maxSteps)
-	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
+	globals, err := starlark.ExecFileOptions(fileOptions, thread, id+".star", src, predeclared())
 	if err != nil {
 		return nil, budgetFormatted(starx.ScriptError(fmt.Sprintf("codec %q", id), err), thread.ExecutionSteps())
 	}

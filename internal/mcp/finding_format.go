@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
@@ -146,6 +147,7 @@ type findingArtifacts struct {
 	text          string
 	detailText    string
 	blocksText    string
+	evidenceText  string // block notes, captions and proof annotations
 	flowCount     int
 	imageCount    int
 	proofless     int
@@ -182,8 +184,10 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 	if strings.TrimSpace(in.Impact) == "" && strings.TrimSpace(in.Why) == "" {
 		for _, field := range []struct{ name, text string }{{"detail", a.detailText}, {"blocks", a.blocksText}} {
 			text := strings.TrimSpace(field.text)
-			if len(text) >= narrativeCharLimit && !reHeading.MatchString(text) {
-				return errorf("%s is a wall of text (%d characters; limit is %d per field). Set the summary, impact and why fields and keep blocks to short typed reproduction/evidence entries; detail is deprecated", field.name, len(text), narrativeCharLimit), nil
+			// The limit is published in characters: count runes, so text in a
+			// multi-byte script is not rejected at a third of the budget.
+			if n := utf8.RuneCountInString(text); n >= narrativeCharLimit && !reHeading.MatchString(text) {
+				return errorf("%s is a wall of text (%d characters; limit is %d per field). Set the summary, impact and why fields and keep blocks to short typed reproduction/evidence entries; detail is deprecated", field.name, n, narrativeCharLimit), nil
 			}
 		}
 	}
@@ -279,6 +283,7 @@ func secretLintWarnings(in findingFormatInput, a findingArtifacts) []string {
 		{"title", in.Title}, {"summary", in.Summary}, {"impact", in.Impact}, {"why", in.Why},
 		{"fix", in.Fix}, {"retest", in.Retest}, {"detail", a.detailText}, {"blocks", a.blocksText},
 		{"verificationInstructions", in.VerificationInstructions},
+		{"block notes/captions/proofs", a.evidenceText},
 	}
 	var warns []string
 	for _, f := range fields {
@@ -391,10 +396,18 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 		out.validBodyJSON = false
 		return out
 	}
+	var evidenceParts []string
 	for _, b := range blocks {
 		role := strings.ToLower(strings.TrimSpace(b.Role))
 		if role != "" {
 			out.roles[role] = true
+		}
+		// The guide puts the plain-language explanation in proof, so that is
+		// where a pasted token lands; lint it with the note and caption.
+		for _, v := range []string{b.Note, b.Caption, b.Proof} {
+			if strings.TrimSpace(v) != "" {
+				evidenceParts = append(evidenceParts, v)
+			}
 		}
 		switch strings.ToLower(b.Type) {
 		case "text":
@@ -426,6 +439,7 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 	}
 	out.text = strings.Join(parts, "\n\n")
 	out.blocksText = strings.Join(blockParts, "\n\n")
+	out.evidenceText = strings.Join(evidenceParts, "\n\n")
 	return out
 }
 

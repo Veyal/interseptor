@@ -95,3 +95,26 @@ func (s *Server) requireExpectedProject(toolName string, args map[string]any) er
 	}
 	return nil
 }
+
+// expectedProjectDesc is the schema text of the optional project pin.
+const expectedProjectDesc = "optional project pin: the active project's name (or directory) from the `project:` line of an earlier result; the call is rejected, naming the active project, when it no longer matches"
+
+// advertiseExpectedProject adds the expectedProject pin to the input schema of
+// every destructive tool. requireExpectedProject already honours it and the
+// connect instructions name it, but a client that builds calls from tools/list
+// could not know the argument exists.
+func (s *Server) advertiseExpectedProject() {
+	for name := range destructiveTools {
+		t, ok := s.tools[name]
+		if !ok {
+			continue
+		}
+		props, _ := t.schema["properties"].(map[string]any)
+		if props == nil {
+			continue
+		}
+		if _, exists := props["expectedProject"]; !exists {
+			props["expectedProject"] = p("string", expectedProjectDesc)
+		}
+	}
+}

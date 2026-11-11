@@ -10,12 +10,13 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 )
 
 func runCodec(t *testing.T, src string) (starlark.Value, error) {
 	t.Helper()
 	thread := &starlark.Thread{Name: "test"}
-	globals, err := starlark.ExecFile(thread, "t.star", src, Predeclared())
+	globals, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true}, thread, "t.star", src, Predeclared())
 	if err != nil {
 		t.Fatalf("exec: %v", err)
 	}
@@ -121,7 +122,7 @@ out = aes_cbc_decrypt(` + starlarkString(hex.EncodeToString(key)) + `, ` + starl
 `
 	thread := &starlark.Thread{Name: "wide"}
 	thread.SetMaxExecutionSteps(50_000) // far below the codec budget
-	globals, err := starlark.ExecFile(thread, "wide.star", src, Predeclared())
+	globals, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true}, thread, "wide.star", src, Predeclared())
 	if err != nil {
 		t.Fatalf("wide decode: %v", err)
 	}

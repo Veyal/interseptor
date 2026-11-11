@@ -1287,7 +1287,7 @@ func (s *Server) registerTools() {
 		"Read a flow's raw request and/or response (headers + body).",
 		obj(map[string]any{
 			"id":       pt("integer"),
-			"side":     p("string", "req | res | both (default both)"),
+			"side":     p("string", "req | res | both (default both; request/response also accepted)"),
 			"maxBytes": pt("integer"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
@@ -1296,10 +1296,7 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			max := argInt(a, "maxBytes", 4000)
-			side := argStr(a, "side")
-			if side == "" {
-				side = "both"
-			}
+			side := flowSideArg(argStr(a, "side"))
 			var firstErr error
 			fetched := 0
 			get := func(sd string) string {
@@ -1521,7 +1518,7 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return "", err
 			}
-			tags := strings.FieldsFunc(argStr(a, "tags"), func(r rune) bool { return r == ',' || r == ' ' || r == ';' })
+			tags := argTags(a, "tags") // a string is split on , ; and whitespace; an array is read per element
 			if len(tags) == 0 {
 				return "", fmt.Errorf("tags is required (got %s) — pass at least one comma- or space-separated tag", describeValue("tags", a["tags"]))
 			}
@@ -1542,7 +1539,7 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return "", err
 			}
-			tags := strings.FieldsFunc(argStr(a, "tags"), func(r rune) bool { return r == ',' || r == ' ' || r == ';' })
+			tags := argTags(a, "tags") // a string is split on , ; and whitespace; an array is read per element
 			if len(tags) == 0 {
 				return "", fmt.Errorf("tags is required (got %s) — pass at least one comma- or space-separated tag", describeValue("tags", a["tags"]))
 			}
@@ -1961,6 +1958,14 @@ func (s *Server) registerTools() {
 				if argStr(a, "verificationInstructions") == "" {
 					warns = append(warns, "status is needs_verification but verificationInstructions is empty — tell the human exactly what to check")
 				}
+			}
+			if !hasNarrative && !hasPillars {
+				// The format validator was skipped, but a token pasted into the
+				// title, summary, fix or retest still has to be flagged.
+				warns = append(warns, secretLintWarnings(findingFormatInput{
+					Title: argStr(a, "title"), Summary: argStr(a, "summary"), Fix: argStr(a, "fix"),
+					Retest: argStr(a, "retest"), VerificationInstructions: argStr(a, "verificationInstructions"),
+				}, findingArtifacts{})...)
 			}
 			body := map[string]any{}
 			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "cvssV3", "verificationInstructions", "body"} {
@@ -3160,34 +3165,32 @@ func (s *Server) registerTools() {
 			"pathPrefixes": p("string", "comma-separated path prefixes to prune, e.g. /static/,/assets/"),
 		}, "hosts"),
 		func(a map[string]any) (string, error) {
-			hostsRaw := argStr(a, "hosts")
 			mode := argStr(a, "mode")
 			if mode == "" {
 				mode = "delete"
 			}
-			// Split on commas and newlines, trim whitespace, drop empties.
-			var hosts []string
-			for _, part := range strings.FieldsFunc(hostsRaw, func(r rune) bool {
-				return r == ',' || r == '\n' || r == '\r'
-			}) {
-				if h := strings.TrimSpace(part); h != "" {
-					hosts = append(hosts, h)
-				}
-			}
+			// Split on commas and newlines, trim whitespace, drop empties. A JSON
+			// array is read element by element: stringifying it whole would turn
+			// two patterns into one that matches nothing, which with keepOnly
+			// selects every host for deletion.
+			hosts := argList(a, "hosts")
 			body := map[string]any{
 				"hosts":        hosts,
 				"mode":         mode,
 				"dryRun":       argBool(a, "dryRun", false),
-				"methods":      splitCSV(argStr(a, "methods")),
-				"mimePrefixes": splitCSV(argStr(a, "mimePrefixes")),
-				"pathPrefixes": splitCSV(argStr(a, "pathPrefixes")),
+				"methods":      argList(a, "methods"),
+				"mimePrefixes": argList(a, "mimePrefixes"),
+				"pathPrefixes": argList(a, "pathPrefixes"),
 			}
-			if st := splitCSV(argStr(a, "statuses")); len(st) > 0 {
+			if st := argList(a, "statuses"); len(st) > 0 {
 				codes := make([]int, 0, len(st))
 				for _, v := range st {
-					if n, convErr := strconv.Atoi(v); convErr == nil {
-						codes = append(codes, n)
+					n, convErr := strconv.Atoi(v)
+					if convErr != nil {
+						// Dropping it would remove the filter and widen the prune.
+						return "", fmt.Errorf("statuses must be comma-separated integer status codes (got %s)", describeValue("statuses", v))
 					}
+					codes = append(codes, n)
 				}
 				body["statuses"] = codes
 			}
@@ -3303,9 +3306,11 @@ func (s *Server) registerTools() {
 			if ids, ok := a["flowIds"].([]any); ok {
 				out := make([]int64, 0, len(ids))
 				for _, v := range ids {
-					if n, isNum := v.(float64); isNum {
-						out = append(out, int64(n))
+					n, isInt := intArg(v)
+					if !isInt {
+						return "", fmt.Errorf("flowIds must be integer flow ids (got %T %s)", v, describeValue("flowIds", v))
 					}
+					out = append(out, int64(n))
 				}
 				body["flowIds"] = out
 			}
@@ -3646,4 +3651,5 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/session/login/test", nil)
 		})
 
+	s.advertiseExpectedProject()
 }

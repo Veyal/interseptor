@@ -46,7 +46,9 @@ func (s *Server) intruderState(a map[string]any) (string, error) {
 		return "", fmt.Errorf("decode intruder results: %w", err)
 	}
 	kept := rr.Results[:0:0]
+	consumed := 0
 	for _, r := range rr.Results {
+		consumed++
 		if onlyAnom && !resultBool(r, "anomaly") {
 			continue
 		}
@@ -63,7 +65,10 @@ func (s *Server) intruderState(a map[string]any) (string, error) {
 	}
 	delete(st, "results")
 	out := map[string]any{"results": kept, "total": rr.Total, "offset": rr.Offset, "shown": len(kept)}
-	if next := rr.Offset + len(rr.Results); next < rr.Total && !onlyAnom && !onlyFlag {
+	// nextOffset is the first row not yet examined. A filtered call scans one
+	// window and may stop early at limit, so it needs the pointer too: without
+	// it the reply looked complete while later anomalies were never read.
+	if next := rr.Offset + consumed; next < rr.Total {
 		out["nextOffset"] = next
 	}
 	for k, v := range st {

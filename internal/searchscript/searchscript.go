@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 
 	"github.com/Veyal/interseptor/internal/starx"
 )
@@ -17,6 +18,10 @@ const (
 	maxSourceBytes = 64 << 10
 	maxSteps       = 100_000
 )
+
+// fileOptions is the search-script dialect: the library defaults, spelled out so
+// compilation does not read the deprecated process-wide resolver flags.
+var fileOptions = &syntax.FileOptions{Set: true}
 
 // Flow is immutable input exposed to a search predicate.
 type Flow struct {
@@ -49,7 +54,7 @@ func Compile(src string) (script *Script, err error) {
 	}()
 
 	thread := newThread("compile:search")
-	globals, err := starlark.ExecFile(thread, "search.star", src, nil)
+	globals, err := starlark.ExecFileOptions(fileOptions, thread, "search.star", src, nil)
 	if err != nil {
 		return nil, scriptError(err)
 	}

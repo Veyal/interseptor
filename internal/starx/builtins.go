@@ -21,10 +21,12 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"math/big"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go.starlark.net/starlark"
 )
@@ -91,6 +93,12 @@ func FindingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple
 // unbounded text × a wide pattern could otherwise burn CPU.
 var reCache sync.Map // pattern string → *regexp.Regexp | error
 
+// reCacheMax bounds the number of cached patterns; reCacheLen counts the
+// entries stored since the cache was last emptied.
+const reCacheMax = 512
+
+var reCacheLen atomic.Int64
+
 const ReMaxText = 256 << 10
 
 func cachedRegexp(pattern string) (*regexp.Regexp, error) {
@@ -101,6 +109,13 @@ func cachedRegexp(pattern string) (*regexp.Regexp, error) {
 		return v.(*regexp.Regexp), nil
 	}
 	re, err := regexp.Compile(pattern)
+	// A script can derive its pattern from flow data, so the set of patterns is
+	// unbounded. Once the cache is full it is emptied rather than left to grow
+	// for the life of the process; hot patterns re-enter on their next use.
+	if reCacheLen.Add(1) > reCacheMax {
+		reCache.Clear()
+		reCacheLen.Store(1)
+	}
 	if err != nil {
 		reCache.Store(pattern, err)
 		return nil, err
@@ -177,6 +192,13 @@ func toStarlark(v interface{}) starlark.Value {
 	case json.Number:
 		if i, err := x.Int64(); err == nil {
 			return starlark.MakeInt64(i)
+		}
+		// An integer literal past int64 (a 64-bit unsigned id, a snowflake) stays
+		// exact as a Starlark bignum instead of rounding through float64.
+		if !strings.ContainsAny(x.String(), ".eE") {
+			if bi, ok := new(big.Int).SetString(x.String(), 10); ok {
+				return starlark.MakeBigInt(bi)
+			}
 		}
 		if f, err := x.Float64(); err == nil {
 			return starlark.Float(f)
