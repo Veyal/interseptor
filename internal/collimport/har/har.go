@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -121,6 +122,7 @@ func build(reqs []request, label, format string, opt Options) (*Result, error) {
 	hostCount := map[string]int{}
 	seen := map[string]bool{}
 	dups, binary, oversize := 0, 0, 0
+	nonHTTP := map[string]int{}
 	if len(reqs) > MaxEntries {
 		res.Report.Entries = append(res.Report.Entries, impkit.Entry{Level: impkit.Blocked, Feature: "too-many-requests",
 			Message: fmt.Sprintf("only the first %d requests were imported", MaxEntries)})
@@ -129,6 +131,10 @@ func build(reqs []request, label, format string, opt Options) (*Result, error) {
 	for _, r := range reqs {
 		if strings.TrimSpace(r.url) == "" {
 			res.Report.Entries = append(res.Report.Entries, impkit.Entry{Level: impkit.Degraded, Feature: "no-url", Message: "an entry without a URL was skipped"})
+			continue
+		}
+		if sch := nonHTTPScheme(r.url); sch != "" {
+			nonHTTP[sch]++
 			continue
 		}
 		if opt.Dedupe {
@@ -183,6 +189,9 @@ func build(reqs []request, label, format string, opt Options) (*Result, error) {
 	add := func(l impkit.Level, f, m, s string) {
 		res.Report.Entries = append(res.Report.Entries, impkit.Entry{Level: l, Feature: f, Message: m, Suggestion: s})
 	}
+	if len(nonHTTP) > 0 {
+		add(impkit.Degraded, "non-http-url", nonHTTPMessage(nonHTTP), "Only http and https requests can be sent from a collection")
+	}
 	if dups > 0 {
 		add(impkit.Converted, "deduplicated", fmt.Sprintf("%d repeated request(s) were dropped", dups), "")
 	}
@@ -210,6 +219,59 @@ func build(reqs []request, label, format string, opt Options) (*Result, error) {
 }
 
 func lastFolderRank(folders map[string]*store.Item, prev map[string]string) string { return prev[""] }
+
+// nonHTTPScheme returns the lower-cased scheme of a URL the pipeline cannot
+// send (ws, wss, data, blob, chrome-extension, about, ...), or "" for http,
+// https and anything without a scheme. "host:8080/path" is a schemeless URL,
+// not a scheme named after the host.
+func nonHTTPScheme(raw string) string {
+	raw = strings.TrimSpace(raw)
+	i := strings.IndexByte(raw, ':')
+	if i <= 0 {
+		return ""
+	}
+	sch := strings.ToLower(raw[:i])
+	for j := 0; j < len(sch); j++ {
+		c := sch[j]
+		letter := c >= 'a' && c <= 'z'
+		if !letter && (j == 0 || !(c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.')) {
+			return ""
+		}
+	}
+	if sch == "http" || sch == "https" {
+		return ""
+	}
+	if rest := raw[i+1:]; rest != "" && rest[0] >= '0' && rest[0] <= '9' {
+		end := strings.IndexAny(rest, "/?#")
+		if end < 0 {
+			end = len(rest)
+		}
+		if _, err := strconv.ParseUint(rest[:end], 10, 16); err == nil {
+			return ""
+		}
+	}
+	return impkit.Clip(sch, 32)
+}
+
+func nonHTTPMessage(by map[string]int) string {
+	names := make([]string, 0, len(by))
+	total := 0
+	for s, n := range by {
+		names = append(names, s)
+		total += n
+	}
+	sort.Strings(names)
+	const show = 8
+	parts := make([]string, 0, show+1)
+	for i, s := range names {
+		if i == show {
+			parts = append(parts, fmt.Sprintf("%d more scheme(s)", len(names)-show))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s: %d", s, by[s]))
+	}
+	return fmt.Sprintf("%d entry(ies) that are not HTTP requests were skipped (%s)", total, strings.Join(parts, ", "))
+}
 
 func hostOf(raw string) string {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {

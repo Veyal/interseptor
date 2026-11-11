@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/collexec"
 	"github.com/Veyal/interseptor/internal/collrun"
@@ -14,13 +15,13 @@ import (
 // for terminals and CI logs alike.
 func writeText(w io.Writer, rep *collrun.Report) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Collection: %s", rep.CollectionName)
+	fmt.Fprintf(&b, "Collection: %s", term(rep.CollectionName))
 	if rep.EnvName != "" {
-		fmt.Fprintf(&b, "   Environment: %s", rep.EnvName)
+		fmt.Fprintf(&b, "   Environment: %s", term(rep.EnvName))
 	}
-	fmt.Fprintf(&b, "\nRun: %s   Source: %s   Iterations: %d", rep.RunUID, rep.Source, rep.Iterations)
+	fmt.Fprintf(&b, "\nRun: %s   Source: %s   Iterations: %d", term(rep.RunUID), term(rep.Source), rep.Iterations)
 	if rep.Data != nil {
-		fmt.Fprintf(&b, "   Data: %d rows (%s, sha256 %s)", rep.Data.Rows, rep.Data.Format, short(rep.Data.Hash))
+		fmt.Fprintf(&b, "   Data: %d rows (%s, sha256 %s)", rep.Data.Rows, term(rep.Data.Format), term(short(rep.Data.Hash)))
 	}
 	b.WriteString("\n\n")
 	lastIter := -1
@@ -37,16 +38,16 @@ func writeText(w io.Writer, rep *collrun.Report) error {
 	if len(rep.Quarantined) > 0 {
 		b.WriteString("Scripts not approved (nothing was sent):\n")
 		for _, q := range rep.Quarantined {
-			fmt.Fprintf(&b, "  %s %q (%s)  hash %s\n", q.Owner, q.Name, q.Listen, q.Hash)
+			fmt.Fprintf(&b, "  %s %q (%s)  hash %s\n", term(q.Owner), term(q.Name), term(q.Listen), term(q.Hash))
 		}
 		b.WriteString("  Trust them in the UI, pin with --trust-hash <hash> --allow-scripts, or run with --no-scripts.\n")
 	}
 	t := rep.Totals
 	fmt.Fprintf(&b, "\nRequests: %d (sent %d, skipped %d, blocked %d, errors %d)\n", t.Requests, t.Sent, t.Skipped, t.Blocked, t.Errors)
 	fmt.Fprintf(&b, "Tests: %d passed, %d failed, %d errored, %d unsupported, %d skipped\n", t.Pass, t.Fail, t.TestError, t.Unsupported, t.TestSkip)
-	fmt.Fprintf(&b, "Status: %s", rep.Status)
+	fmt.Fprintf(&b, "Status: %s", term(string(rep.Status)))
 	if rep.StopReason != "" {
-		fmt.Fprintf(&b, " (%s)", rep.StopReason)
+		fmt.Fprintf(&b, " (%s)", term(rep.StopReason))
 	}
 	b.WriteString("\n")
 	if rep.FinishedMs > rep.StartedMs {
@@ -58,7 +59,7 @@ func writeText(w io.Writer, rep *collrun.Report) error {
 	case p.Mode == collrun.PersistKeep || p.Decision == collrun.PersistKeep:
 		fmt.Fprintf(&b, "Variables: %d written, %d stored\n", len(p.Pending), p.Committed)
 	default:
-		fmt.Fprintf(&b, "Variables: %d script writes discarded (persist=%s)\n", len(p.Pending), p.Mode)
+		fmt.Fprintf(&b, "Variables: %d script writes discarded (persist=%s)\n", len(p.Pending), term(string(p.Mode)))
 	}
 	fmt.Fprintf(&b, "Exit code: %d\n", rep.ExitCode())
 	_, err := io.WriteString(w, b.String())
@@ -81,7 +82,7 @@ func writeTextItem(b *strings.Builder, it collrun.ItemResult) {
 	if it.Path != "" {
 		name = it.Path + " / " + it.Name
 	}
-	fmt.Fprintf(b, "[%s] %s %s", tag, it.Method, name)
+	fmt.Fprintf(b, "[%s] %s %s", tag, term(it.Method), term(name))
 	if it.HTTPStatus > 0 {
 		fmt.Fprintf(b, " -> %d", it.HTTPStatus)
 		if it.DurationMs > 0 {
@@ -93,18 +94,48 @@ func writeTextItem(b *strings.Builder, it collrun.ItemResult) {
 	}
 	b.WriteString("\n")
 	if it.Error != "" {
-		fmt.Fprintf(b, "       %s\n", oneLine(it.Error))
+		fmt.Fprintf(b, "       %s\n", term(oneLine(it.Error)))
 	}
 	for _, t := range it.Tests {
-		fmt.Fprintf(b, "       %-5s %s", testTag(t.Status), t.Name)
+		fmt.Fprintf(b, "       %-5s %s", testTag(t.Status), term(t.Name))
 		if t.Status != collexec.TestPass && t.Message != "" {
-			fmt.Fprintf(b, ": %s", oneLine(t.Message))
+			fmt.Fprintf(b, ": %s", term(oneLine(t.Message)))
 		}
 		b.WriteString("\n")
 	}
 	for _, c := range it.Console {
-		fmt.Fprintf(b, "       console.%s: %s\n", c.Level, oneLine(c.Text))
+		fmt.Fprintf(b, "       console.%s: %s\n", term(c.Level), term(oneLine(c.Text)))
 	}
+}
+
+// term makes a reported string safe to print on one terminal line. Names,
+// errors, test messages and console output come from the target and from
+// imported files: a line break would forge a result line ("[PASS] ...") and an
+// escape sequence would repaint the terminal or a CI log viewer. Every control
+// character (C0, DEL, C1, the Unicode line and paragraph separators) becomes a
+// space and invalid UTF-8 is dropped.
+func term(s string) string {
+	clean := true
+	for i := 0; i < len(s) && clean; i++ {
+		clean = s[i] >= 0x20 && s[i] < 0x7f
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for len(s) > 0 {
+		r, n := utf8.DecodeRuneInString(s)
+		s = s[n:]
+		switch {
+		case r == utf8.RuneError && n == 1:
+		case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f, r == '\u2028', r == '\u2029':
+			b.WriteByte(' ')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func testTag(s collexec.TestStatus) string {

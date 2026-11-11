@@ -220,6 +220,7 @@ func (im *importer) params(o opInfo, label string) []param {
 type kv struct {
 	key, value string
 	disabled   bool
+	enc        bool // key and value are already percent-encoded
 }
 
 type reqBuilder struct {
@@ -239,23 +240,29 @@ func (b *reqBuilder) parameters(ps []param) {
 	b.pathVar = map[string]string{}
 	var cookieRows []kv
 	for _, p := range ps {
-		val := b.paramValue(p)
+		raw, has := b.paramRaw(p)
+		off := !asBool(p.m.get("required"))
+		if p.m.has("content") {
+			// A parameter described by "content" is serialized by its media
+			// type (usually JSON), not by a style: keep the value as written.
+			raw = scalarString(raw)
+		}
 		switch p.in {
 		case "path":
-			if val == "" {
-				val = "{{" + p.name + "}}"
-			}
-			b.pathVar[p.name] = val
+			b.pathVar[p.name] = pathParam(p, raw, has)
 		case "query":
-			b.query = append(b.query, kv{p.name, val, !asBool(p.m.get("required"))})
+			for _, row := range b.queryParam(p, raw) {
+				row.disabled = off
+				b.query = append(b.query, row)
+			}
 		case "header":
 			switch strings.ToLower(p.name) {
 			case "accept", "content-type", "authorization":
 				continue // governed by body/security
 			}
-			b.headers = append(b.headers, kv{p.name, val, !asBool(p.m.get("required"))})
+			b.headers = append(b.headers, kv{key: p.name, value: joinStyle(raw, collectionSep(p), explodes(p, false)), disabled: off})
 		case "cookie":
-			cookieRows = append(cookieRows, kv{p.name, val, !asBool(p.m.get("required"))})
+			cookieRows = append(cookieRows, kv{key: p.name, value: scalarString(raw), disabled: off})
 		}
 	}
 	if len(cookieRows) > 0 {
@@ -263,34 +270,202 @@ func (b *reqBuilder) parameters(ps []param) {
 		for _, c := range cookieRows {
 			parts = append(parts, c.key+"="+c.value)
 		}
-		b.headers = append(b.headers, kv{"Cookie", strings.Join(parts, "; "), true})
+		b.headers = append(b.headers, kv{"Cookie", strings.Join(parts, "; "), true, false})
 	}
 }
 
-// paramValue picks an authored example/default/enum, never a made-up sample.
+// paramValue is the authored value as one string (form fields).
 func (b *reqBuilder) paramValue(p param) string {
+	v, _ := b.paramRaw(p)
+	return scalarString(v)
+}
+
+// paramRaw picks an authored example/default/enum, never a made-up sample. An
+// array whose items carry an authored value counts as authored with that one
+// element.
+func (b *reqBuilder) paramRaw(p param) (any, bool) {
 	m := p.m
 	if m.has("example") {
-		return scalarString(m.get("example"))
+		return m.get("example"), true
 	}
 	if ex := asMap(m.get("examples")); ex != nil && len(ex.keys) > 0 {
 		if e, _, err := deref(b.im.root, ex.m[ex.keys[0]]); err == nil {
 			if v := asMap(e); v != nil && v.has("value") {
-				return scalarString(v.get("value"))
+				return v.get("value"), true
 			}
 		}
 	}
 	if m.has("x-example") {
-		return scalarString(m.get("x-example"))
+		return m.get("x-example"), true
 	}
 	src := m
 	if s, _, err := deref(b.im.root, m.get("schema")); err == nil && asMap(s) != nil {
 		src = asMap(s)
 	}
 	if v, ok := declared(src); ok {
-		return scalarString(v)
+		return v, true
 	}
-	return ""
+	if schemaType(src) == "array" {
+		if it, _, err := deref(b.im.root, src.get("items")); err == nil && asMap(it) != nil {
+			if v, ok := declared(asMap(it)); ok {
+				return []any{v}, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// paramStyle is the OpenAPI 3 style of a parameter (Parameter Object, "Style
+// Values": query and cookie default to form, path and header to simple).
+// Swagger 2 collectionFormat maps onto it: csv is the comma join, ssv and
+// pipes the delimited styles, multi the exploded form; tsv has no v3 name.
+func paramStyle(p param) string {
+	if s := asString(p.m.get("style")); s != "" {
+		return s
+	}
+	switch asString(p.m.get("collectionFormat")) {
+	case "ssv":
+		return "spaceDelimited"
+	case "pipes":
+		return "pipeDelimited"
+	case "tsv":
+		return "tsv"
+	}
+	if p.in == "query" || p.in == "cookie" {
+		return "form"
+	}
+	return "simple"
+}
+
+// collectionSep is the separator of a Swagger 2 header or path array (csv by
+// default; multi is not defined outside query and formData).
+func collectionSep(p param) string {
+	switch asString(p.m.get("collectionFormat")) {
+	case "ssv":
+		return " "
+	case "tsv":
+		return "\t"
+	case "pipes":
+		return "|"
+	}
+	return ","
+}
+
+// explodes reports the explode flag; def is the default when it is absent
+// (true for the form style of an OpenAPI 3 document, false everywhere else).
+func explodes(p param, def bool) bool {
+	if p.m.has("explode") {
+		return asBool(p.m.get("explode"))
+	}
+	if p.m.has("collectionFormat") {
+		return asString(p.m.get("collectionFormat")) == "multi"
+	}
+	return def
+}
+
+// joinStyle flattens a value the way the non-exploded styles do: array items
+// joined by sep, object properties as key,value,key,value. With pairs an
+// object becomes key=value joined by sep (the exploded simple, label and
+// matrix forms). Scalars are returned as written.
+func joinStyle(v any, sep string, pairs bool) string {
+	switch t := v.(type) {
+	case []any:
+		parts := make([]string, 0, len(t))
+		for _, e := range t {
+			parts = append(parts, scalarString(e))
+		}
+		return strings.Join(parts, sep)
+	case *omap:
+		parts := make([]string, 0, 2*len(t.keys))
+		for _, k := range t.keys {
+			if pairs {
+				parts = append(parts, k+"="+scalarString(t.m[k]))
+			} else {
+				parts = append(parts, k, scalarString(t.m[k]))
+			}
+		}
+		return strings.Join(parts, sep)
+	}
+	return scalarString(v)
+}
+
+// pathParam serializes a path parameter (simple, label, matrix). A parameter
+// without an authored value keeps a {{name}} placeholder inside the style's
+// prefix.
+func pathParam(p param, v any, has bool) string {
+	style, ex := paramStyle(p), explodes(p, false)
+	val := joinStyle(v, collectionSep(p), ex)
+	if !has || val == "" {
+		val = "{{" + p.name + "}}"
+		v = nil
+	}
+	_, isArr := v.([]any)
+	_, isObj := v.(*omap)
+	switch style {
+	case "label":
+		if ex && (isArr || isObj) {
+			val = joinStyle(v, ".", true)
+		}
+		return "." + val
+	case "matrix":
+		switch {
+		case ex && isObj:
+			return ";" + joinStyle(v, ";", true)
+		case ex && isArr:
+			return ";" + p.name + "=" + joinStyle(v, ";"+p.name+"=", false)
+		}
+		return ";" + p.name + "=" + val
+	}
+	return val
+}
+
+// queryParam serializes a query parameter into one row, or several when the
+// style explodes (form with explode, deepObject). Delimiters the style adds
+// are written percent-encoded, as in the specification's "Style Examples"
+// table; such rows are marked enc so they are not escaped a second time.
+func (b *reqBuilder) queryParam(p param, v any) []kv {
+	arr, isArr := v.([]any)
+	obj, isObj := v.(*omap)
+	one := func(val string, enc bool) []kv { return []kv{{key: p.name, value: val, enc: enc}} }
+	if !isArr && !isObj {
+		return one(scalarString(v), false)
+	}
+	switch style := paramStyle(p); style {
+	case "spaceDelimited":
+		return one(joinStyle(v, "%20", false), true)
+	case "pipeDelimited":
+		return one(joinStyle(v, "%7C", false), true)
+	case "tsv":
+		return one(joinStyle(v, "%09", false), true)
+	case "deepObject":
+		if !isObj || len(obj.keys) == 0 {
+			break
+		}
+		rows := make([]kv, 0, len(obj.keys))
+		for _, k := range obj.keys {
+			rows = append(rows, kv{key: p.name + "%5B" + k + "%5D", value: scalarString(obj.m[k]), enc: true})
+		}
+		return rows
+	case "form":
+		if !explodes(p, !b.im.v2) {
+			break
+		}
+		if isArr && len(arr) > 0 {
+			rows := make([]kv, 0, len(arr))
+			for _, e := range arr {
+				rows = append(rows, kv{key: p.name, value: scalarString(e)})
+			}
+			return rows
+		}
+		if isObj && len(obj.keys) > 0 {
+			rows := make([]kv, 0, len(obj.keys))
+			for _, k := range obj.keys {
+				rows = append(rows, kv{key: k, value: scalarString(obj.m[k])})
+			}
+			return rows
+		}
+	}
+	return one(joinStyle(v, ",", false), false)
 }
 
 func (b *reqBuilder) serverPrefix() string {
@@ -313,7 +488,11 @@ func (b *reqBuilder) url() {
 	raw := b.prefix + conv
 	var enabled []string
 	for _, q := range b.query {
-		if !q.disabled {
+		switch {
+		case q.disabled:
+		case q.enc:
+			enabled = append(enabled, q.key+"="+q.value)
+		default:
 			enabled = append(enabled, url.QueryEscape(q.key)+"="+url.QueryEscape(q.value))
 		}
 	}

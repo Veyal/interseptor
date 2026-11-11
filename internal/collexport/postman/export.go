@@ -150,6 +150,7 @@ func (e *exporter) collection(c *store.Collection, items []store.Item) (*pmimpor
 	for k, v := range side.Extra {
 		root.Set(k, v)
 	}
+	restoreNulls(root, side.Nulls)
 	root.Order(keyOrder(c.KeyOrder, []string{"info", "item", "event", "variable", "auth", "protocolProfileBehavior"}))
 	return root, side.Wrapped, nil
 }
@@ -192,7 +193,7 @@ func (e *exporter) item(n *collection.Node, parentPath string) (*pmimport.OMap, 
 	if !side.DescInRequest {
 		if d := descField(it.DescriptionMD, side.DescriptionRaw); d != nil {
 			m.Set("description", d)
-		} else if contains(ko, "description") {
+		} else if contains(ko, "description") && !contains(side.Nulls, "description") {
 			m.SetValue("description", it.DescriptionMD)
 		}
 	}
@@ -224,14 +225,18 @@ func (e *exporter) item(n *collection.Node, parentPath string) (*pmimport.OMap, 
 			return nil, err
 		}
 		m.Set("item", kids)
+		restoreNulls(m, side.Nulls)
 		m.Order(append(ko, "id", "name", "description", "item", "event", "variable", "auth"))
 		return m, nil
 	}
-	req, err := e.request(&it, &side)
-	if err != nil {
-		return nil, err
+	if !contains(side.Nulls, "request") || !pristineRequest(&it) {
+		req, err := e.request(&it, &side)
+		if err != nil {
+			return nil, err
+		}
+		m.Set("request", req)
 	}
-	m.Set("request", req)
+	restoreNulls(m, side.Nulls)
 	m.Order(append(ko, "id", "name", "description", "event", "request", "response"))
 	return m, nil
 }
@@ -241,7 +246,11 @@ func (e *exporter) request(it *store.Item, side *pmimport.ItemSidecar) (json.Raw
 		return it.URL, nil
 	}
 	r := pmimport.NewOMap()
-	r.SetValue("method", it.Method)
+	// A request imported without "method" (or with a null one) holds the GET
+	// default in its column; the key comes back only once it was edited.
+	if !(it.Method == "GET" && (side.NoMethod || contains(side.RequestNulls, "method"))) {
+		r.SetValue("method", it.Method)
+	}
 	if !isNull(it.Headers) {
 		r.Set("header", headers(it.Headers, side.HeaderString))
 	}
@@ -265,8 +274,25 @@ func (e *exporter) request(it *store.Item, side *pmimport.ItemSidecar) (json.Raw
 	for k, v := range side.RequestExtra {
 		r.Set(k, v)
 	}
+	restoreNulls(r, side.RequestNulls)
 	r.Order(append(side.RequestKeys, "method", "header", "body", "url", "auth", "description"))
 	return r.MarshalJSON()
+}
+
+// restoreNulls writes back keys the source file held as an explicit null,
+// unless an edit since the import gave the key a value.
+func restoreNulls(m *pmimport.OMap, keys []string) {
+	for _, k := range keys {
+		if !m.Has(k) {
+			m.Set(k, json.RawMessage("null"))
+		}
+	}
+}
+
+// pristineRequest reports a request that still has nothing but the defaults
+// an import of "request": null leaves behind.
+func pristineRequest(it *store.Item) bool {
+	return (it.Method == "" || it.Method == "GET") && isNull(it.URL) && isNull(it.Headers) && isNull(it.Body) && isNull(it.Auth)
 }
 
 func contains(ss []string, s string) bool {

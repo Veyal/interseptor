@@ -182,23 +182,35 @@ func authzGeometry(c *canvas, in AuthzMatrixInput, l authzLayout, avail int) (la
 
 const authzLegendH = 40
 
+// authzAltCells and authzAltNameRunes bound the alt text: it names the first
+// broken cells only, and collecting stops there so the cost does not grow with
+// the run (the remainder is the count authzPlan already made).
+const (
+	authzAltCells     = 20
+	authzAltNameRunes = 512
+)
+
 func authzAlt(in AuthzMatrixInput, l authzLayout) string {
-	parts := []string{fmt.Sprintf("Authorization differential matrix, %d identities by %d requests, baseline %s", l.totalCols, l.totalRw, orDash(in.BaselineName)), authzSummary(l)}
+	parts := []string{fmt.Sprintf("Authorization differential matrix, %d identities by %d requests, baseline %s", l.totalCols, l.totalRw, clipText(orDash(in.BaselineName), authzAltNameRunes)), authzSummary(l)}
 	var cells []string
+collect:
 	for _, r := range in.Rows {
 		for ci, c := range r.Cells {
-			if ci < len(in.Cols) && c.Broken {
-				cells = append(cells, fmt.Sprintf("%s as %s (status %d)", r.Label, in.Cols[ci], c.Status))
+			if ci >= len(in.Cols) {
+				break
 			}
+			if !c.Broken {
+				continue
+			}
+			if len(cells) == authzAltCells {
+				break collect
+			}
+			cells = append(cells, fmt.Sprintf("%s as %s (status %d)", clipText(r.Label, authzAltNameRunes), clipText(in.Cols[ci], authzAltNameRunes), c.Status))
 		}
 	}
 	if len(cells) > 0 {
-		extra := 0
-		if len(cells) > 20 {
-			extra, cells = len(cells)-20, cells[:20]
-		}
 		s := "Broken access: " + strings.Join(cells, "; ")
-		if extra > 0 {
+		if extra := l.broken - len(cells); extra > 0 {
 			s += fmt.Sprintf("; and %d more", extra)
 		}
 		parts = append(parts, s)

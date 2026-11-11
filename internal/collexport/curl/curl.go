@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/collection"
@@ -152,8 +153,14 @@ func (e *exporter) command(it *store.Item, path string) string {
 	if e.opt.PathAsIs {
 		parts = append(parts, "--path-as-is")
 	}
-	method := strings.ToUpper(it.Method)
+	method := strings.ToUpper(strings.TrimSpace(it.Method))
 	if method == "" {
+		method = "GET"
+	}
+	if !isToken(method) {
+		// curl writes -X verbatim into the request line; a space or line
+		// break there would add words or header lines to the request.
+		e.warn(path, "invalid-method", "the method is not a valid HTTP token and was omitted")
 		method = "GET"
 	}
 	raw := urlRaw(it.URL)
@@ -165,16 +172,26 @@ func (e *exporter) command(it *store.Item, path string) string {
 	hasCT := false
 	var headerArgs []string
 	for _, h := range hdrs {
-		if h.off() || h.Key == "" {
+		if h.off() || strings.TrimSpace(h.Key) == "" {
 			continue
 		}
 		v := h.val()
+		if strings.ContainsAny(h.Key+v, "\r\n") {
+			// curl sends a line break inside -H as a new header line
+			e.warn(path, "header-line-break", "header "+oneLine(h.Key)+" held a line break; it was replaced by a space")
+			h.Key, v = oneLine(h.Key), oneLine(v)
+		}
 		if v == "" && impkit.IsCredentialHeader(h.Key) {
 			v = Placeholder
 			e.redac = true
 		}
 		if strings.EqualFold(h.Key, "content-type") {
 			hasCT = true
+		}
+		if strings.TrimSpace(v) == "" {
+			// "Name:" tells curl to remove a header; "Name;" sends it empty
+			headerArgs = append(headerArgs, "-H "+q(h.Key+";"))
+			continue
 		}
 		headerArgs = append(headerArgs, "-H "+q(h.Key+": "+v))
 	}
@@ -193,6 +210,12 @@ func (e *exporter) command(it *store.Item, path string) string {
 	case method == "GET" && !hasBody, method == "POST" && hasBody:
 	default:
 		parts = append(parts, "-X "+q(method))
+	}
+	if strings.ContainsAny(withoutRefs(raw), "[]{}") {
+		// curl expands [1-3] and {a,b} in a URL into several requests (and
+		// rejects brackets it cannot parse); the request sends them literally.
+		// {{variable}} references do not count: they are substituted first.
+		parts = append(parts, "-g")
 	}
 	if strings.HasPrefix(raw, "-") {
 		// curl would parse a leading '-' as an option
@@ -265,7 +288,7 @@ func (e *exporter) auth(it *store.Item, path string) (args []string, query strin
 		args = append(args, "--digest", "-u "+q(f["username"]+":"+cred(f["password"])))
 	case "apikey":
 		if strings.EqualFold(f["in"], "query") {
-			query = url.QueryEscape(f["key"]) + "=" + cred(f["value"])
+			query = queryEscape(f["key"]) + "=" + queryEscape(cred(f["value"]))
 		} else {
 			args = append(args, "-H "+q(f["key"]+": "+cred(f["value"])))
 		}
@@ -322,8 +345,15 @@ func (e *exporter) body(it *store.Item, path string) (args []string, ct string) 
 		return []string{"--data-raw " + q(b.Raw)}, rawContentType(b.Options.Raw.Language)
 	case "urlencoded":
 		for _, r := range b.URLEncoded {
-			if !r.off() {
+			switch {
+			case r.off() || r.Key == "": // the pipeline skips a row without a name
+			case plainName(r.Key):
 				args = append(args, "--data-urlencode "+q(r.Key+"="+r.val()))
+			default:
+				// --data-urlencode encodes the value only and splits at the
+				// first '=', so a name holding '=', '&', '+', '%' or a space is
+				// written already encoded.
+				args = append(args, "--data-raw "+q(escapeKeepRefs(r.Key)+"="+escapeKeepRefs(r.val())))
 			}
 		}
 		return args, ""
@@ -388,6 +418,107 @@ func (e *exporter) formField(r row, path string) []string {
 	}
 	v := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(r.val())
 	return []string{"-F " + q(r.Key+`="`+v+`";type=`+ct)}
+}
+
+// isToken reports an RFC 9110 token (the only form a method can take).
+func isToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		alnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+		if !alnum && !strings.ContainsRune("!#$%&'*+-.^_`|~", rune(c)) {
+			return false
+		}
+	}
+	return true
+}
+
+func oneLine(s string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ").Replace(s))
+}
+
+// plainName reports a form field name curl can take as written: no character
+// that --data-urlencode would leave unencoded or read as a separator.
+func plainName(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		alnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+		if !alnum && c != '_' && c != '-' && c != '.' && c != '~' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// queryEscape mirrors the pipeline's query escaping (collexec.queryEscape):
+// bytes that cannot appear in a query component are percent-encoded, existing
+// %XX escapes and URL-safe punctuation are left alone, so the script puts the
+// same bytes on the wire as a send. {{variable}} references stay readable.
+func queryEscape(s string) string {
+	const safe = "-._~!$'()*,;:@/?+"
+	hex := func(c byte) bool { return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' }
+	var sb strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '{' && strings.HasPrefix(s[i:], "{{") {
+			if j := strings.Index(s[i:], "}}"); j >= 0 {
+				sb.WriteString(s[i : i+j+2])
+				i += j + 1
+				continue
+			}
+		}
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte(safe, c) >= 0:
+			sb.WriteByte(c)
+		case c == '%' && i+2 < len(s) && hex(s[i+1]) && hex(s[i+2]):
+			sb.WriteByte(c)
+		default:
+			sb.WriteString("%" + strings.ToUpper(strconv.FormatInt(int64(c)+0x100, 16)[1:]))
+		}
+	}
+	return sb.String()
+}
+
+// withoutRefs removes {{variable}} references from s.
+func withoutRefs(s string) string {
+	var sb strings.Builder
+	for {
+		i := strings.Index(s, "{{")
+		if i < 0 {
+			break
+		}
+		j := strings.Index(s[i:], "}}")
+		if j < 0 {
+			break
+		}
+		sb.WriteString(s[:i])
+		s = s[i+j+2:]
+	}
+	sb.WriteString(s)
+	return sb.String()
+}
+
+// escapeKeepRefs form-encodes s but leaves {{variable}} references readable,
+// so the operator can still substitute them in the script.
+func escapeKeepRefs(s string) string {
+	var sb strings.Builder
+	for {
+		i := strings.Index(s, "{{")
+		if i < 0 {
+			break
+		}
+		j := strings.Index(s[i:], "}}")
+		if j < 0 {
+			break
+		}
+		sb.WriteString(url.QueryEscape(s[:i]))
+		sb.WriteString(s[i : i+j+2])
+		s = s[i+j+2:]
+	}
+	sb.WriteString(url.QueryEscape(s))
+	return sb.String()
 }
 
 // q single-quotes s for a POSIX shell.

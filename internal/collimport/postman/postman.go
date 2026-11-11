@@ -102,6 +102,9 @@ type CollectionSidecar struct {
 	DescriptionRaw json.RawMessage            `json:"descriptionRaw,omitempty"`
 	Variable       json.RawMessage            `json:"variable,omitempty"`
 	Extra          map[string]json.RawMessage `json:"extra,omitempty"`
+	// Nulls lists the modelled root keys the file wrote as an explicit null,
+	// so the exporter can write them back instead of dropping the key.
+	Nulls []string `json:"nulls,omitempty"`
 }
 
 // ItemSidecar is everything about an item that has no column.
@@ -116,6 +119,23 @@ type ItemSidecar struct {
 	RequestExtra       map[string]json.RawMessage `json:"requestExtra,omitempty"`
 	Variable           json.RawMessage            `json:"variable,omitempty"`
 	Extra              map[string]json.RawMessage `json:"extra,omitempty"`
+	// Nulls and RequestNulls list the modelled item and request keys written
+	// as an explicit null; NoMethod records a request object without a
+	// "method" key (the column still holds the GET default).
+	Nulls        []string `json:"nulls,omitempty"`
+	RequestNulls []string `json:"requestNulls,omitempty"`
+	NoMethod     bool     `json:"noMethod,omitempty"`
+}
+
+// NullKeys returns which of keys are present in m with the literal value null.
+func NullKeys(m *OMap, keys ...string) []string {
+	var out []string
+	for _, k := range keys {
+		if m.Has(k) && string(bytes.TrimSpace(m.Get(k))) == "null" {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // EnvSidecar is the same for environment/globals files.
@@ -253,6 +273,10 @@ func (p *parser) parseCollection(root *OMap, wrapped bool) error {
 		side.Variable = blanked
 	}
 	side.Extra = root.Rest("info", "item", "event", "variable", "auth", "protocolProfileBehavior")
+	side.Nulls = NullKeys(root, "event", "variable", "auth", "protocolProfileBehavior")
+	if len(NullKeys(info, "description")) > 0 {
+		side.Info["description"] = json.RawMessage("null")
+	}
 	p.reportExtras(side.Extra, c.Name, "collection")
 	if len(side.Extra) == 0 {
 		side.Extra = nil
@@ -358,6 +382,7 @@ func (p *parser) parseItem(raw json.RawMessage, parent, parentPath, rank string,
 		return err
 	}
 	side.Extra = m.Rest(known...)
+	side.Nulls = NullKeys(m, known...)
 	p.reportExtras(side.Extra, path, "item")
 	p.checkUnsupportedProtocols(side.Extra, path, it.UID)
 	if len(side.Extra) == 0 {
@@ -403,6 +428,8 @@ func (p *parser) parseRequest(m *OMap, it *store.Item, side *ItemSidecar, path s
 		return fmt.Errorf("%w: request of %q is neither string nor object", ErrNotPostman, path)
 	}
 	side.RequestKeys = rm.Keys()
+	side.NoMethod = !rm.Has("method")
+	side.RequestNulls = NullKeys(rm, "method", "header", "body", "url", "auth", "description")
 	if mt := jsonString(rm.Get("method")); mt != "" {
 		it.Method = mt
 	}

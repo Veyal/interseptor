@@ -458,12 +458,11 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 			rr.Error = "response capture incomplete"
 		}
 		if flow.ResBodyHash != "" {
-			resBody, err := h.bodyBytesResult(flow.ResBodyHash)
+			sum, err := h.comparableBodyHash(flow.ResBodyHash, flow.ResHeaders)
 			if err != nil {
 				rr.Error = "response body unavailable"
 			} else {
-				_, comparableBody := decodeForDisplay(flow.ResHeaders, resBody)
-				rr.BodyHash = bodySHA256(comparableBody)
+				rr.BodyHash = sum
 			}
 		}
 	}
@@ -781,8 +780,8 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		if i := strings.Index(pathOnly, "?"); i >= 0 {
 			pathOnly = pathOnly[:i]
 		}
-		reqBody, reqBodyErr := h.bodyBytesResult(srcFlow.ReqBodyHash)
-		resBody, resBodyErr := h.bodyBytesResult(srcFlow.ResBodyHash)
+		reqBody, reqSkipped, reqBodyErr := h.jwtSourceBody(srcFlow.ReqBodyHash, srcFlow.ReqHeaders)
+		resBody, resSkipped, resBodyErr := h.jwtSourceBody(srcFlow.ResBodyHash, srcFlow.ResHeaders)
 		jwt, jwtSource = jwtextract.Extract(jwtextract.Input{
 			ReqHeaders: srcFlow.ReqHeaders,
 			Path:       pathOnly,
@@ -797,6 +796,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			}
 			if resBodyErr != nil {
 				httpFileNotFoundOrInternal(w, resBodyErr, "JWT source body not found")
+				return
+			}
+			if reqSkipped || resSkipped {
+				httpErr(w, http.StatusBadRequest, fmt.Sprintf("no JWT found in the headers, path or query, and a body of the source flow is over %d KiB and was not searched; provide jwt directly", maxAuthzJWTSourceBytes>>10))
 				return
 			}
 		}
