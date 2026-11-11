@@ -372,9 +372,16 @@ func (c *collectionsAPI) resolvePreview(w http.ResponseWriter, r *http.Request) 
 	stack := varstore.NewStack(layers...)
 	stack.RegisterSecrets(c.reg)
 	res := varstore.New(varstore.Options{Policy: varstore.PolicyLiteral, Registry: c.reg}).Resolve(in.Template, stack)
-	out := map[string]any{"value": c.reg.Mask(res.Value), "uses": res.Uses, "unresolved": res.Unresolved}
+	// The resolver reports names as written, but a name is operator text that
+	// can itself embed a registered secret, so every string leaving here is
+	// masked, not only the resolved value.
+	unresolved := make([]string, 0, len(res.Unresolved))
+	for _, name := range res.Unresolved {
+		unresolved = append(unresolved, c.reg.Mask(name))
+	}
+	out := map[string]any{"value": c.reg.Mask(res.Value), "uses": res.Uses, "unresolved": unresolved}
 	if res.Err != nil {
-		out["error"] = res.Err.Error()
+		out["error"] = c.reg.Mask(res.Err.Error())
 	}
 	writeJSON(w, http.StatusOK, out)
 }

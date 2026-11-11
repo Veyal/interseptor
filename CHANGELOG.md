@@ -150,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The message-codec editor asks before discarding unsaved Starlark.** Opening another codec or pressing New prompts first, and reopening the dialog keeps the draft. (`internal/control/ui/js/codecs.js`.)
 - **Enter that confirms an IME composition no longer submits.** The agent-prompt answer field, the command palette, the evidence picker, the draft-export confirmation, the find bar and registered shortcuts ignore composition keys. (`internal/control/ui/js/keys.js`, `humaninput.js`, `cmdk.js`, `evidence-attach.js`, `report-preflight.js`, `finder.js`, `findings.js`.)
 - **Find bar Alt+R and Alt+C work on macOS.** The shortcuts match the physical key, since Option changes the typed character. (`internal/control/ui/js/finder.js`.)
+- **The variable resolve preview masks the names it reports.** `POST /api/variables/resolve` masked the resolved value but returned unresolved names and the error text as written, so a name that embeds a registered secret came back in the clear. (`internal/control/envs.go`.)
 
 ### Changed
 
