@@ -2,6 +2,7 @@ package collexec
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"sync"
 
@@ -46,6 +47,10 @@ type Vars struct {
 	// secretName classifies a variable name the script writes for the first
 	// time; nil keeps secret-ness to already-declared variables only.
 	secretName func(string) bool
+	// wasSecret remembers "scope\x00name" of secret variables a script
+	// removed, so writing the name again (a rotation, or clear() then set())
+	// does not turn the new value into a plain, displayed one.
+	wasSecret map[string]bool
 }
 
 func newVars(base []varstore.Layer, local map[string]string, reg *redact.Registry, secretName func(string) bool) *Vars {
@@ -62,9 +67,40 @@ func newVars(base []varstore.Layer, local map[string]string, reg *redact.Registr
 		for k, x := range local {
 			l.Vars[k] = varstore.Var{Value: x}
 		}
-		v.layers = append(v.layers, l)
+		// First, so the caller's overrides beat a local-scope layer the
+		// backend supplied (the request's own variables): layers of one scope
+		// keep the order given.
+		v.layers = append([]varstore.Layer{l}, v.layers...)
 	}
 	return v
+}
+
+// addSecretForms registers the percent-encoded spellings a secret takes on its
+// way into a URL (path variable, params table, form/apikey query). Masking is
+// by exact value, so without them a secret holding a space, '+', '/' or '&'
+// was shown, encoded, in the resolved URL of every result and report.
+func addSecretForms(reg *redact.Registry, value string) {
+	if reg == nil || value == "" {
+		return
+	}
+	for _, f := range []string{queryEscape(value), url.QueryEscape(value), url.PathEscape(value)} {
+		if f != value {
+			reg.Add(f)
+		}
+	}
+}
+
+// registerSecretForms registers the encoded forms of every secret in scope.
+func (v *Vars) registerSecretForms() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for _, l := range v.layers {
+		for _, x := range l.Vars {
+			if x.Secret {
+				addSecretForms(v.reg, x.Value)
+			}
+		}
+	}
 }
 
 // Stack builds a resolver stack from the current state.
@@ -160,9 +196,13 @@ func (v *Vars) Set(scope, name, value string) error {
 	if !existed && v.secretName != nil && v.secretName(name) {
 		secret = true // a credential written for the first time is a secret from that moment
 	}
+	if !existed && v.wasSecret[scope+"\x00"+name] {
+		secret = true
+	}
 	target.Vars[name] = varstore.Var{Value: value, Secret: secret}
 	if secret {
 		v.reg.Add(value)
+		addSecretForms(v.reg, value)
 	}
 	ch := VarChange{Scope: scope, Key: name, Value: value, Secret: secret}
 	ch.Display = value
@@ -183,6 +223,12 @@ func (v *Vars) Unset(scope, name string) error {
 	defer v.mu.Unlock()
 	for _, l := range v.layers {
 		if l.Scope == sc {
+			if l.Vars[name].Secret {
+				if v.wasSecret == nil {
+					v.wasSecret = map[string]bool{}
+				}
+				v.wasSecret[scope+"\x00"+name] = true
+			}
 			delete(l.Vars, name)
 		}
 	}

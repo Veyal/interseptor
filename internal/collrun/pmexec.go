@@ -79,6 +79,9 @@ type PMExecutor struct {
 	Flows  FlowReader
 	Clock  func() time.Time
 	Scope  collexec.ScopeChecker
+	// Policy is the scope policy the caller forced on the step ("" = none). A
+	// pm.sendRequest made by one of its scripts never runs under a looser one.
+	Policy string
 	// Scripts picks the engine per trust state: the out-of-process worker, or
 	// in-process for trusted scripts when Router.InProcessTrusted is set. The
 	// zero Router runs everything in-process (tests, embedders without a
@@ -247,10 +250,35 @@ func (e *PMExecutor) scopeCheck(raw string) error {
 	if err != nil || u.Hostname() == "" {
 		return errors.New("invalid url")
 	}
-	if e.Coll.ScopePolicy != store.ScopePolicyOff && e.Scope != nil && !e.Scope.HostInScope(u.Hostname()) {
+	if e.nestedPolicy() != store.ScopePolicyOff && e.Scope != nil && !e.Scope.HostInScope(u.Hostname()) {
 		return fmt.Errorf("host %s is out of scope", u.Hostname())
 	}
 	return nil
+}
+
+// nestedPolicy is the scope policy of a script's own sends: the collection's
+// (default block), tightened to the policy forced on the surrounding step. A
+// run started under block (the runner default, every AI and matrix run) must
+// not reach an out-of-scope host through pm.sendRequest because the
+// collection itself is set to warn or off.
+func (e *PMExecutor) nestedPolicy() string {
+	rank := func(p string) int {
+		switch p {
+		case store.ScopePolicyOff:
+			return 0
+		case store.ScopePolicyWarn:
+			return 1
+		}
+		return 2 // block, and anything unknown
+	}
+	cp := e.Coll.ScopePolicy
+	if cp == "" {
+		cp = store.ScopePolicyBlock
+	}
+	if e.Policy != "" && rank(e.Policy) > rank(cp) {
+		return e.Policy
+	}
+	return cp
 }
 
 // sendFromScript performs pm.sendRequest through the same Step pipeline as
@@ -270,7 +298,7 @@ func (e *PMExecutor) sendFromScript(ctx context.Context, r scriptctx.SendRequest
 	item.Settings = json.RawMessage(`{"unresolved":"literal"}`)
 	res, err := e.Pipe.Step(ctx, collexec.StepInput{
 		Chain:  collexec.Chain{Collection: e.Coll, Item: item},
-		Source: collexec.SourceScript, AI: e.AI, NoScripts: true, EnvUID: e.EnvUID,
+		Source: collexec.SourceScript, AI: e.AI, NoScripts: true, EnvUID: e.EnvUID, ScopePolicy: e.nestedPolicy(),
 	})
 	if err != nil {
 		return scriptctx.SendResponse{}, err

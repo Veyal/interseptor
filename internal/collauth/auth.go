@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -115,10 +116,17 @@ func (m *Manager) Secrets() *redact.Registry { return m.secrets }
 // Scrub masks every known secret in s.
 func (m *Manager) Scrub(s string) string { return m.secrets.Mask(s) }
 
+// track registers secrets for masking, together with the percent-encoded
+// spelling each takes when it is placed in a query string (addQuery): masking
+// is by exact value, so a key or token holding '+', '/' or '=' was otherwise
+// shown, encoded, in the resolved URL.
 func (m *Manager) track(vals ...string) {
 	for _, v := range vals {
 		if v != "" {
 			m.secrets.Add(v)
+			if e := url.QueryEscape(v); e != v {
+				m.secrets.Add(e)
+			}
 		}
 	}
 }

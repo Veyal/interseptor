@@ -225,16 +225,26 @@ func (x *run) eval(expr string, depth int, chain []string) (string, bool) {
 		x.fatal = fmt.Errorf("%w (more than %d expansions)", ErrTooLarge, x.r.o.MaxExpansions)
 		return "", false
 	}
+	// label is the name as reported when it cannot be resolved. A nested name
+	// that consumed a secret is reported as written ("pre-{{tok}}"), never as
+	// expanded: the expansion is the secret value.
+	label := ""
 	if strings.Contains(expr, "{{") { // nested name: resolve the inner first
 		if depth+1 > x.r.o.MaxDepth {
 			x.problem("depth limit %d exceeded", x.r.o.MaxDepth)
 			x.markUnresolved(strings.TrimSpace(expr))
 			return "", false
 		}
-		before := len(x.unres)
+		before, usesBefore := len(x.unres), len(x.uses)
 		inner := x.expand(expr, depth+1, chain)
 		if len(x.unres) > before {
 			return "", false
+		}
+		for _, u := range x.uses[usesBefore:] {
+			if u.Secret {
+				label = strings.TrimSpace(expr)
+				break
+			}
 		}
 		expr = inner
 	}
@@ -243,13 +253,21 @@ func (x *run) eval(expr string, depth int, chain []string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	val, secret, use, ok := x.lookup(name, depth, chain)
+	if label == "" {
+		label = name
+	}
+	val, secret, use, ok := x.lookup(name, label, depth, chain)
 	if !ok {
 		return "", false
 	}
 	for _, p := range parts[1:] {
 		out, known := applyPipe(val, strings.TrimSpace(p))
 		if !known {
+			if label != name {
+				x.problem("unknown pipe on %q", label)
+				x.markUnresolved(label)
+				return "", false
+			}
 			x.problem("unknown pipe %q on %q", strings.TrimSpace(p), name)
 			x.markUnresolved(name + "|" + strings.TrimSpace(p))
 			return "", false
@@ -264,30 +282,30 @@ func (x *run) eval(expr string, depth int, chain []string) (string, bool) {
 	return val, true
 }
 
-func (x *run) lookup(name string, depth int, chain []string) (val string, secret bool, use Use, ok bool) {
+func (x *run) lookup(name, label string, depth int, chain []string) (val string, secret bool, use Use, ok bool) {
 	if strings.HasPrefix(name, "$") {
 		v, found := dynamic(name, x.r.o.Clock(), x.r.o.Rand)
 		if !found {
-			x.markUnresolved(name)
+			x.markUnresolved(label)
 			return "", false, Use{}, false
 		}
 		return v, false, Use{Name: name, Scope: "dynamic", Dynamic: true}, true
 	}
 	v, scope, found := x.st.Lookup(name)
 	if !found {
-		x.markUnresolved(name)
+		x.markUnresolved(label)
 		return "", false, Use{}, false
 	}
 	for _, c := range chain {
 		if c == name {
 			x.problem("cycle: %s -> %s", strings.Join(chain, " -> "), name)
-			x.markUnresolved(name)
+			x.markUnresolved(label)
 			return "", false, Use{}, false
 		}
 	}
 	if depth+1 > x.r.o.MaxDepth {
-		x.problem("depth limit %d exceeded at %q", x.r.o.MaxDepth, name)
-		x.markUnresolved(name)
+		x.problem("depth limit %d exceeded at %q", x.r.o.MaxDepth, label)
+		x.markUnresolved(label)
 		return "", false, Use{}, false
 	}
 	next := append(append([]string(nil), chain...), name)

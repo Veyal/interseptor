@@ -408,10 +408,25 @@ func (c *conv) environments(files []File) {
 		}
 		name := strings.TrimSuffix(path.Base(f.Path), ".bru")
 		im := postman.EnvImport{Environment: store.Environment{UID: c.opt.NewID(), Name: name, Kind: "env", CollectionUID: c.res.Collection.UID}}
+		// The secret list marks a disabled entry with "~" like any other row;
+		// names keep their file order (a map walk made the order random).
 		secrets := map[string]bool{}
+		type secretName struct {
+			key      string
+			disabled bool
+		}
+		var listed []secretName
 		if sb := b.get("vars:secret"); sb != nil {
 			for _, k := range sb.List {
-				secrets[k] = true
+				n := secretName{key: strings.TrimSpace(k)}
+				if rest, ok := strings.CutPrefix(n.key, "~"); ok {
+					n.key, n.disabled = strings.TrimSpace(rest), true
+				}
+				if n.key == "" || secrets[n.key] {
+					continue
+				}
+				secrets[n.key] = true
+				listed = append(listed, n)
 			}
 		}
 		if vb := b.get("vars"); vb != nil {
@@ -419,10 +434,13 @@ func (c *conv) environments(files []File) {
 				c.envVar(&im, kv, secrets, name)
 			}
 		}
-		for k := range secrets {
-			if !hasVar(im.Variables, k) {
-				im.Variables = append(im.Variables, store.Variable{OwnerKind: store.VarOwnerEnvironment, OwnerUID: im.Environment.UID, Key: k, Type: store.VarTypeSecret, Enabled: true})
+		for _, n := range listed {
+			if !hasVar(im.Variables, n.key) {
+				im.Variables = append(im.Variables, store.Variable{OwnerKind: store.VarOwnerEnvironment, OwnerUID: im.Environment.UID, Key: n.key, Type: store.VarTypeSecret, Enabled: !n.disabled})
 				c.res.Report.Stats.SecretVariables++
+				if n.disabled {
+					c.res.Report.Stats.DisabledRows++
+				}
 			}
 		}
 		c.res.Report.Stats.EnvironmentVariables += len(im.Variables)

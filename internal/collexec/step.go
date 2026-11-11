@@ -32,6 +32,9 @@ type stepRun struct {
 	// jarCookies is true when the Cookie header comes from the jar (the
 	// request did not set one), so each redirect hop recomputes it.
 	jarCookies bool
+	// admitted is the destination (scheme, host, path) the policy already
+	// accepted for this step, so it is judged, and warned about, once.
+	admitted string
 }
 
 // Step runs one request through the whole pipeline. The returned error is
@@ -51,6 +54,7 @@ func (p *Pipeline) Step(ctx context.Context, in StepInput) (*StepResult, error) 
 	x := &stepRun{p: p, in: in, res: &StepResult{Outcome: OutcomeError}}
 	x.vars = newVars(in.Layers, in.Local, p.Registry, p.SecretName)
 	x.vars.Stack().RegisterSecrets(p.Registry)
+	x.vars.registerSecretForms()
 	x.jar = p.Jars.For(in.Chain.Collection.UID, in.EnvUID, in.Identity)
 	x.caps = capSet(in.Chain.Collection.Caps)
 	defer func() { x.finish() }()
@@ -84,6 +88,13 @@ func (p *Pipeline) Step(ctx context.Context, in StepInput) (*StepResult, error) 
 		return x.res, nil
 	}
 	policy := scopePolicy(in)
+	// The destination is judged before any auth work: a digest probe goes to
+	// the request URL itself and an OAuth2 grant spends credentials, neither
+	// of which may happen for a request the policy is about to refuse.
+	x.res.Method, x.res.URL = b.Method, b.URL
+	if !x.admit(b.URL, policy) {
+		return x.res, nil
+	}
 	if !x.applyAuth(ctx, b, sc.Request, policy) {
 		return x.res, nil
 	}
@@ -330,12 +341,33 @@ func (x *stepRun) checkDest(u *url.URL, policy, pin string) (BlockReason, string
 	return reason, msg
 }
 
-func (x *stepRun) buildSend(b *built, settings Settings, policy, tmplHash string) (sender.Request, bool) {
-	u, _ := url.Parse(b.URL)
+// admit applies own-listener refusal, the base-target pin and scope to the
+// request destination and records a block. A destination already admitted in
+// this step is not judged again (auth may only add a query parameter; if it
+// ever moved the host or path the new destination is checked afresh).
+func (x *stepRun) admit(rawURL, policy string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		x.res.Outcome, x.res.Error = OutcomeError, "invalid request URL"
+		return false
+	}
+	key := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + u.Path
+	if x.admitted != "" && key == x.admitted {
+		return true
+	}
 	if reason, msg := x.check(u, policy); reason != "" {
 		x.res.Outcome, x.res.BlockReason, x.res.Error = OutcomeBlocked, reason, msg
+		return false
+	}
+	x.admitted = key
+	return true
+}
+
+func (x *stepRun) buildSend(b *built, settings Settings, policy, tmplHash string) (sender.Request, bool) {
+	if !x.admit(b.URL, policy) {
 		return sender.Request{}, false
 	}
+	u, _ := url.Parse(b.URL)
 	useSession := settings.UseSession != nil && *settings.UseSession
 	flags := store.FlagCollection
 	if x.in.AI {
@@ -626,6 +658,9 @@ func (x *stepRun) finish() {
 	r.URL, r.Error = mask(r.URL), mask(r.Error)
 	for i, w := range r.Warnings {
 		r.Warnings[i] = mask(w)
+	}
+	for i, n := range r.Unresolved {
+		r.Unresolved[i] = mask(n)
 	}
 	for i := range r.Console {
 		r.Console[i].Text = mask(r.Console[i].Text)

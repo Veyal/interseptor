@@ -3,10 +3,14 @@
 package harx
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"sort"
 	"strings"
@@ -72,6 +76,9 @@ type harPostData struct {
 type harParam struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	// FileName and ContentType describe a posted file (multipart bodies).
+	FileName    string `json:"fileName,omitempty"`
+	ContentType string `json:"contentType,omitempty"`
 	// HAR 1.2 spells params without name/value semantics _name/_value.
 	UnderscoreName  string `json:"_name,omitempty"`
 	UnderscoreValue string `json:"_value,omitempty"`
@@ -165,7 +172,7 @@ func Parse(data []byte) ([]Entry, error) {
 			TS: ts, DurationMs: int64(e.Time),
 		}
 		if e.Request.PostData != nil {
-			en.ReqBody = postDataBody(*e.Request.PostData)
+			en.ReqBody = postDataBody(*e.Request.PostData, en.ReqHeaders)
 		}
 		en.ResBody = decodeBody(e.Response.Content.Text, e.Response.Content.Encoding)
 		out = append(out, en)
@@ -177,9 +184,32 @@ func Parse(data []byte) ([]Entry, error) {
 // postData.text optional: an emitter that only lists postData.params (its own
 // parsable form) would otherwise import a POST with no body at all, losing the
 // form values the entry carries. params are re-serialised in their listed order.
-func postDataBody(pd harPostData) []byte {
+//
+// A multipart/form-data entry is rebuilt as multipart: a=b&c=d under a
+// multipart Content-Type is a body no server can parse. File parts keep their
+// name, file name and content type; HAR params never carry file bytes, so the
+// part is empty. When the request has no boundary one is added to its
+// Content-Type header (headers may be nil).
+func postDataBody(pd harPostData, headers map[string][]string) []byte {
 	if pd.Text != "" || len(pd.Params) == 0 {
 		return decodeBody(pd.Text, pd.Encoding)
+	}
+	ct := contentType(headers)
+	if ct == "" {
+		ct = pd.MimeType
+	}
+	if mt, params, err := mime.ParseMediaType(ct); err == nil && mt == "multipart/form-data" {
+		if body, boundary, ok := multipartParams(pd.Params, params["boundary"]); ok {
+			if params["boundary"] == "" && headers != nil {
+				for k := range headers {
+					if strings.EqualFold(k, "Content-Type") {
+						delete(headers, k)
+					}
+				}
+				headers["Content-Type"] = []string{"multipart/form-data; boundary=" + boundary}
+			}
+			return body
+		}
 	}
 	parts := make([]string, 0, len(pd.Params))
 	for _, p := range pd.Params {
@@ -193,6 +223,44 @@ func postDataBody(pd harPostData) []byte {
 		parts = append(parts, url.QueryEscape(name)+"="+url.QueryEscape(value))
 	}
 	return []byte(strings.Join(parts, "&"))
+}
+
+// multipartParams serialises HAR params as a multipart/form-data body, with the
+// request's own boundary when it has one.
+func multipartParams(ps []harParam, boundary string) ([]byte, string, bool) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if boundary != "" && w.SetBoundary(boundary) != nil {
+		return nil, "", false
+	}
+	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", "", "\n", "")
+	for _, p := range ps {
+		name, value := p.Name, p.Value
+		if name == "" && p.UnderscoreName != "" {
+			name = p.UnderscoreName
+		}
+		if value == "" && p.UnderscoreValue != "" {
+			value = p.UnderscoreValue
+		}
+		h := textproto.MIMEHeader{}
+		disp := `form-data; name="` + esc.Replace(name) + `"`
+		if p.FileName != "" {
+			disp += `; filename="` + esc.Replace(p.FileName) + `"`
+		}
+		h.Set("Content-Disposition", disp)
+		if p.ContentType != "" {
+			h.Set("Content-Type", p.ContentType)
+		}
+		pw, err := w.CreatePart(h)
+		if err != nil {
+			return nil, "", false
+		}
+		_, _ = pw.Write([]byte(value))
+	}
+	if w.Close() != nil {
+		return nil, "", false
+	}
+	return buf.Bytes(), w.Boundary(), true
 }
 
 // bodyField renders a body for a HAR text field. UTF-8-safe bodies pass through

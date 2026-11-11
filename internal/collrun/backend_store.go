@@ -167,7 +167,7 @@ func (b *StoreBackend) pipeline(in collexec.StepInput, meta StepMeta) *collexec.
 	exec := &PMExecutor{
 		Coll: in.Chain.Collection, Source: in.Source, AI: in.AI, EnvUID: in.EnvUID, Layers: in.Layers,
 		Iter: in.Iteration, Count: meta.IterationCount, Reg: b.reg, Flows: b.cfg.Store, Clock: b.cfg.Clock, Scope: b.cfg.Scope,
-		Scripts: b.cfg.Scripts,
+		Scripts: b.cfg.Scripts, Policy: in.ScopePolicy,
 	}
 	p := collexec.NewPipeline(collexec.Pipeline{
 		Sender: b.cfg.Sender, Exec: exec, Scope: b.cfg.Scope, Trust: b, Flows: b.cfg.Store, Bodies: b.cfg.Store,
@@ -207,7 +207,8 @@ func (b *StoreBackend) effectiveVars(kind, uid string) (map[string]varstore.Var,
 }
 
 // Layers implements Backend: globals, collection, folders (inner to outer),
-// the chosen environment, and the request's own variables as the local map.
+// the chosen environment, and the request's own variables as a local-scope
+// layer. The local map is left for the caller's overrides, which win.
 func (b *StoreBackend) Layers(chain collexec.Chain, envUID string) (layers []varstore.Layer, local map[string]string, err error) {
 	st := b.cfg.Store
 	add := func(scope varstore.Scope, name, kind, uid string) error {
@@ -250,17 +251,18 @@ func (b *StoreBackend) Layers(chain collexec.Chain, envUID string) (layers []var
 			return nil, nil, err
 		}
 	}
+	// The request's own variables travel as a local-scope layer, not as the
+	// plain local map: the map cannot carry the secret flag, so a secret
+	// declared on a request was resolved, logged and reported unmasked, and
+	// was readable by scripts without secrets.read.
 	rv, err := b.effectiveVars(store.VarOwnerRequest, chain.Item.UID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(rv) > 0 {
-		local = make(map[string]string, len(rv))
-		for k, v := range rv {
-			local[k] = v.Value
-		}
+		layers = append(layers, varstore.Layer{Scope: varstore.ScopeLocal, Name: "request", Vars: rv})
 	}
-	return layers, local, nil
+	return layers, nil, nil
 }
 
 // Commit implements Backend: script writes become local current values;
