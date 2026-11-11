@@ -52,7 +52,36 @@ func (a *Auth) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.path, b, 0o600)
+	return writeFileAtomic(a.path, b, 0o600)
+}
+
+// writeFileAtomic replaces path with data through a synced temp file in the
+// same directory and a rename, so a crash or a concurrent reader sees either
+// the old contents or the new ones. Writing in place truncates first: a reader
+// in that window gets an empty file (which OpenAuth reads as "no tokens") and
+// a crash in it loses every token.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tokens-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // no-op once renamed
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // EnsureBootstrap creates a full-scope token if none exist. Returns the raw

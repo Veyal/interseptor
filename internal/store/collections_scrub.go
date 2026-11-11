@@ -432,7 +432,7 @@ func scrubRevisions(db *sql.DB, rep *ScrubReport) error {
 // and vacuums with secure_delete so no scrubbed byte survives in free pages.
 func ScrubSnapshotFile(path string, opt ScrubOptions) (ScrubReport, error) {
 	var rep ScrubReport
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", "file:"+dsnPathEscaper.Replace(path)+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return rep, err
 	}
@@ -475,7 +475,7 @@ func (s *Store) BackupToScrubbed(destPath string, opt ScrubOptions) (ScrubReport
 // installed, so a hand-built archive can never arrive with scripts already
 // trusted (trust is a UI-only decision, mirroring MergeCollectionsFrom).
 func QuarantineImportedProject(path string) error {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", "file:"+dsnPathEscaper.Replace(path)+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return err
 	}

@@ -18,20 +18,32 @@ type IPAllowEntry struct {
 }
 
 // NormalizeAllowCIDR validates and canonicalizes a single IP or CIDR string.
-// Bare addresses become /32 (IPv4, including IPv4-mapped IPv6) or /128.
+// Bare addresses become /32 (IPv4, including IPv4-mapped IPv6) or /128. An
+// IPv6 literal may be bracketed ("[fd7a::5]") or carry a zone ("fe80::1%en0"),
+// the forms a browser address bar and a link-local peer address use; the zone
+// is dropped because the client address the allowlist is matched against never
+// carries one.
 func NormalizeAllowCIDR(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", fmt.Errorf("cidr required")
 	}
-	if strings.Contains(raw, "/") {
-		_, n, err := net.ParseCIDR(raw)
+	if addr, bits, isCIDR := strings.Cut(raw, "/"); isCIDR {
+		addr, ok := bareIPLiteral(addr)
+		if !ok {
+			return "", fmt.Errorf("invalid CIDR: %q", raw)
+		}
+		_, n, err := net.ParseCIDR(addr + "/" + bits)
 		if err != nil {
 			return "", fmt.Errorf("invalid CIDR: %w", err)
 		}
 		return n.String(), nil
 	}
-	ip := net.ParseIP(raw)
+	addr, ok := bareIPLiteral(raw)
+	if !ok {
+		return "", fmt.Errorf("invalid IP address")
+	}
+	ip := net.ParseIP(addr)
 	if ip == nil {
 		return "", fmt.Errorf("invalid IP address")
 	}
@@ -39,6 +51,28 @@ func NormalizeAllowCIDR(raw string) (string, error) {
 		return v4.String() + "/32", nil
 	}
 	return ip.String() + "/128", nil
+}
+
+// bareIPLiteral strips one matched pair of brackets and an IPv6 zone from an
+// address. It reports false for unbalanced brackets, an empty zone, or a zone
+// on something that is not an IPv6 address.
+func bareIPLiteral(s string) (string, bool) {
+	if strings.HasPrefix(s, "[") {
+		if !strings.HasSuffix(s, "]") {
+			return "", false
+		}
+		s = s[1 : len(s)-1]
+	}
+	if strings.ContainsAny(s, "[]") {
+		return "", false
+	}
+	if i := strings.IndexByte(s, '%'); i >= 0 {
+		if i == 0 || i == len(s)-1 || !strings.Contains(s[:i], ":") {
+			return "", false
+		}
+		s = s[:i]
+	}
+	return s, s != ""
 }
 
 // AddIPAllowlist inserts a CIDR/IP. Duplicate cidr returns an error.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -387,27 +388,32 @@ func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
 // block references — the database half of GCBodies' reference set.
 func (s *Store) referencedBodyHashes() (map[string]struct{}, error) {
 	referenced := make(map[string]struct{})
+	// One pass over the table, deduplicated here. The four-way UNION this
+	// replaces read the table four times and built a temp b-tree of every
+	// hash to deduplicate them. Nearly every hash read has been seen already;
+	// RawBytes scans it into a reused buffer and the map lookup keyed by
+	// string(h) does not copy, so only a new hash is retained.
 	rows, err := s.db.Query(
-		`SELECT h FROM (
-			SELECT req_body_hash AS h FROM flows WHERE req_body_hash != ''
-			UNION
-			SELECT res_body_hash AS h FROM flows WHERE res_body_hash != ''
-			UNION
-			SELECT original_req_body_hash AS h FROM flows WHERE original_req_body_hash != ''
-			UNION
-			SELECT original_res_body_hash AS h FROM flows WHERE original_res_body_hash != ''
-		)`)
+		`SELECT req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash
+		   FROM flows
+		  WHERE req_body_hash != '' OR res_body_hash != ''
+		     OR original_req_body_hash != '' OR original_res_body_hash != ''`)
 	if err != nil {
 		return nil, fmt.Errorf("store.GCBodies: query refs: %w", err)
 	}
+	var cols [4]sql.RawBytes
 	for rows.Next() {
-		var h string
-		if err := rows.Scan(&h); err != nil {
+		if err := rows.Scan(&cols[0], &cols[1], &cols[2], &cols[3]); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("store.GCBodies: scan ref: %w", err)
 		}
-		if h != "" {
-			referenced[h] = struct{}{}
+		for _, h := range cols {
+			if len(h) == 0 {
+				continue // NULL or ''
+			}
+			if _, seen := referenced[string(h)]; !seen {
+				referenced[string(h)] = struct{}{}
+			}
 		}
 	}
 	// A reference set cut short by a read error would make GC delete bodies
@@ -513,7 +519,7 @@ func isHex(s string) bool {
 func (s *Store) HostStats() ([]HostStat, error) {
 	s.syncFlows()
 	rows, err := s.db.Query(
-		`SELECT host, COUNT(*) AS flows, SUM(req_len + res_len) AS bytes
+		`SELECT host, COUNT(*) AS flows, COALESCE(SUM(COALESCE(req_len,0) + COALESCE(res_len,0)),0) AS bytes
 		 FROM flows
 		 GROUP BY host
 		 ORDER BY bytes DESC`)
@@ -699,12 +705,22 @@ func (s *Store) PruneFlows(op PruneOptions) (PruneResult, error) {
 	if err != nil {
 		return res, err
 	}
+	// queryRowsByIDs runs the aggregate once per IN-list chunk, so a host
+	// whose flows span chunks comes back once per chunk: merge them.
+	perHost := map[string]int{}
 	for _, row := range rows {
 		stat := PruneHostStat{Host: row.str(0), Flows: row.int(1), Bytes: row.int(2)}
-		res.PerHost = append(res.PerHost, stat)
 		res.Matched += stat.Flows
 		res.Bytes += stat.Bytes
+		if i, seen := perHost[stat.Host]; seen {
+			res.PerHost[i].Flows += stat.Flows
+			res.PerHost[i].Bytes += stat.Bytes
+			continue
+		}
+		perHost[stat.Host] = len(res.PerHost)
+		res.PerHost = append(res.PerHost, stat)
 	}
+	sort.SliceStable(res.PerHost, func(i, j int) bool { return res.PerHost[i].Flows > res.PerHost[j].Flows })
 	if op.DryRun {
 		return res, nil
 	}

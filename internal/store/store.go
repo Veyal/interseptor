@@ -412,11 +412,18 @@ var storePragmas = []string{
 	"cache_size(-32000)",
 }
 
+// dsnPathEscaper percent-encodes the three characters that end or alter the
+// path part of a "file:" URI. Both the driver (which splits the DSN at the
+// first '?') and SQLite's own URI parser (which also stops at '#' and decodes
+// %HH) read the path, so a data directory named "a?b#c" otherwise opens a
+// different file and its tail is parsed as connection parameters.
+var dsnPathEscaper = strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23")
+
 // storeDSN builds the modernc.org/sqlite DSN for the project database.
 func storeDSN(dbPath string) string {
 	var b strings.Builder
 	b.WriteString("file:")
-	b.WriteString(dbPath)
+	b.WriteString(dsnPathEscaper.Replace(dbPath))
 	b.WriteString("?_txlock=immediate")
 	for _, p := range storePragmas {
 		b.WriteString("&_pragma=")
@@ -489,6 +496,10 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if _, err := db.Exec(httpsOKIndexSQL); err != nil {
+		db.Close()
+		return nil, err
+	}
 	s := &Store{db: db, bodiesDir: bodiesDir}
 	if err := s.ensureFlowsFTS(); err != nil {
 		db.Close()
@@ -542,6 +553,22 @@ func flowIDHighWater(db *sql.DB) (int64, error) {
 // the index, so ordinary capture writes do not touch it. A query uses it when
 // its WHERE clause contains flagsAnyPredicate(FlagTLSFailed) verbatim.
 var tlsFailedIndexSQL = `CREATE INDEX IF NOT EXISTS idx_flows_tls_failed ON flows(id) WHERE ` + flagsAnyPredicate(FlagTLSFailed)
+
+// httpsOKPredicate selects the flows that prove HTTPS interception works: an
+// HTTPS flow with a response status and no recorded TLS failure. The mask is a
+// literal so the planner can match the predicate against idx_flows_https_ok.
+var httpsOKPredicate = `scheme = 'https' AND status > 0 AND (flags & ` + strconv.FormatInt(FlagTLSFailed, 10) + `) = 0`
+
+// httpsOKIndexSQL is a partial index, ordered by capture time, over the flows
+// httpsOKPredicate selects. The readiness check and the TLS diagnosis ask on
+// every call whether such a flow exists and when the newest one was captured;
+// without the index a project with no (or only old) intercepted HTTPS answers
+// that by reading the whole flows table. A flow enters the index once, when
+// its response status is written, at the right-hand edge of the tree.
+// BenchmarkFlowCaptureIngest measures what that costs the capture path. The
+// planner prefers idx_flows_status for this predicate, so the queries name the
+// index with INDEXED BY.
+var httpsOKIndexSQL = `CREATE INDEX IF NOT EXISTS idx_flows_https_ok ON flows(ts) WHERE ` + httpsOKPredicate
 
 // flagsAnyPredicate is the SQL test for "any of these flag bits is set", with
 // the mask written as a literal so the planner can match it against a partial

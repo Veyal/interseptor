@@ -13,7 +13,7 @@ import (
 func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStats, error) {
 	var stats MergeStats
 
-	peer, err := sql.Open("sqlite", "file:"+peerDBPath+"?mode=ro&_pragma=busy_timeout(5000)")
+	peer, err := sql.Open("sqlite", "file:"+dsnPathEscaper.Replace(peerDBPath)+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return stats, fmt.Errorf("open peer db: %w", err)
 	}

@@ -2,8 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"strconv"
-	"strings"
 )
 
 // Rule is one ordered match-&-replace transform. Type is one of
@@ -132,15 +130,7 @@ func (s *Store) QueryFlowsFilter(f FlowFilter) ([]*Flow, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	where, args := buildFlowFilterWhere(f)
-	where, args = appendFlowPageCursor(f, where, args)
-
-	q := "SELECT " + flowColumns + " FROM flows"
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
-	}
-	q += flowListOrderBy(f) + " LIMIT " + strconv.Itoa(limit)
-
+	q, args := s.flowListQuery(f, flowColumns, limit)
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err

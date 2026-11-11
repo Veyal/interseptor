@@ -160,7 +160,14 @@ func (w *BodyWriter) commit(tmpName, sum string) error {
 		bodyCommitHook()
 	}
 	dst := w.s.bodyPath(sum)
-	if _, err := os.Stat(dst); err == nil {
+	// A stored file of the right length is the same content. One of any other
+	// length is not: body files are renamed into place without an fsync (it
+	// would cost every captured body milliseconds on the forwarding
+	// goroutine), so a power loss can leave the name with empty or short
+	// contents. Deduplicating onto that file would keep it damaged for every
+	// later capture of the same body; renaming the fresh copy over it repairs
+	// it instead.
+	if info, err := os.Stat(dst); err == nil && info.Size() == w.n {
 		return nil // identical body already stored; the caller removes the temp
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {

@@ -11,21 +11,52 @@ func (s *Store) CountFlowsWithFlag(flag int64) (int64, error) {
 	return n, err
 }
 
+// The HTTPS-success reads name idx_flows_https_ok: left to itself the planner
+// takes idx_flows_status for "status > 0", which is true for nearly every flow
+// and so walks the whole table one row lookup at a time.
+const httpsOKFrom = ` FROM flows INDEXED BY idx_flows_https_ok WHERE `
+
+var (
+	newestHTTPSOKSQL      = `SELECT COALESCE(MAX(ts),0)` + httpsOKFrom + httpsOKPredicate
+	exactHTTPSOKCountSQL  = `SELECT COUNT(*)` + httpsOKFrom + httpsOKPredicate
+	cappedHTTPSOKCountSQL = `SELECT COUNT(*) FROM (SELECT 1` + httpsOKFrom + httpsOKPredicate + ` LIMIT ?)`
+)
+
+const httpsOKHostClause = ` AND instr(lower(host), lower(?)) > 0`
+
 // CountSuccessfulHTTPS returns flows where HTTPS MITM completed (non-zero status,
 // not a recorded TLS handshake failure). Queued write-behind capture is drained
 // first so the TLS diagnostic does not report zero interception while the newest
-// flows are still queued.
+// flows are still queued. The count reads every entry of idx_flows_https_ok, so
+// it grows with History; a caller that only needs "any" or "at least N" uses
+// CountSuccessfulHTTPSUpTo.
 func (s *Store) CountSuccessfulHTTPS(hostSubstring string) (int64, error) {
 	s.syncFlows()
 	var n int64
-	// The unary plus keeps the planner off idx_flows_status: "status > 0" is
-	// true for nearly every flow, so that index walks the whole table one row
-	// lookup at a time (4x slower than a plain scan on 100,000 flows).
-	q := `SELECT COUNT(*) FROM flows WHERE scheme = 'https' AND +status > 0 AND (flags & ?) = 0`
-	args := []any{FlagTLSFailed}
+	q := exactHTTPSOKCountSQL
+	var args []any
 	if hostSubstring != "" {
-		q += ` AND instr(lower(host), lower(?)) > 0`
+		q += httpsOKHostClause
 		args = append(args, hostSubstring)
+	}
+	err := s.db.QueryRow(q, args...).Scan(&n)
+	return n, err
+}
+
+// CountSuccessfulHTTPSUpTo counts successfully intercepted HTTPS flows but
+// stops at limit, so the cost is bounded by limit instead of by the size of
+// History. A result equal to limit means "limit or more".
+func (s *Store) CountSuccessfulHTTPSUpTo(hostSubstring string, limit int64) (int64, error) {
+	s.syncFlows()
+	if limit <= 0 {
+		return 0, nil
+	}
+	var n int64
+	q := cappedHTTPSOKCountSQL
+	args := []any{limit}
+	if hostSubstring != "" {
+		q = `SELECT COUNT(*) FROM (SELECT 1` + httpsOKFrom + httpsOKPredicate + httpsOKHostClause + ` LIMIT ?)`
+		args = []any{hostSubstring, limit}
 	}
 	err := s.db.QueryRow(q, args...).Scan(&n)
 	return n, err
@@ -51,8 +82,8 @@ func (s *Store) TLSFailureStats(hostSubstring string, sinceMS int64) (newestFail
 	if err = s.db.QueryRow(q, qArgs...).Scan(&newestFailureMS, &recentFailures); err != nil {
 		return 0, 0, 0, err
 	}
-	q2 := `SELECT COALESCE(MAX(ts),0) FROM flows WHERE scheme = 'https' AND status > 0 AND (flags & ?) = 0` + hostClause
-	args2 := []any{FlagTLSFailed}
+	q2 := newestHTTPSOKSQL + hostClause
+	var args2 []any
 	if hostSubstring != "" {
 		args2 = append(args2, hostSubstring)
 	}

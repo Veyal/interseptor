@@ -48,10 +48,15 @@ type tlsDiagnosisReport struct {
 	// rejection must not keep the checklist red after interception started
 	// working. NewestFailureAge is human-readable ("3h12m") and empty when there
 	// has never been a rejection.
-	RecentFailureCount int64               `json:"recentFailureCount"`
-	NewestFailureTS    int64               `json:"newestFailureTs,omitempty"`
-	NewestFailureAge   string              `json:"newestFailureAge,omitempty"`
+	RecentFailureCount int64  `json:"recentFailureCount"`
+	NewestFailureTS    int64  `json:"newestFailureTs,omitempty"`
+	NewestFailureAge   string `json:"newestFailureAge,omitempty"`
+	// HTTPSOkCount stops at tlsHTTPSOkCountCap: the verdict needs to know that
+	// interception works and when it last did, not how many flows prove it, and
+	// an exact count reads every HTTPS flow in History on every call.
+	// HTTPSOkCountCapped is set when the real number is the cap or more.
 	HTTPSOkCount       int64               `json:"httpsOkCount"`
+	HTTPSOkCountCapped bool                `json:"httpsOkCountCapped,omitempty"`
 	TotalFlows         int64               `json:"totalFlows"`
 	RecentFailures     []tlsFailureSummary `json:"recentFailures,omitempty"`
 	HostsBlocked       []string            `json:"hostsBlocked,omitempty"`
@@ -62,6 +67,28 @@ type tlsDiagnosisReport struct {
 // readiness check, so a fixed environment stops looking broken. A var so tests
 // can shorten it.
 var tlsFailureWindow = 15 * time.Minute
+
+// tlsHTTPSOkCountCap bounds how many successful HTTPS flows the diagnosis
+// counts. A var so tests can lower it.
+var tlsHTTPSOkCountCap int64 = 10000
+
+// humanCount groups the digits of a non-negative count ("10,000").
+func humanCount(n int64) string {
+	s := itoa64(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// httpsOkText words the successful-HTTPS count for the detail line: the exact
+// number below the cap, "10,000+" once the count was cut off there.
+func (rep tlsDiagnosisReport) httpsOkText() string {
+	if rep.HTTPSOkCountCapped {
+		return humanCount(rep.HTTPSOkCount) + "+"
+	}
+	return itoa64(rep.HTTPSOkCount)
+}
 
 var tlsBypassHints = []string{
 	"Interseptor cannot bypass SSL pinning — it only detects when the app rejects the MITM certificate.",
@@ -106,7 +133,8 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 			})
 		}
 	}
-	rep.HTTPSOkCount, _ = h.st.CountSuccessfulHTTPS(hostFilter)
+	rep.HTTPSOkCount, _ = h.st.CountSuccessfulHTTPSUpTo(hostFilter, tlsHTTPSOkCountCap)
+	rep.HTTPSOkCountCapped = rep.HTTPSOkCount >= tlsHTTPSOkCountCap
 	rep.TotalFlows, _ = h.st.FlowCount()
 
 	hostSet := map[string]struct{}{}
@@ -131,8 +159,8 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 		// reporting a blocker until the old rows age out of the window, and a real
 		// regression hides in that noise.
 		rep.Verdict = "ok"
-		rep.Detail = fmt.Sprintf("HTTPS interception is working (%d successful HTTPS flows, newest %s ago; the last rejection was %s ago and is historical)",
-			rep.HTTPSOkCount, humanAge(time.Since(time.UnixMilli(newestSuccessMS))), rep.NewestFailureAge)
+		rep.Detail = fmt.Sprintf("HTTPS interception is working (%s successful HTTPS flows, newest %s ago; the last rejection was %s ago and is historical)",
+			rep.httpsOkText(), humanAge(time.Since(time.UnixMilli(newestSuccessMS))), rep.NewestFailureAge)
 	case rep.TLSFailureCount > 0 && recentFailures > 0:
 		rep.Verdict = "tls_blocked"
 		n := rep.TLSFailureCount
@@ -145,8 +173,8 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 		// Historical rejections only: interception is demonstrably working now
 		// (the pinning bypass landed), so report the age instead of blocking.
 		rep.Verdict = "ok"
-		rep.Detail = fmt.Sprintf("HTTPS interception is working (%d successful HTTPS flows); %d older TLS rejection(s), newest %s ago — no rejection in the last %s",
-			rep.HTTPSOkCount, rep.TLSFailureCount, rep.NewestFailureAge, humanAge(tlsFailureWindow))
+		rep.Detail = fmt.Sprintf("HTTPS interception is working (%s successful HTTPS flows); %d older TLS rejection(s), newest %s ago — no rejection in the last %s",
+			rep.httpsOkText(), rep.TLSFailureCount, rep.NewestFailureAge, humanAge(tlsFailureWindow))
 		_ = newestSuccessMS
 	case rep.TLSFailureCount > 0:
 		rep.Verdict = "tls_blocked"
@@ -161,7 +189,7 @@ func (h *authzAPI) buildTLSDiagnosis(hostFilter string) tlsDiagnosisReport {
 		rep.Detail = "Traffic was captured but no HTTPS was successfully intercepted — only cleartext HTTP, or HTTPS never went through the proxy"
 		rep.Fix = "Use the app normally to trigger API calls. If TLS failures appear afterward, treat as pinning (tls_blocked)."
 	default:
-		rep.Detail = fmt.Sprintf("HTTPS interception is working (%d successful HTTPS flows, %d total)", rep.HTTPSOkCount, rep.TotalFlows)
+		rep.Detail = fmt.Sprintf("HTTPS interception is working (%s successful HTTPS flows, %d total)", rep.httpsOkText(), rep.TotalFlows)
 	}
 	return rep
 }

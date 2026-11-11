@@ -19,14 +19,7 @@ func (s *Store) QueryFlowsListFilter(f FlowFilter) ([]*Flow, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	where, args := buildFlowFilterWhere(f)
-	where, args = appendFlowPageCursor(f, where, args)
-	q := "SELECT " + flowListColumns + " FROM flows"
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
-	}
-	q += flowListOrderBy(f) + " LIMIT " + strconv.Itoa(limit)
-
+	q, args := s.flowListQuery(f, flowListColumns, limit)
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -41,6 +34,64 @@ func (s *Store) QueryFlowsListFilter(f FlowFilter) ([]*Flow, error) {
 		out = append(out, fl)
 	}
 	return out, rows.Err()
+}
+
+// flowListQuery builds one page of the History list for f.
+func (s *Store) flowListQuery(f FlowFilter, columns string, limit int) (string, []any) {
+	where, args := buildFlowFilterWhere(f)
+	if s.statusClassIsCommon(f) {
+		for i, w := range where {
+			if w == statusClassPredicate {
+				where[i] = statusClassScanPredicate
+			}
+		}
+	}
+	where, args = appendFlowPageCursor(f, where, args)
+	q := "SELECT " + columns + " FROM flows"
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	return q + flowListOrderBy(f) + " LIMIT " + strconv.Itoa(limit), args
+}
+
+const (
+	statusClassPredicate = "status >= ? AND status < ?"
+	// The unary plus keeps the planner off idx_flows_status, so an id-ordered
+	// list walks flows newest first and stops at a full page.
+	statusClassScanPredicate = "+status >= ? AND +status < ?"
+)
+
+// statusClassScanThreshold is the number of flows in a status class below which
+// the status index is always the cheaper plan. A var so tests can lower it.
+var statusClassScanThreshold = 2000
+
+// statusClassIsCommon reports whether an id-ordered list filtered by status
+// class should walk flows in id order instead of using idx_flows_status. The
+// index plan reads every flow of the class and sorts them before returning the
+// first page, so it costs as much as the class is large (about 4 µs a flow:
+// 0.96 s for "2xx" on 500,000 flows); the walk stops at a full page but, for a
+// class with no recent flow, reads the whole table (about 0.28 µs a flow). A
+// class holding at least a sixteenth of History is therefore where even the
+// worst-case walk costs no more than the index plan, and that is the
+// cut-over. The probe counts through the covering status index and stops at
+// the threshold.
+func (s *Store) statusClassIsCommon(f FlowFilter) bool {
+	if f.StatusClass < 1 || f.StatusClass > 5 {
+		return false
+	}
+	if key, _ := normalizedFlowSort(f); key != "id" {
+		return false
+	}
+	var maxID int64
+	if err := s.db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
+		return false
+	}
+	threshold := max(int64(statusClassScanThreshold), maxID/16)
+	lo := f.StatusClass * 100
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM flows WHERE status >= ? AND status < ? LIMIT ?)`,
+		lo, lo+100, threshold).Scan(&n)
+	return err == nil && n >= threshold
 }
 
 func scanFlowList(row scanner) (*Flow, error) {
@@ -102,7 +153,7 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 	}
 	if f.StatusClass >= 1 && f.StatusClass <= 5 {
 		lo := f.StatusClass * 100
-		where = append(where, "status >= ? AND status < ?")
+		where = append(where, statusClassPredicate)
 		args = append(args, lo, lo+100)
 	}
 	if f.RequireFlags != 0 {

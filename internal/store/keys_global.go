@@ -45,7 +45,7 @@ func (s *Store) AttachGlobalKeys(globalDir string) error {
 		return err
 	}
 	path := filepath.Join(globalDir, "keys.db")
-	dsn := "file:" + path +
+	dsn := "file:" + dsnPathEscaper.Replace(path) +
 		"?_pragma=busy_timeout(10000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)"
