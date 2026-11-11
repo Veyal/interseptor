@@ -82,6 +82,7 @@
 .map-pip.is-on{color:var(--rd-pass);font-weight:700}
 .map-pip:not(.is-on){color:var(--fg3)}
 .map-th-evidence{width:150px}
+.map-th-act{width:84px}
 .map-tbl-cov{white-space:nowrap}
 .map-ep .map-cov{margin-left:auto}
 @media (max-width:720px){

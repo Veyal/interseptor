@@ -39,6 +39,9 @@
   .mobile-tool-nav{display:none}
   /* Phone only: the rail is hidden here, so the dock's destination sub-control is the group nav. */
   .seg.dock-seg:not([hidden]){display:flex}
+  /* The Intruder run bar wraps here; a divider that lands at the end of a
+     wrapped row separates nothing and reads as a stray rule. */
+  .intr-bar>.intr-sep{display:none}
   html[data-soft-keyboard="true"] #dock{display:none}
   /* Phone text floor: inputs stay 16px so iOS does not zoom on focus. */
   input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:var(--fs-xl)}

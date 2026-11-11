@@ -204,7 +204,9 @@ function init() {
   loadLast();
   seg = mk('div', 'seg dock-seg');
   seg.id = 'dockSeg';
-  seg.setAttribute('role', 'group');
+  // A landmark, not a bare group: on phones this strip is the only way to move
+  // between the panels of a destination, and it sits outside <main>.
+  seg.setAttribute('role', 'navigation');
   seg.hidden = true;
   $('appRow')?.before(seg);
   dock.addEventListener('click', onDockClick);

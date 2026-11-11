@@ -177,7 +177,7 @@
     <div class="fb-zone fb-start">
       <div class="fb-brand">
         <div id="logo" aria-hidden="true"><svg class="icon" focusable="false"><use href="#i-proxy"/></svg></div>
-        <span class="brand">Interseptor</span>
+        <h1 class="brand">Interseptor</h1>
         <span id="crumb" class="sr-only"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
       </div>
       <div id="fbEngage" class="fb-engage" role="group" aria-label="Engagement" aria-busy="true">
@@ -229,6 +229,7 @@
 <div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
+<nav id="navRail" class="nav-rail" aria-label="Tools">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
@@ -257,11 +258,12 @@
     <div class="nav-rail-group-label">Configure</div>
     <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure" title="Settings"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg>Settings</button>
   </div>
+</div>
   <div class="nav-rail-foot">
     <button type="button" class="nav-foot-proj u-hidden" id="projBadge" title="Active project — switch or create a project" aria-label="Active project — switch or create a project" aria-haspopup="dialog"></button>
     <a class="nav-foot-ver" id="verBadge" href="https://github.com/Veyal/interseptor/releases" target="_blank" rel="noopener" title="Interseptor releases"></a>
   </div>
-</div>
+</nav>
 
 <main id="main" tabindex="-1" aria-label="Workspace">
   <!-- Multi-document workbench canvas (#103): one/two document panes. The rail is
@@ -582,7 +584,7 @@ Content-Type: application/json
       <button type="button" class="btn" id="identNew" aria-label="New identity" title="Create an identity from header lines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg><span class="lbl-long">New</span></button>
       <button type="button" class="btn" id="identFromFlow" aria-label="Identity from selected flow" title="Promote the Cookie and Authorization headers of the selected History flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span class="lbl-long">From selected flow</span></button>
       <div class="spacer"></div>
-      <button type="button" class="btn" id="identRunTest" aria-haspopup="dialog" title="Open the authorization test for the selected History flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg><span class="lbl-long">Run access test</span></button>
+      <button type="button" class="btn" id="identRunTest" aria-haspopup="dialog" aria-label="Run access test" title="Open the authorization test for the selected History flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg><span class="lbl-long">Run access test</span></button>
     </div>
     <div id="identStatus" class="statusline ident-status" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="ident-root" id="identRoot">

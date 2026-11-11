@@ -56,7 +56,8 @@ html.desktop-app .ctx-identity .ui-select-trigger{min-height:var(--control-h-sm)
 html.desktop-app .ctx-pop{top:calc(var(--titlebar-h) + 4px)}
 
 /* ---- rail ---- */
-html.desktop-app #tabs{width:var(--rail-w);gap:1px;padding:6px 8px 8px;background:var(--surface-0)}
+html.desktop-app .nav-rail{width:var(--rail-w);background:var(--surface-0)}
+html.desktop-app #tabs{gap:1px;padding:6px 8px 8px}
 html.desktop-app .nav-rail-group{gap:1px}
 html.desktop-app .nav-rail-group+.nav-rail-group{margin-top:0}
 html.desktop-app .nav-rail-group-label{padding:12px 10px 4px;color:var(--text-muted);font-size:var(--text-caption);line-height:var(--lh-caption);font-weight:500}

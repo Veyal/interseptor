@@ -1054,7 +1054,7 @@ function renderMapTable(eps){
     ${th('status', 'Status', '88px')}
     ${th('hits', 'Hits', '52px')}
     <th class="map-th-evidence">Evidence</th>
-    <th style="width:84px"><span class="u-sr">Actions</span></th>
+    <th class="map-th-act"><span class="u-sr">Actions</span></th>
   </tr></thead>`;
 
   if(sorted.length >= MAP_TABLE_VIRTUAL_MIN){
