@@ -2474,8 +2474,11 @@ $('#addScopeBtn').onclick=async()=>{
   const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
   if(!rule.host&&!rule.path){toast('host or path required');return;}
   scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
-  try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
-    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){if(e&&e.status===409)toast('That scope rule already exists','warn');else toastError('Add scope rule failed',e);setScopeAddState('idle');}
+  try{const saved=await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
+    $('#newScopeHost').value='';$('#newScopePath').value='';
+    // "/admin/" is slash-wrapped, so the server reads it as an unanchored regex; say so once, with the anchored form.
+    if(saved&&saved.pathWarning)toast('Scope rule added. '+saved.pathWarning,'warn');else toast('scope rule added');
+    setScopeAddState('success');}catch(e){if(e&&e.status===409)toast('That scope rule already exists','warn');else toastError('Add scope rule failed',e);setScopeAddState('idle');}
   finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */

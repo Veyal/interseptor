@@ -28,10 +28,26 @@ func (h *scopeAPI) listScope(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	if rules == nil {
-		rules = []store.ScopeRule{}
+	views := make([]scopeRuleView, 0, len(rules))
+	for _, rule := range rules {
+		views = append(views, viewScopeRule(rule))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"rules": rules})
+	writeJSON(w, http.StatusOK, map[string]any{"rules": views})
+}
+
+// scopeRuleView is a scope rule as the API returns it: the stored fields plus
+// how its path pattern is matched. "/admin/" is slash-wrapped and therefore an
+// unanchored regex that also matches "/x/admin/y"; pathWarning says so and
+// names the anchored form, so the form can show it next to the field.
+type scopeRuleView struct {
+	store.ScopeRule
+	PathKind    scope.PathPatternKind `json:"pathKind"`
+	PathWarning string                `json:"pathWarning,omitempty"`
+}
+
+func viewScopeRule(r store.ScopeRule) scopeRuleView {
+	kind, warning := scope.ClassifyPathPattern(r.Path)
+	return scopeRuleView{ScopeRule: r, PathKind: kind, PathWarning: warning}
 }
 
 func validScope(w http.ResponseWriter, r store.ScopeRule) bool {
@@ -82,7 +98,7 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 			// UI is told it was a duplicate; an agent gets 200 so a repeated
 			// ensure-in-scope call is idempotent rather than a failure to retry.
 			if isAISource(r) {
-				writeJSON(w, http.StatusOK, ex)
+				writeJSON(w, http.StatusOK, viewScopeRule(ex))
 				return
 			}
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "an identical scope rule already exists", "rule": ex})
@@ -100,7 +116,7 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.refreshScope()
-	writeJSON(w, http.StatusCreated, in)
+	writeJSON(w, http.StatusCreated, viewScopeRule(in))
 }
 
 func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +161,7 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.refreshScope()
-	writeJSON(w, http.StatusOK, in)
+	writeJSON(w, http.StatusOK, viewScopeRule(in))
 }
 
 func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {

@@ -185,7 +185,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/views", "List saved history views"},
 	{"POST", "/api/views", "Save the current filters as a named view. Body: {name, data} — data is an arbitrary JSON filter-state blob"},
 	{"DELETE", "/api/views/{id}", "Delete a saved view"},
-	{"GET", "/api/scope", "List target-scope rules"},
+	{"GET", "/api/scope", "List target-scope rules. Each rule also carries pathKind (any|prefix|regex) and, when a plain-looking path is read as an unanchored regex, pathWarning"},
 	{"POST", "/api/scope", "Add a scope rule. Body: {action, enabled?, host?, path?, scheme?, port?} — enabled defaults to false when omitted, and a disabled rule matches nothing, so send enabled:true; action is include|exclude; host is trimmed and lowercased, a pasted URL is split into scheme/host/port/path and host:port into the port field, and a host that can never match (spaces, other invalid characters) answers 400; needs at least one of host/path/scheme/port; scheme is http|https (empty: any), port 1-65535 (0: any). An identical existing rule answers 409 with {error, rule}"},
 	{"PUT", "/api/scope/{id}", "Update a scope rule. Body: same shape as POST /api/scope (omitting enabled disables the rule)"},
 	{"DELETE", "/api/scope/{id}", "Delete a scope rule (404 when it does not exist)"},

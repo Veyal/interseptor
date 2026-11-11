@@ -1400,7 +1400,7 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | POST | `/api/runner/runs/{uid}/persist` | Answer a persist=ask prompt. |
 | POST | `/api/runner/runs/{uid}/resume` | Continue a paused run |
 | GET | `/api/runs/{uid}` | Per-request results of one run |
-| GET | `/api/scope` | List target-scope rules |
+| GET | `/api/scope` | List target-scope rules. |
 | POST | `/api/scope` | Add a scope rule. |
 | DELETE | `/api/scope/{id}` | Delete a scope rule (404 when it does not exist) |
 | PUT | `/api/scope/{id}` | Update a scope rule. |
