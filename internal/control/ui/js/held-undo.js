@@ -16,10 +16,24 @@ export function showDropToast(message, { onUndo, onPause, onResume }) {
   t.append(btn);
   host.appendChild(t);
   const dismiss = () => t.remove();
-  t.addEventListener('mouseenter', () => onPause());
-  t.addEventListener('mouseleave', () => onResume());
-  t.addEventListener('focusin', () => onPause());
-  t.addEventListener('focusout', () => onResume());
+  // Hover and focus hold the countdown independently: it runs again only when neither is
+  // left, so the pointer crossing the toast cannot restart an irreversible drop under a
+  // keyboard user who is still on Undo.
+  let hovered = false, focused = false;
+  const sync = (wasHeld) => {
+    const held = hovered || focused;
+    if (held && !wasHeld) onPause();
+    else if (!held && wasHeld) onResume();
+  };
+  const hold = (which, on) => () => {
+    const was = hovered || focused;
+    if (which === 'hover') hovered = on; else focused = on;
+    sync(was);
+  };
+  t.addEventListener('mouseenter', hold('hover', true));
+  t.addEventListener('mouseleave', hold('hover', false));
+  t.addEventListener('focusin', hold('focus', true));
+  t.addEventListener('focusout', hold('focus', false));
   btn.addEventListener('click', () => { dismiss(); onUndo(); });
   return { dismiss, node: t };
 }

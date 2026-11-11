@@ -1896,7 +1896,7 @@ function inspGraphQLHTML(detail,raw){
 }
 function inspImageHTML(el,flowId,side,mime,len){
   const href=flowBodyDownloadHref(flowId,side),dl=flowBodyDownloadName(flowId,side,mime);
-  el.innerHTML=`<div class="insp-struct insp-image"><img class="insp-image-img" alt="Inline ${esc(side==='req'?'request':'response')} image preview" src="${escAttr(href)}"><div class="hint insp-image-meta"><b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} · <span class="insp-image-dims" aria-live="polite">measuring…</span></div><a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download</a></div>`;
+  el.innerHTML=`<div class="insp-struct insp-image"><img class="insp-image-img" alt="Inline ${escAttr(side==='req'?'request':'response')} image preview" src="${escAttr(href)}"><div class="hint insp-image-meta"><b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} · <span class="insp-image-dims" aria-live="polite">measuring…</span></div><a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download</a></div>`;
   const img=el.querySelector('.insp-image-img'),dims=el.querySelector('.insp-image-dims');
   if(img&&dims){const show=()=>{dims.textContent=img.naturalWidth?img.naturalWidth+'×'+img.naturalHeight+' px':'unknown size';};img.onload=show;img.onerror=()=>{dims.textContent='could not load';};if(img.complete)show();}
 }

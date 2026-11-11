@@ -82,10 +82,12 @@ const CHIP_ICON = { error: 'alert', status: 'alert', length: 'diff', time: 'cloc
 
 // chipsHTML renders chips with icon + text. In result rows the text is hidden
 // by CSS (icon only, so a chip never covers the payload); the full label stays
-// as the tooltip and accessible name. `esc` is core's escaper.
+// as the tooltip and accessible name. `esc` is core's escaper, which keeps
+// quotes (it is for text), so the two attribute values escape them here.
 export function chipsHTML(r, baseline, esc) {
+  const attr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   return outlierChips(r, baseline)
-    .map((c) => `<span class="intr-chip intr-chip-${c.kind}" title="${esc(c.label)}" aria-label="${esc(c.label)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'finding'}"/></svg><span class="intr-chip-text">${esc(c.label)}</span></span>`)
+    .map((c) => `<span class="intr-chip intr-chip-${c.kind}" title="${attr(c.label)}" aria-label="${attr(c.label)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${CHIP_ICON[c.kind] || 'finding'}"/></svg><span class="intr-chip-text">${esc(c.label)}</span></span>`)
     .join('');
 }
 
@@ -179,6 +181,16 @@ export function intrCaptureRows(owner, displayed, runRows) {
 export function intrRowSelection(rowFlowId) {
   const id = Number(rowFlowId);
   return Number.isSafeInteger(id) && id > 0 ? id : 0;
+}
+
+// intrSelectionInView keeps that selection only while its attempt is still among
+// the rows on screen. A new run, another attack tab or a History entry replaces
+// the rows without a click, and Attach / Diff vs baseline would otherwise stay
+// armed with a flow of the view that is gone.
+export function intrSelectionInView(active, rows) {
+  const id = intrRowSelection(active);
+  if (!id || !Array.isArray(rows)) return 0;
+  return rows.some((r) => resultFlowId(r) === id) ? id : 0;
 }
 
 // presetFromEditor snapshots the editor for "Save attack preset". Payload lists
@@ -401,6 +413,7 @@ export function wireIntruderExtras(deps) {
     text.textContent = runSummaryText({ done, total, rate: r, results: st.results, running });
     if (running !== lastRunning) live.textContent = running ? 'Attack started' : (total ? `Attack finished: ${p.text}` : '');
     lastRunning = running;
+    if (active) active = intrSelectionInView(active, st.results);
     syncActions();
   }
 

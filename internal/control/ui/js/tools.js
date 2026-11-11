@@ -1676,7 +1676,11 @@ let intrPollError='';
 let intrLastRunning=false,intrLastTotal=0,intrLastDone=0;
 function syncIntrTabLock(locked){
   const bar=$('#intrTabs');if(!bar)return;
-  bar.setAttribute('aria-busy',locked?'true':'false');
+  // The strip has no role (createTabManager().render): the tablist that owns the tab buttons is
+  // #intrTabsList, so the busy state goes there, where assistive technology reads it.
+  bar.removeAttribute('aria-busy');
+  const list=bar.querySelector('[role="tablist"]');
+  if(list)list.setAttribute('aria-busy',locked?'true':'false');
   bar.querySelectorAll('.rt-select').forEach(button=>{
     const tid=Number(button.closest('.rep-tab')?.dataset.tid);
     button.disabled=!!locked&&tid!==intrRunTabId;

@@ -37,13 +37,10 @@ test('the scanner sees esc() in a quoted attribute and ignores text and escAttr'
   assert.deepEqual(escInOpenAttribute('x=`<b class="a ${k}" id="z">${esc(v)}</b>`'), []);
 });
 
-// Reviewed and left alone (not owned by this change, and not reachable with hostile
-// text): both values are fixed labels chosen in the module itself. Matched by the
-// source line, not its number, so an unrelated edit above does not break the test.
-const KNOWN_STATIC = [
-  ['intruder.js', 'class="intr-chip intr-chip-${c.kind}" title="${esc(c.label)}"'],
-  ['proxy.js', "alt=\"Inline ${esc(side==='req'?'request':'response')} image preview\""],
-];
+// Lines reviewed and deliberately left alone, as [file, source text]. Matched by the source
+// line, not its number, so an unrelated edit above does not break the test. Empty: every hit
+// is a defect to fix, not to list here.
+const KNOWN_STATIC = [];
 
 test('no module puts core esc() inside a quoted attribute', () => {
   const bad = [];

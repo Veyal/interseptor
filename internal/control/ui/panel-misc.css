@@ -83,10 +83,35 @@
 .map-pip:not(.is-on){color:var(--fg3)}
 .map-th-evidence{width:150px}
 .map-th-act{width:84px}
+.map-th-host{width:140px}
+.map-th-method{width:72px}
+.map-th-status{width:88px}
+.map-th-hits{width:52px}
 .map-tbl-cov{white-space:nowrap}
 .map-ep .map-cov{margin-left:auto}
+/* Phone-only folds of the Host and Hits columns (see the ≤720px block). */
+.map-tbl-hostfold,.map-tbl-hitsfold{display:none}
 @media (max-width:720px){
   .map-th-evidence,.map-tbl-cov{display:none}
+  /* A phone shows Method, Path, Status and the row action without sideways scrolling: Host folds
+     under the path (only when the rows span several hosts), Hits folds into Status, and the fixed
+     layout gives Path everything the three narrow columns leave. */
+  .map-tbl,.map-virt-scroll>table.map-tbl{table-layout:fixed;min-width:0}
+  .map-th-host,.map-tbl-host,.map-th-hits,.map-tbl-hits{display:none}
+  /* The windowed table's two padding rows span every column of the desktop table. With columns
+     folded that colspan would add empty columns that take width from Path, so here the padding
+     cell is a plain block (one anonymous cell): it still sets the row height. */
+  .map-virt-pad td{display:block}
+  .map-tbl th,.map-tbl td{padding-left:6px;padding-right:6px}
+  .map-th-method{width:60px}
+  .map-th-status{width:70px}
+  .map-th-act{width:66px}
+  .map-tbl .map-tbl-sts{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .map-tbl-hitsfold{display:inline;color:var(--fg3)}
+  .map-tbl-multihost .map-tbl-hostfold{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs);color:var(--fg3)}
+  /* Under the windowing threshold rows may differ in height, so a long path wraps to two lines. */
+  .map-tbl:not(.map-virt-body) .map-tbl-p{white-space:normal}
+  .map-tbl:not(.map-virt-body) .map-tbl-ptxt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
   .map-ep{flex-wrap:wrap;min-height:var(--hit-min)}
   .map-ep .map-cov{flex-basis:100%;margin-left:0}
 }

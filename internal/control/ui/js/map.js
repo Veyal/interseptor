@@ -888,11 +888,11 @@ function mapTableRow(e, showHost, idx = -1, stop = false){
   }
   const windowed = idx >= 0 ? ` data-i="${idx}" tabindex="${stop ? 0 : -1}"` : '';
   return `<tr data-flow="${e.lastFlowId || ''}"${windowed} class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
-    ${showHost ? `<td style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
+    ${showHost ? `<td class="map-tbl-host" style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
     <td class="map-tbl-m" style="color:${methodColor(e.method)}">${esc(e.method)}</td>
-    <td class="map-tbl-p" title="${escAttr(path)}">${esc(path)}${clusterCell}</td>
-    <td class="map-tbl-sts">${sts || '—'}</td>
-    <td style="text-align:right;color:var(--fg3)">${e.hits > 1 ? e.hits+'×' : ''}</td>
+    <td class="map-tbl-p" title="${escAttr(path)}"><span class="map-tbl-ptxt">${esc(path)}</span>${clusterCell}${showHost ? `<span class="map-tbl-hostfold">${esc(e.host)}</span>` : ''}</td>
+    <td class="map-tbl-sts">${sts || '—'}${e.hits > 1 ? `<span class="map-tbl-hitsfold"> ${e.hits}×</span>` : ''}</td>
+    <td class="map-tbl-hits" style="text-align:right;color:var(--fg3)">${e.hits > 1 ? e.hits+'×' : ''}</td>
     <td class="map-tbl-cov">${mapCoverageHTML(e)}</td>
     <td class="map-tbl-act">${e.lastFlowId ? `<button class="btn" data-rep="${e.lastFlowId}" title="Send to Repeater">→ Rep</button>` : ''}</td>
   </tr>`;
@@ -925,13 +925,13 @@ function wireMapTableRows(box){
 // whole table instead of wrapping inside the mounted window.
 const MAP_TABLE_BUFFER = 15;
 let mapVt = null;
-function renderMapVirtualTable(box, sorted, showHost, head){
+function renderMapVirtualTable(box, sorted, showHost, head, tblClass = ''){
   const prev = mapVt && mapVt.box === box ? mapVt : null;
   const active = document.activeElement;
   const hadFocus = !!(prev && active && (active === prev.scrollEl || (prev.tbody.contains(active) && active.closest('tr[data-i]'))));
   const keepKey = prev && prev.focusIdx >= 0 && prev.sorted[prev.focusIdx] ? mapEpKey(prev.sorted[prev.focusIdx]) : '';
   const cols = showHost ? 7 : 6;
-  box.innerHTML = `<div class="map-virt"><div class="map-virt-scroll" tabindex="-1" aria-label="Endpoints table"><table class="map-tbl map-virt-body">${head}<tbody><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr></tbody></table></div></div>`;
+  box.innerHTML = `<div class="map-virt"><div class="map-virt-scroll" tabindex="-1" aria-label="Endpoints table"><table class="map-tbl map-virt-body${tblClass}">${head}<tbody><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr><tr class="map-virt-pad" aria-hidden="true"><td colspan="${cols}"></td></tr></tbody></table></div></div>`;
   const scrollEl = box.querySelector('.map-virt-scroll');
   const tbody = box.querySelector('tbody');
   const vt = { box, sorted, showHost, scrollEl, tbody, rowH: prev ? prev.rowH : MAP_ROW_H, calibrated: false, focusIdx: -1, win: null };
@@ -1046,22 +1046,25 @@ function renderMapTable(eps){
   const sorted = mapSortEps(eps);
   const showHost = !mapState.domain;
   const sk = mapState.sort.key, sd = mapState.sort.dir;
-  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ' + icon('arrow-up') : ' ' + icon('arrow-down')) : ''}</th>`;
+  // The width lives on a class (panel-misc.css), not inline, so the phone layout can fold Host and Hits.
+  const th = (k, label) => `<th class="map-th-${k}${sk === k ? ' sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}">${label}${sk === k ? (sd > 0 ? ' ' + icon('arrow-up') : ' ' + icon('arrow-down')) : ''}</th>`;
+  // On a phone the Host column folds under the path, and only when the rows span several hosts.
+  const tblClass = showHost && sorted.some(e => e.host !== sorted[0].host) ? ' map-tbl-multihost' : '';
   const head = `<thead><tr>
-    ${showHost ? th('host', 'Host', '140px') : ''}
-    ${th('method', 'Method', '72px')}
-    ${th('path', 'Path', '')}
-    ${th('status', 'Status', '88px')}
-    ${th('hits', 'Hits', '52px')}
+    ${showHost ? th('host', 'Host') : ''}
+    ${th('method', 'Method')}
+    ${th('path', 'Path')}
+    ${th('status', 'Status')}
+    ${th('hits', 'Hits')}
     <th class="map-th-evidence">Evidence</th>
     <th class="map-th-act"><span class="u-sr">Actions</span></th>
   </tr></thead>`;
 
   if(sorted.length >= MAP_TABLE_VIRTUAL_MIN){
-    renderMapVirtualTable(box, sorted, showHost, head);
+    renderMapVirtualTable(box, sorted, showHost, head, tblClass);
   }else{
     const rows = sorted.map(e => mapTableRow(e, showHost)).join('');
-    box.innerHTML = `<table class="map-tbl">${head}<tbody>${rows}</tbody></table>`;
+    box.innerHTML = `<table class="map-tbl${tblClass}">${head}<tbody>${rows}</tbody></table>`;
     wireMapTableRows(box);
   }
 

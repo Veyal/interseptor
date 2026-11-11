@@ -288,13 +288,19 @@ export function createDiffView(container, { mode = 'unified', context = 3, doc }
   }
   function appendChunked(parent, nodes, token, before) {
     let i = 0;
+    // Only the first chunk is inserted now; the rest follow one frame at a time. By then the
+    // hunks after this one are already in the document, so a run that was appended "at the end"
+    // holds its place with a marker, or its later chunks would land below the lines that follow.
+    let marker = null;
+    if (!before && nodes.length > RENDER_CHUNK) { marker = d.createComment(''); parent.appendChild(marker); }
     const step = () => {
       if (token !== state.token) return;
       const frag = d.createDocumentFragment();
       const end = Math.min(nodes.length, i + RENDER_CHUNK);
-      for (; i < end; i++) { frag.appendChild(nodes[i].node); if (nodes[i].change) state.changeEls.push(nodes[i].node); }
-      parent.insertBefore(frag, before || null);
+      for (; i < end; i++) { if (nodes[i].change) nodes[i].node.dataset.changeStart = '1'; frag.appendChild(nodes[i].node); }
+      parent.insertBefore(frag, before || marker);
       if (i < nodes.length) requestAnimationFrame(step);
+      else if (marker) parent.removeChild(marker);
     };
     step();
   }
@@ -329,6 +335,8 @@ export function createDiffView(container, { mode = 'unified', context = 3, doc }
     }
   }
   function go(delta) {
+    // Read in document order: chunks of different hunks are inserted in different frames.
+    state.changeEls = Array.from(container.querySelectorAll('[data-change-start]'));
     if (!state.changeEls.length) return;
     state.cursor = stepChange(state.cursor, delta, state.changeEls.length);
     const target = state.changeEls[state.cursor];

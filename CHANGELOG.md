@@ -165,6 +165,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Pending human-input prompts are capped.** An agent could queue prompts without limit within the one-hour expiry. At most 20 are pending per source and 50 overall (429 beyond that), and a message is limited to 8 KiB with at most 20 options of 512 bytes. (`internal/control/humaninput.go`.)
 - **Evidence-tray Undo could overwrite a different finding's steps.** Undoing a removed evidence tile after opening another finding saved that other finding's steps onto the finding the tile came from. Undo now refuses once another finding is open and says which finding to reopen. (`internal/control/ui/js/findings.js`.)
 - **The findings list menu deleted without asking.** "Delete finding" in a row's right-click menu now asks for confirmation like the header menu, reports a refused or failed delete (for example unsaved changes that need Retry) and refreshes the list. A failed "Set severity" from the same menu is now reported too. (`internal/control/ui/js/findings.js`.)
+- **Map table on a phone keeps the row action on screen.** At 390 px the Table view was wider than its scroller and "→ Rep" sat outside the viewport. Below 720 px the Host and Hits columns fold into Path and Status, so Method, Path, Status and the action fit without sideways scrolling; the desktop table is unchanged. (`internal/control/ui/js/map.js`, `internal/control/ui/panel-misc.css`.)
+- **Long change blocks render in order in the diff view.** A block of more than 500 added or removed lines had its later rows placed below the lines that follow it, and `n` / `N` visited changes in that wrong order. Affects Repeater "Diff vs previous", the Proxy diff and Intruder "Diff vs baseline". (`internal/control/ui/js/diff.js`.)
+- **A deferred Intercept drop waits while Undo has focus.** The countdown restarted when the pointer left the toast even though keyboard focus was still on Undo. Hover and focus now hold it independently. (`internal/control/ui/js/held-undo.js`.)
+- **Intruder Attach and Diff follow the rows on screen.** After a new run, a tab switch or a History entry replaced the results, the buttons stayed armed with a flow from the previous view. (`internal/control/ui/js/intruder.js`.)
+- **Tag chips on phone History rows no longer leave a stray dot.** When a row's tags overflowed the path cell, a clipped glyph showed beside the last chip; the ellipsis now follows the last chip that fits. (`internal/control/ui/panel-proxy.css`.)
+- **The Intruder run lock is announced on the tab list.** `aria-busy` was written on the role-less strip; it is now on the tablist that owns the tabs. (`internal/control/ui/js/tools.js`.)
 
 ### Changed
 
@@ -207,6 +213,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The authorization matrix alt text is bounded on its own.** Collecting broken cells stops at the 20 that are listed and names are clipped, so the renderer no longer depends on its caller capping the input (100,000 rows: did not finish before, 0.3 s now). (`internal/preview/authz_matrix.go`.)
 - **The raw message view streams the body from disk.** `GET /api/flows/{id}/raw` allocated about 3.5 times the body size (222 MiB for a 64 MiB body); it now allocates nothing proportional to the body. (`internal/control/control.go`.)
 - **Paging a large plain body no longer re-reads it from the start.** Page 1000 of a 200 MiB body took 19.8 ms against 0.26 ms for page 1; every page now takes about 0.3 ms. (`internal/control/flow_slice.go`.)
+- **Attribute values use the attribute escaper everywhere.** The last two quoted attributes that used the text escaper (Intruder result chips, the inline image preview) are fixed and the scan's allow-list is empty. (`internal/control/ui/js/intruder.js`, `internal/control/ui/js/proxy.js`, `internal/control/ui/_js-tests/attr-escape-r2.test.mjs`.)
 
 ### Added
 
