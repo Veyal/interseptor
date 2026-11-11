@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="/css/collections.css">
 <link rel="stylesheet" href="/css/collections-matrix.css">
 <link rel="stylesheet" href="/css/identities.css">
+<link rel="stylesheet" href="/css/playbooks.css">
 <link rel="stylesheet" href="/css/projects.css">
 <link rel="stylesheet" href="/canvas.css">
 <link rel="stylesheet" href="/desktop.css">
@@ -596,20 +597,19 @@ Content-Type: application/json
   <!-- region:playbooks -->
   <!-- PLAYBOOKS -->
   <div class="panel" id="panel-playbooks" role="tabpanel" aria-labelledby="tab-playbooks" data-panel="playbooks">
-    <div class="toolbar">
-      <div class="row find-toolbar-row u-gap-2 u-wrap">
-        <input id="pbFilter" class="btn btn-field field-grow" aria-label="Filter playbooks" placeholder="Filter: host, path, /checkout, graphql">
-        <span id="pbCount" class="count" role="status" aria-live="polite"></span>
-        <span id="pbTrust" class="hint"></span>
-      </div>
+    <div class="toolbar pb-bar">
+      <input id="pbFilter" class="btn btn-field pb-filter" type="search" aria-label="Filter playbooks" placeholder="Filter by title, path or signal" autocomplete="off" spellcheck="false">
+      <span id="pbCount" class="count" role="status" aria-live="polite"></span>
+      <span id="pbTrust" class="hint pb-trust"></span>
     </div>
     <div class="pb-root" id="pbRoot">
-      <section class="split-list pb-list-col" aria-label="Playbooks">
-        <div id="pbList" class="pb-list"></div>
-      </section>
-      <section class="split-detail pb-detail-col" aria-label="Playbook detail">
+      <div class="split-list pb-list-col">
+        <div id="pbList" class="pb-list" role="listbox" aria-label="Playbooks"></div>
+        <div id="pbListState" class="pb-state"></div>
+      </div>
+      <section class="split-detail pb-detail-col" aria-label="Playbook">
         <div id="pbDetail" class="pb-detail">
-          <div class="hint">Select a playbook. These are markdown test guides the connected AI harness reads over MCP and executes with the ordinary tools — Interseptor ships the knowledge, the agent does the work.</div>
+          <p class="hint pb-intro">Playbooks are test guides a connected AI harness reads over MCP and runs with the ordinary tools. Interseptor ships the method; the agent does the work and records what it covered.</p>
         </div>
       </section>
     </div>

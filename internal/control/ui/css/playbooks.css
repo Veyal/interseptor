@@ -1,0 +1,83 @@
+/* playbooks.css — the Playbooks panel (js/playbooks.js): the corpus list on the
+   left, one guide as a readable document on the right. Tokens only, and only
+   the shared web tokens (--bg*, --fg*, --line*): the desktop skin remaps those,
+   so one set of rules serves both. Trust and coverage are always a word next to
+   the colour, never colour alone. Nothing here animates. */
+
+#panel-playbooks{background:var(--bg)}
+.pb-bar{gap:var(--sp-2);flex-wrap:wrap;row-gap:var(--sp-1)}
+.pb-filter{flex:0 1 320px;min-width:min(160px,50vw)}
+.pb-trust{margin-left:auto;white-space:nowrap}
+
+.pb-root{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,var(--split-size,32%)) 1fr;overflow:hidden}
+.pb-root.split{display:grid}
+.pb-root[data-mode="stack"]{display:flex;flex-direction:column}
+.pb-root[data-mode="stack"]>.pb-list-col{flex:1;border-right:0}
+.pb-list-col{display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--bg1)}
+.pb-list{display:flex;flex-direction:column}
+.pb-state{padding:var(--sp-3)}
+.pb-state:empty{display:none}
+
+/* ---- list rows ---- */
+.pb-row{display:flex;flex-direction:column;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);cursor:pointer;min-width:0}
+.pb-row:hover{background:var(--bg2)}
+.pb-row[aria-selected="true"]{background:var(--sel);box-shadow:inset 2px 0 0 var(--accent)}
+.pb-row:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-3px}
+.pb-row-title{font-size:var(--fs-md);font-weight:600;line-height:var(--lh-tight);color:var(--fg);overflow-wrap:anywhere}
+.pb-row-sub{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);min-width:0}
+.pb-row-invalid{font-size:var(--fs-xs);color:var(--red);overflow-wrap:anywhere}
+
+/* Coverage is the answer to "did we test this": quiet until something ran. */
+.pb-cov{font-size:var(--fs-xs);color:var(--fg3)}
+.pb-cov[data-tested="true"]{color:var(--accent);font-weight:600}
+.pb-badge{font-size:var(--fs-xs);font-weight:600;line-height:var(--lh-tight);padding:1px 6px;border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--fg2);white-space:nowrap}
+.pb-badge-untrusted{border-color:var(--red);color:var(--red);background:var(--redDim)}
+
+/* ---- document ---- */
+.pb-detail-col{background:var(--bg)}
+.pb-detail{padding:var(--sp-4) var(--sp-5) var(--sp-7);min-width:0}
+.pb-intro{max-width:60ch}
+.pb-article{display:flex;flex-direction:column;gap:var(--sp-4);max-width:76ch}
+.pb-head{display:flex;flex-direction:column;gap:var(--sp-2)}
+.pb-title{font-size:var(--fs-2xl);font-weight:650;line-height:var(--lh-tight);letter-spacing:-.2px;color:var(--fg);overflow-wrap:anywhere}
+.pb-title:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.pb-meta{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2)}
+.pb-meta .pb-cov{font-size:var(--fs-sm)}
+.pb-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-1)}
+.pb-actions .btn{display:inline-flex;align-items:center;gap:var(--sp-1)}
+
+.pb-untrusted{display:flex;align-items:flex-start;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border:1px solid var(--red);border-radius:var(--r-md);background:var(--redDim);color:var(--fg);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.pb-untrusted .icon{flex:none;margin-top:2px;color:var(--red)}
+
+/* Frontmatter, as label/value rows. */
+.pb-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--sp-2) var(--sp-4);padding:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg1);font-size:var(--fs-sm)}
+.pb-facts dt{color:var(--fg3);font-weight:500;padding-top:2px;white-space:nowrap}
+.pb-facts dd{color:var(--fg2);line-height:var(--lh-normal);min-width:0;overflow-wrap:anywhere}
+.pb-chips{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.pb-chip{font-family:var(--mono);font-size:var(--fs-xs);line-height:var(--lh-tight);padding:2px 6px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg2);color:var(--fg2);overflow-wrap:anywhere}
+
+/* The guide itself: a measure a person can read, steps that look like steps. */
+.pb-doc{display:flex;flex-direction:column;gap:var(--sp-3);font-size:var(--fs-lg);line-height:var(--lh-loose);color:var(--fg2);overflow-wrap:anywhere}
+.pb-doc .pb-h1{margin-top:var(--sp-2);font-size:var(--fs-xl);font-weight:650;line-height:var(--lh-tight);color:var(--fg)}
+.pb-doc .pb-h2{margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--line);font-size:var(--fs-lg);font-weight:650;line-height:var(--lh-tight);color:var(--fg)}
+.pb-doc .pb-h3{margin-top:var(--sp-1);font-size:var(--fs-md);font-weight:650;line-height:var(--lh-tight);color:var(--fg)}
+.pb-doc :is(ul,ol){display:flex;flex-direction:column;gap:var(--sp-2);padding-left:var(--sp-5)}
+.pb-doc li{padding-left:var(--sp-1)}
+.pb-doc li::marker{color:var(--fg3);font-variant-numeric:tabular-nums}
+.pb-doc li>:is(ul,ol){margin-top:var(--sp-2);gap:var(--sp-1)}
+.pb-doc strong{font-weight:650;color:var(--fg)}
+.pb-doc code{font-family:var(--mono);font-size:.9em;padding:1px 4px;border-radius:var(--r-sm);background:var(--bg3);color:var(--fg);overflow-wrap:anywhere}
+.pb-doc pre{font-family:var(--mono);font-size:var(--fs-sm);line-height:var(--lh-normal);padding:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1);color:var(--fg);overflow:auto;white-space:pre}
+.pb-doc blockquote{padding:var(--sp-1) var(--sp-3);border-left:3px solid var(--line2);color:var(--fg3)}
+.pb-doc hr{border:0;border-top:1px solid var(--line)}
+
+@media (max-width:720px){
+  .pb-trust{display:none}
+  .pb-filter{flex:1 1 auto}
+  .pb-detail{padding:var(--sp-3) var(--sp-4) var(--sp-6)}
+  .pb-row{padding:var(--sp-3) var(--sp-4)}
+  .pb-facts{grid-template-columns:minmax(0,1fr);gap:var(--sp-1)}
+  .pb-facts dt{padding-top:var(--sp-2)}
+  .pb-facts dt:first-child{padding-top:0}
+  .pb-actions .btn{flex:1 1 auto;justify-content:center}
+}
