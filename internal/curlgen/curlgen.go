@@ -12,10 +12,14 @@ import (
 
 // Build renders a curl command for method/url with the given headers and body.
 // Values are single-quoted and shell-escaped; long commands wrap with backslash
-// continuations. Content-Length is dropped (curl computes it).
+// continuations. Content-Length is dropped (curl computes it), and the headers
+// curl would add by itself are suppressed unless the request carried them, so
+// the command sends the captured request and nothing else.
 func Build(method, url string, headers http.Header, body []byte) string {
 	var parts []string
-	parts = append(parts, "curl --path-as-is -k")
+	// -g: curl otherwise expands [] and {} in the URL as glob ranges, so a
+	// captured "ids[]=1" is rejected and "{a,b}" becomes two requests.
+	parts = append(parts, "curl --path-as-is -k -g")
 
 	m := strings.ToUpper(strings.TrimSpace(method))
 	if m == "" {
@@ -23,7 +27,12 @@ func Build(method, url string, headers http.Header, body []byte) string {
 	}
 	// curl sends --data-raw as POST unless told otherwise, so a GET with a
 	// body needs the method spelled out too.
-	if m != http.MethodGet || len(body) > 0 {
+	switch {
+	case m == http.MethodHead && len(body) == 0:
+		// "-X HEAD" only renames the method: curl would still wait for the
+		// body the response headers announce. -I is curl's real HEAD.
+		parts = append(parts, "-I")
+	case m != http.MethodGet || len(body) > 0:
 		parts = append(parts, "-X '"+shellEscape(m)+"'")
 	}
 
@@ -38,6 +47,17 @@ func Build(method, url string, headers http.Header, body []byte) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	// curl adds these on its own (Content-Type only with a body). A captured
+	// request that did not carry one is replayed without it: "Name:" is curl's
+	// spelling for "do not send Name".
+	for _, name := range []string{"Accept", "Content-Type", "User-Agent"} {
+		if name == "Content-Type" && len(body) == 0 {
+			continue
+		}
+		if !hasHeader(headers, name) {
+			parts = append(parts, "-H '"+name+":'")
+		}
+	}
 	for _, k := range keys {
 		for _, v := range headers[k] {
 			// curl reads "Name:" (empty value) as "do not send Name" — it even
@@ -57,6 +77,17 @@ func Build(method, url string, headers http.Header, body []byte) string {
 	}
 
 	return strings.Join(parts, " \\\n  ")
+}
+
+// hasHeader reports whether headers carries name under any capitalisation
+// (captured headers keep the case they were sent with).
+func hasHeader(headers http.Header, name string) bool {
+	for k := range headers {
+		if strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // shellEscape makes s safe inside single quotes by closing the quote, emitting

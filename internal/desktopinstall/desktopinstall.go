@@ -129,8 +129,15 @@ func newHTTPClient() *http.Client {
 	}}
 }
 
+// execWaitDelay bounds the wait for a tool's output pipe after the context
+// killed it. A descendant that inherited the pipe keeps it open, and
+// CombinedOutput would otherwise wait on it without limit.
+var execWaitDelay = 2 * time.Second
+
 func execRunner(ctx context.Context, name string, args ...string) ([]byte, int, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = execWaitDelay
+	out, err := cmd.CombinedOutput()
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return out, ee.ExitCode(), nil

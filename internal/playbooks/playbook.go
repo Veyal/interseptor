@@ -15,8 +15,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -148,24 +150,13 @@ func splitFrontmatter(src string) (front, body string, err error) {
 // on an id clash. A broken project file is returned as an entry with Invalid
 // set so the operator sees it rather than a silently missing playbook.
 func Load(projectDir string) ([]Playbook, error) {
-	byID := map[string]Playbook{}
-	entries, err := fs.ReadDir(bundled, "corpus")
+	corpus, err := bundledPlaybooks()
 	if err != nil {
-		return nil, fmt.Errorf("playbooks: bundled corpus: %w", err)
+		return nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		raw, err := bundled.ReadFile("corpus/" + e.Name())
-		if err != nil {
-			return nil, err
-		}
-		p, err := Parse(e.Name(), string(raw), SourceBundled)
-		if err != nil {
-			return nil, fmt.Errorf("playbooks: bundled %s: %w", e.Name(), err)
-		}
-		byID[p.ID] = p
+	byID := make(map[string]Playbook, len(corpus))
+	for _, p := range corpus {
+		byID[p.ID] = p.clone()
 	}
 	if projectDir != "" {
 		dir := filepath.Join(projectDir, "playbooks")
@@ -196,6 +187,41 @@ func Load(projectDir string) ([]Playbook, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
+}
+
+// bundledPlaybooks parses the embedded corpus once: it is compiled into the
+// binary and cannot change, and Load runs on every readiness call. Project
+// files are still read on every Load, so an edit is visible at once.
+var bundledPlaybooks = sync.OnceValues(func() ([]Playbook, error) {
+	entries, err := fs.ReadDir(bundled, "corpus")
+	if err != nil {
+		return nil, fmt.Errorf("playbooks: bundled corpus: %w", err)
+	}
+	var out []Playbook
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		raw, err := bundled.ReadFile("corpus/" + e.Name())
+		if err != nil {
+			return nil, err
+		}
+		p, err := Parse(e.Name(), string(raw), SourceBundled)
+		if err != nil {
+			return nil, fmt.Errorf("playbooks: bundled %s: %w", e.Name(), err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+})
+
+// clone returns a copy that shares no slice with p, so a caller that edits
+// what Load returned cannot change the cached bundled set.
+func (p Playbook) clone() Playbook {
+	p.AppliesTo = slices.Clone(p.AppliesTo)
+	p.Tools = slices.Clone(p.Tools)
+	p.References = slices.Clone(p.References)
+	return p
 }
 
 // Get returns one playbook by id.

@@ -207,18 +207,30 @@ func (darwinBackend) disable() error {
 	return nil
 }
 
-// status reports whether the system web proxy is currently on (best-effort: the
-// first active service).
+// status reports whether the system web proxy is currently on: on any enabled
+// network service, since enable sets every one of them and which one carries
+// the traffic (Wi-Fi, Ethernet, a dock) is not the first listed. A service
+// that cannot be read does not hide another that is on; the read error is
+// reported only when no service is on.
 func (darwinBackend) status() (bool, error) {
 	svcs, err := activeServices()
-	if err != nil || len(svcs) == 0 {
-		return false, err
-	}
-	out, err := networkSetup("-getwebproxy", svcs[0])
 	if err != nil {
 		return false, err
 	}
-	return strings.Contains(string(out), "Enabled: Yes"), nil
+	var firstErr error
+	for _, s := range svcs {
+		out, err := networkSetup("-getwebproxy", s)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if parseDarwinProxy(string(out)).enabled {
+			return true, nil
+		}
+	}
+	return false, firstErr
 }
 
 // networkSetup is the runner for networksetup commands. It is a package-level

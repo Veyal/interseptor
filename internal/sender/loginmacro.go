@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,7 @@ func runLoginMacroReq(parent context.Context, cl *http.Client, m LoginMacro) (in
 			req.Header.Add(k, v)
 		}
 	}
+	applyMacroUserAgent(req)
 	resp, err := cl.Do(req)
 	if err != nil {
 		return 0, nil, err
@@ -255,7 +257,7 @@ func (s *Sender) reauth401(ctx context.Context, seen uint64) error {
 
 func (s *Sender) runLoginMacro(ctx context.Context) ([]Header, error) {
 	m, _ := s.login.get()
-	_, hdrs, err := runLoginMacroReq(ctx, s.cl, m)
+	_, hdrs, err := runLoginMacroReq(s.loginMacroContext(ctx, m), s.cl, m)
 	if err != nil || len(hdrs) == 0 {
 		return hdrs, err
 	}
@@ -307,7 +309,23 @@ func (s *Sender) RunLoginMacroNow() ([]Header, error) { return s.runLoginMacro(c
 // touching the live session. Backs the UI "Test" button so an operator can see
 // what the macro does (and whether it captures a session) before relying on it.
 func (s *Sender) TestLoginMacro(m LoginMacro) (status int, headers []Header, err error) {
-	return runLoginMacroReq(context.Background(), s.cl, m)
+	return runLoginMacroReq(s.loginMacroContext(context.Background(), m), s.cl, m)
+}
+
+// loginMacroContext makes a login that no send asked for (a manual run, the
+// dry run) go out with the session's User-Agent when the session defines one.
+// A login run on behalf of a send already carries that send's User-Agent.
+func (s *Sender) loginMacroContext(ctx context.Context, m LoginMacro) context.Context {
+	if ctx != nil {
+		if _, ok := ctx.Value(macroUserAgentKey{}).(macroUserAgent); ok {
+			return ctx
+		}
+	}
+	host := ""
+	if u, err := url.Parse(m.Target); err == nil {
+		host = u.Hostname()
+	}
+	return withMacroUserAgent(ctx, s.sessionUserAgent(host))
 }
 
 func (s *Sender) shouldReauth401() bool {

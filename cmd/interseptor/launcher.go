@@ -217,19 +217,27 @@ func loadOrCreateLauncherToken(globalDir string) (string, error) {
 	}
 	path := filepath.Join(globalDir, "launcher.token")
 	// Write via a temp file + rename so a crash mid-write never leaves a
-	// truncated token on disk, then tighten permissions before the rename
-	// target is visible under its final name.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(tok), 0o600); err != nil {
+	// truncated token on disk. The temp name is unique (two launchers starting
+	// together must not write, chmod and rename one shared file) and
+	// CreateTemp makes it 0600 before the token is in it.
+	f, err := os.CreateTemp(globalDir, "launcher.token.*.tmp")
+	if err != nil {
 		return "", err
 	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return "", err
+	tmp := f.Name()
+	_, werr := f.WriteString(tok)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if werr == nil {
+		werr = os.Chmod(tmp, 0o600)
+	}
+	if werr == nil {
+		werr = os.Rename(tmp, path)
+	}
+	if werr != nil {
 		_ = os.Remove(tmp)
-		return "", err
+		return "", werr
 	}
 	return tok, nil
 }
@@ -354,7 +362,7 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	controlAddr := fmt.Sprintf("127.0.0.1:%d", controlPort)
 	proxyAddr := fmt.Sprintf("127.0.0.1:%d", proxyPort)
 
-	logFile, err := os.OpenFile(filepath.Join(lh.logsDir, project+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := openInstanceLog(filepath.Join(lh.logsDir, project+".log"))
 	if err != nil {
 		launcherErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -407,6 +415,19 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeLauncherJSON(w, http.StatusOK, runningView(inst))
+}
+
+// openInstanceLog opens a project instance's log for appending. The log names
+// the hosts and request paths of the engagement (query strings included), so
+// it is readable by the operator only; a log an older release created 0644 is
+// tightened here.
+func openInstanceLog(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	_ = f.Chmod(0o600) // best effort: not supported on Windows
+	return f, nil
 }
 
 // instanceCommand builds the command for one project instance, detached from

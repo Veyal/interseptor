@@ -896,9 +896,20 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 	// cleared before the upgraded stream is spliced, so an idle WebSocket is
 	// never cut off.
 	_ = up.SetReadDeadline(time.Now().Add(s.upgradeResponseBound()))
+	// The bound alone would keep the upstream connection and this goroutine
+	// for its whole length after the client has gone: watch the client too.
+	clientGone := watchUpgradeClient(clientConn, clientReader, up)
 	upReader := bufio.NewReader(up)
 	resp, err := http.ReadResponse(upReader, r)
+	gone := clientGone()
 	_ = up.SetReadDeadline(time.Time{})
+	if gone {
+		if err == nil {
+			resp.Body.Close()
+		}
+		s.recordClientAbort(flow)
+		return
+	}
 	if err != nil {
 		s.recordUpgradeError(clientConn, flow, "upgrade response: "+err.Error())
 		return
@@ -927,8 +938,40 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 	s.relayUpgrade(flow, clientReader, upReader, clientConn, up)
 }
 
+// watchUpgradeClient watches the client while the upstream is deciding on an
+// upgrade. When the client disconnects it expires up's read deadline, which
+// ends the pending read of the handshake response. The returned func stops the
+// watch, restores the client conn for reading and reports whether the client
+// went away; the caller clears up's read deadline afterwards. Bytes the client
+// sends early are left in clientReader for the upgraded stream.
+func watchUpgradeClient(clientConn net.Conn, clientReader *bufio.Reader, up net.Conn) func() bool {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &clientGoneWatcher{ctx: ctx, cancel: cancel, conn: clientConn, br: clientReader, done: make(chan struct{})}
+	unhook := context.AfterFunc(ctx, func() { _ = up.SetReadDeadline(time.Unix(1, 0)) })
+	w.start()
+	return func() bool {
+		unhook() // before stop, which cancels ctx itself
+		gone := ctx.Err() != nil
+		w.stop()
+		return gone
+	}
+}
+
+// relayUpgrade splices an upgraded stream in both directions until both are
+// done. A direction that ends cleanly (EOF; for a WebSocket, EOF between two
+// frames) shuts down only the write side of its destination, so the other
+// direction keeps flowing: a client that sends its input and half-closes (an
+// exec/attach stream, a WebSocket Close followed by FIN) still receives the
+// rest of the output. From then on the remaining direction must make progress
+// within the half-close idle bound. An error, a stream cut inside a frame, a
+// panic or a conn that cannot half-close tears the whole tunnel down at once.
 func (s *Server) relayUpgrade(flow *proxyFlow, clientReader, upstreamReader *bufio.Reader, clientConn, upstreamConn net.Conn) {
 	done := make(chan struct{}, 2)
+	ends := make(chan *relayEnd, 2)
+	var lingering atomic.Bool
+	idle := s.halfCloseIdleBound()
+	toUpstream := &relayEnd{Conn: upstreamConn, src: clientConn, lingering: &lingering, idle: idle, ends: ends}
+	toClient := &relayEnd{Conn: clientConn, src: upstreamConn, lingering: &lingering, idle: idle, ends: ends}
 	// Only WebSocket streams are frame-parsed; other upgrades (h2c, SPDY,
 	// tcp exec/attach) would be stalled or corrupted by it, so splice raw.
 	upg := http.Header(flow.ResHeaders).Get("Upgrade")
@@ -937,39 +980,93 @@ func (s *Server) relayUpgrade(flow *proxyFlow, clientReader, upstreamReader *buf
 	}
 	isWS := strings.EqualFold(strings.TrimSpace(upg), "websocket")
 	if flow.suppressCapture || !isWS {
-		go relayRaw(clientReader, upstreamConn, upstreamConn, done)
-		go relayRaw(upstreamReader, clientConn, clientConn, done)
+		go relayRaw(clientReader, toUpstream, toUpstream, done)
+		go relayRaw(upstreamReader, toClient, toClient, done)
 	} else {
-		go s.relayWS(flow.ID, "send", clientReader, upstreamConn, upstreamConn, done)
-		go s.relayWS(flow.ID, "recv", upstreamReader, clientConn, clientConn, done)
+		go s.relayWS(flow.ID, "send", clientReader, toUpstream, toUpstream, done)
+		go s.relayWS(flow.ID, "recv", upstreamReader, toClient, toClient, done)
 	}
+	if first := <-ends; first.err == nil && closeWrite(first.Conn) {
+		// first.Conn is what the remaining direction reads from, first.src
+		// what it writes to.
+		lingering.Store(true)
+		_ = first.Conn.SetReadDeadline(time.Now().Add(idle))
+		_ = first.src.SetWriteDeadline(time.Now().Add(idle))
+		<-ends
+	}
+	clientConn.Close() // unblocks a direction that is still relaying
+	upstreamConn.Close()
 	<-done
 	<-done
 }
 
+// relayEnd is the destination of one relay direction. Its writes keep the
+// remaining direction's idle bound fresh once the other one has half-closed,
+// and it reports how its direction ended instead of closing the conn itself
+// (relayUpgrade decides between a half-close and a teardown).
+type relayEnd struct {
+	net.Conn           // destination of this direction
+	src       net.Conn // conn this direction reads from
+	lingering *atomic.Bool
+	idle      time.Duration
+	ends      chan<- *relayEnd
+	err       error // set before the end is reported
+}
+
+func (e *relayEnd) Write(p []byte) (int, error) {
+	if !e.lingering.Load() {
+		return e.Conn.Write(p)
+	}
+	_ = e.Conn.SetWriteDeadline(time.Now().Add(e.idle))
+	n, err := e.Conn.Write(p)
+	_ = e.src.SetReadDeadline(time.Now().Add(e.idle))
+	return n, err
+}
+
+// CloseWithError reports the direction as finished: nil for a clean end.
+func (e *relayEnd) CloseWithError(err error) error {
+	e.err = err
+	e.ends <- e
+	return nil
+}
+
+// closeRelay ends one relay direction: a destination that can tell a clean
+// end from a failure is told which it was, anything else is closed.
+func closeRelay(closer net.Conn, err error) {
+	if c, ok := closer.(interface{ CloseWithError(error) error }); ok {
+		_ = c.CloseWithError(err)
+		return
+	}
+	closer.Close()
+}
+
 func relayRaw(src io.Reader, dst, closer net.Conn, done chan<- struct{}) {
+	err := errors.New("raw relay panic")
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("proxy: raw relay panic: %v", r)
 		}
-		closer.Close()
+		closeRelay(closer, err)
 		done <- struct{}{}
 	}()
-	_, _ = io.Copy(dst, src)
+	_, err = io.Copy(dst, src)
 }
 
-// relayWS runs one direction of the WebSocket splice. It always closes closer
+// relayWS runs one direction of the WebSocket splice. It always ends closer
 // and sends on done, even if the relay panics — recovering here keeps a capture
 // bug from crashing the whole proxy or hanging tunnelUpgrade.
 func (s *Server) relayWS(flowID int64, dir string, src *bufio.Reader, dst net.Conn, closer net.Conn, done chan<- struct{}) {
+	err := errors.New("ws relay panic")
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("proxy: ws relay %s panic: %v", dir, r)
 		}
-		closer.Close()
+		closeRelay(closer, err)
 		done <- struct{}{}
 	}()
-	s.relayWSFrames(flowID, dir, src, dst)
+	if err = s.relayWSFrames(flowID, dir, src, dst); err == io.EOF {
+		err = nil // the stream ended between two frames
+	}
 }
 
 func (s *Server) recordUpgradeError(clientConn net.Conn, flow *proxyFlow, msg string) {
@@ -1714,6 +1811,9 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 	// either. In both cases apply header rules in place and stream the body.
 	streaming := isStreamingResponse(resp)
 	if streaming {
+		if _, hasBody, _ := s.eng.ResponseBodyScanLimit(); hold || hasBody {
+			noteEndlessStreamSkipped(flow)
+		}
 		hold = false
 	}
 	if !hold {

@@ -140,13 +140,43 @@ func create(crtPath, keyPath string) (*CA, error) {
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 
-	if err := os.WriteFile(crtPath, crtPEM, 0o644); err != nil {
+	// The key goes first and ca.crt appears last and whole: LoadOrCreate takes
+	// an existing ca.crt as "the CA is there", so a certificate without its key
+	// (key write failed, crash between the two files) or a truncated one would
+	// make every later start fail until the file was deleted by hand.
+	if err := writeFileAtomic(keyPath, keyPEM, 0o600); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+	if err := writeFileAtomic(crtPath, crtPEM, 0o644); err != nil {
+		_ = os.Remove(keyPath)
 		return nil, err
 	}
 	return &CA{cert: cert, key: key, certPEM: crtPEM, cache: map[string]*tls.Certificate{}}, nil
+}
+
+// writeFileAtomic writes data to a temp file beside path and renames it into
+// place, so path is either absent or complete. The temp file is created 0600
+// and only then given perm, so key material is never readable by others.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, perm)
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+	}
+	return err
 }
 
 // CertPEM returns the PEM-encoded CA certificate (for the user to trust).

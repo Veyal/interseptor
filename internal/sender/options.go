@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"sort"
@@ -478,6 +479,7 @@ func (s *Sender) rawRoundTrip(req *http.Request, body []byte, o *SendOptions) (*
 		conn.Close()
 		return nil, err
 	}
+	reportRawContentLength(ctx, o.RawHeaders, body)
 	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
 	if err != nil {
 		stop()
@@ -486,6 +488,32 @@ func (s *Sender) rawRoundTrip(req *http.Request, body []byte, o *SendOptions) (*
 	}
 	resp.Body = closeWith{resp.Body, func() { stop(); conn.Close() }}
 	return resp, nil
+}
+
+// rawAddsContentLength reports whether buildRawRequest adds its own
+// Content-Length: the body is not empty and the caller's headers frame nothing.
+func rawAddsContentLength(hdrs []RawHeader, body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	for _, h := range hdrs {
+		if n := strings.ToLower(h.Name); n == "content-length" || n == "transfer-encoding" {
+			return false
+		}
+	}
+	return true
+}
+
+// reportRawContentLength tells the request's write hook about the
+// Content-Length the raw path added, so it is recorded like one the transport
+// writes. Every other raw header is the caller's and already on the flow.
+func reportRawContentLength(ctx context.Context, hdrs []RawHeader, body []byte) {
+	if !rawAddsContentLength(hdrs, body) {
+		return
+	}
+	if t := httptrace.ContextClientTrace(ctx); t != nil && t.WroteHeaderField != nil {
+		t.WroteHeaderField("Content-Length", []string{strconv.Itoa(len(body))})
+	}
 }
 
 // buildRawRequest serialises the request with headers in the given order.
@@ -503,7 +531,7 @@ func buildRawRequest(method string, u *url.URL, hdrs []RawHeader, body []byte) [
 	for _, h := range hdrs {
 		fmt.Fprintf(&b, "%s: %s\r\n", h.Name, h.Value)
 	}
-	if len(body) > 0 && !has["content-length"] && !has["transfer-encoding"] {
+	if rawAddsContentLength(hdrs, body) {
 		fmt.Fprintf(&b, "Content-Length: %d\r\n", len(body))
 	}
 	if !has["connection"] {

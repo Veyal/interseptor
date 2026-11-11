@@ -16,7 +16,8 @@ const wsPreviewMax = 512
 
 // relayWSFrames copies RFC 6455 frames from src to dst verbatim while recording
 // each frame's metadata + a bounded (unmasked) payload preview. Large frames are
-// streamed in chunks, never buffered whole. It returns when the stream ends.
+// streamed in chunks, never buffered whole. It returns when the stream ends:
+// io.EOF when it ended between two frames, another error otherwise.
 //
 // One copy buffer and one preview buffer serve the whole relay (chatty sockets
 // used to allocate 32 KiB per frame), and a frame that fits the buffer is sent
@@ -32,7 +33,7 @@ func (s *Server) relayWSFrames(flowID int64, dir string, src *bufio.Reader, dst 
 		}
 		b1, err := src.ReadByte()
 		if err != nil {
-			return err
+			return midFrame(err)
 		}
 		opcode := b0 & 0x0f
 		masked := b1&0x80 != 0
@@ -43,13 +44,13 @@ func (s *Server) relayWSFrames(flowID int64, dir string, src *bufio.Reader, dst 
 		switch ln {
 		case 126:
 			if _, err := io.ReadFull(src, buf[hl:hl+2]); err != nil {
-				return err
+				return midFrame(err)
 			}
 			ln = uint64(binary.BigEndian.Uint16(buf[hl : hl+2]))
 			hl += 2
 		case 127:
 			if _, err := io.ReadFull(src, buf[hl:hl+8]); err != nil {
-				return err
+				return midFrame(err)
 			}
 			ln = binary.BigEndian.Uint64(buf[hl : hl+8])
 			hl += 8
@@ -57,7 +58,7 @@ func (s *Server) relayWSFrames(flowID int64, dir string, src *bufio.Reader, dst 
 		var mask [4]byte
 		if masked {
 			if _, err := io.ReadFull(src, buf[hl:hl+4]); err != nil {
-				return err
+				return midFrame(err)
 			}
 			copy(mask[:], buf[hl:hl+4])
 			hl += 4
@@ -73,7 +74,7 @@ func (s *Server) relayWSFrames(flowID int64, dir string, src *bufio.Reader, dst 
 				return werr
 			}
 			if rerr != nil {
-				return rerr
+				return midFrame(rerr)
 			}
 		} else {
 			if _, err := dst.Write(buf[:hl]); err != nil {
@@ -97,12 +98,24 @@ func (s *Server) relayWSFrames(flowID int64, dir string, src *bufio.Reader, dst 
 					remaining -= uint64(r)
 				}
 				if rerr != nil {
+					if remaining > 0 {
+						rerr = midFrame(rerr)
+					}
 					return rerr
 				}
 			}
 		}
 		s.recordWSFrame(flowID, dir, opcode, ln, preview)
 	}
+}
+
+// midFrame turns an EOF that arrives inside a frame into io.ErrUnexpectedEOF,
+// so io.EOF from relayWSFrames always means the stream ended between frames.
+func midFrame(err error) error {
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
 
 // appendWSPreview appends the (unmasked) bytes of chunk, which starts at

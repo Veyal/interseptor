@@ -150,6 +150,7 @@ func (s *Sender) macroToken(parent context.Context) (token, name, mode string) {
 			req.Header.Add(k, v)
 		}
 	}
+	applyMacroUserAgent(req)
 	resp, err := s.cl.Do(req)
 	if err != nil {
 		return "", "", ""
@@ -177,6 +178,86 @@ func (s *Sender) macroToken(parent context.Context) (token, name, mode string) {
 		mode = "header"
 	}
 	return mt[1], m.InjectName, mode
+}
+
+// macroUserAgent is the User-Agent of the send a macro request serves. A
+// macro that sets no User-Agent of its own sends this one, so the target sees
+// one client for the macro and the attack instead of Go's default for one of
+// them. set is false when nothing defines a User-Agent: the macro then goes
+// out exactly as before.
+type macroUserAgent struct {
+	value string
+	set   bool
+}
+
+type macroUserAgentKey struct{}
+
+func withMacroUserAgent(ctx context.Context, ua macroUserAgent) context.Context {
+	if !ua.set {
+		return ctx // may be nil: callers treat nil as "no context"
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, macroUserAgentKey{}, ua)
+}
+
+// applyMacroUserAgent gives a macro request the User-Agent carried by its
+// context unless the macro's own headers set one (explicit headers win). An
+// empty value suppresses the header, as it does on the send itself.
+func applyMacroUserAgent(req *http.Request) {
+	ua, _ := req.Context().Value(macroUserAgentKey{}).(macroUserAgent)
+	if !ua.set {
+		return
+	}
+	if _, own := req.Header["User-Agent"]; !own {
+		req.Header.Set("User-Agent", ua.value)
+	}
+}
+
+// attackUserAgent reports the User-Agent the send r will carry: the session's
+// when the session defines one (it overrides the template in applySession),
+// else the template's. A raw-header send carries only its own headers.
+func (s *Sender) attackUserAgent(r Request, u *url.URL) macroUserAgent {
+	var ua macroUserAgent
+	if r.Options != nil && len(r.Options.RawHeaders) > 0 {
+		for _, h := range r.Options.RawHeaders {
+			if http.CanonicalHeaderKey(h.Name) == "User-Agent" && !ua.set {
+				ua = macroUserAgent{h.Value, true}
+			}
+		}
+		return ua
+	}
+	for k, vs := range r.Headers {
+		if http.CanonicalHeaderKey(k) == "User-Agent" && len(vs) > 0 {
+			ua = macroUserAgent{vs[0], true}
+		}
+	}
+	if sess := s.sessionUserAgent(u.Hostname()); sess.set {
+		ua = sess
+	}
+	return ua
+}
+
+// sessionUserAgent reports the User-Agent the enabled session headers define
+// for host (per-host headers replace the global ones, as in applySession).
+func (s *Sender) sessionUserAgent(host string) macroUserAgent {
+	s.sess.mu.RLock()
+	defer s.sess.mu.RUnlock()
+	var ua macroUserAgent
+	if !s.sess.enabled {
+		return ua
+	}
+	hdrs := s.sess.headers
+	if hh, ok := s.sess.hostHeaders[strings.ToLower(host)]; ok && len(hh) > 0 {
+		hdrs = hh
+	}
+	for _, h := range hdrs {
+		if http.CanonicalHeaderKey(h.Key) == "User-Agent" {
+			ua = macroUserAgent{h.Value, true}
+		}
+	}
+	return ua
 }
 
 // SetSession configures the session headers auto-applied to outgoing sends.
@@ -501,6 +582,8 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 	// applied to req below. Skipped when the send target is out of session scope.
 	var macroTok, macroName, macroMode string
 	if scopeOK {
+		// The macros serve this send: they go out as the same client.
+		r.Context = withMacroUserAgent(r.Context, s.attackUserAgent(r, u))
 		s.maybeRefreshLogin(r.Context)
 		macroTok, macroName, macroMode = s.macroToken(r.Context)
 	}
@@ -573,15 +656,15 @@ func (s *Sender) sendOne(r Request) (*store.Flow, error) {
 		flow.Flags |= store.FlagCaptureError
 	}
 
-	// Without a User-Agent in the request the Go transport writes its own, so
-	// the flow would not be what the target received. Watch what is written.
-	var wireUA sentUserAgent
-	if _, set := req.Header["User-Agent"]; !set {
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(), wireUA.trace()))
-	}
+	// Without a User-Agent in the request the Go transport writes its own, and
+	// it always frames the body itself, so the flow would not be what the
+	// target received. Watch what is written.
+	var wire sentHeaders
+	_, uaSet := req.Header["User-Agent"]
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), wire.trace(!uaSet)))
 
 	resp, err := s.do(r, req)
-	wireUA.recordOn(flow)
+	wire.recordOn(flow)
 	if err != nil {
 		flow.Status = http.StatusBadGateway
 		flow.Error = err.Error()
@@ -684,42 +767,72 @@ func (s *Sender) storeBody(b []byte) (string, int64, error) {
 	return h, n, nil
 }
 
-// sentUserAgent captures the User-Agent the transport itself wrote for a
-// request that carried none ("Go-http-client/1.1", or "/2.0" over HTTP/2). It
-// reads the value from the transport's own write hook rather than assuming it,
-// so a request that was never written (dial refused) records nothing, and the
-// hand-written raw wire path, which sends no such header, records nothing.
-type sentUserAgent struct {
-	mu    sync.Mutex
-	value string
-	sent  bool
+// sentHeaders captures the request headers that are decided at write time
+// rather than by the template: the User-Agent the transport adds to a request
+// that carried none ("Go-http-client/1.1", or "/2.0" over HTTP/2) and the
+// framing header it chose (Content-Length, or Transfer-Encoding for a body of
+// unknown length). It reads them from the write hook rather than assuming
+// them, so a request that was never written (dial refused) records nothing.
+// The hand-written raw wire path reports the Content-Length it adds through
+// the same hook and nothing else.
+type sentHeaders struct {
+	mu     sync.Mutex
+	wrote  bool // at least one header field was written
+	ua     string
+	uaSent bool
+	length []string // Content-Length as written
+	coding []string // Transfer-Encoding as written
 }
 
-func (u *sentUserAgent) trace() *httptrace.ClientTrace {
+// trace returns the hook to attach to the request. watchUA is false when the
+// request sets its own User-Agent (what is written is then the template's).
+func (w *sentHeaders) trace(watchUA bool) *httptrace.ClientTrace {
 	return &httptrace.ClientTrace{WroteHeaderField: func(key string, value []string) {
 		// HTTP/2 reports the lower-case field name. The hook runs on the
-		// transport's write goroutine, which can outlive a cancelled send.
-		if !strings.EqualFold(key, "User-Agent") || len(value) == 0 {
-			return
+		// transport's write goroutine, which can outlive a cancelled send; a
+		// request retried on a fresh connection reports its fields again.
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.wrote = true
+		switch {
+		case strings.EqualFold(key, "User-Agent"):
+			if watchUA && len(value) > 0 {
+				w.ua, w.uaSent = value[0], true
+			}
+		case strings.EqualFold(key, "Content-Length"):
+			w.length = append([]string(nil), value...)
+		case strings.EqualFold(key, "Transfer-Encoding"):
+			w.coding = append([]string(nil), value...)
 		}
-		u.mu.Lock()
-		u.value, u.sent = value[0], true
-		u.mu.Unlock()
 	}}
 }
 
-// recordOn adds the captured header to the flow's recorded request headers.
-func (u *sentUserAgent) recordOn(flow *store.Flow) {
-	u.mu.Lock()
-	value, sent := u.value, u.sent
-	u.mu.Unlock()
-	if !sent {
+// recordOn makes the flow's recorded request headers match what was written:
+// the transport ignores a Content-Length or Transfer-Encoding in the template
+// and frames the body itself, so those two are replaced by the written values
+// (or removed when none was written).
+func (w *sentHeaders) recordOn(flow *store.Flow) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.wrote {
 		return
 	}
 	if flow.ReqHeaders == nil {
 		flow.ReqHeaders = map[string][]string{}
 	}
-	flow.ReqHeaders["User-Agent"] = []string{value}
+	if w.uaSent {
+		flow.ReqHeaders["User-Agent"] = []string{w.ua}
+	}
+	setOrDrop(flow.ReqHeaders, "Content-Length", w.length)
+	setOrDrop(flow.ReqHeaders, "Transfer-Encoding", w.coding)
+}
+
+func setOrDrop(h map[string][]string, name string, values []string) {
+	if len(values) == 0 {
+		delete(h, name)
+		return
+	}
+	h[name] = append([]string(nil), values...)
 }
 
 func reqHeaders(req *http.Request) map[string][]string {

@@ -2,10 +2,13 @@ package proxy
 
 import (
 	"errors"
+	"log"
 	"mime"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 // applyResponseHeaderRulesInPlace runs enabled res-header rules against
@@ -87,4 +90,18 @@ func isStreamingResponse(resp *http.Response) bool {
 		return true
 	}
 	return false
+}
+
+var endlessSkipLog atomic.Int64 // unix seconds of the last skip log line
+
+// noteEndlessStreamSkipped logs (at most every 10s) that body rules or the
+// response hold were skipped for an open-ended stream, so the operator can
+// tell why such a response was neither rewritten nor held.
+func noteEndlessStreamSkipped(flow *proxyFlow) {
+	now := time.Now().Unix()
+	last := endlessSkipLog.Load()
+	if now-last < 10 || !endlessSkipLog.CompareAndSwap(last, now) {
+		return
+	}
+	log.Printf("proxy: response body rules and response hold skipped for streaming response %s%s (forwarded as it arrives)", flow.Host, flow.Path)
 }

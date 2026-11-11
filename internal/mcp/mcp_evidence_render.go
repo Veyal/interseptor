@@ -164,12 +164,25 @@ func (s *Server) registerEvidenceRenderTools() {
 			if !evidenceRenderKinds[kind] {
 				return "", fmt.Errorf("kind must be one of authz_matrix, flow_diff, flow_waterfall, finding_chain (got %q)", argStr(a, "kind"))
 			}
+			lists := map[string][]int{}
+			for _, k := range []string{"flowIds", "findingIds"} {
+				ids, err := argIDList(a, k)
+				if err != nil {
+					return "", err
+				}
+				lists[k] = ids
+			}
 			if fid := argInt(a, "findingId", 0); fid > 0 {
 				body := map[string]any{"kind": kind, "caption": argStr(a, "caption"),
 					"role": argStr(a, "role"), "proof": argStr(a, "proof")}
-				for _, k := range []string{"runId", "flowIdA", "flowIdB", "flowIds", "findingIds", "title", "includeBody"} {
+				for _, k := range []string{"runId", "flowIdA", "flowIdB", "title", "includeBody"} {
 					if v, ok := a[k]; ok && v != nil {
 						body[k] = v
+					}
+				}
+				for k, ids := range lists {
+					if _, given := a[k]; given && a[k] != nil {
+						body[k] = ids // the validated numbers, not the raw entries
 					}
 				}
 				return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/evidence-render", fid), body)
@@ -187,8 +200,12 @@ func (s *Server) registerEvidenceRenderTools() {
 				}
 			}
 			for _, k := range []string{"flowIds", "findingIds"} {
-				if ids := argIntList(a, k); len(ids) > 0 {
-					q.Set(k, strings.Join(ids, ","))
+				if ids := lists[k]; len(ids) > 0 {
+					strs := make([]string, len(ids))
+					for i, n := range ids {
+						strs[i] = strconv.Itoa(n)
+					}
+					q.Set(k, strings.Join(strs, ","))
 				}
 			}
 			raw, err := s.apiGet("/api/evidence-render?" + q.Encode() + "&" + inlineRenderQuery)
@@ -199,22 +216,26 @@ func (s *Server) registerEvidenceRenderTools() {
 		})
 }
 
-// argIntList reads an array of integers (or a comma-separated string) as decimal strings.
-func argIntList(a map[string]any, key string) []string {
-	var out []string
-	switch v := a[key].(type) {
-	case []any:
-		for _, el := range v {
-			if n, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(el))); err == nil && n > 0 {
-				out = append(out, strconv.Itoa(n))
-			}
-		}
-	case string:
-		for _, part := range strings.Split(v, ",") {
-			if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil && n > 0 {
-				out = append(out, strconv.Itoa(n))
-			}
-		}
+// argIDList reads an optional array of ids. Every entry must be a positive
+// whole number (a quoted number is accepted, as for single ids); an unusable
+// entry is an error naming it, never skipped: a render of the entries that
+// happened to parse would cover less than the caller asked for.
+func argIDList(a map[string]any, key string) ([]int, error) {
+	v, ok := a[key]
+	if !ok || v == nil {
+		return nil, nil
 	}
-	return out
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array of positive integers (got %s)", key, describeValue(key, v))
+	}
+	out := make([]int, 0, len(list))
+	for i, el := range list {
+		n, ok := intArg(el)
+		if !ok || n <= 0 {
+			return nil, fmt.Errorf("%s[%d] must be a positive integer id (got %s)", key, i, describeValue(key, el))
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }
