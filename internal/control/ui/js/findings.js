@@ -1836,7 +1836,7 @@ function renderFindingDetail() {
       <div id="findSaveRecovery" class="find-save-recovery" hidden><span id="findSaveRecoveryMsg">Unsaved changes are kept in this tab.</span><button type="button" class="btn xs" id="findSaveRetry">Retry save</button><button type="button" class="btn xs" id="findSaveDiscard" hidden>Discard changes</button></div>
     </header>
     <div class="find-workspace-content find-workspace-panel" tabindex="-1" role="region" aria-label="Finding document">
-    <aside class="find-rail${findRailOpen ? ' is-open' : ''}" id="findRail" aria-label="Finding properties">
+    <div class="find-rail${findRailOpen ? ' is-open' : ''}" id="findRail" role="group" aria-label="Finding properties">
       <button type="button" class="btn find-rail-toggle" aria-expanded="${findRailOpen}" aria-controls="findRailBody"><svg class="icon find-rail-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg><span>Properties</span><span class="find-rail-sum">${esc(f.severity)} · ${esc(statusLabel(f.status))}</span></button>
       <div class="find-rail-body" id="findRailBody">
       <section class="find-railsec" aria-label="Properties">${edit ? propsEdit : readPropertiesHTML(f)}</section>
@@ -1851,7 +1851,7 @@ function renderFindingDetail() {
         </div>
       </details>
       </div>
-    </aside>
+    </div>
     <div class="find-doc-col" id="findDocument">
       <div class="find-doc-in">
       ${missBanner}

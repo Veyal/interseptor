@@ -527,10 +527,14 @@ function flowRowHTML(f){
     time:flowTimeCell(f),
   };
   // History is one listbox: rows are options with one roving Tab stop (set by
-  // syncRowA11y after each render, so the stamp stays index-free).
+  // syncRowA11y after each render, so the stamp stays index-free). An option may
+  // not contain focusable content (not even a negative tab index; axe nested-interactive), so
+  // the tag chips and the actions glyph are plain spans: the mouse reaches them
+  // through the row's click/contextmenu handlers, the keyboard through the row's
+  // context menu (Shift+F10: Tags > Filter, and every row action).
   return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" role="option" tabindex="-1" aria-selected="${rowSelected(f.id)?'true':'false'}" aria-current="${f.id===state.selId?'true':'false'}"${title}>
       ${visibleFlowCols().map(k=>cells[k]).join('')}
-      <button type="button" class="tr-more rowOverflow" data-rowmenu="${f.id}" aria-haspopup="menu" aria-label="Actions for flow #${f.id}" tabindex="-1">${icon('chevron')}</button>
+      <span class="tr-more rowOverflow" data-rowmenu="${f.id}" role="img" aria-label="Actions for flow #${f.id}">${icon('chevron')}</span>
     </div>`;
 }
 function wireFlowRow(r){
@@ -544,25 +548,13 @@ function wireFlowRow(r){
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
   const flow=flowStore.byId.get(id);
   r.setAttribute('aria-label',flow
-    ? `Flow #${id}: ${flow.method||'request'} ${flow.host||''}${flow.path||''}${flow.status?`, status ${flow.status} ${statusText(flow.status)}`:''}`
+    ? `Flow #${id}: ${flow.method||'request'} ${flow.host||''}${flow.path||''}${flow.status?`, status ${flow.status} ${statusText(flow.status)}`:''}${flow.tags&&flow.tags.length?`, tags ${flow.tags.join(', ')}`:''}`
     : 'Flow #'+id);
-  r.querySelectorAll('.flowtag').forEach(chip=>{
-    const t=chip.dataset.tagchip;
-    // Not a Tab stop of its own: the row is the list's one stop; the context
-    // menu (Shift+F10) offers the same tag filter from the keyboard.
-    chip.setAttribute('role','button');
-    chip.tabIndex=-1;
-    chip.setAttribute('aria-label','filter by tag '+t);
-    chip.addEventListener('keydown',e=>{
-      if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();filterByTag(t);}
-    });
-    chip.oncontextmenu=e=>{
-      e.preventDefault();e.stopPropagation();
-      openTagChipMenu(e.clientX,e.clientY,t,id);
-    };
-  });
   r.oncontextmenu=e=>{
     e.preventDefault();
+    // Right-click on a tag chip: filter by or remove that tag.
+    const chip=e.target.closest&&e.target.closest('.flowtag');
+    if(chip){openTagChipMenu(e.clientX,e.clientY,chip.dataset.tagchip,id);return;}
     const f=flowStore.byId.get(id);
     const cell=e.target.closest('[data-field]');
     showCtx(e.clientX,e.clientY,f,cell?cell.dataset.field:'');
@@ -1009,15 +1001,13 @@ try{window.matchMedia('(pointer:coarse)').addEventListener('change',refreshRowHe
 function captureFlowListFocus(box){
   const active=document.activeElement,row=active?.closest?.('#rows .trow[data-id]');
   if(!row||!box.contains(row))return null;
-  const tag=active.closest?.('.flowtag');
-  return {id:row.dataset.id,tag:tag?.dataset.tagchip||''};
+  return {id:row.dataset.id};
 }
 function restoreFlowListFocus(box,focus){
   if(!focus)return;
   const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);
   if(!row){if(box.contains(document.activeElement)||document.activeElement===document.body)box.focus({preventScroll:true});return;}
-  const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
-  target?.focus({preventScroll:true});
+  row.focus({preventScroll:true});
 }
 // refreshVisibleRows re-syncs the mounted History rows with current state (for
 // example after a tag color change): keyed patch when the window allows it, a

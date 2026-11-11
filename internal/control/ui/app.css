@@ -285,6 +285,15 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* tag chips on a History row — click to filter by that tag */
 .flowtag{font-size:var(--fs-xs);font-weight:600;background:var(--bg3);color:var(--fg2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:0 5px;margin-left:5px;vertical-align:middle;cursor:pointer}
 .flowtag:hover{border-color:var(--accent);color:var(--fg)}
+/* Phone-width target sizes (WCAG 2.2 SC 2.5.8): 24px hit areas, same density. The
+   crumb link grows into the bar's own padding (padding cancelled by an equal
+   negative margin, so nothing moves); the Intercept condition checkbox takes the
+   size coarse pointers already get. */
+@media (max-width:720px){
+  .map-crumb a{display:inline-block;position:relative;padding:6px;margin:-6px}
+  .icpt-cond .icpt-chk{min-height:24px}
+  .icpt-cond .icpt-chk input{width:24px;height:24px;min-width:24px}
+}
 
 #main{flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;margin:12px 12px 12px 0;border:1px solid var(--line);border-radius:var(--r-xl)}
 .panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg);background-image:none}
@@ -310,7 +319,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .search{display:flex;align-items:center;flex:1 1 280px;min-width:200px;max-width:420px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);height:30px;overflow:hidden;transition:background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard)}
 .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentDim)}
 .search select.ui-select-native{height:100%;background:none;border:none;padding:0}
-.search input{flex:1;background:transparent;font-size:var(--fs-sm);padding:0 10px}
+.search input{flex:1;align-self:stretch;background:transparent;font-size:var(--fs-sm);padding:0 10px}
 .btn{font-family:var(--ui);font-size:var(--fs-sm);font-weight:550;color:var(--fg2);min-height:30px;padding:6px 11px;border-radius:var(--r-md);background:var(--bg2);border:1px solid var(--line);box-shadow:none;transition:color var(--motion-base) var(--motion-standard),background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard);white-space:nowrap;flex-shrink:0}
 /* Icon + label layout for real button-like elements. Excluded for input/
    select/textarea, which also carry .btn via .btn-field but are replaced
@@ -758,6 +767,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
 .rep-tab .rt-close{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;opacity:1;color:var(--fg3);font-size:var(--fs-xs);border-radius:var(--r-sm);padding:0 3px}
 .rep-tab .rt-close:hover,.rep-tab .rt-close:focus-visible{color:var(--red);background:var(--sel)}
+/* The tablist that owns the tab buttons (aria-owns): rendered but boxless. */
+.rep-tablist{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%)}
 .rep-tab-add{position:sticky;right:0;z-index:1;flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:var(--r-md);cursor:pointer;padding:5px 10px;font-size:var(--fs-md);line-height:1;align-self:center;margin-bottom:4px}
 .rep-tab-add:hover{color:var(--fg);background:var(--bg2)}
 .rep-tab-add[aria-disabled="true"]{cursor:not-allowed;color:var(--fg3);background:var(--bg3);opacity:.72}

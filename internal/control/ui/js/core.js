@@ -439,19 +439,28 @@ export function createTabManager(opts){
   mgr.render=function(barSel){
     mgr.focusEpoch++;
     const bar=$(barSel);if(!bar)return;
-    bar.setAttribute('role','tablist');bar.setAttribute('aria-label',tablistLabel);bar.setAttribute('aria-orientation','horizontal');
+    // A tablist may own only tabs (ARIA required children), but each chip also
+    // holds its Close button and the strip ends with "+". The strip itself is
+    // therefore role-less, and a rendered, empty tablist element owns the tab
+    // buttons through aria-owns; Close and "+" stay ordinary buttons beside them.
+    for(const a of ['role','aria-label','aria-orientation'])bar.removeAttribute(a);
     const atTabLimit=mgr.tabs.length>=MAX_PERSISTED_TAB_COUNT;
     const addLabel=atTabLimit?`${storageLabel} supports up to ${MAX_PERSISTED_TAB_COUNT} tabs; close one to add another`:`New ${tablistLabel.replace(/ tabs?$/i,' tab')}`;
-    bar.innerHTML=mgr.tabs.map(t=>{
+    bar.innerHTML=mgr.tabs.map((t,ti)=>{
       const active=t.tid===mgr.active;
       const style=labelStyle?labelStyle(t,active):'';
       const label=title(t);
       return `<div class="rep-tab${active?' on':''}" data-tid="${t.tid}" title="${escAttr(label)}">
-    <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
+    <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" aria-posinset="${ti+1}" aria-setsize="${mgr.tabs.length}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
     <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">${icon('close')}</button></div>`;
     }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">${icon('plus')}</button>`;
+    const list=document.createElement('div');
+    list.id=bar.id+'List';list.className='rep-tablist';
+    list.setAttribute('role','tablist');list.setAttribute('aria-label',tablistLabel);list.setAttribute('aria-orientation','horizontal');
+    list.setAttribute('aria-owns',mgr.tabs.map(t=>bar.id+'Tab'+t.tid).join(' '));
+    bar.prepend(list);
     revealActiveTab(bar);
     const tabPanel=document.getElementById(tabPanelId);
     const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
@@ -466,6 +475,13 @@ export function createTabManager(opts){
         else if(e.key==='ArrowLeft')next=(i-1+tabButtons.length)%tabButtons.length;
         else if(e.key==='Home')next=0;
         else if(e.key==='End')next=tabButtons.length-1;
+        else if(e.key==='Delete'){
+          // Delete closes the focused tab (APG tabs pattern), exactly as its Close
+          // button would: a disabled Close (a locked Intruder run) blocks it too.
+          const closeBtn=item.querySelector('.rt-close');
+          if(closeBtn&&!closeBtn.disabled){e.preventDefault();mgr.close(tid,true);}
+          return;
+        }
         else return;
         e.preventDefault();
         const nextTid=Number(tabButtons[next].closest('.rep-tab').dataset.tid);

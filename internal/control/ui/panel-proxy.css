@@ -75,7 +75,11 @@
   }
   #panel-proxy #rows .trow .tr-id,#panel-proxy #rows .trow .tr-mime{display:none}
   #panel-proxy #rows .trow .tr-m{grid-area:m}
-  #panel-proxy #rows .trow .tr-path{grid-area:path}
+  /* The cell clips (ellipsis), so it grows 5px each way under an equal negative
+     margin: room for a tag chip's 24px hit area (below) and no layout change. */
+  #panel-proxy #rows .trow .tr-path{grid-area:path;padding-block:5px;margin-block:-5px}
+  #panel-proxy #rows .trow .flowtag{position:relative}
+  #panel-proxy #rows .trow .flowtag::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,24px);height:24px;transform:translate(-50%,-50%)}
   #panel-proxy #rows .trow .tr-st{grid-area:st;text-align:right}
   #panel-proxy #rows .trow .tr-att{grid-area:att;min-width:var(--sp-5)}
   #panel-proxy #rows .trow .tr-host{grid-area:host;color:var(--fg2)}

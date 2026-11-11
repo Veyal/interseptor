@@ -141,6 +141,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **A secret stays secret when a script unsets and sets it again.** Rotating a token with `unset()` then `set()`, or `clear()` then `set()`, displayed the new value as a plain variable change. (`internal/collexec/vars.go`.)
 - **HAR entries that describe a multipart body only by `postData.params` import as multipart.** They were serialised as `a=b&c=d` under a multipart Content-Type; file parts now keep their field name, file name and content type. (`internal/harx/harx.go`.)
 - **Bruno environments: a disabled secret (`~name`) imports as a disabled variable named `name`.** It was an enabled variable called `~name`, and the secret list order was random. (`internal/collimport/bruno/bruno.go`.)
+- **History rows no longer nest controls inside a listbox option.** The row actions glyph and the tag chips are plain elements handled by the row's own click and context-menu handlers, so assistive technology no longer finds focusable content inside `role="option"`; the row's name now lists its tags, and Shift+F10 reaches the same actions and the tag filter. (`internal/control/ui/js/proxy.js`, `internal/control/ui/desktop.css`.)
+- **Repeater and Intruder tablists own only tabs.** The tab strip no longer carries `role="tablist"` over its Close and "+" buttons; a separate tablist element owns the tab buttons through `aria-owns`, and tabs report their position in the set. (`internal/control/ui/js/core.js`, `internal/control/ui/app.css`.)
+- **The finding properties rail is not a nested landmark.** It is a labelled group instead of an `<aside>` inside `<main>`. (`internal/control/ui/js/findings.js`.)
+- **Four phone-width touch targets reach 24 px.** The History search field, row tag chips (an invisible hit area; the row height is unchanged), the Intercept condition checkbox and the Map breadcrumb links. (`internal/control/ui/app.css`, `internal/control/ui/panel-proxy.css`.)
 
 ### Changed
 
@@ -171,6 +175,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Readiness and TLS diagnosis no longer read every flow.** A partial index over successfully intercepted HTTPS flows answers "is interception working, and since when" directly: `/api/tls-diagnosis` went from 129 ms to 2 ms and `/api/readiness` from 140 ms to 3 ms on 500,000 flows. The diagnosis counts at most 10,000 successful flows, reports `httpsOkCountCapped: true` beyond that and words the detail "10,000+ successful HTTPS flows". The index is added to existing projects on first open (about 1 s per 500,000 flows, once). (`internal/store/store.go`, `internal/store/tlsstats.go`, `internal/control/tlsdiag.go`.)
 - **History filtered by status class returns the first page without sorting the whole class.** When the class is common the list walks flows newest-first and stops at a full page: `status=2xx` on 500,000 flows went from 1.2 s to 7 ms. A rare class still uses the status index. (`internal/store/flows_list.go`, `internal/store/rules.go`.)
 - **Body garbage collection builds its reference set in one pass.** One scan of the four hash columns replaces a four-way `UNION`: 1.0 s to 0.26 s on 500,000 flows. (`internal/store/retention.go`.)
+- **Delete closes the focused Repeater or Intruder tab.** It does nothing while the tab's Close button is disabled (an Intruder run in progress). (`internal/control/ui/js/core.js`.)
 
 ### Added
 
