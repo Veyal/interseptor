@@ -19,8 +19,11 @@ const (
 	defaultSSHUser    = "root"
 	defaultSSHPort    = 22
 	profileRemotePath = "/tmp/interseptor.mobileconfig"
-	sshConnectTimeout = 12 * time.Second
 )
+
+// sshConnectTimeout bounds the TCP connect and the SSH handshake together. A
+// var so tests can shrink it.
+var sshConnectTimeout = 12 * time.Second
 
 // sshCommandTimeout bounds how long we wait for a remote command to finish
 // once the SSH session is open. The connection itself already has
@@ -247,7 +250,21 @@ func dialSSH(opts SSHOpts) (*ssh.Client, error) {
 		Timeout:         sshConnectTimeout,
 	}
 	addr := net.JoinHostPort(resolved.Host, strconv.Itoa(resolved.Port))
-	return ssh.Dial("tcp", addr, cfg)
+	// ssh.Dial applies cfg.Timeout to the TCP connect only; the version
+	// exchange, key exchange and authentication that follow have no deadline, so
+	// a peer that accepts the connection and then stays silent blocked forever.
+	conn, err := net.DialTimeout("tcp", addr, sshConnectTimeout)
+	if err != nil {
+		return nil, err
+	}
+	_ = conn.SetDeadline(time.Now().Add(sshConnectTimeout))
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	_ = conn.SetDeadline(time.Time{}) // commands carry their own timeout
+	return ssh.NewClient(c, chans, reqs), nil
 }
 
 func sshAuthMethods(opts SSHOpts) ([]ssh.AuthMethod, error) {

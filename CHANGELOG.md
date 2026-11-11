@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement.
+- **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement. The stored value is derived from the project that was actually opened rather than a second read of `active-project`, so another running instance rewriting that file cannot turn a remembered folder into its bare name; the file is written atomically with mode 0600, and the missing-folder error names `--project default` as the way out. (`cmd/interseptor/project.go`.)
 - **Proxy keep-alive connections are reaped when idle.** The proxy listener had a request-head timeout but no idle timeout, so a client that kept a plain-HTTP connection open between requests held its goroutine and descriptor for the life of the process. Idle connections now close after 3 minutes; bodies, CONNECT tunnels and long polls are unaffected. The limit was added in an earlier fix and lost in merge #121. (`cmd/interseptor/main.go`.)
 - **Connections through a SOCKS upstream send TCP keepalives.** The SOCKS dialer had none, unlike the direct dialer; also lost in merge #121. (`internal/proxy/proxy.go`.)
 - **Response rules and the response hold keep working after 256 MB of rewritten traffic.** A response buffered for match-&-replace or a forwarded hold never returned its bytes to the shared transform budget, so the budget drained for the life of the process and later responses (and held requests) were forwarded untouched with a misleading "in use by other in-flight bodies" log line. The reservation is now released on every response path. (`internal/proxy/proxy.go`.)
@@ -52,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **`tag_flow` and `untag_flow` accept a tag array.** `["auth","idor"]` was stored as the tags `[auth` and `idor]`. (`internal/mcp/mcp.go`.)
 - **`json_decode` keeps integers above int64 exact.** They were rounded through a float. (`internal/starx/builtins.go`.)
 - **The `re_search` pattern cache is bounded.** A script that builds patterns from flow data no longer grows the cache for the life of the process. (`internal/starx/builtins.go`.)
+- **`--project .` and `--project ..` open that directory.** They were treated as project names and opened a store in the projects folder or the data-directory root. (`cmd/interseptor/project.go`.)
+- **A failed settings read no longer switches origin TLS verification off for good.** Startup persisted the "off" default whenever the saved value could not be read, overwriting an enabled setting. (`cmd/interseptor/main.go`.)
+- **`interseptor check` and `interseptor rules` are rejected as unknown commands.** The removed subcommands still started a proxy server. (`cmd/interseptor/main.go`.)
+- **Chrome for Testing archives cannot write outside the install directory.** Extraction refuses any member created through or on top of a symlink from the same archive; chained links passed the previous per-link check. (`internal/chromemgr/chromemgr.go`.)
+- **The rebootless Android system-CA install reports failures.** The overlay script reached `sh -c` as its first word only, so it ran without `set -e` and a failed mount still returned success. (`internal/android/modern.go`.)
+- **SSH to a jailbroken iOS device times out during the handshake.** A host that accepted the connection and never answered blocked the request indefinitely. (`internal/ios/ssh.go`.)
+- **System-proxy helpers are bounded to 15 seconds.** A wedged `networksetup` or `gsettings` no longer hangs the settings request, startup recovery or shutdown. (`internal/sysproxy/exec.go`.)
+- **The startup update hint offers the final release to a prerelease build.** It compared version numbers only and reported `X.Y.Z-rc1` as up to date with `X.Y.Z`. (`internal/version/version.go`.)
+- **Self-update always installs an executable binary.** A leftover `.new` file from an interrupted update kept its old mode; a failed write now removes the partial file. (`internal/version/update.go`.)
 - **gofmt is clean across the tree.** Six files that had drifted are reformatted; `GOFMT_ALL=1 make fmt-check` passes. No behaviour change.
 
 ### Changed
@@ -65,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Intruder grep allocates less.** Grep-match and grep-extract now run on the response bytes instead of a string copy of every body: about 1 MiB less allocation per 1 MiB response per request. (`internal/intruder/intruder.go`.)
 - **Destructive MCP tools advertise `expectedProject` in their input schema.** `prune_history`, `prune_undo`, `delete_finding`, `delete_codec`, `delete_rule`, `restore_finding_revision` and `import_full_project` already honoured the pin; it is now discoverable from `tools/list`. The MCP `schemaHash` changes, so a client that pins the old hash must reconnect. (`internal/mcp/project_scope.go`.)
 - **Starlark codecs and search scripts compile with explicit dialect options.** The deprecated `starlark.ExecFile` is replaced by `ExecFileOptions`; the accepted dialect is unchanged. (`internal/msgcodec/msgcodec.go`, `internal/searchscript/searchscript.go`.)
+- **`scripts/bench.sh` uses private ports and a bounded wait.** The cold-start probe sleeps between attempts, has a per-request timeout and a 30-second deadline, and no longer measures an Interseptor that is already running on the default ports. (`scripts/bench.sh`.)
 - **The self-update tests wait for the event they assert on.** The job makes a phase visible to `GET /api/update` before it broadcasts the matching event, so on a loaded machine the test read an empty event queue and panicked on an index. The helper now waits for the event. (`internal/control/update_test.go`.)
 
 ### Added

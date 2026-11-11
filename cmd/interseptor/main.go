@@ -52,7 +52,7 @@ func isLoopbackBind(addr string) bool {
 
 func knownTopLevelCommand(arg string) bool {
 	switch arg {
-	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "install-chrome", "chrome", "install-desktop", "help", "-h", "--help", "mcp":
+	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "install-chrome", "chrome", "install-desktop", "help", "-h", "--help", "mcp":
 		return true
 	}
 	return false
@@ -339,14 +339,7 @@ func run() error {
 	if v, ok, _ := st.GetSetting("proxy.originTLSVerifyBypassHosts"); ok && v != "" {
 		prx.SetOriginTLSVerifyBypassHosts(strings.FieldsFunc(v, func(r rune) bool { return r == '\n' || r == '\r' || r == ',' }))
 	}
-	originTLSVerify, ok, err := st.GetSetting("proxy.originTLSVerify")
-	if !ok || (originTLSVerify != "0" && originTLSVerify != "1") {
-		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil {
-			log.Printf("origin TLS verification default persist failed: %v", err)
-		}
-		originTLSVerify = "0"
-	}
-	prx.SetOriginTLSVerify(originTLSVerify == "1")
+	prx.SetOriginTLSVerify(loadOriginTLSVerify(st))
 	if v, ok, _ := st.GetSetting("proxy.autoBypassOnPinFailure"); ok && v == "1" {
 		prx.SetAutoBypassOnPinFailure(true)
 	}
@@ -432,6 +425,31 @@ func run() error {
 	<-retentionDone
 	shutdownRuntime(5*time.Second, cm, hub, pm)
 	return nil
+}
+
+// settingStore is the settings surface loadOriginTLSVerify needs.
+type settingStore interface {
+	GetSetting(key string) (string, bool, error)
+	SetSetting(key, value string) error
+}
+
+// loadOriginTLSVerify reads the saved origin-TLS-verification choice and
+// persists the explicit "off" default the first time. A failed read is not a
+// missing setting: writing the default then would permanently overwrite an
+// operator's saved "on" with "off" because of one transient database error.
+func loadOriginTLSVerify(st settingStore) bool {
+	v, ok, err := st.GetSetting("proxy.originTLSVerify")
+	if err != nil {
+		log.Printf("origin TLS verification setting unreadable, leaving it untouched (off for this run): %v", err)
+		return false
+	}
+	if !ok || (v != "0" && v != "1") {
+		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil {
+			log.Printf("origin TLS verification default persist failed: %v", err)
+		}
+		return false
+	}
+	return v == "1"
 }
 
 type runtimeShutdowner interface {

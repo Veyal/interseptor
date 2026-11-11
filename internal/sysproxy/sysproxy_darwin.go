@@ -4,7 +4,6 @@ package sysproxy
 
 import (
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -68,7 +67,7 @@ func (darwinBackend) status() (bool, error) {
 // networkSetup is the runner for networksetup commands. It is a package-level
 // variable so tests can inject a stub without changing external behaviour.
 var networkSetup = func(args ...string) ([]byte, error) {
-	return exec.Command("networksetup", args...).CombinedOutput()
+	return runCommand("networksetup", args...)
 }
 
 func run(args ...string) error {

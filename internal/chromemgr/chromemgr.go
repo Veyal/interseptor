@@ -390,6 +390,14 @@ func extractZip(ctx context.Context, zipPath, destDir string) error {
 			return fmt.Errorf("illegal zip entry path: %s", f.Name)
 		}
 
+		// The lexical check above cannot see symlinks earlier members created:
+		// "a/up" -> ".." and "a/out" -> "up/.." are each inside destDir on
+		// paper, yet "a/out/x" lands outside it. No member may be created
+		// through, or on top of, a symlink.
+		if err := refuseSymlinkPath(destDir, targetPath); err != nil {
+			return fmt.Errorf("illegal zip entry path: %s: %w", f.Name, err)
+		}
+
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(targetPath, 0o755); err != nil {
 				return err
@@ -407,6 +415,34 @@ func extractZip(ctx context.Context, zipPath, destDir string) error {
 		}
 		if err := extractFile(f, targetPath); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// refuseSymlinkPath reports an error when any existing path component between
+// destDir (exclusive) and targetPath (inclusive) is a symlink. destDir itself
+// may legitimately sit below a symlink (/tmp on macOS) and is not inspected.
+func refuseSymlinkPath(destDir, targetPath string) error {
+	rel, err := filepath.Rel(destDir, targetPath)
+	if err != nil {
+		return err
+	}
+	cur := destDir
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			return nil // nothing below a missing component exists yet
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a symlink", cur)
 		}
 	}
 	return nil

@@ -756,7 +756,15 @@ func installBinary(dest string, data []byte, legacyPath string) error {
 // atomic and a running process keeps executing its old inode.
 func installBinaryUnix(dest string, data []byte, legacyPath string) error {
 	tmp := dest + ".new"
+	// A leftover staging file from an interrupted update would keep its own
+	// mode (WriteFile only applies the mode on create) and could be a symlink.
+	_ = os.Remove(tmp)
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
+		_ = os.Remove(tmp) // never leave a truncated binary beside the real one
+		return err
+	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, dest); err != nil {

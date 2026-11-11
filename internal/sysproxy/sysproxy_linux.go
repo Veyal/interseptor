@@ -27,5 +27,5 @@ func (b linuxBackend) status() (bool, error)           { return linuxStatus(b.ru
 
 // realGsettings runs the real `gsettings` binary.
 func realGsettings(args ...string) ([]byte, error) {
-	return exec.Command("gsettings", args...).CombinedOutput()
+	return runCommand("gsettings", args...)
 }

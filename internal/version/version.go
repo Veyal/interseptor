@@ -100,7 +100,9 @@ func finishLatestCheck(latest string) (string, bool, error) {
 	if best == nil {
 		return "", false, fmt.Errorf("github latest release: invalid tag %q", latest)
 	}
-	return latest, cur != nil && cmpSemver(best, cur) > 0, nil
+	// Same rule as `interseptor update`: a prerelease (3.0.0-rc1) is older than
+	// the final 3.0.0, which a bare numeric comparison reports as "up to date".
+	return latest, cur != nil && latestIsNewer(String(), latest), nil
 }
 
 func checkLatestAPI(ctx context.Context) (string, error) {

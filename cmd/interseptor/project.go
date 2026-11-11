@@ -25,7 +25,9 @@ func resolveProjectDir(projectsDir, v, homeDir string) (name, dir string) {
 	if strings.HasPrefix(v, "~/") {
 		v = filepath.Join(homeDir, v[2:])
 	}
-	if filepath.IsAbs(v) || strings.ContainsAny(v, `/\`) {
+	// "." and ".." are directories, never names: as names they would resolve to
+	// the projects folder itself (or the global root) and open a store there.
+	if filepath.IsAbs(v) || strings.ContainsAny(v, `/\`) || v == "." || v == ".." {
 		abs, err := filepath.Abs(v)
 		if err != nil {
 			abs = v
@@ -96,20 +98,35 @@ func writeLastProject(globalDir, name string) {
 		return
 	}
 	_ = os.MkdirAll(globalDir, 0o755)
-	_ = os.WriteFile(lastProjectPath(globalDir), []byte(name+"\n"), 0o644)
+	// Publish through a same-directory temp file: a plain WriteFile truncates
+	// first, and an instance starting in that window would read an empty name and
+	// silently open "default". 0600 because the value can now be a client folder.
+	path := lastProjectPath(globalDir)
+	tmp, err := os.CreateTemp(globalDir, ".active-project-*")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.WriteString(name + "\n")
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil || os.Rename(tmp.Name(), path) != nil {
+		_ = os.Remove(tmp.Name())
+	}
 }
 
 // rememberActiveProject persists paths by directory, not their ambiguous basename.
-func rememberActiveProject(globalDir, projectArg, name, dir string) {
-	if projectArg == "" {
-		projectArg = readLastProject(globalDir)
-	}
-	if projectArg != "" && !isBareProjectName(projectArg) {
-		writeLastProject(globalDir, dir)
-		return
-	}
-	writeLastProject(globalDir, name)
+// What is stored is derived only from the project that was actually opened
+// (name, dir), never from a second read of the active-project file: another
+// instance may have rewritten that file since selectProject read it, and a
+// path remembered a moment ago would then be saved back as its bare basename —
+// the next launch would open (and create) projects/<basename> instead.
+func rememberActiveProject(globalDir, _ /* projectArg */, name, dir string) {
+	writeLastProject(globalDir, restartProjectTarget(globalDir, name, dir))
 }
+
+// resumeHint tells the operator how to get past a remembered external project
+// that is gone. Without it a plain launch (and the desktop app, which passes no
+// flags) fails on every start with no visible way out.
+const resumeHint = " — reconnect that folder, or start with --project default (or --project <name|path>) to open another project"
 
 // selectProject decides which project directory to use, with no terminal
 // interaction — selecting, creating, and switching projects all happen in the
@@ -126,9 +143,9 @@ func selectProject(globalDir, flagOrEnv, homeDir string) (name, dir string, err 
 		v = readLastProject(globalDir)
 		if filepath.IsAbs(v) {
 			if info, err := os.Stat(v); err != nil {
-				return "", "", fmt.Errorf("resume project %q: %w", v, err)
+				return "", "", fmt.Errorf("resume project %q: %w%s", v, err, resumeHint)
 			} else if !info.IsDir() {
-				return "", "", fmt.Errorf("resume project %q: not a directory", v)
+				return "", "", fmt.Errorf("resume project %q: not a directory%s", v, resumeHint)
 			}
 		}
 	}

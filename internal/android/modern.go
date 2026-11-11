@@ -62,7 +62,7 @@ func InstallSystemCATmpfs(d Device, certPEM []byte) error {
 	if _, err := runDev(d, true, "push", path, remoteCert); err != nil {
 		return fmt.Errorf("push system CA: %w", err)
 	}
-	if _, err := runDev(d, true, "shell", "sh", "-c", tmpfsOverlayScript(remoteCert)); err != nil {
+	if _, err := runDev(d, true, shellScriptArgs(tmpfsOverlayScript(remoteCert))...); err != nil {
 		return fmt.Errorf("tmpfs CA overlay: %w", err)
 	}
 	return nil
@@ -210,4 +210,13 @@ func magiskPostFsData() string {
 		"done",
 		"",
 	}, "\n")
+}
+
+// shellScriptArgs returns the `adb shell` arguments that run script under one
+// `sh -c`. adb joins its arguments with spaces and the device's shell parses
+// the result, so an unquoted multi-line script gives sh -c only its first word
+// ("set") and runs the rest in the outer shell — without `set -e`, and with
+// the exit status of the last line, so a failed step still looked like success.
+func shellScriptArgs(script string) []string {
+	return []string{"shell", "sh", "-c", "'" + strings.ReplaceAll(script, "'", `'\''`) + "'"}
 }
