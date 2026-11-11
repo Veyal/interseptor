@@ -163,6 +163,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **A storage failure part-way through a project import says what was applied.** The 500 response names the failed section, the sections already applied and the ones not reached, and the applied rules, scope and flows take effect at once. (`internal/control/project.go`.)
 - **Prune and undo-prune report storage failures as 500.** They answered 400 with the raw database error, which told the UI the request was wrong. (`internal/control/retention.go`.)
 - **Pending human-input prompts are capped.** An agent could queue prompts without limit within the one-hour expiry. At most 20 are pending per source and 50 overall (429 beyond that), and a message is limited to 8 KiB with at most 20 options of 512 bytes. (`internal/control/humaninput.go`.)
+- **Evidence-tray Undo could overwrite a different finding's steps.** Undoing a removed evidence tile after opening another finding saved that other finding's steps onto the finding the tile came from. Undo now refuses once another finding is open and says which finding to reopen. (`internal/control/ui/js/findings.js`.)
+- **The findings list menu deleted without asking.** "Delete finding" in a row's right-click menu now asks for confirmation like the header menu, reports a refused or failed delete (for example unsaved changes that need Retry) and refreshes the list. A failed "Set severity" from the same menu is now reported too. (`internal/control/ui/js/findings.js`.)
 
 ### Changed
 

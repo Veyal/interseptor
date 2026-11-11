@@ -848,7 +848,7 @@ function showFindingRowCtx(event, id) {
       .then(async r => { if (r && r.latest && await statusSaved(id, s)) { toast('status: ' + statusLabel(s)); renderFindings(); } })
       .catch(err => toast(err.message, 'error'));
   };
-  const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }); };
+  const setSeverity = s => () => { patchFinding(id, { severity: s }).then(r => { if (r && r.latest) { f.severity = s; toast('severity: ' + s); renderFindings(); } }).catch(err => toast(err.message, 'error')); };
   openCtxMenu(event.clientX, event.clientY, [{ head: 'FINDING #' + id, items: [
     { label: 'Open', icon: 'external', act: () => { location.hash = findingHref(id, 'overview').replace(/^#/, ''); } },
     { label: 'Set status', icon: 'status-todo', val: statusLabel(f.status),
@@ -869,7 +869,7 @@ function showFindingRowCtx(event, id) {
     { label: 'Export as ticket', icon: 'external', disabled: f.status === 'false_positive', children: TRACKER_CHOICES.map(t => (
       { label: t.label, act: () => exportOneFinding(id, t.value, true) })) },
     { sep: true },
-    { label: 'Delete finding', icon: 'trash', danger: true, disabled: !write, act: () => deleteFinding(id) },
+    { label: 'Delete finding', icon: 'trash', danger: true, disabled: !write, act: () => confirmDeleteFinding(f) },
   ] }]);
 }
 // exportOneFinding downloads a report of just this finding, reusing the report
@@ -1194,7 +1194,12 @@ function renderEvidenceTray(fid, editable) {
   if (!editable) return;
   wireEvidenceTray(host.querySelector('.et'), {
     getBlocks: () => bodyBlocks,
-    setBlocks: next => { bodyBlocks = next; renderFindBody(fid); scheduleSave(fid); },
+    // The Undo toast of a removed tile outlives this editor. Once another finding is
+    // open, bodyBlocks are that finding's: writing them here would save them onto this one.
+    setBlocks: next => {
+      if (bodyFindingId !== fid) { toast('Open finding #' + fid + ' again to change its evidence.', 'error'); return; }
+      bodyBlocks = next; renderFindBody(fid); scheduleSave(fid);
+    },
     focusIndex: index => host.querySelector(`[data-et-index="${index}"]`)?.focus({ preventScroll: true }),
   });
 }
