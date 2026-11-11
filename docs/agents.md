@@ -89,7 +89,7 @@ There is no install script. Pick one path:
 
 | Path | Command |
 |---|---|
-| Go 1.25+ | `go install github.com/Veyal/interseptor/cmd/interseptor@latest` |
+| Go 1.26+ | `go install github.com/Veyal/interseptor/cmd/interseptor@latest` |
 | Homebrew | **Do not use for a current build.** The tap exists but is pinned to v2.9.0; the automated publish is disabled. Use `go install` or a release binary until it is re-seeded. |
 | Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Release archive | download `interseptor_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) from the [Releases](https://github.com/Veyal/interseptor/releases) page, verify `checksums.txt`, extract |

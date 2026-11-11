@@ -6,7 +6,7 @@ Interseptor is a single static binary — **no cgo, no Node, no runtime dependen
 
 ### Recommended — `go install` (uses the release tags)
 
-Requires **Go 1.25+**:
+Requires **Go 1.26+**:
 
 ```bash
 # latest release:

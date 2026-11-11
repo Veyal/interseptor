@@ -366,4 +366,4 @@ These are not rivals. They are import sources. Keep authoring in Postman; import
 
 ## Try it
 
-Download a release binary for Linux, macOS or Windows, or install with Go 1.25 or later. The steps are in [getting started](/getting-started/). The [feature list](/features/) and the [documentation home](/) cover the rest. Releases are on [GitHub](https://github.com/Veyal/interseptor/releases).
+Download a release binary for Linux, macOS or Windows, or install with Go 1.26 or later. The steps are in [getting started](/getting-started/). The [feature list](/features/) and the [documentation home](/) cover the rest. Releases are on [GitHub](https://github.com/Veyal/interseptor/releases).

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Go 1.26 is the minimum, built with a patched toolchain.** `golang.org/x/net` 0.57 to 0.62, `golang.org/x/crypto` 0.54 to 0.58, `klauspost/compress` 1.18.6 to 1.20.4 and `andybalholm/brotli` 1.2.1 to 1.3.0 clear the reachable advisories in those modules; the fixed `x/net` and `x/crypto` releases require Go 1.26, and `toolchain go1.26.11` carries the standard-library fixes. `govulncheck` reports 0 reachable vulnerabilities (25 before). (`go.mod`, `go.sum`, `README.md`, `docs/getting-started.md`, `docs/agents.md`.)
+
 ### Added
 
 - **Playbooks: markdown test guides the agent executes, and the coverage record the scanner never gave.** Detection logic moves out of the binary and into a reviewable corpus — `internal/playbooks/corpus/*.md` ships seven guides (object authorization, price tampering, export leaks, SSRF, reflected XSS, GraphQL authorization, JWT handling, mass assignment) with YAML frontmatter for `applies_to` signals, expected tools and the evidence a finding needs, and a project may add or override them under `<project>/playbooks/*.md`. They reach a harness four ways: the MCP instructions, `list_playbooks` / `get_playbook` / `match_playbooks`, the `playbook://<id>` resources, and one prompt per playbook for slash-command clients; `check_readiness` nudges when playbooks apply to the newest flow. Project playbooks are rendered with an `UNTRUSTED` banner and reported as `trusted=false`, because instructions dropped into a workspace are content, not authority. `record_playbook_coverage` / `playbook_coverage` and `GET|POST /api/playbooks/coverage` keep considered / run / found / dismissed per (playbook, host, endpoint, param) with the evidence flow ids — the "did we actually test X" ledger the report reads. A new Playbooks panel browses the corpus, shows trust and coverage, and copies the MCP invocation. (`internal/playbooks`, `internal/store/playbook_coverage.go`, `internal/control/playbooks.go`, `internal/mcp/playbook_resources.go`, `internal/control/ui/js/playbooks.js`, `docs/playbooks.md`.)

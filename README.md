@@ -61,7 +61,7 @@ No `gh`? Download the archive for your OS and architecture from the
 [Releases page](https://github.com/Veyal/interseptor/releases/latest) and extract it. Release
 archives list their SHA-256 sums in `checksums.txt` on the same page.
 
-Or, if you have Go 1.25+:
+Or, if you have Go 1.26+:
 
 ```bash
 go install github.com/Veyal/interseptor/cmd/interseptor@latest

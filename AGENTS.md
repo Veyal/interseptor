@@ -42,7 +42,7 @@ Adding a feature: `store` → `internal/*` (TDD) → `control` (REST+SSE) → `j
 
 ## Cursor Cloud specific instructions
 
-The Cloud Agent base image ships Go 1.22. This module requires Go 1.25 (`go.mod`). Leave `GOTOOLCHAIN=auto` (the default). The first `go` command in this repository downloads the 1.25 toolchain into the module cache. `go mod download` is the environment install step and is safe to repeat. Do not install a second Go toolchain.
+The Cloud Agent base image ships Go 1.22. This module requires Go 1.26 and pins a patched toolchain (`go.mod`). Leave `GOTOOLCHAIN=auto` (the default). The first `go` command in this repository downloads that toolchain into the module cache. `go mod download` is the environment install step and is safe to repeat. Do not install a second Go toolchain.
 
 `gcc` is already installed and is required for `go test -race ./...`.
 
