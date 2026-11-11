@@ -182,7 +182,14 @@ The shell (`/`) is the only UI response the browser revalidates (`Cache-Control:
 strong `ETag`, so a reload is one body-less 304 yet an upgrade is picked up at once). When it is
 served, every stylesheet and module link in `index.html` is rewritten to `/_v/<build id>/…`, where
 the build id is a digest of the whole embedded UI; relative imports resolve against the module's
-own URL, so the entire graph follows. Those URLs are `immutable`. A stale build id (a tab opened
+own URL, so the entire graph follows. Two transformations ride on that rewrite, both in
+`ui_assets.go`: the shell `modulepreload`s every module in the static import graph of its entry
+scripts (computed from the embedded files, dynamic-import-only modules excluded), and the 38
+stylesheet links become one link to their concatenation in document order, which preserves the
+cascade because no sheet uses `@import` or a relative `url()`. `css/collections-matrix.css` is
+excluded and keeps its own link, because its module appends the sheet itself unless it finds that
+URL. On a cold load behind latency this took the request count from 230 to 184 and the time to
+first History rows from 5.8 s to 4.4 s at 40 ms. Those URLs are `immutable`. A stale build id (a tab opened
 before an upgrade) still gets the current file, as `no-cache`. Each file must be reachable by one
 URL only — a module loaded through two is evaluated twice — so code that names an asset derives it
 from `import.meta.url`, never from a literal `/js/…` or `/css/…` path. Text assets carry a gzip copy

@@ -27,11 +27,18 @@ type uiAsset struct {
 
 var uiAssets sync.Map // name -> *uiAsset
 
-// loadUIAsset returns the prepared asset for an embedded path, or ok=false when
-// the file does not exist.
+// uiGenerated holds assets the shell needs that are not embedded files: the
+// concatenated stylesheet. It is written once, inside initUIBuild.
+var uiGenerated = map[string]*uiAsset{}
+
+// loadUIAsset returns the prepared asset for an embedded path (or for a file the
+// shell generates from them), or ok=false when it does not exist.
 func loadUIAsset(name string) (*uiAsset, bool) {
 	if v, ok := uiAssets.Load(name); ok {
 		return v.(*uiAsset), true
+	}
+	if a, ok := generatedUIAsset(name); ok {
+		return a, true
 	}
 	data, err := uiFS.ReadFile("ui/" + name)
 	if err != nil {
@@ -57,6 +64,14 @@ func newUIAsset(name string, data []byte) *uiAsset {
 		}
 	}
 	return a
+}
+
+// generatedUIAsset returns a shell-generated asset, preparing the build first.
+// initUIBuild does not call back into loadUIAsset, so the once never re-enters.
+func generatedUIAsset(name string) (*uiAsset, bool) {
+	uiBuild.once.Do(initUIBuild)
+	a, ok := uiGenerated[name]
+	return a, ok
 }
 
 // uiVersionPrefix is the path segment under which the shell links its modules
@@ -111,10 +126,16 @@ func initUIBuild() {
 	})
 	uiBuild.id = hex.EncodeToString(sum.Sum(nil)[:8])
 	if index, err := uiFS.ReadFile("ui/index.html"); err == nil {
-		// Hints first, then the prefix rewrite, so the injected links get the
-		// same /_v/<build id>/ URLs as the ones written in index.html. The
-		// validator is taken from the final bytes and therefore covers both.
-		uiBuild.shell = newUIAsset("index.html", versionUIShell(preloadUIShell(index, readEmbeddedUIModule), uiBuild.id))
+		// Hints, then the stylesheet bundle, then the prefix rewrite, so the
+		// injected links get the same /_v/<build id>/ URLs as the ones written
+		// in index.html. The validator is taken from the final bytes and
+		// therefore covers all of it.
+		hinted := preloadUIShell(index, readEmbeddedUIModule)
+		bundled, css := bundleUIShellCSS(hinted, readEmbeddedUIModule)
+		if css != nil {
+			uiGenerated[uiBundleCSSPath] = newUIAsset(uiBundleCSSPath, css)
+		}
+		uiBuild.shell = newUIAsset("index.html", versionUIShell(bundled, uiBuild.id))
 	}
 }
 
@@ -132,11 +153,89 @@ func versionUIShell(index []byte, id string) []byte {
 	return uiShellAssetRef.ReplaceAllFunc(index, func(m []byte) []byte {
 		sub := uiShellAssetRef.FindSubmatch(m)
 		name := string(sub[2])
-		if _, err := fs.Stat(uiFS, "ui/"+name); err != nil {
-			return m // not an embedded file: leave the link alone
+		if !hasUIAsset(name) {
+			return m // not a file this build serves: leave the link alone
 		}
 		return []byte(string(sub[1]) + "/" + uiVersionPrefix + id + "/" + name + `"`)
 	})
+}
+
+// hasUIAsset reports whether name is an embedded UI file or one the shell
+// generates from them (the stylesheet bundle).
+func hasUIAsset(name string) bool {
+	if _, ok := uiGenerated[name]; ok {
+		return true
+	}
+	_, err := fs.Stat(uiFS, "ui/"+name)
+	return err == nil
+}
+
+// ---- stylesheet bundle ----
+//
+// index.html links thirty-eight stylesheets. Each is one request, and a cold
+// load issues them over the same six connections the module graph is already
+// using, so the count, not the bytes (576 KB), is what costs. The shell is
+// served with them concatenated in document order, which preserves the cascade
+// exactly (later sheets still override earlier ones) because no sheet uses
+// @import or a relative url().
+
+// uiBundleCSSPath is where the concatenated stylesheets are served. It must not
+// collide with a real file.
+const uiBundleCSSPath = "css/_all.css"
+
+// uiStandaloneSheets keep their own <link>: collections-matrix.js appends that
+// sheet itself unless it finds its URL already linked, and an appended copy
+// would move its rules to the end of the cascade.
+var uiStandaloneSheets = map[string]bool{"css/collections-matrix.css": true}
+
+var uiShellStylesheetLink = regexp.MustCompile(`[ \t]*<link rel="stylesheet" href="/([A-Za-z0-9_./-]+\.css)">[ \t]*\r?\n?`)
+
+// bundleUIShellCSS replaces the plain stylesheet links of the shell with one
+// link to the concatenation, in document order, of the files they name. Links
+// that are not the plain form, name a file that is not embedded, or name a
+// standalone sheet are left exactly as they are. It returns nil for the bundle
+// when there is nothing to concatenate.
+func bundleUIShellCSS(index []byte, read func(string) ([]byte, bool)) ([]byte, []byte) {
+	var bundle bytes.Buffer
+	replaced := 0
+	for _, m := range uiShellStylesheetLink.FindAllSubmatchIndex(index, -1) {
+		name := string(index[m[2]:m[3]])
+		if uiStandaloneSheets[name] {
+			continue
+		}
+		data, ok := read(name)
+		if !ok {
+			continue
+		}
+		bundle.Write(data)
+		bundle.WriteByte('\n')
+		replaced++
+	}
+	if replaced < 2 {
+		return index, nil
+	}
+	// Drop every bundled link but the first, which becomes the bundle link.
+	out := make([]byte, 0, len(index))
+	prev := 0
+	seen := 0
+	for _, m := range uiShellStylesheetLink.FindAllSubmatchIndex(index, -1) {
+		name := string(index[m[2]:m[3]])
+		if uiStandaloneSheets[name] {
+			continue
+		}
+		if _, ok := read(name); !ok {
+			continue
+		}
+		out = append(out, index[prev:m[0]]...)
+		if seen == 0 {
+			out = append(out, `<link rel="stylesheet" href="/`+uiBundleCSSPath+`">`...)
+			out = append(out, '\n')
+		}
+		prev = m[1]
+		seen++
+	}
+	out = append(out, index[prev:]...)
+	return out, bundle.Bytes()
 }
 
 // ---- module preload hints ----

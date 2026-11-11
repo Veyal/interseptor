@@ -22,10 +22,13 @@ func TestServeUIIndexLinksVersionedAssets(t *testing.T) {
 		t.Fatalf("build id %q is too short to be a content digest", id)
 	}
 	prefix := "/_v/" + id + "/"
+	// The stylesheets are concatenated in document order and linked once (see
+	// bundleUIShellCSS), so the sheet that stands alone and the module entries
+	// are what the shell still links one by one.
 	for _, want := range []string{
 		`<script type="module" src="` + prefix + `js/app.js">`,
-		`<link rel="stylesheet" href="` + prefix + `app.css">`,
-		`<link rel="stylesheet" href="` + prefix + `css/desktop/tokens.css">`,
+		`<link rel="stylesheet" href="` + prefix + uiBundleCSSPath + `">`,
+		`<link rel="stylesheet" href="` + prefix + `css/collections-matrix.css">`,
 		`<link rel="modulepreload" href="` + prefix + `js/core.js">`,
 	} {
 		if !strings.Contains(body, want) {

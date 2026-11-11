@@ -16,6 +16,12 @@ description: How the embedded UI is cached (/_v/<build id>/ immutable assets, re
 - **A stale build id** serves the current file as `no-cache`. A tab opened before an upgrade keeps
   working and cannot poison the cache.
 - **Unversioned paths** (`/js/app.js`) still work and are `no-cache`, as before.
+- **The served shell is not the file on disk.** Two transformations run on it: every module in the
+  static import graph of the entry scripts is `modulepreload`ed (`preloadUIShell`), and all but
+  `css/collections-matrix.css` stylesheet links are replaced by one link to their concatenation in
+  document order (`bundleUIShellCSS`), served from the generated asset `css/_all.css`. So a test
+  that asserts on a served-index `<link rel="stylesheet" href="/_v/…/app.css">` will not find one;
+  assert on the bundle plus `css/collections-matrix.css`, or read `index.html` itself.
 
 ## Rules
 
