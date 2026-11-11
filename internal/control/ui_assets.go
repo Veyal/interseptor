@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"io/fs"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +36,14 @@ func loadUIAsset(name string) (*uiAsset, bool) {
 	if err != nil {
 		return nil, false
 	}
+	a := newUIAsset(name, data)
+	v, _ := uiAssets.LoadOrStore(name, a)
+	return v.(*uiAsset), true
+}
+
+// newUIAsset prepares one file for serving: its validator and, for text types
+// that shrink, the gzip copy.
+func newUIAsset(name string, data []byte) *uiAsset {
 	sum := sha256.Sum256(data)
 	tag := hex.EncodeToString(sum[:12])
 	a := &uiAsset{data: data, etag: `"` + tag + `"`}
@@ -45,8 +55,84 @@ func loadUIAsset(name string) (*uiAsset, bool) {
 			a.gzETag = `"` + tag + `-gz"`
 		}
 	}
-	v, _ := uiAssets.LoadOrStore(name, a)
-	return v.(*uiAsset), true
+	return a
+}
+
+// uiVersionPrefix is the path segment under which the shell links its modules
+// and stylesheets: /_v/<build id>/js/app.js. The build id is a digest of every
+// embedded UI file, so a URL under the current id names content that cannot
+// change for the life of that URL and is served as immutable. The browser then
+// revalidates one response on reload (the shell) instead of every asset.
+const uiVersionPrefix = "_v/"
+
+// Cache policies for UI responses. The shell and any unversioned path must be
+// revalidated so an upgrade is picked up at once; an asset under the current
+// build id never needs to be asked for again.
+const (
+	uiCacheRevalidate = "no-cache"
+	uiCacheImmutable  = "private, max-age=31536000, immutable"
+)
+
+var uiBuild struct {
+	once  sync.Once
+	id    string
+	shell *uiAsset
+}
+
+// uiBuildID returns the digest that identifies this binary's embedded UI.
+func uiBuildID() string {
+	uiBuild.once.Do(initUIBuild)
+	return uiBuild.id
+}
+
+// uiShell returns index.html with its asset links moved under the build prefix,
+// or nil when the embedded UI has no index.
+func uiShell() *uiAsset {
+	uiBuild.once.Do(initUIBuild)
+	return uiBuild.shell
+}
+
+func initUIBuild() {
+	sum := sha256.New()
+	_ = fs.WalkDir(uiFS, "ui", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := uiFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		// Length-prefix both parts so moving bytes between a name and a body, or
+		// between two files, cannot produce the same digest.
+		sum.Write([]byte(strconv.Itoa(len(path)) + ":" + path + ":" + strconv.Itoa(len(data)) + ":"))
+		sum.Write(data)
+		return nil
+	})
+	uiBuild.id = hex.EncodeToString(sum.Sum(nil)[:8])
+	if index, err := uiFS.ReadFile("ui/index.html"); err == nil {
+		uiBuild.shell = newUIAsset("index.html", versionUIShell(index, uiBuild.id))
+	}
+}
+
+// uiShellAssetRef matches a src/href in the shell that names a stylesheet or a
+// module by absolute path. API downloads, the manifest and data: URLs are not
+// matched and stay as written.
+var uiShellAssetRef = regexp.MustCompile(`((?:src|href)=")/([A-Za-z0-9_./-]+\.(?:js|css))"`)
+
+// versionUIShell rewrites every reference to an embedded stylesheet or module
+// to the build-prefixed URL. Relative imports inside a module resolve against
+// the module's own URL, so the whole graph follows the entry points. Each file
+// must be reachable by exactly one URL: a module loaded through two is
+// evaluated twice.
+func versionUIShell(index []byte, id string) []byte {
+	return uiShellAssetRef.ReplaceAllFunc(index, func(m []byte) []byte {
+		sub := uiShellAssetRef.FindSubmatch(m)
+		name := string(sub[2])
+		if _, err := fs.Stat(uiFS, "ui/"+name); err != nil {
+			return m // not an embedded file: leave the link alone
+		}
+		return []byte(string(sub[1]) + "/" + uiVersionPrefix + id + "/" + name + `"`)
+	})
 }
 
 func uiCompressible(name string) bool {
@@ -95,14 +181,14 @@ func etagMatches(header, etag string) bool {
 	return false
 }
 
-// writeUIAsset serves a prepared asset with revalidation and gzip negotiation.
-// Cache-Control: no-cache keeps the upgrade guarantee the old no-store gave
-// (the browser must ask before reusing a module that has no version hash) while
-// a matching validator turns the answer into a body-less 304.
-func writeUIAsset(w http.ResponseWriter, r *http.Request, name string, a *uiAsset) {
+// writeUIAsset serves a prepared asset with gzip negotiation under the given
+// cache policy. uiCacheRevalidate makes the browser ask before reusing a
+// response whose URL carries no version, and a matching validator turns the
+// answer into a body-less 304; uiCacheImmutable is for build-prefixed URLs.
+func writeUIAsset(w http.ResponseWriter, r *http.Request, name string, a *uiAsset, cache string) {
 	h := w.Header()
 	h.Set("Content-Type", uiContentType(name))
-	h.Set("Cache-Control", "no-cache")
+	h.Set("Cache-Control", cache)
 	body, etag := a.data, a.etag
 	if a.gz != nil {
 		h.Add("Vary", "Accept-Encoding")

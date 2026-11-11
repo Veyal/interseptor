@@ -2062,8 +2062,28 @@ func (h *settingsAPI) getCA(w http.ResponseWriter, r *http.Request) {
 // are set explicitly — relying on the OS mime registry is unsafe on Windows,
 // where ".js" can resolve to text/plain and browsers then refuse to execute the
 // ES modules.
+//
+// The shell links its stylesheets and modules under /_v/<build id>/ (see
+// uiVersionPrefix). Those are immutable; the shell itself and every unversioned
+// path are revalidated (no-cache + ETag, 304 when unchanged), so an upgrade is
+// seen on the next load. Text is gzipped when accepted.
 func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/")
+	cache := uiCacheRevalidate
+	if rest, ok := strings.CutPrefix(name, uiVersionPrefix); ok {
+		id, asset, _ := strings.Cut(rest, "/")
+		if asset == "" || asset == "index.html" { // the shell lives at "/" only
+			http.NotFound(w, r)
+			return
+		}
+		name = asset
+		// A tab opened before an upgrade still asks for the previous build's
+		// URLs. It gets the current file, but not as the immutable content of a
+		// URL that named something else.
+		if id == uiBuildID() {
+			cache = uiCacheImmutable
+		}
+	}
 	if name == "" {
 		name = "index.html"
 	}
@@ -2071,22 +2091,22 @@ func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	asset, ok := loadUIAsset(name)
-	if !ok {
-		if name == "index.html" {
+	if name == "index.html" {
+		shell := uiShell()
+		if shell == nil {
 			httpErr(w, http.StatusInternalServerError, "ui missing")
 			return
 		}
+		issueUISessionCookie(w, r) // human-only gate for trust/secret actions
+		writeUIAsset(w, r, name, shell, uiCacheRevalidate)
+		return
+	}
+	asset, ok := loadUIAsset(name)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	// The UI is embedded and changes with every build, and the modules have no
-	// version hash: writeUIAsset makes the browser revalidate every asset
-	// (no-cache + ETag, 304 when unchanged) and gzips text when accepted.
-	if name == "index.html" {
-		issueUISessionCookie(w, r) // human-only gate for trust/secret actions
-	}
-	writeUIAsset(w, r, name, asset)
+	writeUIAsset(w, r, name, asset, cache)
 }
 
 // uiContentType maps a UI asset's extension to a Content-Type, independent of any

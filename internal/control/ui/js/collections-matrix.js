@@ -15,10 +15,12 @@ import { loadBlockCheck } from './collections-core.js';
 import { buildRunPlan, planSummary, methodBreakdown, planConfirmed, resolvePlanUrls, CONFIRM_PHRASE } from './collections-run-plan.js';
 
 function injectStylesheet() {
-  if (document.querySelector('link[href="/css/collections-matrix.css"]')) return;
+  // The shell links this sheet under its build prefix; match by suffix so it is
+  // never appended a second time after the mobile and desktop overrides.
+  if (document.querySelector('link[href$="/css/collections-matrix.css"]')) return;
   const l = document.createElement('link');
   l.rel = 'stylesheet';
-  l.href = '/css/collections-matrix.css';
+  l.href = new URL('../css/collections-matrix.css', import.meta.url).href;
   document.head.appendChild(l);
 }
 

@@ -178,8 +178,14 @@ evaluation order can no longer raise a Temporal Dead Zone `ReferenceError` at bo
 root modules (`core`, `bus`, `proxy`, `intercept`, `settings`, `findings`) so the first import wave
 loads in parallel instead of one depth at a time.
 
-The control server serves every embedded UI file with `Cache-Control: no-cache`, a strong per-file
-`ETag` (a reload is a set of body-less 304s, yet an upgrade is picked up at once) and a gzip copy
+The shell (`/`) is the only UI response the browser revalidates (`Cache-Control: no-cache` plus a
+strong `ETag`, so a reload is one body-less 304 yet an upgrade is picked up at once). When it is
+served, every stylesheet and module link in `index.html` is rewritten to `/_v/<build id>/…`, where
+the build id is a digest of the whole embedded UI; relative imports resolve against the module's
+own URL, so the entire graph follows. Those URLs are `immutable`. A stale build id (a tab opened
+before an upgrade) still gets the current file, as `no-cache`. Each file must be reachable by one
+URL only — a module loaded through two is evaluated twice — so code that names an asset derives it
+from `import.meta.url`, never from a literal `/js/…` or `/css/…` path. Text assets carry a gzip copy
 built once per file when the browser accepts it (`ui_assets.go`). `core.js` `api()` lets concurrent
 identical option-less GETs share one request (`api-inflight.js`); a mutation or a live event clears
 the shared reads, so a read issued after a change never joins an older one. `app.js` keeps
