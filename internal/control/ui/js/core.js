@@ -13,7 +13,7 @@ import { copyImage, copyFailureMessage, copyImageFileName, isCopyableImageURL, f
 import { selectionToFocus } from './flow-focus-model.js';
 import { SUBMENU_HOVER_MS, normalizeSections, menuRows, hasChildren, childSections, submenuPlacement, menuKeyAction, nextIndex, textFieldMenuModel, selectionMenuModel, CODEC_OPS, INSERT_SNIPPETS, PAYLOAD_MARKER, shortLabel } from './ctxmenu-model.js';
 import { computeVirtualWindow, sameWindow } from './virtual-list-model.js';
-import { createInflight, shareableRead, mutationScope } from './api-inflight.js';
+import { createInflight, shareableRead, mutationScope, bootReads } from './api-inflight.js';
 
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
@@ -949,7 +949,7 @@ function apiFetchError(e, opts) {
 // live events clear the table so a read issued after a change never joins an
 // older request.
 const apiReads=createInflight();
-export function clearSharedReads(prefix){apiReads.clear(prefix);}
+export function clearSharedReads(prefix){apiReads.clear(prefix);if(!prefix)bootReads.clear();}
 export async function api(path,opts){
   if(shareableRead(opts)){
     const {ct,text}=await apiReads.share(String(path),()=>apiRequest(path,opts,true));
@@ -958,9 +958,9 @@ export async function api(path,opts){
   const method=((opts&&opts.method)||'GET').toUpperCase();
   if(method==='GET'||method==='HEAD')return apiRequest(path,opts,false);
   const scope=mutationScope(path);
-  apiReads.clear(scope);
+  apiReads.clear(scope);if(!scope)bootReads.clear();
   try{return await apiRequest(path,opts,false);}
-  finally{apiReads.clear(scope);}
+  finally{apiReads.clear(scope);if(!scope)bootReads.clear();}
 }
 async function apiRequest(path,opts,asText){
   opts=Object.assign({},opts);

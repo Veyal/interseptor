@@ -1,4 +1,5 @@
 import { api, setStorageProject } from './core.js';
+import { bootReads } from './api-inflight.js';
 
 // Resolve project identity exactly once before any project-scoped local state is
 // read. Both main navigation and cross-feature Map actions share this boundary.
@@ -12,17 +13,27 @@ async function boundedProjectIdentity(path,select){
       reject(new Error('active project timed out'));
     },PROJECT_IDENTITY_TIMEOUT_MS);
   });
+  // The shell's first load of the same endpoint takes this answer instead of
+  // asking again (api-inflight.js bootReads); a failed read hands over nothing.
+  let settleBootRead;
+  bootReads.keep(path,new Promise(resolve=>{settleBootRead=resolve;}));
   try{
     const value=await Promise.race([api(path,{signal:controller.signal,cache:'no-store'}),deadline]);
+    settleBootRead(value);
     const identity=select(value);
     if(identity)return identity;
     throw new Error('active project unavailable');
-  }finally{clearTimeout(timer);controller.abort();}
+  }finally{clearTimeout(timer);controller.abort();settleBootRead(undefined);}
 }
+// The project this page was booted for, as /api/project reported it. The event
+// stream's first hello compares against it instead of reading it again.
+let bootProject=null;
+export function bootProjectSnapshot(){return bootProject;}
 async function activeProjectIdentity(){
   const [projectResult,versionResult]=await Promise.allSettled([
     boundedProjectIdentity('/api/project',project=>{
       if(!project||typeof project.current!=='string'||!project.current.trim()||typeof project.dir!=='string'||!project.dir.trim())return null;
+      bootProject={dir:project.dir,current:project.current};
       return {name:project.current,key:project.dir,projects:Array.isArray(project.projects)?project.projects:[]};
     }),
     boundedProjectIdentity('/api/version',version=>{

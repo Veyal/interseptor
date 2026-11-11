@@ -24,19 +24,19 @@ import './suppressed-banner.js'; // side-effect: History banner when the capture
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
-import { projectStorageReady, loadMapModule } from './project.js';
+import { projectStorageReady, loadMapModule, bootProjectSnapshot } from './project.js';
 import { initUiHints } from './hints.js';
 import { openFlowDiff } from './flow-diff.js';
 import { projectState } from './project-state.js';
 import { initCtxbar, renderCtxbar } from './ctxbar.js';
 import { initConnection, setConnectionStatus, openConnectionPopover, closeConnectionPopover } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
-import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
+import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules, streamHelloProjectCheck } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
 import { readSingleKeyPref, isShortcutTypingTarget } from './keys.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
 import { documentTitle, tabLabel } from './shell-title.js';
-import { liveEventStalesReads } from './api-inflight.js';
+import { liveEventStalesReads, bootReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
 import { initDesktop, noteDesktopStatus, desktopReady, isDesktopApp, requestNativeUpdateCheck } from './desktop.js';
 import { openUpdateDialog, handleUpdateProgress } from './update.js';
@@ -344,6 +344,15 @@ function shouldResyncOnReconnect(reason,hadError){
 let sseProjectKey=null;
 function projectIdentityKey(d){return String(d&&d.dir||'')+'\u0000'+String(d&&d.current||'');}
 async function checkProjectIdentityAfterHello(){
+  // project.js read the active project before this module ran. The first hello
+  // of a stream that connected cleanly needs no second read of it; one that
+  // follows a failed attempt, and every later one, asks the server.
+  const hadError=sseHadError; // read now: the hello handler resets it
+  await projectStorageReady.catch(()=>{}); // the stream can open before that read has answered
+  const boot=bootProjectSnapshot();
+  const check=streamHelloProjectCheck({knownKey:sseProjectKey,bootKey:boot?projectIdentityKey(boot):null,hadError});
+  sseProjectKey=check.baseline;
+  if(!check.ask)return;
   try{
     const key=projectIdentityKey(await api('/api/project?_t='+Date.now()));
     if(sseProjectKey===null){sseProjectKey=key;return;}
@@ -737,7 +746,8 @@ registerSseHandler('update.progress',handleUpdateProgress);
 async function loadVersion(retry){
   const el=$('#verBadge');
   try{
-    const d=await api('/api/version');if(!el)return;
+    // The boot call takes the answer project.js already has; later calls ask.
+    const d=(await bootReads.take('/api/version'))||await api('/api/version');if(!el)return;
     delete el.dataset.failed;
     el.dataset.installMethod=d.installMethod||'';
     if(d.project)setTitleProject(d.project);
@@ -1018,6 +1028,7 @@ projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
 registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
 
 renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadChromeStatus();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+bootReads.clear(); // a boot answer nobody took above is never handed out later
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
 settleWorkspaceBootWatchdog();

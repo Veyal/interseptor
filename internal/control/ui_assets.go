@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"io/fs"
 	"net/http"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -110,7 +111,10 @@ func initUIBuild() {
 	})
 	uiBuild.id = hex.EncodeToString(sum.Sum(nil)[:8])
 	if index, err := uiFS.ReadFile("ui/index.html"); err == nil {
-		uiBuild.shell = newUIAsset("index.html", versionUIShell(index, uiBuild.id))
+		// Hints first, then the prefix rewrite, so the injected links get the
+		// same /_v/<build id>/ URLs as the ones written in index.html. The
+		// validator is taken from the final bytes and therefore covers both.
+		uiBuild.shell = newUIAsset("index.html", versionUIShell(preloadUIShell(index, readEmbeddedUIModule), uiBuild.id))
 	}
 }
 
@@ -133,6 +137,395 @@ func versionUIShell(index []byte, id string) []byte {
 		}
 		return []byte(string(sub[1]) + "/" + uiVersionPrefix + id + "/" + name + `"`)
 	})
+}
+
+// ---- module preload hints ----
+//
+// A cold load otherwise discovers the ~150 modules one import wave at a time:
+// a module's imports are only known once it has been fetched and parsed, so
+// the depth of the import graph, not its size, sets the load time. The shell
+// therefore hints every module the entry points reach through static imports,
+// and the browser can request them all as soon as it has the document.
+// Modules reached only through import() are left out: hinting them would
+// fetch code a boot may never run.
+
+var (
+	uiShellModuleScript = regexp.MustCompile(`<script\b[^>]*\btype="module"[^>]*\bsrc="/([A-Za-z0-9_./-]+\.js)"`)
+	uiShellPreloadHint  = regexp.MustCompile(`<link rel="modulepreload" href="/([A-Za-z0-9_./-]+\.js)">[ \t]*\r?\n?`)
+)
+
+func readEmbeddedUIModule(name string) ([]byte, bool) {
+	data, err := uiFS.ReadFile("ui/" + name)
+	return data, err == nil
+}
+
+// preloadUIShell adds a modulepreload hint for every module in the static
+// import graph of the shell's module scripts that index.html does not already
+// hint. The new hints follow the existing ones (or, when there are none,
+// precede the first module script), each module once.
+//
+// The control server speaks HTTP/1.1, where the browser opens six connections
+// and a cold load is bound by the number of requests, not by how early they
+// are discovered: hinting the whole graph in one flat list measured no faster
+// than the seven root hints. What does help is the order. The first module
+// script is the application entry; the scripts after it run only once it has
+// evaluated. Its graph is therefore hinted first, and the modules that only
+// the later scripts need are hinted with fetchpriority="low" so they queue
+// behind it and behind the first API reads.
+func preloadUIShell(index []byte, read func(name string) ([]byte, bool)) []byte {
+	var roots []string
+	for _, m := range uiShellModuleScript.FindAllSubmatch(index, -1) {
+		roots = append(roots, string(m[1]))
+	}
+	hinted := map[string]bool{}
+	at := -1
+	for _, m := range uiShellPreloadHint.FindAllSubmatchIndex(index, -1) {
+		hinted[string(index[m[2]:m[3]])] = true
+		at = m[1] // after the last existing hint
+	}
+	if at < 0 {
+		if loc := uiShellModuleScript.FindIndex(index); loc != nil {
+			at = loc[0]
+		}
+	}
+	if at < 0 {
+		return index
+	}
+	entry := map[string]bool{}
+	var hints bytes.Buffer
+	hint := func(name, attrs string) {
+		if !hinted[name] {
+			hinted[name] = true
+			hints.WriteString(`<link rel="modulepreload" href="/` + name + `"` + attrs + `>` + "\n")
+		}
+	}
+	if len(roots) > 0 {
+		for _, name := range uiStaticModuleGraph(roots[:1], read) {
+			entry[name] = true
+			hint(name, "")
+		}
+	}
+	for _, name := range uiStaticModuleGraph(roots, read) {
+		if !entry[name] {
+			hint(name, ` fetchpriority="low"`)
+		}
+	}
+	if hints.Len() == 0 {
+		return index
+	}
+	out := make([]byte, 0, len(index)+hints.Len())
+	out = append(out, index[:at]...)
+	out = append(out, hints.Bytes()...)
+	return append(out, index[at:]...)
+}
+
+// uiStaticModuleGraph returns the roots and every module they reach through
+// static imports, each once, breadth first. Names are embedded paths
+// ("js/app.js"); a name read cannot find is dropped.
+func uiStaticModuleGraph(roots []string, read func(name string) ([]byte, bool)) []string {
+	seen := map[string]bool{}
+	var order []string
+	queue := append([]string(nil), roots...)
+	for _, r := range roots {
+		seen[r] = true
+	}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		src, ok := read(name)
+		if !ok {
+			continue
+		}
+		order = append(order, name)
+		for _, spec := range jsStaticImports(src) {
+			if dep, ok := resolveUIImport(name, spec); ok && !seen[dep] {
+				seen[dep] = true
+				queue = append(queue, dep)
+			}
+		}
+	}
+	return order
+}
+
+// resolveUIImport resolves a relative module specifier against the importing
+// module's embedded path. Bare and absolute specifiers are not embedded
+// modules under the build prefix and are not followed.
+func resolveUIImport(from, spec string) (string, bool) {
+	if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+		return "", false
+	}
+	if strings.ContainsAny(spec, `?#\`) {
+		return "", false // a query makes a second URL for the file; never hint it
+	}
+	name := path.Join(path.Dir(from), spec)
+	if !strings.HasSuffix(name, ".js") || !fs.ValidPath(name) {
+		return "", false
+	}
+	return name, true
+}
+
+// jsStaticImports returns the module specifiers of the static import and
+// re-export declarations in a module's source, in source order:
+//
+//	import './x.js'            import a, {b as c} from './x.js'
+//	import * as ns from './x.js'
+//	export * from './x.js'     export {a, b} from './x.js'
+//
+// Comments, string and template contents, regular expression literals,
+// import() calls and import.meta are skipped.
+func jsStaticImports(src []byte) []string {
+	p := &jsCursor{l: jsLexer{src: src}}
+	var out []string
+	afterDot := false
+	tok := p.advance()
+	for tok.kind != jsEOF {
+		if tok.kind == jsIdent && !afterDot && (tok.text == "import" || tok.text == "export") {
+			if spec, ok := p.declarationSpecifier(tok.text == "import"); ok {
+				out = append(out, spec)
+			}
+			afterDot = false
+			tok = p.cur // the first token the declaration did not consume
+			continue
+		}
+		afterDot = tok.is(".")
+		tok = p.advance()
+	}
+	return out
+}
+
+const (
+	jsEOF byte = iota
+	jsIdent
+	jsPunct
+	jsString
+	jsOther // number, template or regular expression literal
+)
+
+type jsTok struct {
+	kind byte
+	text string // identifier name, punctuator byte, or raw string contents
+}
+
+func (t jsTok) is(punct string) bool { return t.kind == jsPunct && t.text == punct }
+
+type jsCursor struct {
+	l   jsLexer
+	cur jsTok
+}
+
+func (p *jsCursor) advance() jsTok {
+	p.cur = p.l.next()
+	return p.cur
+}
+
+// declarationSpecifier is called with the cursor on `import` or `export` and
+// reports the declaration's module specifier, if it has one. It leaves p.cur
+// on the first token that is not part of the declaration.
+func (p *jsCursor) declarationSpecifier(isImport bool) (string, bool) {
+	tok := p.advance()
+	if isImport && tok.kind == jsString { // import './x.js'
+		p.advance()
+		return tok.text, true
+	}
+	// An import clause starts with a binding, `{` or `*`; a re-export with `{`
+	// or `*`. Anything else is import(), import.meta, a property named import,
+	// or an export of a local declaration.
+	if !(tok.is("{") || tok.is("*") || (isImport && tok.kind == jsIdent)) {
+		return "", false
+	}
+	depth, closed := 0, false
+	for tok.kind != jsEOF {
+		switch {
+		case tok.is("{"):
+			depth++
+		case tok.is("}"):
+			if depth--; depth < 0 {
+				return "", false
+			}
+			closed = depth == 0
+			tok = p.advance()
+			continue
+		case depth > 0: // names inside the braces, including string names
+		case tok.kind == jsIdent && tok.text == "from":
+			next := p.advance()
+			if next.kind == jsString {
+				p.advance()
+				return next.text, true
+			}
+			tok = next // a binding that happens to be called from
+			continue
+		case closed && !isImport:
+			return "", false // `export {a, b}` with no source
+		case tok.kind == jsIdent || tok.is(",") || tok.is("*") || tok.kind == jsString:
+		default:
+			return "", false
+		}
+		closed = false
+		tok = p.advance()
+	}
+	return "", false
+}
+
+// jsLexer is the small part of a JavaScript tokenizer needed to find module
+// declarations without being misled by text that only looks like one.
+type jsLexer struct {
+	src  []byte
+	pos  int
+	prev jsTok
+}
+
+func (l *jsLexer) next() jsTok {
+	l.prev = l.scan()
+	return l.prev
+}
+
+func (l *jsLexer) scan() jsTok {
+	for l.pos < len(l.src) {
+		c := l.src[l.pos]
+		switch {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			l.pos++
+		case c == '/' && l.peek(1) == '/':
+			for l.pos < len(l.src) && l.src[l.pos] != '\n' {
+				l.pos++
+			}
+		case c == '/' && l.peek(1) == '*':
+			end := bytes.Index(l.src[l.pos+2:], []byte("*/"))
+			if end < 0 {
+				l.pos = len(l.src)
+			} else {
+				l.pos += end + 4
+			}
+		case c == '\'' || c == '"':
+			return jsTok{jsString, l.stringLiteral(c)}
+		case c == '`':
+			l.template()
+			return jsTok{kind: jsOther}
+		case c == '/':
+			if end, ok := l.regexEnd(); ok {
+				l.pos = end
+				return jsTok{kind: jsOther}
+			}
+			l.pos++
+			return jsTok{jsPunct, "/"}
+		case jsIdentByte(c) && (c < '0' || c > '9'):
+			start := l.pos
+			for l.pos < len(l.src) && jsIdentByte(l.src[l.pos]) {
+				l.pos++
+			}
+			return jsTok{jsIdent, string(l.src[start:l.pos])}
+		case c >= '0' && c <= '9':
+			for l.pos < len(l.src) && (jsIdentByte(l.src[l.pos]) || l.src[l.pos] == '.') {
+				l.pos++
+			}
+			return jsTok{kind: jsOther}
+		default:
+			l.pos++
+			return jsTok{jsPunct, string(c)}
+		}
+	}
+	return jsTok{kind: jsEOF}
+}
+
+func (l *jsLexer) peek(n int) byte {
+	if l.pos+n < len(l.src) {
+		return l.src[l.pos+n]
+	}
+	return 0
+}
+
+func jsIdentByte(c byte) bool {
+	return c == '_' || c == '$' || c >= 0x80 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// stringLiteral consumes a quoted string and returns its raw contents. An
+// unterminated string ends at the line break, as it does for the parser.
+func (l *jsLexer) stringLiteral(quote byte) string {
+	l.pos++
+	start := l.pos
+	for l.pos < len(l.src) {
+		switch c := l.src[l.pos]; {
+		case c == '\\':
+			l.pos += 2
+			continue
+		case c == quote:
+			l.pos++
+			return string(l.src[start : l.pos-1])
+		case c == '\n':
+			return string(l.src[start:l.pos])
+		}
+		l.pos++
+	}
+	l.pos = len(l.src)
+	return string(l.src[start:])
+}
+
+// template consumes a template literal, including the code in its ${…}
+// substitutions (which may hold strings, comments and further templates).
+func (l *jsLexer) template() {
+	l.pos++
+	for l.pos < len(l.src) {
+		switch c := l.src[l.pos]; {
+		case c == '\\':
+			l.pos += 2
+		case c == '`':
+			l.pos++
+			return
+		case c == '$' && l.peek(1) == '{':
+			l.pos += 2
+			for depth := 1; depth > 0; {
+				tok := l.next()
+				if tok.kind == jsEOF {
+					return
+				}
+				if tok.is("{") {
+					depth++
+				} else if tok.is("}") {
+					depth--
+				}
+			}
+		default:
+			l.pos++
+		}
+	}
+}
+
+// regexEnd reports where the regular expression literal starting at l.pos
+// ends. A slash is a division when the previous token ends an operand, or
+// when no closing slash follows on the same line.
+func (l *jsLexer) regexEnd() (int, bool) {
+	switch p := l.prev; p.kind {
+	case jsOther, jsString:
+		return 0, false
+	case jsPunct:
+		if p.text == ")" || p.text == "]" || p.text == "}" {
+			return 0, false
+		}
+	case jsIdent:
+		switch p.text {
+		case "return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await":
+		default:
+			return 0, false
+		}
+	}
+	inClass := false
+	for i := l.pos + 1; i < len(l.src); i++ {
+		switch c := l.src[i]; {
+		case c == '\\':
+			i++
+		case c == '\n':
+			return 0, false
+		case c == '[':
+			inClass = true
+		case c == ']':
+			inClass = false
+		case c == '/' && !inClass:
+			for i++; i < len(l.src) && jsIdentByte(l.src[i]); i++ {
+			}
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func uiCompressible(name string) bool {

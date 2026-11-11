@@ -77,3 +77,20 @@ export async function loadOptionalModules(importer, names = OPTIONAL_MODULES, on
     catch (e) { onError(e, name); return { name, ok: false }; }
   }));
 }
+
+// streamHelloProjectCheck decides how an event-stream hello verifies the active
+// project. knownKey is the identity an earlier hello recorded (null on the
+// first), bootKey the identity the page was booted for (null when the boot read
+// of /api/project did not succeed), hadError whether a connection attempt
+// failed before this hello. It returns the baseline to compare against and
+// whether the server must be asked now.
+//   a later hello            ask, compare with what the stream first saw
+//   first hello, clean boot  the page read the project a moment ago: no request
+//   first hello after error  the server may have restarted into another
+//                            project while the page waited: ask and compare
+//   no boot identity         ask and adopt the answer, as before
+export function streamHelloProjectCheck({ knownKey = null, bootKey = null, hadError = false } = {}) {
+  if (knownKey !== null) return { baseline: knownKey, ask: true };
+  if (!bootKey) return { baseline: null, ask: true };
+  return { baseline: bootKey, ask: !!hadError };
+}

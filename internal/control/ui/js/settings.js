@@ -3,6 +3,7 @@ import { projectPathFlavorFor, projectPathKey as normalizeProjectPath } from './
 import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey, onHook } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { emit as busEmit, on as busOn, EVENTS } from './bus.js';
+import { bootReads } from './api-inflight.js';
 // Cross-panel reloads go over the bus instead of a static import of proxy.js /
 // intercept.js — that back-edge closed the proxy↔findings↔settings ESM cycle.
 // The call sites below keep calling loadFlows()/loadScope()/loadRules(); the panel
@@ -1525,7 +1526,8 @@ export async function loadProject(){
   setProjectControlsDisabled(true,hadData?'Project data is stale — retry before switching or creating a project':'Project data is loading — wait before switching or creating a project');
   const loadState=$('#projectLoadState');
   if(loadState&&hadData){loadState.style.display='block';loadState.textContent='Refreshing Projects…';}
-  try{const d=await api('/api/project');
+  // The boot call takes the answer project.js already has; later calls ask.
+  try{const d=(await bootReads.take('/api/project'))||await api('/api/project');
     if(epoch!==projectLoadEpoch)return;
     projectPathFlavor=projectPathFlavorFor(d.dir);
     if(loadState)loadState.style.display='none';

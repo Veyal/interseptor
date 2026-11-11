@@ -59,3 +59,25 @@ export function shareableRead(opts) {
   if (String(o.method || 'GET').toUpperCase() !== 'GET') return false;
   return Object.keys(o).every((k) => k === 'method' || o[k] === undefined);
 }
+
+// createBootReads holds the answers of reads issued before the shell evaluated
+// (project.js reads /api/project and /api/version to resolve the active project
+// before anything else runs), so the shell's own first load of the same
+// endpoint takes that answer instead of asking the server again.
+//
+// It is not a cache. An answer is handed out once, and never after clear():
+// core.js clears it together with the shared reads when a mutation starts or
+// settles and for every live event, and app.js clears it when the boot loaders
+// have been started. A read issued after any of those goes to the server. A
+// read that failed resolves to undefined, so the taker falls back to its own
+// request.
+export function createBootReads() {
+  const held = new Map();
+  return {
+    keep(path, promise) { held.set(String(path), Promise.resolve(promise).then((v) => v, () => undefined)); },
+    take(path) { const key = String(path); const p = held.get(key); held.delete(key); return p || null; },
+    clear() { held.clear(); },
+    size() { return held.size; },
+  };
+}
+export const bootReads = createBootReads();
