@@ -151,6 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Enter that confirms an IME composition no longer submits.** The agent-prompt answer field, the command palette, the evidence picker, the draft-export confirmation, the find bar and registered shortcuts ignore composition keys. (`internal/control/ui/js/keys.js`, `humaninput.js`, `cmdk.js`, `evidence-attach.js`, `report-preflight.js`, `finder.js`, `findings.js`.)
 - **Find bar Alt+R and Alt+C work on macOS.** The shortcuts match the physical key, since Option changes the typed character. (`internal/control/ui/js/finder.js`.)
 - **The variable resolve preview masks the names it reports.** `POST /api/variables/resolve` masked the resolved value but returned unresolved names and the error text as written, so a name that embeds a registered secret came back in the clear. (`internal/control/envs.go`.)
+- **Exporting a collection keeps where its OAuth token is placed.** The export scrub treats any name containing "token" as a secret, so it blanked `addTokenTo`; a collection that sent its token in the query sent it in the header after export and import, and the importer reported the setting as a literal credential. (`internal/store/collections_scrub.go`.)
 
 ### Changed
 

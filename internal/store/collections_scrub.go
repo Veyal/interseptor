@@ -31,6 +31,12 @@ var templateRefRe = regexp.MustCompile(`^\s*\{\{[^{}]+\}\}\s*$`)
 // nonSecretSuffixes mark names that hold addresses or labels, not secrets.
 var nonSecretSuffixes = []string{"url", "uri", "type", "prefix", "name", "location", "placement", "endpoint", "scheme", "algorithm", "expiry", "expires"}
 
+// nonSecretNames are settings whose name contains a secret word but whose
+// value is a choice, compared with separators removed: addTokenTo says where an
+// OAuth token is placed (header or query), not what it is. Blanking it on
+// export silently moved a query-placed token to the header after re-import.
+var nonSecretNames = map[string]bool{"addtokento": true}
+
 var secretNameParts = []string{"token", "secret", "password", "passwd", "passphrase", "apikey", "api-key", "api_key",
 	"authorization", "cookie", "privatekey", "private_key", "session", "signature", "credential", "authkey"}
 
@@ -44,6 +50,9 @@ func IsSecretName(name string) bool { return secretName(name) }
 func secretName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if n == "" {
+		return false
+	}
+	if nonSecretNames[strings.NewReplacer("_", "", "-", "").Replace(n)] {
 		return false
 	}
 	for _, suf := range nonSecretSuffixes {
