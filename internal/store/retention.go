@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -101,6 +102,10 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 			return 0, fmt.Errorf("store.DeleteFlowsByHost: scan host: %w", err)
 		}
 		allHosts = append(allHosts, h)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("store.DeleteFlowsByHost: list hosts: %w", err)
 	}
 	if err := rows.Close(); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsByHost: close rows: %w", err)
@@ -217,30 +222,54 @@ func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 	return n, nil
 }
 
+// keepNewestDeleteSQL removes every unreferenced flow below an id cutoff.
+const keepNewestDeleteSQL = `DELETE FROM flows WHERE id < ? AND id NOT IN (` + referencedFlowIDsSQL + `)`
+
 // DeleteFlowsKeepNewest keeps only the most-recent n flows (by id, descending)
 // and deletes the rest, preserving flows findings reference (referencedFlowIDsSQL). n<=0 deletes nothing.
+//
+// The rows to delete are addressed by an id cutoff — the id of the n-th newest
+// flow. The earlier form, id NOT IN (the n newest ids), tested every flow in
+// the table against that list four times over, and did so on every retention
+// tick even when nothing was over the limit: half a second of write lock on
+// 100,000 flows, during which capture could not commit.
 func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 	if n <= 0 {
 		return 0, nil
 	}
 	s.syncFlows()
+	const cutoffSQL = `SELECT id FROM flows ORDER BY id DESC LIMIT 1 OFFSET ?`
+	var cutoff int64
+	// Checked before taking the write lock: the common case is a history that
+	// is still under the limit.
+	if err := s.db.QueryRow(cutoffSQL, n-1).Scan(&cutoff); errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: cutoff: %w", err)
+	}
 	_ = s.FlushWSFrames() // queued frames must be visible to the delete below
-	const keepSub = `SELECT id FROM flows ORDER BY id DESC LIMIT ?`
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: begin: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
+	// Re-read under the write lock so the cutoff matches the rows being deleted.
+	if err := tx.QueryRow(cutoffSQL, n-1).Scan(&cutoff); errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: cutoff: %w", err)
+	}
+	const doomed = `SELECT id FROM flows WHERE id < ? AND id NOT IN (` + referencedFlowIDsSQL + `)`
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+doomed+`)`, cutoff); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: unindex: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+doomed+`)`, cutoff); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: untag: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM ws_frames WHERE flow_id IN (`+doomed+`)`, cutoff); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: ws frames: %w", err)
 	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (`+referencedFlowIDsSQL+`)`, n)
+	res, err := tx.Exec(keepNewestDeleteSQL, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: delete: %w", err)
 	}
@@ -381,14 +410,24 @@ func (s *Store) referencedBodyHashes() (map[string]struct{}, error) {
 			referenced[h] = struct{}{}
 		}
 	}
+	// A reference set cut short by a read error would make GC delete bodies
+	// that flows still point at; rows.Close alone does not report it.
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("store.GCBodies: read refs: %w", err)
+	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("store.GCBodies: close rows: %w", err)
 	}
 	// A live prune snapshot can be undone, so its bodies must survive the sweep.
-	if protected, perr := s.protectedPruneHashes(); perr == nil {
-		for h := range protected {
-			referenced[h] = struct{}{}
-		}
+	// Fail closed: a sweep that cannot read which bodies an undo still needs
+	// must not run, or it deletes exactly those bodies.
+	protected, err := s.protectedPruneHashes()
+	if err != nil {
+		return nil, fmt.Errorf("store.GCBodies: prune snapshot refs: %w", err)
+	}
+	for h := range protected {
+		referenced[h] = struct{}{}
 	}
 	// Finding screenshot/evidence images live in the same bodiesDir; keep them
 	// alive even when no flow references the hash.
@@ -747,6 +786,10 @@ func (s *Store) pruneCandidateIDs(selected []string, deleteAll bool, op PruneOpt
 				return nil, err
 			}
 			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
 		}
 		if err := rows.Close(); err != nil {
 			return nil, err

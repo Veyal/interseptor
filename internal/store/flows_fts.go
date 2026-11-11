@@ -27,7 +27,10 @@ func (s *Store) ensureFlowsFTS() error {
 }
 
 func ftsMatchQuery(term string) string {
-	term = strings.TrimSpace(term)
+	// FTS5 reads a NUL byte as the end of its query string, which leaves the
+	// quoted term unterminated and fails the whole list query with a syntax
+	// error. A NUL cannot appear in an indexed token, so it separates words.
+	term = strings.TrimSpace(strings.ReplaceAll(term, "\x00", " "))
 	if term == "" {
 		return ""
 	}

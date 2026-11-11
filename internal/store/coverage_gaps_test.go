@@ -403,6 +403,7 @@ func TestQueryFlowsFilter_SortByStatusPagination(t *testing.T) {
 		f.ID = id
 		inserted = append(inserted, f)
 	}
+	_ = inserted
 
 	// Page 1: sort by status ASC, limit 2.
 	page1, err := s.QueryFlowsFilter(FlowFilter{
@@ -565,6 +566,7 @@ func TestQueryFlowsFilter_SortByTimePagination(t *testing.T) {
 		f.ID = id
 		inserted = append(inserted, f)
 	}
+	_ = inserted
 
 	page1, err := s.QueryFlowsFilter(FlowFilter{Limit: 2, SortKey: "time", SortDir: 1})
 	if err != nil {

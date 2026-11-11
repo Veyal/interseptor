@@ -67,7 +67,13 @@ func Test_FlowIDsBodySearch_matches_bodies_only(t *testing.T) {
 
 	// When
 	bodyIDs, err := flowIDsForBodySearch(t, s, "needle-body")
+	if err != nil {
+		t.Fatalf("body search: %v", err)
+	}
 	metadataIDs, err := flowIDsForBodySearch(t, s, "needle-metadata")
+	if err != nil {
+		t.Fatalf("metadata search: %v", err)
+	}
 
 	// Then
 	if len(bodyIDs) != 1 || bodyIDs[0] != bodyID {

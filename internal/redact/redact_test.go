@@ -24,7 +24,8 @@ func TestDescribeReturnsLengthDigestPrefixAndKind(t *testing.T) {
 	if strings.Contains(got.Placeholder(), fixtureJWT) {
 		t.Fatal("placeholder leaked the value")
 	}
-	if Describe("same").SHA256Prefix != Describe("same").SHA256Prefix || Describe("same").SHA256Prefix == Describe("other").SHA256Prefix {
+	first, again := Describe("same").SHA256Prefix, Describe("same").SHA256Prefix
+	if first != again || first == Describe("other").SHA256Prefix {
 		t.Fatal("digest prefix must establish equality deterministically")
 	}
 }

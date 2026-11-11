@@ -36,7 +36,8 @@ func TestPersistNotesIfRevRejectsStaleBase(t *testing.T) {
 	if saved != got+"\nlocal" {
 		t.Fatalf("saved = %q", saved)
 	}
-	if NotesRev("") == NotesRev("x") || NotesRev("x") != NotesRev("x") {
+	first, again := NotesRev("x"), NotesRev("x")
+	if NotesRev("") == first || first != again {
 		t.Fatal("NotesRev must be deterministic and content-sensitive")
 	}
 }

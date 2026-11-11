@@ -12,8 +12,8 @@ import (
 // pruneRow is one snapshot row: the full flows row plus its tags, so a restore
 // rebuilds the capture exactly rather than a lossy outline.
 type pruneRow struct {
-	Flow map[string]any   `json:"flow"`
-	Tags []string         `json:"tags,omitempty"`
+	Flow map[string]any `json:"flow"`
+	Tags []string       `json:"tags,omitempty"`
 }
 
 // sqlRow is a positional query result with typed accessors.
@@ -87,6 +87,11 @@ func (s *Store) queryRowsByIDs(ids []int64, format string) ([]sqlRow, error) {
 				return nil, err
 			}
 			out = append(out, vals)
+		}
+		// rows.Close does not report an error that ended the iteration.
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: prune query: %w", err)
 		}
 		if err := rows.Close(); err != nil {
 			return nil, err
@@ -230,20 +235,29 @@ func (s *Store) deleteFlowsByIDs(ids []int64) (int64, error) {
 	return deleted, tx.Commit()
 }
 
+func isNoSuchTable(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no such table")
+}
+
 // PendingPrune is one restorable prune batch.
 type PendingPrune struct {
-	ID          int64  `json:"id"`
-	TS          int64  `json:"ts"`
-	ExpiresTS   int64  `json:"expiresTs"`
-	Mode        string `json:"mode"`
-	Flows       int    `json:"flows"`
-	RestoresIn  int64  `json:"restoresInMs"`
+	ID         int64  `json:"id"`
+	TS         int64  `json:"ts"`
+	ExpiresTS  int64  `json:"expiresTs"`
+	Mode       string `json:"mode"`
+	Flows      int    `json:"flows"`
+	RestoresIn int64  `json:"restoresInMs"`
 }
 
 // PendingPrunes lists restore-able batches, newest first.
 func (s *Store) PendingPrunes() ([]PendingPrune, error) {
 	rows, err := s.db.Query(`SELECT id, ts, expires_ts, mode, flows FROM prune_snapshots WHERE expires_ts > ? ORDER BY id DESC`, time.Now().UnixMilli())
 	if err != nil {
+		// The snapshot tables are created by the first prune; before that
+		// nothing is pending.
+		if isNoSuchTable(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -275,7 +289,7 @@ func (s *Store) RestorePrune(id int64) (int64, error) {
 		expires int64
 	)
 	err := s.db.QueryRow(`SELECT flows, expires_ts FROM prune_snapshots WHERE id = ?`, id).Scan(&blob, &expires)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || isNoSuchTable(err) {
 		return 0, fmt.Errorf("prune %d not found (already restored or expired)", id)
 	}
 	if err != nil {
@@ -359,7 +373,7 @@ func (s *Store) protectedPruneHashes() (map[string]struct{}, error) {
 		JOIN prune_snapshots p ON p.id = h.snapshot_id WHERE p.expires_ts > ?`, time.Now().UnixMilli())
 	if err != nil {
 		// No snapshot table yet: nothing is protected.
-		if strings.Contains(err.Error(), "no such table") {
+		if isNoSuchTable(err) {
 			return nil, nil
 		}
 		return nil, err

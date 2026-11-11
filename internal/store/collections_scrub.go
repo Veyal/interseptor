@@ -308,6 +308,12 @@ func scrubSecrets(db *sql.DB, opt ScrubOptions) (ScrubReport, error) {
 			}
 			items = append(items, *it)
 		}
+		// An iteration cut short would leave the unread items unscrubbed in
+		// the exported copy; rows.Close alone does not report it.
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return rep, err
+		}
 		rows.Close()
 		for _, it := range items {
 			if n := scrubItemSecrets(&it); n > 0 {
@@ -400,6 +406,12 @@ func scrubRevisions(db *sql.DB, rep *ScrubReport) error {
 			ups = append(ups, upd{id, string(b)})
 			rep.SecretsBlanked += n
 		}
+	}
+	// An iteration cut short would leave the unread snapshots unscrubbed in
+	// the exported copy; rows.Close alone does not report it.
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	rows.Close()
 	for _, u := range ups {

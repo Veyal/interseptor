@@ -7,7 +7,7 @@ package store
 func (s *Store) CountFlowsWithFlag(flag int64) (int64, error) {
 	s.syncFlows()
 	var n int64
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM flows WHERE (flags & ?) != 0`, flag).Scan(&n)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM flows WHERE ` + flagsAnyPredicate(flag)).Scan(&n)
 	return n, err
 }
 
@@ -18,7 +18,10 @@ func (s *Store) CountFlowsWithFlag(flag int64) (int64, error) {
 func (s *Store) CountSuccessfulHTTPS(hostSubstring string) (int64, error) {
 	s.syncFlows()
 	var n int64
-	q := `SELECT COUNT(*) FROM flows WHERE scheme = 'https' AND status > 0 AND (flags & ?) = 0`
+	// The unary plus keeps the planner off idx_flows_status: "status > 0" is
+	// true for nearly every flow, so that index walks the whole table one row
+	// lookup at a time (4x slower than a plain scan on 100,000 flows).
+	q := `SELECT COUNT(*) FROM flows WHERE scheme = 'https' AND +status > 0 AND (flags & ?) = 0`
 	args := []any{FlagTLSFailed}
 	if hostSubstring != "" {
 		q += ` AND instr(lower(host), lower(?)) > 0`
@@ -40,8 +43,8 @@ func (s *Store) TLSFailureStats(hostSubstring string, sinceMS int64) (newestFail
 		hostClause = ` AND instr(lower(host), lower(?)) > 0`
 	}
 	q := `SELECT COALESCE(MAX(ts),0), COALESCE(SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END),0)
-	      FROM flows WHERE (flags & ?) != 0` + hostClause
-	qArgs := []any{sinceMS, FlagTLSFailed}
+	      FROM flows WHERE ` + flagsAnyPredicate(FlagTLSFailed) + hostClause
+	qArgs := []any{sinceMS}
 	if hostSubstring != "" {
 		qArgs = append(qArgs, hostSubstring)
 	}

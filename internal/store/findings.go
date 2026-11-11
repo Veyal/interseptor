@@ -304,10 +304,10 @@ type FindingReadiness struct {
 	FlowCount              int                   `json:"flowCount"`
 	// TranscriptCount are captured protocol transcripts (SSH, SMTP, SMB, raw
 	// socket): the evidence form for findings that have no flow to attach.
-	TranscriptCount        int                   `json:"transcriptCount,omitempty"`
-	ScreenshotCount        int                   `json:"screenshotCount"`
-	ImageCount             int                   `json:"imageCount"`
-	VisualProofRecommended bool                  `json:"visualProofRecommended"`
+	TranscriptCount        int  `json:"transcriptCount,omitempty"`
+	ScreenshotCount        int  `json:"screenshotCount"`
+	ImageCount             int  `json:"imageCount"`
+	VisualProofRecommended bool `json:"visualProofRecommended"`
 	// UploadedImageCount are operator-ingested images (classified or not);
 	// GeneratedImageCount are server-rendered previews that never qualify as
 	// browser/device captures.
@@ -1591,6 +1591,10 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 			return err
 		}
 		existing[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	if err := rows.Close(); err != nil {
 		return err

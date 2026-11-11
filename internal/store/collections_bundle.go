@@ -83,6 +83,10 @@ func loadCollBundle(db *sql.DB) (CollectionsBundle, error) {
 			}
 			b.Environments = append(b.Environments, *e)
 		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return b, err
+		}
 		rows.Close()
 	}
 	if ok, _ := peerHasTable(db, "ix_variables"); ok {
@@ -99,6 +103,10 @@ func loadCollBundle(db *sql.DB) (CollectionsBundle, error) {
 			}
 			v.Enabled = en != 0
 			b.Variables = append(b.Variables, v)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return b, err
 		}
 		rows.Close()
 	}

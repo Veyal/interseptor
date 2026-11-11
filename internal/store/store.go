@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,18 +80,18 @@ type Store struct {
 	// insert or update, so a later update can replace that snapshot in place
 	// instead of queueing a second write. flowBase is the sequence number of
 	// flowPending[0].
-	flowLatest     map[int64]uint64
-	flowBase       uint64
+	flowLatest map[int64]uint64
+	flowBase   uint64
 	// flowSpace is closed (and cleared) when the flusher takes the buffer,
 	// waking captures that found it full.
-	flowSpace      chan struct{}
-	flowVoid       map[int64]struct{}
-	flowDropped    atomic.Uint64
-	flowInFlight   bool
-	flowPaused     bool
-	flowClosed     bool
-	flowGiveUp     atomic.Bool
-	nextFlowID     atomic.Int64
+	flowSpace    chan struct{}
+	flowVoid     map[int64]struct{}
+	flowDropped  atomic.Uint64
+	flowInFlight bool
+	flowPaused   bool
+	flowClosed   bool
+	flowGiveUp   atomic.Bool
+	nextFlowID   atomic.Int64
 	// flowTxs counts the SQLite transactions the flow writers have opened. It
 	// exists so the batching contract is observable: a drain pass must commit
 	// once per batch, not once per queued write.
@@ -484,6 +485,10 @@ func Open(dir string) (*Store, error) {
 			return nil, err
 		}
 	}
+	if _, err := db.Exec(tlsFailedIndexSQL); err != nil {
+		db.Close()
+		return nil, err
+	}
 	s := &Store{db: db, bodiesDir: bodiesDir}
 	if err := s.ensureFlowsFTS(); err != nil {
 		db.Close()
@@ -499,8 +504,8 @@ func Open(dir string) (*Store, error) {
 	if err := alignFindingSeverities(db); err != nil {
 		log.Printf("store: align finding severities: %v", err)
 	}
-	var maxID int64
-	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
+	maxID, err := flowIDHighWater(db)
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -508,6 +513,41 @@ func Open(dir string) (*Store, error) {
 	s.startFlowFlusher()
 	s.startWSFlusher()
 	return s, nil
+}
+
+// flowIDHighWater returns the largest flow id this project has ever used, so a
+// reopened store never hands out the id of a deleted flow. MAX(id) alone
+// forgets the newest flows once they are pruned or purged; flows is an
+// AUTOINCREMENT table, so sqlite_sequence still remembers them. Findings,
+// tags, WebSocket frames and prune-undo snapshots all address a flow by id: a
+// reused id attaches a deleted flow's evidence to an unrelated request, and
+// undoing a prune would replace the newer capture that took the id.
+func flowIDHighWater(db *sql.DB) (int64, error) {
+	var maxID int64
+	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
+		return 0, err
+	}
+	var seq int64
+	err := db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM sqlite_sequence WHERE name = 'flows'`).Scan(&seq)
+	if err != nil {
+		return 0, err
+	}
+	return max(maxID, seq), nil
+}
+
+// tlsFailedIndexSQL is a partial index over the flows whose TLS interception
+// failed. The readiness check and the TLS diagnosis count, date and list those
+// rows on every call; without the index each of those is a scan of the whole
+// flows table for what is normally a handful of rows. Only failed rows are in
+// the index, so ordinary capture writes do not touch it. A query uses it when
+// its WHERE clause contains flagsAnyPredicate(FlagTLSFailed) verbatim.
+var tlsFailedIndexSQL = `CREATE INDEX IF NOT EXISTS idx_flows_tls_failed ON flows(id) WHERE ` + flagsAnyPredicate(FlagTLSFailed)
+
+// flagsAnyPredicate is the SQL test for "any of these flag bits is set", with
+// the mask written as a literal so the planner can match it against a partial
+// index (idx_flows_tls_failed).
+func flagsAnyPredicate(flags int64) string {
+	return "(flags & " + strconv.FormatInt(flags, 10) + ") != 0"
 }
 
 // Close drains queued flow writes (bounded) and pending WebSocket frames, then

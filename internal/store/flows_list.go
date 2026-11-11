@@ -106,8 +106,7 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		args = append(args, lo, lo+100)
 	}
 	if f.RequireFlags != 0 {
-		where = append(where, "(flags & ?) != 0")
-		args = append(args, f.RequireFlags)
+		where = append(where, flagsAnyPredicate(f.RequireFlags))
 	}
 	if f.WithoutFlags != 0 {
 		where = append(where, "(flags & ?) = 0")

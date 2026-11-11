@@ -305,6 +305,10 @@ func writeVariablesTx(tx *sql.Tx, ownerKind, ownerUID string, vars []Variable, s
 			stale = append(stale, k)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	rows.Close()
 	for _, k := range stale {
 		if _, err := tx.Exec(`DELETE FROM ix_var_current WHERE owner_kind=? AND owner_uid=? AND key=?`, ownerKind, ownerUID, k); err != nil {
