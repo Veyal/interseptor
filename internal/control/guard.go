@@ -123,9 +123,10 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 
-		case loopbackConn && loopbackHost:
-			// Unauthenticated loopback: the legacy local-trust path, byte-for-byte
-			// unchanged so local development keeps working with no login.
+		case loopbackConn && loopbackHost && !relayedByForwarder(r):
+			// Unauthenticated loopback: the legacy local-trust path, so local
+			// development keeps working with no login. A request a forwarder
+			// relayed is excluded (see relayedByForwarder).
 			if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o, r.Host) {
 				httpErr(w, http.StatusForbidden, "cross-origin request rejected")
 				return
@@ -187,6 +188,39 @@ func requestScope(r *http.Request) string {
 		return store.ScopeFull
 	}
 	return scope
+}
+
+// forwarderHeaders are set by reverse proxies and tunnels on the requests they
+// relay (Tailscale Serve/Funnel, cloudflared, nginx, Caddy, ...). Nothing that
+// talks to the control plane directly sends them: not the embedded UI, not
+// curl, not the in-process MCP tool bus.
+var forwarderHeaders = []string{
+	"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Forwarded-Port", "X-Forwarded-Server",
+	"Forwarded", "X-Real-IP", "CF-Connecting-IP", "CF-Ray", "True-Client-IP",
+}
+
+// relayedByForwarder reports whether a request carries a forwarder's headers.
+// Loopback trust rests on "a loopback socket with a loopback Host is the local
+// operator", which assumes a local forwarder never relays a Host the remote
+// client chose. That does not hold for one that routes by TLS SNI (Tailscale
+// Serve and Funnel over HTTPS pass the client's Host header through) or that
+// has a catch-all virtual host: a remote client sending "Host: localhost:9966"
+// would arrive here as loopback socket + loopback Host and be trusted without
+// a key. The forwarder's own headers are what tell that request from a local
+// one, so a request carrying any of them must authenticate like a remote one.
+// A client cannot use this to gain trust, only to lose it.
+func relayedByForwarder(r *http.Request) bool {
+	for _, name := range forwarderHeaders {
+		if len(r.Header.Values(name)) > 0 {
+			return true
+		}
+	}
+	for name := range r.Header {
+		if strings.HasPrefix(name, "Tailscale-") {
+			return true
+		}
+	}
+	return false
 }
 
 // auth token sources, in precedence order.

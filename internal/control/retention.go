@@ -1,8 +1,11 @@
 package control
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
@@ -45,12 +48,26 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// What the caller got wrong is answered here with a 400, so that an error
+	// from the store below is a storage failure and reported as one (a 400
+	// would tell the UI the request was wrong and hide the fault).
+	for i, host := range in.Hosts {
+		if strings.TrimSpace(host) == "" {
+			httpErr(w, http.StatusBadRequest, fmt.Sprintf("%v (entry %d)", store.ErrBlankHostPattern, i+1))
+			return
+		}
+	}
+	if in.Mode == "keepOnly" && len(in.Hosts) == 0 {
+		httpErr(w, http.StatusBadRequest, "keepOnly requires at least one host pattern")
+		return
+	}
+
 	if in.DryRun {
 		// A dry run must not delete, broadcast or kick off a GC: it reports the
 		// exact counts and bytes so the operator can decide before committing.
 		res, err := h.st.PruneFlows(h.pruneOptions(in))
 		if err != nil {
-			httpErr(w, http.StatusBadRequest, err.Error())
+			httpPruneErr(w, err)
 			return
 		}
 		res.DryRun = true
@@ -59,8 +76,7 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.st.PruneFlows(h.pruneOptions(in))
 	if err != nil {
-		// store returns an error for keepOnly + empty hosts; surface as 400.
-		httpErr(w, http.StatusBadRequest, err.Error())
+		httpPruneErr(w, err)
 		return
 	}
 	deleted := res.Deleted
@@ -127,12 +143,38 @@ func (h *flowAPI) undoPrune(w http.ResponseWriter, r *http.Request) {
 	}
 	restored, err := h.st.RestorePrune(in.PruneID)
 	if err != nil {
+		// A prune that is unknown, already restored or past its window is the
+		// caller's mistake (400, with the store's explanation). Anything else
+		// (the database, a corrupt snapshot, a failed insert) is a storage
+		// failure: the batch is still listed as restorable, and the answer is
+		// a scrubbed 500.
+		pending, perr := h.st.PendingPrunes()
+		if perr != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		for _, p := range pending {
+			if p.ID == in.PruneID {
+				httpInternalErr(w, err)
+				return
+			}
+		}
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	h.epsCache.invalidate()
 	h.broadcast(map[string]any{"type": "flow.new"})
 	writeJSON(w, http.StatusOK, map[string]any{"restored": restored, "pruneId": in.PruneID})
+}
+
+// httpPruneErr answers a PruneFlows failure. The request was validated before
+// the store was called, so only the store's own input sentinel is a 400.
+func httpPruneErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrBlankHostPattern) {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func (h *Hub) startMaintenance(run func()) bool {

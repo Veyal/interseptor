@@ -1,9 +1,11 @@
 package control
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,6 +31,18 @@ const humanInputExpiry = time.Hour
 
 const expiredAnswerMsg = "expired — no answer given"
 
+// Pending prompts are held in memory and pushed to the UI banner, so they are
+// bounded by count as well as by time: a looping agent (or a caller that keeps
+// disconnecting and asking again) must not be able to queue thousands within
+// the expiry window. Answered prompts awaiting cleanup do not count.
+const (
+	maxHumanPromptsPerSource   = 20
+	maxHumanPromptsTotal       = 50
+	maxHumanPromptMessageBytes = 8 << 10
+	maxHumanPromptOptions      = 20
+	maxHumanPromptOptionBytes  = 512
+)
+
 type humanPrompt struct {
 	ID       int64    `json:"id"`
 	TS       int64    `json:"ts"`
@@ -37,6 +51,7 @@ type humanPrompt struct {
 	Answered bool     `json:"answered"`
 	Expired  bool     `json:"expired,omitempty"`
 	Answer   string   `json:"answer,omitempty"`
+	source   string   // who asked, for the per-source cap
 	done     chan struct{}
 }
 
@@ -54,12 +69,67 @@ func newHumanInput() *humanInput {
 }
 
 func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
-	hi.mu.Lock()
-	defer hi.mu.Unlock()
-	hi.seq++
-	p := &humanPrompt{ID: hi.seq, TS: hi.now().UnixMilli(), Message: msg, Options: opts, done: make(chan struct{})}
-	hi.prompts[p.ID] = p
+	p, _ := hi.createFrom("", msg, opts)
 	return p
+}
+
+// errTooManyPrompts is returned when the pending-prompt caps are reached.
+type errTooManyPrompts struct{ pending, limit int }
+
+func (e errTooManyPrompts) Error() string {
+	return fmt.Sprintf("too many unanswered prompts (%d pending, limit %d) — wait for the operator to answer one, or poll an earlier prompt with get_human_response instead of asking again", e.pending, e.limit)
+}
+
+// createFrom registers a prompt for source unless that source, or all sources
+// together, already have the maximum number pending. Prompts past their expiry
+// are expired first, so they do not count.
+func (hi *humanInput) createFrom(source, msg string, opts []string) (*humanPrompt, error) {
+	hi.mu.Lock()
+	var expiredIDs []int64
+	total, mine := 0, 0
+	for id := range hi.prompts {
+		p, expired := hi.expireLocked(id)
+		if expired {
+			expiredIDs = append(expiredIDs, id)
+		}
+		if p == nil || p.Answered {
+			continue
+		}
+		total++
+		if p.source == source {
+			mine++
+		}
+	}
+	var p *humanPrompt
+	var err error
+	switch {
+	case mine >= maxHumanPromptsPerSource:
+		err = errTooManyPrompts{mine, maxHumanPromptsPerSource}
+	case total >= maxHumanPromptsTotal:
+		err = errTooManyPrompts{total, maxHumanPromptsTotal}
+	default:
+		hi.seq++
+		p = &humanPrompt{ID: hi.seq, TS: hi.now().UnixMilli(), Message: msg, Options: opts, source: source, done: make(chan struct{})}
+		hi.prompts[p.ID] = p
+	}
+	hi.mu.Unlock()
+	for _, id := range expiredIDs {
+		hi.scheduleCleanup(id)
+	}
+	return p, err
+}
+
+// humanInputSource names who is asking, for the per-source cap: the
+// X-Interseptor-Source marker ("ai" for every MCP tool call), else "direct".
+func humanInputSource(r *http.Request) string {
+	src := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Interseptor-Source")))
+	if src == "" {
+		return "direct"
+	}
+	if len(src) > 64 {
+		src = src[:64]
+	}
+	return src
 }
 
 // get returns the prompt, lazily expiring it first if it's been pending
@@ -195,7 +265,25 @@ func (h *metaAPI) createHumanInput(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "message required")
 		return
 	}
-	p := h.hi.create(in.Message, in.Options)
+	if len(in.Message) > maxHumanPromptMessageBytes {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("message longer than %d bytes — ask a shorter question", maxHumanPromptMessageBytes))
+		return
+	}
+	if len(in.Options) > maxHumanPromptOptions {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("more than %d options", maxHumanPromptOptions))
+		return
+	}
+	for _, opt := range in.Options {
+		if len(opt) > maxHumanPromptOptionBytes {
+			httpErr(w, http.StatusBadRequest, fmt.Sprintf("an option is longer than %d bytes", maxHumanPromptOptionBytes))
+			return
+		}
+	}
+	p, err := h.hi.createFrom(humanInputSource(r), in.Message, in.Options)
+	if err != nil {
+		httpErr(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	h.broadcast(map[string]any{"type": "human.input"})
 	select {
 	case <-p.done:

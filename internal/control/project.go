@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/harx"
+	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -236,100 +237,125 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	flows, flowsSkipped := 0, 0
+	// Validate every remaining section before anything is written, so a
+	// malformed bundle is refused whole instead of leaving its earlier
+	// sections applied behind a failure.
+	if collBundle.Version > store.CollectionsBundleVersion {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("project contains a collections section of version %d; this build supports up to %d", collBundle.Version, store.CollectionsBundleVersion))
+		return
+	}
+	var entries []harx.Entry
 	if harData := bytes.TrimSpace(bundle.HAR); len(harData) > 0 && !bytes.Equal(harData, []byte("null")) {
-		entries, err := harx.Parse(harData)
-		if err != nil {
+		if entries, err = harx.Parse(harData); err != nil {
 			httpErr(w, http.StatusBadRequest, "project contains an invalid HAR: "+err.Error())
 			return
 		}
-		seen, err := h.st.FlowImportSignatures()
-		if err != nil {
-			httpInternalErr(w, err)
+	}
+	for i, rl := range bundle.Rules {
+		if msg := ruleProblem(ruleJSON(rl)); msg != "" {
+			httpErr(w, http.StatusBadRequest, fmt.Sprintf("project contains an invalid rule (entry %d): %s", i+1, msg))
 			return
 		}
-		for _, e := range entries {
-			fl, ok := harEntryFlow(e)
-			if !ok {
-				continue
-			}
-			inserted, err := h.insertImportedFlowOnce(fl, e.ReqBody, e.ResBody, seen)
-			if err != nil {
-				h.importFailed(w, err, flows)
-				return
-			}
-			if inserted {
-				flows++
-			} else {
-				flowsSkipped++
-			}
+	}
+	for i, sr := range bundle.Scope {
+		if err := importScopeRuleProblem(sr); err != nil {
+			httpErr(w, http.StatusBadRequest, fmt.Sprintf("project contains an invalid scope rule (entry %d): %v", i+1, err))
+			return
 		}
 	}
+
+	// Apply. The sections are separate writes and cannot be rolled back as
+	// one, so a storage failure reports exactly which were applied.
+	prog := &importProgress{counts: map[string]int{}}
+	fail := func(section string, err error) { h.importSectionFailed(w, err, section, prog) }
+
+	seen, err := h.st.FlowImportSignatures()
+	if err != nil {
+		fail("flows", err)
+		return
+	}
+	for _, e := range entries {
+		fl, ok := harEntryFlow(e)
+		if !ok {
+			continue
+		}
+		inserted, err := h.insertImportedFlowOnce(fl, e.ReqBody, e.ResBody, seen)
+		if err != nil {
+			fail("flows", err)
+			return
+		}
+		if inserted {
+			prog.counts["importedFlows"]++
+		} else {
+			prog.counts["skippedFlows"]++
+		}
+	}
+	prog.done("flows")
+
 	existingRules, err := h.st.ListRules()
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("rules", err)
 		return
 	}
 	ruleSeen := map[string]bool{}
 	for _, rl := range existingRules {
 		ruleSeen[ruleIdentity(rl)] = true
 	}
-	rulesImported, rulesSkipped := 0, 0
 	for i := range bundle.Rules {
 		key := ruleIdentity(bundle.Rules[i])
 		if ruleSeen[key] {
-			rulesSkipped++
+			prog.counts["skippedRules"]++
 			continue
 		}
 		bundle.Rules[i].ID = 0
 		if _, err := h.st.CreateRule(&bundle.Rules[i]); err != nil {
-			httpInternalErr(w, err)
+			fail("rules", err)
 			return
 		}
 		ruleSeen[key] = true
-		rulesImported++
+		prog.counts["importedRules"]++
 	}
+	prog.done("rules")
+
 	existingScope, err := h.st.ListScopeRules()
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("scope", err)
 		return
 	}
 	scopeSeen := map[string]bool{}
 	for _, sr := range existingScope {
 		scopeSeen[scopeRuleIdentity(sr)] = true
 	}
-	scopeImported, scopeSkipped := 0, 0
 	for i := range bundle.Scope {
 		key := scopeRuleIdentity(bundle.Scope[i])
 		if scopeSeen[key] {
-			scopeSkipped++
+			prog.counts["skippedScope"]++
 			continue
 		}
 		bundle.Scope[i].ID = 0
 		if _, err := h.st.CreateScopeRule(&bundle.Scope[i]); err != nil {
-			httpInternalErr(w, err)
+			fail("scope", err)
 			return
 		}
 		scopeSeen[key] = true
-		scopeImported++
+		prog.counts["importedScope"]++
 	}
+	prog.done("scope")
+
 	keptLocal, err := h.keptLocalNetworkSettings(bundle.Settings)
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("settings", err)
 		return
 	}
 	authzImported, authzKept, err := h.importAuthzIdentities(bundleIdentities)
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("settings", err)
 		return
 	}
+	prog.counts["importedIdentities"] = authzImported
 	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok {
-		if raw != "0" && raw != "1" {
-			httpErr(w, http.StatusBadRequest, "invalid originTLSVerify setting")
-			return
-		}
 		if err := h.setSetting(originTLSVerifySettingKey, raw); err != nil {
-			httpInternalErr(w, err)
+			fail("settings", err)
 			return
 		}
 		if h.SetOriginTLSVerify != nil {
@@ -340,7 +366,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	if raw, ok := bundle.Settings[originTLSVerifyBypassSettingKey]; ok {
 		hosts := parseHostList(raw)
 		if err := h.setSetting(originTLSVerifyBypassSettingKey, strings.Join(hosts, "\n")); err != nil {
-			httpInternalErr(w, err)
+			fail("settings", err)
 			return
 		}
 		if h.SetOriginTLSVerifyBypassHosts != nil {
@@ -348,30 +374,111 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
+	prog.done("settings")
+
 	notesOutcome, err := h.importNotes(bundle.Notes)
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("notes", err)
 		return
 	}
+	prog.done("notes")
 
 	collStats, err := h.st.ImportCollectionsBundle(collBundle)
 	if err != nil {
-		httpInternalErr(w, err)
+		fail("collections", err)
 		return
 	}
 
 	h.refreshRules()
 	h.refreshScope()
+	flows := prog.counts["importedFlows"]
 	if flows > 0 {
 		h.epsCache.invalidate() // imported flows add endpoints — drop the stale Map/endpoints aggregate
 		h.broadcast(map[string]any{"type": "flow.new"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
-		"skippedFlows": flowsSkipped, "skippedRules": rulesSkipped, "skippedScope": scopeSkipped,
+		"importedFlows": flows, "importedRules": prog.counts["importedRules"], "importedScope": prog.counts["importedScope"],
+		"skippedFlows": prog.counts["skippedFlows"], "skippedRules": prog.counts["skippedRules"], "skippedScope": prog.counts["skippedScope"],
 		"importedCollections": collStats, "keptLocalSettings": keptLocal, "notes": notesOutcome,
 		"importedIdentities": authzImported, "keptIdentities": authzKept,
 	})
+}
+
+// projectImportSections is the order a portable bundle is applied in.
+var projectImportSections = []string{"flows", "rules", "scope", "settings", "notes", "collections"}
+
+// importProgress records how far a portable import got.
+type importProgress struct {
+	applied []string       // sections applied completely, in order
+	counts  map[string]int // what was written, including by a section that then failed
+}
+
+func (p *importProgress) done(section string) { p.applied = append(p.applied, section) }
+
+// importSectionFailed answers a storage failure part-way through a portable
+// import. What was written before it is kept (each section is its own write),
+// so it is made live — rules and scope recompiled, History nudged — and the
+// response names the sections that were applied, the one that failed and the
+// ones that were not reached, instead of a bare "internal server error".
+func (h *projectAPI) importSectionFailed(w http.ResponseWriter, err error, section string, p *importProgress) {
+	log.Printf("control: 500: project import stopped in the %s section (applied: %v): %v", section, p.applied, err)
+	notApplied := []string{}
+	for i, name := range projectImportSections {
+		if name == section {
+			notApplied = append(notApplied, projectImportSections[i+1:]...)
+		}
+	}
+	applied := append([]string{}, p.applied...)
+	wrote := false
+	for key, n := range p.counts {
+		if strings.HasPrefix(key, "imported") && n > 0 {
+			wrote = true
+		}
+	}
+	if p.counts["importedRules"] > 0 {
+		h.refreshRules()
+	}
+	if p.counts["importedScope"] > 0 {
+		h.refreshScope()
+	}
+	if p.counts["importedFlows"] > 0 {
+		h.epsCache.invalidate()
+		h.broadcast(map[string]any{"type": "flow.new"})
+	}
+	msg := fmt.Sprintf("import stopped on a storage error in the %s section", section)
+	if len(applied) > 0 {
+		msg += "; already applied and kept: " + strings.Join(applied, ", ")
+	}
+	if n := p.counts["importedFlows"]; n > 0 && section == "flows" {
+		msg += fmt.Sprintf("; %d flow(s) were imported before it and kept", n)
+	}
+	if len(notApplied) > 0 {
+		msg += "; not applied: " + strings.Join(notApplied, ", ")
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]any{
+		"error":         msg,
+		"failedSection": section,
+		"applied":       applied,
+		"notApplied":    notApplied,
+		"counts":        p.counts,
+		"imported":      p.counts["importedFlows"],
+		"partial":       wrote || len(applied) > 0,
+	})
+}
+
+// importScopeRuleProblem applies the checks POST /api/scope makes to a bundled
+// scope rule, without changing it.
+func importScopeRuleProblem(r store.ScopeRule) error {
+	if r.Action != "include" && r.Action != "exclude" {
+		return fmt.Errorf("action must be include or exclude")
+	}
+	if r.Port < 0 || r.Port > 65535 {
+		return fmt.Errorf("port must be between 0 and 65535")
+	}
+	if s := strings.ToLower(r.Scheme); s != "" && s != "http" && s != "https" {
+		return fmt.Errorf("scheme must be http or https")
+	}
+	return scope.ValidateRule(r)
 }
 
 // importAuthzIdentities adds the bundle's saved authz identities to the local

@@ -973,14 +973,20 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	var err error
 	// An unknown side must not fall through to the request: side=response used
 	// to answer 200 with the request, which a caller cannot tell from the truth.
-	switch side := r.URL.Query().Get("side"); side {
-	case "res":
-		raw, err = h.rawResponseVariantResult(f, original)
-	case "", "req":
-		raw, err = h.rawRequestVariantResult(f, original)
+	side := r.URL.Query().Get("side")
+	switch side {
+	case "res", "", "req":
 	default:
 		httpErr(w, http.StatusBadRequest, "side must be req or res")
 		return
+	}
+	if done := h.streamRawMessage(w, f, side == "res", original); done {
+		return
+	}
+	if side == "res" {
+		raw, err = h.rawResponseVariantResult(f, original)
+	} else {
+		raw, err = h.rawRequestVariantResult(f, original)
 	}
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
@@ -988,6 +994,68 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write(raw)
+}
+
+// streamRawMessage writes one side of a flow as head + body straight from the
+// body store when the body needs no display decoding (no Content-Encoding the
+// inspector unpacks), which is every large upload and download. Building the
+// message in memory took two body-sized buffers per request. It reports false,
+// having written nothing, when the body must be decoded first (a compressed
+// body small enough to decode within the display cap).
+func (h *Hub) streamRawMessage(w http.ResponseWriter, f *store.Flow, res, original bool) bool {
+	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
+	if res {
+		hdrs, hash = f.ResHeaders, f.ResBodyHash
+	}
+	if original {
+		oh, ohash := f.OriginalReqHeaders, f.OriginalReqBodyHash
+		if res {
+			oh, ohash = f.OriginalResHeaders, f.OriginalResBodyHash
+		}
+		if oh != nil {
+			hdrs = oh
+		}
+		if ohash != "" {
+			hash = ohash
+		}
+	}
+	body, err := h.st.OpenBody(hash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
+		return true
+	}
+	defer body.Close()
+	enc := strings.ToLower(strings.TrimSpace(firstHeader(hdrs, "Content-Encoding")))
+	if enc != "" && enc != "identity" && supportsDisplayEncoding(enc) {
+		// A compressed body is decoded for display, up to decodeMax of output;
+		// past that the stored bytes are shown as they are. A stored body
+		// already larger than the cap cannot decode within it, so it is
+		// streamed as stored instead of being loaded only to be given up on.
+		st, ok := body.(interface{ Stat() (fs.FileInfo, error) })
+		if !ok {
+			return false
+		}
+		if info, err := st.Stat(); err != nil || info.Size() <= decodeMax {
+			return false
+		}
+	}
+	var b bytes.Buffer
+	if res {
+		fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
+		writeHeaders(&b, hdrs, "")
+	} else {
+		fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
+		writeHeaders(&b, hdrs, f.Host)
+	}
+	b.WriteString("\r\n")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if _, err := w.Write(b.Bytes()); err != nil {
+		return true
+	}
+	if _, err := io.Copy(w, body); err != nil {
+		log.Printf("control: stream raw flow %d: %v", f.ID, err)
+	}
+	return true
 }
 
 // getFlowBody streams just the (decoded) body bytes with Content-Type and a
@@ -1302,23 +1370,31 @@ const (
 )
 
 func validRule(w http.ResponseWriter, in ruleJSON) bool {
+	if msg := ruleProblem(in); msg != "" {
+		httpErr(w, http.StatusBadRequest, msg)
+		return false
+	}
+	return true
+}
+
+// ruleProblem returns why a match-and-replace rule cannot be saved ("" when it
+// can). The portable import uses it too: a rule the engine cannot compile makes
+// SetRules fail for the whole rule set.
+func ruleProblem(in ruleJSON) string {
 	switch in.Type {
 	case "req-header", "req-body", "res-header", "res-body":
 	default:
-		httpErr(w, http.StatusBadRequest, "type must be req-header, req-body, res-header, or res-body")
-		return false
+		return "type must be req-header, req-body, res-header, or res-body"
 	}
 	if len(in.Match) > maxRulePattern {
-		httpErr(w, http.StatusBadRequest, "match pattern too long")
-		return false
+		return "match pattern too long"
 	}
 	// Compile-check the regex the way the engine does (regexp.Compile). The
 	// engine's own error names a rule id, which is still 0 here.
 	if _, err := regexp.Compile(in.Match); err != nil {
-		httpErr(w, http.StatusBadRequest, "invalid match regex: "+err.Error())
-		return false
+		return "invalid match regex: " + err.Error()
 	}
-	return true
+	return ""
 }
 
 // refreshRules recompiles the live engine rule set and broadcasts the change.

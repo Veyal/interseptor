@@ -162,8 +162,8 @@ func (h *Hub) sliceStream(out *flowSliceJSON, hash string, stored int64, offset,
 	if err != nil {
 		return err
 	}
+	defer func() { rc.Close() }()
 	sniff, err := io.ReadAll(io.LimitReader(rc, sliceSniffBytes))
-	rc.Close()
 	if err != nil {
 		return err
 	}
@@ -175,15 +175,26 @@ func (h *Hub) sliceStream(out *flowSliceJSON, hash string, stored int64, offset,
 	if int64(offset) >= stored {
 		return nil
 	}
-	rc, err = h.st.OpenBody(hash)
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
 	// Read a few bytes either side so the window can snap to rune boundaries.
 	lead := min(offset, utf8.UTFMax)
-	if _, err := io.CopyN(io.Discard, rc, int64(offset-lead)); err != nil && err != io.EOF {
-		return err
+	// A stored body is a plain file: seek to the window. Reading and discarding
+	// everything before it made page k cost O(offset), so scrolling a large
+	// body was quadratic. The stored bytes are the displayed bytes here (this
+	// path is only taken for a body without a Content-Encoding), so a file
+	// offset is a text offset. A reader that cannot seek is skipped forward.
+	if sk, ok := rc.(io.Seeker); ok {
+		if _, err := sk.Seek(int64(offset-lead), io.SeekStart); err != nil {
+			return err
+		}
+	} else {
+		rc.Close()
+		if rc, err = h.st.OpenBody(hash); err != nil {
+			rc = io.NopCloser(strings.NewReader(""))
+			return err
+		}
+		if _, err := io.CopyN(io.Discard, rc, int64(offset-lead)); err != nil && err != io.EOF {
+			return err
+		}
 	}
 	win, err := io.ReadAll(io.LimitReader(rc, int64(lead+limit+utf8.UTFMax)))
 	if err != nil {
