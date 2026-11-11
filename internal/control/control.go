@@ -224,6 +224,9 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.snd.SetOwnPorts(h.ownListenerPorts)
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
+	// Grep inspects a bounded prefix of each body; read no more than that, or a
+	// run against large responses holds every whole body in memory at once.
+	h.intr.SetBodyPrefixReader(h.bodyPrefix)
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.oob = oob.New()
 	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })
@@ -1166,6 +1169,28 @@ func (h *Hub) bodyBytesResult(hash string) ([]byte, error) {
 	}
 	defer rc.Close()
 	return io.ReadAll(rc)
+}
+
+// bodyPrefix returns at most max bytes of a stored body and whether the body is
+// longer. Unlike bodyBytesUpTo, which returns nothing for an oversized body,
+// this is for callers that work on a prefix (Intruder grep).
+func (h *Hub) bodyPrefix(hash string, max int64) ([]byte, bool, error) {
+	if hash == "" || max <= 0 {
+		return nil, false, nil
+	}
+	rc, err := h.st.OpenBody(hash)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, max+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > max {
+		return b[:max], true, nil
+	}
+	return b, false, nil
 }
 
 func (h *Hub) bodyBytesUpTo(hash string, limit int64) ([]byte, bool, error) {
