@@ -118,6 +118,7 @@ func (h *Hub) mergeFile(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "merge failed: "+err.Error())
 		return
 	}
+	h.epsCache.invalidate() // merged flows add endpoints: drop the cached Map aggregate
 	h.broadcast(map[string]any{"type": "flow.new"})
 	h.broadcast(map[string]any{"type": "findings.update"})
 	writeJSON(w, http.StatusOK, stats)
@@ -169,6 +170,7 @@ func (h *Hub) mergePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordMergePresence("pull", base, label)
+	h.epsCache.invalidate()
 	h.broadcast(map[string]any{"type": "flow.new"})
 	h.broadcast(map[string]any{"type": "findings.update"})
 	writeJSON(w, http.StatusOK, stats)

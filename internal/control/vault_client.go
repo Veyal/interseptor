@@ -318,6 +318,7 @@ func (h *Hub) vaultMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordMergePresence("vault", base, label)
+	h.epsCache.invalidate()
 	h.broadcast(map[string]any{"type": "flow.new"})
 	h.broadcast(map[string]any{"type": "findings.update"})
 	writeJSON(w, http.StatusOK, stats)

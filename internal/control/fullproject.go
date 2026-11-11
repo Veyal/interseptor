@@ -27,6 +27,7 @@ import (
 // checks are global (shared across projects) and deliberately excluded.
 const (
 	archiveDBName           = "interceptor.db"
+	openedProjectDBName     = "interseptor.db" // what store.Open renames archiveDBName to
 	archiveBodyRoot         = "bodies"
 	archiveCodecRoot        = "codecs"
 	maxArchiveBytes         = 4 << 30 // 4 GiB compressed upload cap
@@ -351,14 +352,47 @@ func (h *Hub) projectImportDir(name string) (string, error) {
 	if h.GlobalDir == "" {
 		return "", fmt.Errorf("project storage location is not configured")
 	}
-	return filepath.Join(h.GlobalDir, "projects", name), nil
+	dir := filepath.Join(h.GlobalDir, "projects", name)
+	if h.isActiveProjectDir(dir) {
+		// Replacing the open project renames its directory away under the running
+		// store: captures keep going into a database that is deleted when the
+		// import finishes, and new bodies land in the imported copy.
+		return "", fmt.Errorf("project %q is currently open: switch to another project before importing over it", name)
+	}
+	return dir, nil
+}
+
+// isActiveProjectDir reports whether dir is the running project's directory.
+func (h *Hub) isActiveProjectDir(dir string) bool {
+	if h.ProjectDir == "" {
+		return false
+	}
+	a, errA := filepath.Abs(h.ProjectDir)
+	b, errB := filepath.Abs(dir)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) {
+		return true
+	}
+	ai, errA := os.Stat(a)
+	bi, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ai, bi)
 }
 
 // dirHasProject reports whether dir already holds an interseptor project (so an
 // import doesn't silently clobber a live engagement without --overwrite).
 func dirHasProject(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, archiveDBName))
-	return err == nil
+	// store.Open renames the archive's interceptor.db to interseptor.db the first
+	// time a project is opened, so a project that was ever used holds only the
+	// current name. Checking the archive name alone missed every such project:
+	// no 409 without overwrite, and overwrite=1 failed on a bare rename.
+	for _, name := range []string{archiveDBName, openedProjectDBName} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func installFullArchive(zipPath, destDir string, overwrite bool) error {

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -159,11 +160,19 @@ func requestIsHTTPS(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-// remoteIP returns the client IP (host portion of RemoteAddr) for rate limiting.
+// remoteIP returns the client IP (host portion of RemoteAddr) for rate limiting
+// and the allowlist. It is a bare address: an IPv6 peer arrives as
+// "[fd7a::5]:4444" and must come back without the brackets (and without a
+// zone), or net.ParseIP rejects it and an allowlisted IPv6 client never matches.
 func remoteIP(r *http.Request) string {
 	addr := r.RemoteAddr
-	if i := strings.LastIndexByte(addr, ':'); i > 0 {
-		return addr[:i]
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		addr = host
+	} else {
+		addr = strings.TrimPrefix(strings.TrimSuffix(addr, "]"), "[")
+	}
+	if i := strings.IndexByte(addr, '%'); i >= 0 {
+		addr = addr[:i]
 	}
 	return addr
 }

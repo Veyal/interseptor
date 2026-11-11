@@ -16,22 +16,29 @@ const maxHARImportBytes = 64 << 20
 // exportHAR streams the (optionally in-scope) history as a HAR 1.2 document.
 func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{
-		Limit:        atoiOr(q.Get("limit"), 10000),
+	limit := atoiOr(q.Get("limit"), 10000)
+	filter := store.FlowFilter{
+		Limit:        limit,
 		ExcludeFlags: store.FlagIntruder, // attack traffic is noise in an export
-	})
+	}
+	var flows []*store.Flow
+	var err error
+	if q.Get("inScope") == "1" {
+		// The scope predicate has to apply before the limit: filtering the newest
+		// `limit` rows afterwards exported nothing (or a fraction) whenever recent
+		// history was mostly out-of-scope noise.
+		filter.SortKey, filter.SortDir = "id", -1
+		want := limit
+		if want < 1 {
+			want = 200 // the store's default page for a non-positive limit
+		}
+		flows, _, err = h.queryInScopeFlowsFull(filter, want)
+	} else {
+		flows, err = h.st.QueryFlowsFilter(filter)
+	}
 	if err != nil {
 		httpInternalErr(w, err)
 		return
-	}
-	if q.Get("inScope") == "1" {
-		kept := flows[:0]
-		for _, f := range flows {
-			if h.sc.InScope(f) {
-				kept = append(kept, f)
-			}
-		}
-		flows = kept
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="interseptor.har"`)
