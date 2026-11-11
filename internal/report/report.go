@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -635,7 +636,11 @@ func sanitizeBody(s string) string {
 	s = strings.ReplaceAll(s, "\r", "\n")
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
+		// Trim what the HTML and Jira converters trim (strings.TrimSpace, i.e.
+		// every Unicode space) before they look for a line marker. Trimming only
+		// space and tab let a line indented with a no-break space, form feed or
+		// em space pass here unescaped and still open a heading there.
+		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
 		indent := line[:len(line)-len(trimmed)]
 		switch {
 		case strings.HasPrefix(trimmed, "#"):

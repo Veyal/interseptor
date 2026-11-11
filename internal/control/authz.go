@@ -316,6 +316,9 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	// say "tested 100 of 300 asked for" instead of presenting a subset as complete.
 	requested := 1
 	cappedEndpoints := false
+	// historyCapped: the target search stopped at its scan bound before it had
+	// read all of history, so older in-scope endpoints may not be in the run.
+	historyCapped := false
 	skipStatic := in.InScope
 	if in.SkipStatic != nil {
 		skipStatic = *in.SkipStatic
@@ -340,14 +343,13 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 			limit = maxBulkAuthzFlows
 			cappedEndpoints = true
 		}
-		raw, _ := h.st.QueryFlowsFilter(store.FlowFilter{
-			Limit:        limit * 5, // over-fetch; authzTargets dedupes + static filter
-			ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
-		})
-		flows = h.authzTargets(raw, skipStatic)
-		if len(flows) > limit {
-			flows = flows[:limit]
+		var scanCapped bool
+		flows, scanCapped, err = h.authzBulkTargets(limit, skipStatic)
+		if err != nil {
+			httpInternalErr(w, err)
+			return
 		}
+		historyCapped = scanCapped
 	}
 	if len(flows) == 0 {
 		httpErr(w, http.StatusBadRequest, "no in-scope endpoints to test")
@@ -373,6 +375,9 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 			"requested": requested,
 			"capped":    cappedEndpoints,
 			"maxFlows":  maxBulkAuthzFlows,
+			// scanCapped is true when history was larger than the target search
+			// reads; the sweep then covers the newest endpoints only.
+			"scanCapped": historyCapped,
 		},
 	}
 	kind := authzRunKindBulk
@@ -465,9 +470,64 @@ func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []by
 	return rr
 }
 
+// Bulk target search bounds: history is read newest first in slim pages until
+// the endpoint limit is met or authzBulkScanPages pages have been read.
+const (
+	authzBulkScanBatch = 1000
+	authzBulkScanPages = 50
+)
+
+// authzBulkTargets returns up to limit distinct in-scope endpoints, newest
+// first, each as the full captured flow to replay.
+//
+// The scope, static and duplicate filters run page by page until limit targets
+// are found. Applying them to one fixed-size page instead (the newest limit*5
+// rows) hid every in-scope endpoint older than that page behind out-of-scope
+// traffic, and reported the short result as the whole sweep.
+//
+// The tester's own replays (FlagAuthz) are never targets: they are newer than
+// the request they replayed, so they would be picked in its place, carrying the
+// replay's identity headers or a probe's deliberately invalid body.
+func (h *authzAPI) authzBulkTargets(limit int, skipStatic bool) (targets []*store.Flow, scanCapped bool, err error) {
+	filter := store.FlowFilter{
+		SortKey: "id", SortDir: -1, Limit: authzBulkScanBatch,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagAuthz,
+	}
+	seen := map[string]bool{}
+	for page := 0; len(targets) < limit; page++ {
+		if page == authzBulkScanPages {
+			return targets, true, nil
+		}
+		rows, err := h.st.QueryFlowsListFilter(filter)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, slim := range h.authzTargetsSeen(rows, skipStatic, seen) {
+			// The list query omits headers and body hashes; load the row to replay.
+			full, err := h.st.GetFlow(slim.ID)
+			if err != nil || full == nil {
+				continue // deleted between the two reads
+			}
+			if targets = append(targets, full); len(targets) == limit {
+				break
+			}
+		}
+		if len(rows) < authzBulkScanBatch {
+			break
+		}
+		filter.CursorID = rows[len(rows)-1].ID
+	}
+	return targets, false, nil
+}
+
 // authzTargets keeps in-scope flows deduped by method+host+path.
 func (h *authzAPI) authzTargets(flows []*store.Flow, skipStatic bool) []*store.Flow {
-	seen := map[string]bool{}
+	return h.authzTargetsSeen(flows, skipStatic, map[string]bool{})
+}
+
+// authzTargetsSeen is authzTargets with the duplicate set owned by the caller,
+// so endpoints stay deduplicated across pages.
+func (h *authzAPI) authzTargetsSeen(flows []*store.Flow, skipStatic bool, seen map[string]bool) []*store.Flow {
 	var out []*store.Flow
 	for _, f := range flows {
 		if !h.sc.InScope(f) || h.isOwnListener(f) {
@@ -801,12 +861,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		hdrs := cloneHeaders(ref.ReqHeaders)
-		if mode == "bearer" {
-			hdrs["Authorization"] = []string{"Bearer " + jwt}
-		} else {
-			delete(hdrs, "Authorization")
-		}
+		hdrs := crossHostHeaders(ref.ReqHeaders, mode, jwt)
 
 		flow, sendErr := h.snd.Send(sender.Request{
 			Method:    ref.Method,
@@ -852,6 +907,33 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	runID := h.persistAuthzRun(r, authzRunKindCrossHost, flowTarget(ref),
 		authzMatrixFromCrossHost(ref.Host, ref.Method, path, results), out)
 	writeJSONWithRunID(w, out, runID)
+}
+
+// crossHostHeaders builds the headers of one cross-host replay from the
+// reference request.
+//
+// The captured Host header is dropped: it names the reference host, and the
+// sender puts a Host entry on the wire as-is, so every other target used to
+// receive "Host: <reference>" and a shared front end answered for the
+// reference vhost on all of them. Without it each replay carries the Host of
+// the URL it is sent to.
+//
+// The captured Authorization is removed whatever its case (HTTP/2 and imported
+// captures store "authorization") before the replayed token is set, so exactly
+// one credential goes out in bearer mode and none in path mode.
+func crossHostHeaders(base map[string][]string, mode, jwt string) map[string][]string {
+	hdrs := make(map[string][]string, len(base)+1)
+	for k, vs := range base {
+		switch http.CanonicalHeaderKey(k) {
+		case "Host", "Authorization":
+			continue
+		}
+		hdrs[k] = append([]string(nil), vs...)
+	}
+	if mode == "bearer" {
+		hdrs["Authorization"] = []string{"Bearer " + jwt}
+	}
+	return hdrs
 }
 
 // crossHostResult is one host's reply to a cross-host token replay.

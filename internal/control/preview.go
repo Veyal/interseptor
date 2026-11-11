@@ -185,6 +185,11 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	caption := strings.TrimSpace(in.Caption)
 	if caption == "" {
 		caption = flowPreviewTitle(f)
+		if in.maskHeaders() {
+			// The default caption is stored on the finding and printed in the
+			// report; a masked image must not be captioned with the secret.
+			caption = maskPreviewTitle(caption)
+		}
 		if focused {
 			caption = focusCaption(caption, opts)
 		}
@@ -311,6 +316,9 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options, maskHeaders
 		// headers and the body are rendered as captured. The renderer applies
 		// it so a focus text found only in a masked value can be reported.
 		opts.Mask = redact.CredentialHeaders
+		// The title repeats the request target; mask its secret query values
+		// the same way so the chrome does not show what the request line hides.
+		opts.Title = maskPreviewTitle(opts.Title)
 	}
 	opts.Notices = info.Notices()
 	opts.Deadline = time.Now().Add(renderTimeout)
@@ -393,6 +401,16 @@ func writePreviewError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpInternalErr(w, err)
+}
+
+// maskPreviewTitle masks secret-named query values in a flow title with the
+// request-line rules of redact.CredentialHeaders. A title is one line; anything
+// else is left alone rather than parsed as a message.
+func maskPreviewTitle(title string) string {
+	if strings.ContainsAny(title, "\r\n") {
+		return title
+	}
+	return redact.CredentialHeaders(title)
 }
 
 func flowPreviewTitle(f *store.Flow) string {

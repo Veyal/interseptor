@@ -294,27 +294,19 @@ func (h *flowAPI) diffFlows(w http.ResponseWriter, r *http.Request) {
 // buildFlowDiff loads + decodes both flows' response bodies (capped at max) and
 // returns their diff. Shared by the REST handler and any internal caller.
 func (h *flowAPI) buildFlowDiff(fa, fb *store.Flow, max int) (flowDiff, error) {
-	bodyA, err := h.bodyBytesResult(fa.ResBodyHash)
+	// Read (and decompress) only the prefix that is compared. Loading both
+	// bodies whole and cutting them afterwards cost the full size of two
+	// captured downloads to compare a few kilobytes.
+	_, bodyA, truncA, err := h.bodyForDisplayLimit(fa.ResBodyHash, fa.ResHeaders, max)
 	if err != nil {
 		return flowDiff{}, err
 	}
-	bodyB, err := h.bodyBytesResult(fb.ResBodyHash)
+	_, bodyB, truncB, err := h.bodyForDisplayLimit(fb.ResBodyHash, fb.ResHeaders, max)
 	if err != nil {
 		return flowDiff{}, err
-	}
-	_, bodyA = decodeForDisplay(fa.ResHeaders, bodyA)
-	_, bodyB = decodeForDisplay(fb.ResHeaders, bodyB)
-	truncated := false
-	if len(bodyA) > max {
-		bodyA = bodyA[:max]
-		truncated = true
-	}
-	if len(bodyB) > max {
-		bodyB = bodyB[:max]
-		truncated = true
 	}
 	return diffResponses(fa.ID, fb.ID, fa.Status, fb.Status, fa.ResLen, fb.ResLen,
-		fa.ResHeaders, fb.ResHeaders, bodyA, bodyB, truncated), nil
+		fa.ResHeaders, fb.ResHeaders, bodyA, bodyB, truncA || truncB), nil
 }
 
 // parseFlowIDParam parses a positive int64 flow id from a query value.

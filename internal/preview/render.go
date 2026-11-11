@@ -56,15 +56,26 @@ const (
 	defaultMaxLines = 80
 	defaultMaxCols  = 100
 	prettyMaxBody   = 256 << 10
+	// prettyMaxOut bounds the pretty-printed form of a body. Indentation costs
+	// two spaces per nesting level on every line, so a few KiB of nested
+	// brackets expand quadratically (16 KiB of "[" became 32 MiB, 256 KiB
+	// several GiB). A body that would indent past this is drawn as captured.
+	prettyMaxOut = 4 << 20
+	// maxMarkupIndent caps the indent depth of the markup prettifier for the
+	// same reason; deeper elements stay at this depth.
+	maxMarkupIndent = 40
+	// maxTitleRunes caps the title drawn in the chrome. The title carries the
+	// captured path, and an unclipped one sets the image width.
+	maxTitleRunes = 200
 	// maxScale bounds Scale: 3x of a wide pane already exceeds the PNG cap, and
 	// the retry path downshifts MaxLines rather than the scale.
-	maxScale = 3
-	padX            = 16
-	padY            = 12
-	titleBarH       = 36
-	paneHeaderH     = 28
-	lineGap         = 2
-	paneGap         = 8
+	maxScale    = 3
+	padX        = 16
+	padY        = 12
+	titleBarH   = 36
+	paneHeaderH = 28
+	lineGap     = 2
+	paneGap     = 8
 )
 
 // Options controls layout and truncation for Render.
@@ -327,7 +338,7 @@ func RenderFlow(req, res []byte, opts Options) (RenderResult, error) {
 	if expired(o.Deadline) {
 		return RenderResult{}, ErrRenderTimeout
 	}
-	img, err := drawPreview(panes, o.Layout, o.MaxCols, strings.TrimSpace(o.Title), "Interseptor", bands, pal, o.Scale)
+	img, err := drawPreview(panes, o.Layout, o.MaxCols, clipTitle(o.Title), "Interseptor", bands, pal, o.Scale)
 	if err != nil {
 		return RenderResult{}, err
 	}
@@ -597,6 +608,25 @@ func cleanCaption(s string) string {
 		return r
 	}, s)
 	return clipText(strings.Join(strings.Fields(s), " "), MaxCaptionLen)
+}
+
+// clipTitle flattens the title to one line and elides its middle when it is
+// longer than maxTitleRunes, keeping the method and host at the start and the
+// status at the end.
+func clipTitle(s string) string {
+	s = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s))
+	if len(s) <= maxTitleRunes || utf8.RuneCountInString(s) <= maxTitleRunes {
+		return s
+	}
+	r := []rune(s)
+	tail := maxTitleRunes / 4
+	head := maxTitleRunes - tail - 1
+	return string(r[:head]) + "…" + string(r[len(r)-tail:])
 }
 
 func clipText(s string, n int) string {
@@ -874,6 +904,9 @@ func beautifyBody(body []byte) []byte {
 		if err := json.Compact(&compact, t); err != nil {
 			return body
 		}
+		if indentedJSONSize(compact.Bytes()) > prettyMaxOut {
+			return body
+		}
 		if err := json.Indent(&out, compact.Bytes(), "", "  "); err != nil {
 			return body
 		}
@@ -883,6 +916,58 @@ func beautifyBody(body []byte) []byte {
 		return beautifyMarkup(t)
 	}
 	return body
+}
+
+// indentedJSONSize is the exact size json.Indent(compact, "", "  ") would
+// write for compact (valid, already compacted) JSON, computed in one pass
+// without allocating, so the caller can refuse a quadratic expansion.
+func indentedJSONSize(compact []byte) int {
+	size, depth := 0, 0
+	inString, escaped, pendingOpen := false, false, false
+	for _, c := range compact {
+		if inString {
+			size++
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		closing := c == '}' || c == ']'
+		if pendingOpen && !closing {
+			// First value of a non-empty container: newline plus indent.
+			pendingOpen = false
+			depth++
+			size += 1 + 2*depth
+		}
+		switch c {
+		case '"':
+			inString = true
+			size++
+		case '{', '[':
+			pendingOpen = true
+			size++
+		case ',':
+			size += 2 + 2*depth
+		case ':':
+			size += 2
+		case '}', ']':
+			if pendingOpen {
+				pendingOpen = false // empty container stays "{}" / "[]"
+			} else {
+				depth--
+				size += 1 + 2*depth
+			}
+			size++
+		default:
+			size++
+		}
+	}
+	return size
 }
 
 // beautifyMarkup applies a light XML/HTML indent (same idea as the UI prettify).
@@ -899,7 +984,7 @@ func beautifyMarkup(body []byte) []byte {
 		if strings.HasPrefix(ln, "</") {
 			depth = max(0, depth-1)
 		}
-		out.WriteString(strings.Repeat("  ", depth))
+		out.WriteString(strings.Repeat("  ", min(depth, maxMarkupIndent)))
 		out.WriteString(ln)
 		out.WriteByte('\n')
 		if isOpenMarkupTag(ln) {
