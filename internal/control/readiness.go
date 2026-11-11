@@ -163,13 +163,20 @@ func (h *Hub) playbookNudge() string {
 			ids = append(ids, p.ID)
 		}
 	}
+	return playbookNudgeText(ids)
+}
+
+// playbookNudgeText words the nudge for the matching playbook ids: the count is
+// of every match, and the list names at most three of them.
+func playbookNudgeText(ids []string) string {
 	if len(ids) == 0 {
 		return ""
 	}
+	shown := ids
 	if len(ids) > 3 {
-		ids = append(ids[:3], "…")
+		shown = append(append([]string(nil), ids[:3]...), "…")
 	}
-	return itoa64(int64(len(ids))) + " playbook(s) apply to the newest flow (" + strings.Join(ids, ", ") + ") — list_playbooks or match_playbooks"
+	return itoa64(int64(len(ids))) + " playbook(s) apply to the newest flow (" + strings.Join(shown, ", ") + ") — list_playbooks or match_playbooks"
 }
 
 // trafficDetail says when History is empty *because a filter dropped the
