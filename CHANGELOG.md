@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.22.0` release.
+
 ## [2.22.0] - 2026-11-12
 
 > Minor release: a second and third review pass over the whole tree, about 180
