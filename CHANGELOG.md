@@ -206,6 +206,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The iOS device listing test no longer depends on macOS.** `TestAllDevicesReportsSimulatorErrorWhenNothingFound` asserts that a broken simulator backend reports its own error, but `SimctlAvailable` short-circuits on a non-macOS host, so the stubbed backend was never reached and the suite failed on Linux (the release and CI runners). The platform check is now an injectable hook the test sets, so the path is exercised on every OS. (`internal/ios/ios.go`, `internal/ios/device_target_test.go`.)
 
+- **The race suite gets a 30-minute limit in CI and the Makefile.** `internal/store` alone takes about six minutes under `-race` locally and longer on a shared runner, so Go's default ten-minute per-package limit failed the suite for being slow, not wrong, and blocked the release. (`Makefile`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`.)
+
 ### Changed
 
 - **Reloading the UI revalidates one file instead of about 190.** Stylesheets and modules are now linked under `/_v/<build id>/…` and served `immutable`; only the shell (`/`) is revalidated, so an upgrade is still picked up on the next load. A tab opened before an upgrade keeps working: a stale build prefix serves the current file as `no-cache`. Warm reload to first History rows, 70,000-flow project, headless Chrome: 6.7 s to 1.1 s at 40 ms round-trip latency, 11.4 s to 2.1 s at 150 ms, 104 ms to 81 ms on loopback. A cold first load is unchanged (the module graph is still fetched file by file). (`internal/control/ui_assets.go`, `internal/control/control.go`.)

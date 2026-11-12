@@ -42,7 +42,10 @@ jobs:
       - name: UI audit manifest digest is current
         run: go run ./tools/auditdigest
       - run: go test ./...
-      - run: CGO_ENABLED=1 go test -race ./...
+      # internal/store's race build is the slow one (about six minutes locally,
+      # more on a shared runner), so a passing package can still trip Go's
+      # default ten-minute per-package limit and fail the release for being slow.
+      - run: CGO_ENABLED=1 go test -race -timeout 30m ./...
 
   # Real-browser boot check for the vanilla-JS UI (no build step, no type
   # checker). ubuntu-latest ships google-chrome.

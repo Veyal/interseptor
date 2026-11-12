@@ -94,7 +94,9 @@ assistants alike. They describe how the existing code is written; match it.
 
 ## Before opening a PR
 
-- [ ] `go test ./...` and `go test -race ./...` pass
+- [ ] `go test ./...` and `go test -race ./...` pass. Pass `-timeout 30m`: the race build of
+  `internal/store` alone takes about six minutes locally and longer on a shared runner, so Go's
+  default ten-minute per-package limit fails it for being slow rather than wrong.
 - [ ] `make fmt-check` is clean (gofmt on the Go files you changed; CI enforces the same)
 - [ ] `go vet ./...` is clean
 - [ ] `make audit-digest` run if you changed anything under `cmd/`, `internal/`, `go.mod` or `go.sum`
