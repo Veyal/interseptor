@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-11-12
+
+> Minor release: a second and third review pass over the whole tree, about 180
+> fixes with tests. Two security fixes matter most: a request relayed by a
+> Host-preserving forwarder (Tailscale Serve or Funnel, a catch-all reverse
+> proxy) could borrow keyless loopback trust and mint API keys, and a finding
+> save could silently drop evidence an agent attached while the operator typed
+> (the save is now refused with the current finding instead of overwriting).
+> Also: in-scope History no longer dead-ends after 50,000 rows, Intruder and
+> macro requests stay on their target, the export scrub keeps where an OAuth
+> token is placed, curl exports and copies reproduce the capture byte for byte,
+> a large prune no longer builds its undo snapshot in memory (695 MB -> 10 MB),
+> and a cold UI load on a 70,000-flow project takes 4.4 s instead of 5.8 s at
+> 40 ms latency. Go 1.26 is now the minimum, because the patched x/net and
+> x/crypto releases that clear every reachable advisory require it.
+
 ### Fixed
 
 - **Resume external projects after restart.** Remember the full directory of the last opened project, including UI-selected folders, and report a missing folder instead of creating an empty replacement. The stored value is derived from the project that was actually opened rather than a second read of `active-project`, so another running instance rewriting that file cannot turn a remembered folder into its bare name; the file is written atomically with mode 0600, and the missing-folder error names `--project default` as the way out. (`cmd/interseptor/project.go`.)
