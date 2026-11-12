@@ -73,9 +73,16 @@ var ideviceExec = func(tool string, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// simctlHostOK reports whether this operating system can host simctl at all.
+// It is a variable so tests can exercise the "simctl is there but broken" path
+// on Linux too: the release workflow runs the suite on ubuntu, where the real
+// check would otherwise short-circuit before the stub is reached and silently
+// leave that path untested.
+var simctlHostOK = func() bool { return runtime.GOOS == "darwin" }
+
 // SimctlAvailable reports whether Xcode simctl is usable (macOS only).
 func SimctlAvailable() bool {
-	if runtime.GOOS != "darwin" {
+	if !simctlHostOK() {
 		return false
 	}
 	_, err := exec.LookPath("xcrun")

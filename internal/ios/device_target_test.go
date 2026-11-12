@@ -31,6 +31,15 @@ func stubIdevice(t *testing.T, fn func(tool string, args ...string) ([]byte, err
 // fakeTools puts executable stubs for the named tools on PATH so the
 // availability probes (exec.LookPath) answer without the real Xcode /
 // libimobiledevice installed.
+// fakeSimctlHost makes the platform gate report "macOS" for one test, so the
+// simulator path is exercised on every OS the suite runs on.
+func fakeSimctlHost(t *testing.T) {
+	t.Helper()
+	orig := simctlHostOK
+	simctlHostOK = func() bool { return true }
+	t.Cleanup(func() { simctlHostOK = orig })
+}
+
 func fakeTools(t *testing.T, names ...string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -102,6 +111,7 @@ func TestAllDevicesKeepsPhysicalWhenSimulatorBackendFails(t *testing.T) {
 
 // When neither backend yields anything, the error is still reported.
 func TestAllDevicesReportsErrorWhenBothBackendsFail(t *testing.T) {
+	fakeSimctlHost(t)
 	fakeTools(t, "xcrun", "idevice_id")
 	stubSimctl(t, func(args ...string) ([]byte, error) { return nil, errors.New("simctl broke") })
 	stubIdevice(t, func(tool string, args ...string) ([]byte, error) { return nil, errors.New("usb broke") })
@@ -113,6 +123,7 @@ func TestAllDevicesReportsErrorWhenBothBackendsFail(t *testing.T) {
 // A broken simulator backend with no phone attached must still say why:
 // "no booted simulator" would hide that simctl itself is unusable.
 func TestAllDevicesReportsSimulatorErrorWhenNothingFound(t *testing.T) {
+	fakeSimctlHost(t) // the release workflow runs this on Linux, where simctl cannot exist
 	fakeTools(t, "xcrun", "idevice_id")
 	stubSimctl(t, func(args ...string) ([]byte, error) {
 		return nil, errors.New("xcrun: unable to find utility \"simctl\"")
