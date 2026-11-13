@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.23.0` release.
+
 ## [2.23.0] - 2026-11-13
 
 > Minor release: History search can exclude terms. `-term` in the search box drops
