@@ -214,10 +214,13 @@ func appendFTSSearch(where []string, args []any, term string) ([]string, []any) 
 // lookups beats walking every match to find them: 274 ms against 438 ms for
 // three ids); those keep the IN form.
 func ftsDrivenListQuery(f FlowFilter, columns string, limit int) (string, []any, bool) {
-	if _, isID := flowSearchAsID(f.Search, f.SearchScope); isID || len(f.FlowIDs) > 0 {
+	// An excluded term is not text to match: the positive part drives the walk and
+	// the exclusions ride along as ordinary filters.
+	positive, excluded := SplitNegativeSearch(f.Search)
+	if _, isID := flowSearchAsID(positive, f.SearchScope); isID || len(f.FlowIDs) > 0 {
 		return "", nil, false
 	}
-	match := ftsMatchQuery(f.Search)
+	match := ftsMatchQuery(positive)
 	key, dir := normalizedFlowSort(f)
 	if match == "" || key != "id" {
 		return "", nil, false
@@ -238,6 +241,7 @@ func ftsDrivenListQuery(f FlowFilter, columns string, limit int) (string, []any,
 	}
 	rest := f
 	rest.Search = ""
+	rest.NotTerms = append(rest.NotTerms, excluded...)
 	where, whereArgs := buildFlowFilterWhere(rest)
 	q := "SELECT " + columns + " FROM (" + sub + ") AS fts_match CROSS JOIN flows ON flows.id = fts_match.fts_id"
 	if len(where) > 0 {

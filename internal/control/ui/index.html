@@ -283,7 +283,7 @@
     <div class="toolbar proxy-toolbar">
       <div class="search">
         <select id="fSearchScope" class="btn" title="Search in history" aria-label="Search scope"><option value="anywhere" selected>Anywhere</option><option value="body">Body</option><option value="id">ID</option><option value="script">Script</option></select>
-        <input id="fSearch" aria-label="Search history (method / host / path / id)" placeholder="Search method / host / path / #id…">
+        <input id="fSearch" aria-label="Search history; prefix a term with a minus sign to exclude it" placeholder="Search anywhere… (-.jpg excludes)" title="Use -term to exclude matches, e.g. -.jpg -analytics. Quote a term with a space: -&quot;image/png&quot;.">
       </div>
       <select id="fMethod" class="btn" aria-label="HTTP method filter"><option value="">All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>

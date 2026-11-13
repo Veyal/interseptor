@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
@@ -12,21 +13,30 @@ import (
 const maxFlowBodyScanFlows = 8000
 
 // FlowIDsBodySearch returns flow ids whose request or response body contains Search
-// case-insensitively. Other FlowFilter fields apply before candidate selection, and
-// so does the page cursor when History is sorted by id, so a later page searches the
+// case-insensitively, minus flows whose bodies contain one of its "-term"
+// exclusions. Other FlowFilter fields apply before candidate selection, and so
+// does the page cursor when History is sorted by id, so a later page searches the
 // bodies of older flows instead of re-reading the newest ones. Content-encoded
 // bodies (gzip, br, deflate, zstd) are decoded before matching. Body reads are
 // bounded and cached by hash. bound is the id of the last flow the capped scan read
 // when the window follows the id order (0 otherwise): rows past it were not
 // searched, so the caller pages on from there (FlowFilter.ScanBoundID).
 func (s *Store) FlowIDsBodySearch(f FlowFilter, maxScan int) (ids []int64, note string, bound int64, err error) {
-	term := strings.ToLower(strings.TrimSpace(f.Search))
+	positive, excluded := SplitNegativeSearch(f.Search)
+	term := strings.ToLower(strings.TrimSpace(positive))
 	if term == "" {
+		// Body scope matches bodies only: an exclusion with no term to include has
+		// no candidates, and an id is not a body match. An anywhere search over
+		// exclusions alone is handled by AnywhereSearchFilter instead.
 		return nil, "", 0, nil
 	}
 	base := f
 	base.Search = ""
-	ids, capped, bound, err := s.flowIDsBodyScan(base, term, maxScan, false)
+	// Body scope excludes on body text only (the scan below), not on stored
+	// fields, and carries no text predicate of its own.
+	base.NotTerms = nil
+	base.AnyText, base.AnyTextIDs = "", nil
+	ids, capped, bound, err := s.flowIDsBodyScan(base, term, excluded, maxScan, false)
 	if err != nil || !capped {
 		return ids, "", 0, err
 	}
@@ -37,25 +47,32 @@ func (s *Store) FlowIDsBodySearch(f FlowFilter, maxScan int) (ids []int64, note 
 // can page over. Stored fields (URL, method, MIME, client, error, note), request and
 // response headers, and tags are matched in SQL across every filtered flow; bodies
 // are read only for flows those fields do not already match, newest first (or from
-// the page cursor when sorted by id), up to maxScan flows. The returned filter has
-// Search cleared and carries AnyText/AnyTextIDs; note is non-empty when the body
-// scan reached its bound. When that window follows the id order, ScanBoundID stops
-// the page at the last scanned flow, so an older metadata match cannot be listed
-// ahead of body matches that were never read; the next page continues from there.
+// the page cursor when sorted by id), up to maxScan flows. "-term" tokens in the
+// search become exclusions of those same stored fields, so a term list can be
+// narrowed ("-.jpg -analytics") without reading any body. The returned filter has
+// Search cleared and carries AnyText/AnyTextIDs and NotTerms; note is non-empty
+// when the body scan reached its bound. When that window follows the id order,
+// ScanBoundID stops the page at the last scanned flow, so an older metadata match
+// cannot be listed ahead of body matches that were never read; the next page
+// continues from there.
 func (s *Store) AnywhereSearchFilter(f FlowFilter, maxScan int) (FlowFilter, string, error) {
-	term := strings.ToLower(strings.TrimSpace(f.Search))
+	positive, excluded := SplitNegativeSearch(f.Search)
 	out := f
 	out.Search = ""
+	out.NotTerms = append(append([]string(nil), f.NotTerms...), excluded...)
+	term := strings.ToLower(strings.TrimSpace(positive))
 	if term == "" {
+		// Exclusion-only searches still filter every stored surface in SQL; there
+		// is nothing to look for in a body.
 		return out, "", nil
 	}
 	// An id lookup (#123, id:123) is exact, not a text search: keep the term so
-	// the list query resolves it as an id.
-	if _, ok := flowSearchAsID(f.Search, ""); ok {
-		out.Search = f.Search
+	// the list query resolves it as an id. Its exclusions still apply.
+	if _, ok := flowSearchAsID(positive, ""); ok {
+		out.Search = positive
 		return out, "", nil
 	}
-	ids, capped, bound, err := s.flowIDsBodyScan(out, term, maxScan, true)
+	ids, capped, bound, err := s.flowIDsBodyScan(out, term, nil, maxScan, true)
 	if err != nil {
 		return out, "", err
 	}
@@ -94,10 +111,15 @@ func bodyScanFollowsCursor(f FlowFilter) bool {
 }
 
 // flowIDsBodyScan reads the bodies of at most maxScan filtered flows and returns the
-// ids whose request or response body contains term (already lower-cased). With
-// skipText, rows the AnyText SQL predicate already matches are not read, and the Go
-// metadata check catches matches SQLite's ASCII-only lower() cannot fold.
-func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText bool) ([]int64, bool, int64, error) {
+// ids whose request or response body contains term (already lower-cased) and none of
+// the excluded terms. With skipText, rows the AnyText SQL predicate already matches
+// are not re-read for the positive term, but they are still read when exclusions
+// apply because only the body can drop them; the Go metadata check catches matches
+// SQLite's ASCII-only lower() cannot fold.
+func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, maxScan int, skipText bool) ([]int64, bool, int64, error) {
+	if term == "" {
+		return nil, false, 0, nil
+	}
 	maxScan = maxScanOrDefault(maxScan)
 	base := f
 	base.AnyText, base.AnyTextIDs, base.ScanBoundID = "", nil, 0
@@ -131,8 +153,9 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 
 	type bodyRef struct{ hash, enc string }
 	type candidate struct {
-		id   int64
-		refs [2]bodyRef
+		id      int64
+		refs    [2]bodyRef
+		textHit bool // matched a stored field, so the body only matters for exclusions
 	}
 	var ids []int64
 	var candidates []candidate
@@ -148,11 +171,10 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 			return nil, false, 0, err
 		}
 		lastID = id
-		if skipText && anyFieldContains(term, scheme+"://"+host+path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders) {
-			ids = append(ids, id)
-			continue
-		}
 		c := candidate{id: id}
+		if skipText && anyFieldContains(term, scheme+"://"+host+path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders) {
+			c.textHit = true
+		}
 		for i, side := range [2][2]string{{reqH, reqHeaders}, {resH, resHeaders}} {
 			if side[0] == "" {
 				continue
@@ -164,9 +186,21 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 				keys = append(keys, ref)
 			}
 		}
-		if c.refs[0].hash != "" || c.refs[1].hash != "" {
-			candidates = append(candidates, c)
+		if c.refs[0].hash == "" && c.refs[1].hash == "" {
+			// Nothing stored to read: a stored-field match still counts, and an
+			// exclusion was already applied against those same fields in SQL.
+			if c.textHit {
+				ids = append(ids, id)
+			}
+			continue
 		}
+		if c.textHit && len(excluded) == 0 {
+			// The stored fields already matched and no exclusion can drop the row
+			// on body text, so there is nothing a read would decide.
+			ids = append(ids, id)
+			continue
+		}
+		candidates = append(candidates, c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, 0, err
@@ -174,8 +208,10 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 	rows.Close()
 
 	// Body reads dominate the cost (one file per distinct body), so they run on a
-	// small worker pool; each distinct body is read once per search.
-	hits := make([]bool, len(keys))
+	// small worker pool; each distinct body is read once and checked against the
+	// positive term and every exclusion.
+	needles := append([]string{term}, excluded...)
+	hits := make([][]bool, len(keys))
 	next := make(chan int)
 	var wg sync.WaitGroup
 	for w := 0; w < min(bodySearchWorkers, len(keys)); w++ {
@@ -183,8 +219,14 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 		go func() {
 			defer wg.Done()
 			for i := range next {
-				hit, err := s.encodedBodyContainsTerm(keys[i].hash, keys[i].enc, term, maxEndpointBodyReadBytes)
-				hits[i] = err == nil && hit
+				text, err := s.encodedBodyText(keys[i].hash, keys[i].enc, maxEndpointBodyReadBytes)
+				keyHits := make([]bool, len(needles))
+				if err == nil {
+					for n, needle := range needles {
+						keyHits[n] = strings.Contains(text, needle)
+					}
+				}
+				hits[i] = keyHits
 			}
 		}()
 	}
@@ -194,11 +236,19 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, maxScan int, skipText
 	close(next)
 	wg.Wait()
 	for _, c := range candidates {
+		matched, dropped := c.textHit, false
 		for _, ref := range c.refs {
-			if ref.hash != "" && hits[unique[ref]] {
-				ids = append(ids, c.id)
-				break
+			if ref.hash == "" {
+				continue
 			}
+			keyHits := hits[unique[ref]]
+			matched = matched || keyHits[0]
+			for _, negHit := range keyHits[1:] {
+				dropped = dropped || negHit
+			}
+		}
+		if matched && !dropped {
+			ids = append(ids, c.id)
 		}
 	}
 	capped := scanned == maxScan
@@ -245,23 +295,37 @@ func headerJSONContentEncoding(raw string) string {
 	return ""
 }
 
-// encodedBodyContainsTerm decodes a content-encoded body before matching, so a
-// gzip or brotli response captured from a browser is searchable like the inspector
-// shows it. A body that does not decode is matched as stored.
-func (s *Store) encodedBodyContainsTerm(hash, enc, term string, maxBytes int64) (bool, error) {
+// encodedBodyText decodes a content-encoded body before matching, so a gzip or
+// brotli response captured from a browser is searchable like the inspector shows
+// it. A body that does not decode is read as stored. The text is lower-cased once;
+// every search term is matched against it.
+func (s *Store) encodedBodyText(hash, enc string, maxBytes int64) (string, error) {
 	if enc == "" {
-		return s.bodyContainsTerm(hash, term, maxBytes)
+		return s.bodyText(hash, maxBytes)
 	}
 	rc, err := s.OpenBody(hash)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	data, ok, _ := codec.DecompressReaderLimit(enc, rc, int(maxBytes))
 	_ = rc.Close()
 	if !ok {
-		return s.bodyContainsTerm(hash, term, maxBytes)
+		return s.bodyText(hash, maxBytes)
 	}
-	return strings.Contains(strings.ToLower(string(data)), term), nil
+	return strings.ToLower(string(data)), nil
+}
+
+func (s *Store) bodyText(hash string, maxBytes int64) (string, error) {
+	rc, err := s.OpenBody(hash)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, maxBytes))
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(string(data)), nil
 }
 
 // anyTextPredicate is the SQL half of an anywhere search: the term (lower-cased)

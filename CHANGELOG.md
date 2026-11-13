@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **History search excludes terms with `-`.** `-term` in the search box drops the flows that match it, so noise filters read as one query (`api -.jpg -analytics`). Exclusions match the stored URL, method, MIME, client, error, note, tags and headers in anywhere scope and body text in body scope; in anywhere scope an exclusion-only search lists everything else. Each excluded term is its own chip, and clearing the query chip keeps the exclusions. (`internal/store/flows_search_terms.go`, `flows_list.go`, `flows_body_search.go`, `internal/control/ui/js/proxy-filters.js`, `proxy.js`, `docs/history-search.md`.)
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.22.0` release.

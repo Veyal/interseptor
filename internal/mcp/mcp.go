@@ -1325,11 +1325,11 @@ func (s *Server) registerTools() {
 	s.registerCollectionTools()
 	s.registerCollmatrixTools()
 	s.add("list_flows",
-		"Search captured flows → compact rows (id, method, host, path, status), newest first. Filters optional. search matches anywhere (path, headers and body) by default; pass searchScope=id|body to narrow it. Page older flows by passing the smallest id you have seen as cursor; when the reply has truncated:true, more remain. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
+		"Search captured flows → compact rows (id, method, host, path, status), newest first. Filters optional. search matches anywhere (path, headers and body) by default; pass searchScope=id|body to narrow it, and prefix a term with - to exclude it (search=\"api -.jpg\"). Page older flows with cursor=<smallest id seen>; truncated:true means more remain. includeTools=true (default) also lists Repeater/Intruder traffic that History hides; pass false for History-shaped results.",
 		obj(map[string]any{
 			"host":         p("string", "substring"),
 			"method":       pt("string"),
-			"search":       p("string", "substring matched across path, headers and body (see searchScope)"),
+			"search":       p("string", "matched across path, headers and body (see searchScope); -term excludes"),
 			"searchScope":  pe("default anywhere", "anywhere", "body", "id"),
 			"scheme":       pt("string"),
 			"status":       pr("class (4=4xx)", 1, 5),

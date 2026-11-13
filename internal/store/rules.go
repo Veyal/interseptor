@@ -115,6 +115,13 @@ type FlowFilter struct {
 	AnyText    string
 	AnyTextIDs []int64
 
+	// NotTerms drops flows whose stored URL, method, MIME, client, error, note,
+	// headers or tags contain the term (lower-cased; multiples are ANDed). The
+	// History search rewriter sets it from "-term" tokens in Search. Body text is
+	// excluded only in body scope, where the body scan applies it (see
+	// FlowIDsBodySearch) rather than this SQL.
+	NotTerms []string
+
 	HideBrowserNoise bool // hide the browser's own background traffic (flows_noise.go)
 
 	// ScanBoundID ends an id-ordered page at the last flow a capped body scan read

@@ -146,13 +146,21 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		where = append(where, "CASE WHEN instr(path, '?') > 0 THEN substr(path, 1, instr(path, '?') - 1) ELSE path END = ?")
 		args = append(args, f.EndpointPath)
 	}
-	if f.Search != "" {
-		if id, ok := flowSearchAsID(f.Search, f.SearchScope); ok {
+	// "-term" tokens are exclusions, never text to match; a caller may also name
+	// exclusions directly in NotTerms (the search rewriter does).
+	search, notFromSearch := SplitNegativeSearch(f.Search)
+	if search != "" {
+		if id, ok := flowSearchAsID(search, f.SearchScope); ok {
 			where = append(where, "id = ?")
 			args = append(args, id)
 		} else {
-			where, args = appendFTSSearch(where, args, f.Search)
+			where, args = appendFTSSearch(where, args, search)
 		}
+	}
+	for _, t := range append(notFromSearch, f.NotTerms...) {
+		pred, predArgs := anyTextPredicate(strings.ToLower(t), nil)
+		where = append(where, "NOT "+pred)
+		args = append(args, predArgs...)
 	}
 	if f.StatusClass >= 1 && f.StatusClass <= 5 {
 		lo := f.StatusClass * 100

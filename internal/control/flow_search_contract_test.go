@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -273,5 +274,57 @@ func Test_SavedFlowSearch_uses_typed_flow_and_project_scope(t *testing.T) {
 	// Then
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want project-scoped saved search", response.StatusCode)
+	}
+}
+
+func Test_ListFlows_search_minus_term_excludes_matches(t *testing.T) {
+	// Given: three flows matching the positive term, two of them noise.
+	h, s, _ := newHub(t)
+	keepID, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "api.example.com", Path: "/orders/1", Status: http.StatusOK})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, flow := range []*store.Flow{
+		{TS: time.UnixMilli(2), Method: "GET", Scheme: "https", Host: "cdn.example.com", Path: "/logo.jpg", Status: http.StatusOK},
+		{TS: time.UnixMilli(3), Method: "GET", Scheme: "https", Host: "analytics.example.com", Path: "/collect", Status: http.StatusOK},
+	} {
+		flow.TS = time.UnixMilli(int64(i + 2))
+		if _, insertErr := s.InsertFlow(flow); insertErr != nil {
+			t.Fatal(insertErr)
+		}
+	}
+	server := httptest.NewServer(h.Handler())
+	t.Cleanup(server.Close)
+
+	// When / Then
+	cases := []struct {
+		search string
+		want   []int64
+	}{
+		{"example.com", []int64{keepID, keepID + 1, keepID + 2}},
+		{"example.com -.jpg -analytics", []int64{keepID}},
+		{"-.jpg", []int64{keepID, keepID + 2}},
+	}
+	for _, tc := range cases {
+		response, err := http.Get(server.URL + "/api/flows?search=" + url.QueryEscape(tc.search))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Flows []flowJSON `json:"flows"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+			response.Body.Close()
+			t.Fatalf("search %q: %v", tc.search, err)
+		}
+		response.Body.Close()
+		got := make([]int64, len(result.Flows))
+		for i, fl := range result.Flows {
+			got[i] = fl.ID
+		}
+		slices.Sort(got)
+		if !slices.Equal(got, tc.want) {
+			t.Fatalf("search %q ids = %v, want %v", tc.search, got, tc.want)
+		}
 	}
 }

@@ -32,7 +32,11 @@ func TestUIHistoryKeepsRowsVisibleWithInspectorAndBanner(t *testing.T) {
 func TestUIHistorySearchChipNamesTheScope(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
 	requireUIContains(t, proxy,
-		"add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',f.search);",
+		"add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',searchTerms.positive);",
+		// A "-term" exclusion is a chip of its own, so the query chip never claims
+		// it and removing it edits the box instead of clearing the search.
+		"data-exterm=",
+		"function removeSearchTerm(i){setFilter('search',withoutSearchTerm(state.filters.search,i));}",
 		"syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();",
 	)
 }

@@ -20,7 +20,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget, pruneSelection } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices, splitSearchTerms, withoutSearchTerm, onlyExcludedTerms } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS, urlHost } from './copyas.js';
@@ -2150,7 +2150,8 @@ $('#fSearch').oninput=e=>{state.filters.search=e.target.value;renderChips();sche
 function syncSearchPlaceholder(){
   const inp=$('#fSearch'),sc=state.filters.searchScope||'anywhere';
   if(!inp)return;
-  inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search method / host / path / #id…';
+  inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search bodies… (-term excludes)':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search anywhere… (-.jpg excludes)';
+  inp.title='Use -term to exclude matches, e.g. \'-.jpg -analytics\'. Quote a term with a space: -"image/png".';
 }
 if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
@@ -2486,7 +2487,12 @@ export function setFilter(key,val){
   }
   state.filters[key]=val;syncControls();syncHideTlsFilter();renderChips();renderTagBar();loadFlows();
 }
-export function clearFilter(key){setFilter(key,'');}
+export function clearFilter(key){
+  // The search chip clears the positive query only: the excluded terms are separate
+  // chips, and clicking this one must not quietly bring the noise back.
+  if(key==='search'){const kept=onlyExcludedTerms(state.filters.search);if(kept&&kept!==state.filters.search)return setFilter('search',kept);}
+  setFilter(key,'');
+}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
   state.notesOnly=false;state.showManual=true;state.showAI=true;state.showCollection=true;state.inScopeOnly=false;state.hideTlsFailed=false;state.hideBrowserNoise=false;
@@ -2536,6 +2542,9 @@ export function addExclude(field,value){
   renderChips();loadFlows();
 }
 export function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
+// removeSearchTerm drops one "-term" from the search box, leaving the query and the
+// other exclusions as typed.
+function removeSearchTerm(i){setFilter('search',withoutSearchTerm(state.filters.search,i));}
 export function renderChips(){
   const f=state.filters,box=$('#chips'),items=[];
   const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><button type="button" class="x" data-clear="${k}" title="Remove filter" aria-label="Remove ${escAttr(k)} filter">${icon('close')}</button></span>`);};
@@ -2544,7 +2553,11 @@ export function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
-  add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',f.search);
+  // The search box carries exclusions too ("-.jpg -analytics"): show the positive
+  // query on its chip and every excluded term as its own removable chip.
+  const searchTerms=splitSearchTerms(f.search);
+  add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',searchTerms.positive);
+  searchTerms.exclude.forEach((term,i)=>{items.push(`<span class="chip not"><span>excluding <b>${esc(term)}</b></span><button type="button" class="x" data-exterm="${i}" title="Remove exclusion" aria-label="Stop excluding ${escAttr(term)}">${icon('close')}</button></span>`);});
   if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">${icon('close')}</button></span>`);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
   // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),
@@ -2561,6 +2574,7 @@ export function renderChips(){
   box.querySelectorAll('[data-toggle]').forEach(x=>x.onclick=()=>{$(x.dataset.toggle)?.click();});
   box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
   box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
+  box.querySelectorAll('[data-exterm]').forEach(x=>x.onclick=()=>removeSearchTerm(Number(x.dataset.exterm)));
   const htc=$('#chipHideTlsClear');if(htc)htc.onclick=()=>{state.hideTlsFailed=false;try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}syncHideTlsFilter();renderChips();loadFlows();};
   const cc=$('#chipsClear');if(cc)cc.onclick=clearAllFilters;
 }

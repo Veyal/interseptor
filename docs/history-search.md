@@ -22,6 +22,25 @@ Body and Anywhere searches inspect at most the latest 8,000 filtered flows. Each
 
 The normal response contains `flows` and `truncated`. `limit` defaults to 200 and accepts 1 through 5000. The server fetches one extra row to set `truncated`.
 
+## Excluding terms
+
+Prefix a term with `-` to drop the flows it matches. Exclusions are ordinary search
+tokens, so a noise filter is one query and reads the same in the UI search box:
+
+```text
+GET /api/flows?search=api+-.jpg+-analytics
+```
+
+- `-.jpg`, `-.pdf` drop a file extension. The URL includes the query string, so an extension or keyword anywhere in it matches.
+- `-analytics`, `-gtag` drop a keyword found in the URL, method, MIME type, client address, error, note, tag, or a request or response header.
+- `-"image/png"` quotes a term that contains a space, with or without the `-` prefix.
+- Exclusions AND with each other and with the positive query. In `anywhere` scope a search of exclusions alone leaves everything else: `search=-.jpg+-.pdf` lists History without those files. `body` scope still needs a positive term, so an exclusion-only body search returns nothing.
+- In `anywhere` scope an exclusion matches the stored fields above, not response bodies; the body is read only to find the positive term. `body` scope excludes on body text. `id` scope ignores exclusions unless they also match the stored fields of that flow.
+- The 8,000-flow and 256 KiB caps below are unchanged: an exclusion does not widen the scan.
+
+The UI shows each excluded term as its own removable chip, and clearing the query
+chip keeps the exclusions in place.
+
 ## Saved Starlark searches
 
 Use a saved search when string matching isn't enough. Each script defines `match(flow)` and returns a Starlark boolean. The `flow` value exposes:

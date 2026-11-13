@@ -7,7 +7,8 @@ User-facing capabilities in the current release. For a tour of the menus, see th
 - **Live history** — every flow captured (metadata in SQLite, bodies content-addressed on disk),
   filterable/searchable, with a raw/pretty request & response inspector and right-click filters.
   Search supports metadata, headers, tags, and bounded body matching, plus deterministic saved
-  Starlark predicates for custom Anywhere searches. See [history search](history-search.md).
+  Starlark predicates for custom Anywhere searches. A `-term` excludes matches, so noise such as
+  `-.jpg` or `-analytics` is one query. See [history search](history-search.md).
 - **Intercept workflow** — hold / forward (with edits) / drop **requests *and* responses**, plus
   ordered **match-&-replace** rules.
 - **Repeater** — sandboxed HTML Render and raw/pretty response views; multi-tab; re-send any request, edit it freely, inspect the response, and keep every send with its owning tab across request edits, tab switches, and reloads until that tab closes (long histories expose older sends in bounded rendering batches).
