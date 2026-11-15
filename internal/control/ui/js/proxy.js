@@ -20,7 +20,7 @@ import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget, pruneSelection } from './proxy-selection.js';
-import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices, splitSearchTerms, withoutSearchTerm, onlyExcludedTerms } from './proxy-filters.js';
+import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices, splitSearchTerms, withoutSearchTerm, onlyExcludedTerms, hasEffectiveSearch, formatSearchLiteral } from './proxy-filters.js';
 import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS, urlHost } from './copyas.js';
@@ -99,6 +99,7 @@ const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst wind
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let flowSearchCursor=0;        // id a capped body search stopped at; the next page starts there
+let flowSearchCursorVal=null;  // optional sort-key value for non-id cursors (e.g. stopped in-scope scan)
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowPageInflight=null;     // that fetch, so End's sweep can wait on it
 let flowSweeping=false;        // End is paging to the oldest flow
@@ -1265,7 +1266,7 @@ function buildFlowParams(){
   const q=new URLSearchParams();
   const f=state.filters;
   if(f.scheme)q.set('scheme',f.scheme);
-  if(f.search){
+  if(hasEffectiveSearch(f)){
     q.set('search',f.search);
     if(f.searchScope==='script')q.set('savedSearch',f.search);
     else if(f.searchScope&&f.searchScope!=='anywhere')q.set('searchScope',f.searchScope);
@@ -1292,6 +1293,7 @@ function buildFlowParams(){
 // paging then continues from that id instead of from the last listed row.
 function applyPageMore(d,count,pageSize=FLOW_FETCH){
   flowSearchCursor=d&&d.searchMore?Number(d.searchCursor)||0:0;
+  flowSearchCursorVal=flowSearchCursor>0&&d&&d.searchCursorVal!=null?String(d.searchCursorVal):null;
   flowHasMore=count>pageSize||flowSearchCursor>0;
 }
 // continueShortSearch keeps a search paging (one bounded scan per request) while
@@ -1359,6 +1361,7 @@ export async function loadFlows(){
   flowLoadError=null;
   flowHasMore=false;
   flowSearchCursor=0;
+  flowSearchCursorVal=null;
   updateTruncBanner();
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
@@ -1433,6 +1436,7 @@ async function fetchFlowPage(loadEpoch,pageEpoch,pageSize){
       if(!last){flowHasMore=false;return;}
       appendFlowCursor(q,last);
     }
+    if(flowSearchCursor&&flowSearchCursorVal!==null)q.set('curVal',flowSearchCursorVal);
     q.set('limit',String(pageSize+1));
     const d=await api('/api/flows?'+q.toString());
     if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
@@ -2151,7 +2155,7 @@ function syncSearchPlaceholder(){
   const inp=$('#fSearch'),sc=state.filters.searchScope||'anywhere';
   if(!inp)return;
   inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search bodies… (-term excludes)':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search anywhere… (-.jpg excludes)';
-  inp.title='Use -term to exclude matches, e.g. \'-.jpg -analytics\'. Quote a term with a space: -"image/png".';
+  inp.title='Use -term to exclude matches (e.g. \'-.jpg -analytics\'). Quote phrases (-"image/png") or leading-dash literals ("-admin").';
 }
 if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();renderChips();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
@@ -2423,7 +2427,7 @@ export function renderScope(){
     <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
     <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
     <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
-    <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"></td>
+    <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"${r.pathWarning?` title="${escAttr(r.pathWarning)}"`:''}></td>
     <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
     <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete scope rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
@@ -2446,7 +2450,7 @@ function rememberScopeDraft(id,tr){
 }
 async function updateScope(id,tr){
   const upd=rememberScopeDraft(id,tr),pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)})),revision=scopeMutationRevision.get(id);
-  try{await pending;if(revision===scopeMutationRevision.get(id)&&scopeDrafts.get(id)===upd){scopeDrafts.delete(id);toast('scope saved');}}
+  try{const saved=await pending;if(revision===scopeMutationRevision.get(id)&&scopeDrafts.get(id)===upd){scopeDrafts.delete(id);if(saved&&saved.pathWarning)toast('Scope rule saved. '+saved.pathWarning,'warn');else toast('scope saved');}}
   catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toastError('Scope rule not saved',e);}}
 }
 async function deleteScope(id){
@@ -2490,7 +2494,7 @@ export function setFilter(key,val){
 export function clearFilter(key){
   // The search chip clears the positive query only: the excluded terms are separate
   // chips, and clicking this one must not quietly bring the noise back.
-  if(key==='search'){const kept=onlyExcludedTerms(state.filters.search);if(kept&&kept!==state.filters.search)return setFilter('search',kept);}
+  if(key==='search'&&state.filters.searchScope!=='script'){const kept=onlyExcludedTerms(state.filters.search);if(kept&&kept!==state.filters.search)return setFilter('search',kept);}
   setFilter(key,'');
 }
 export function clearAllFilters(){
@@ -2502,7 +2506,7 @@ export function clearAllFilters(){
   syncScopeToggle(false);
   syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||state.hideBrowserNoise||!state.showCollection);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||hasEffectiveSearch(f)||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI||state.hideBrowserNoise||!state.showCollection);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -2553,9 +2557,9 @@ export function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
-  // The search box carries exclusions too ("-.jpg -analytics"): show the positive
-  // query on its chip and every excluded term as its own removable chip.
-  const searchTerms=splitSearchTerms(f.search);
+  // The search box carries exclusions too ("-.jpg -analytics"), except in
+  // saved-script mode where the box holds one script name.
+  const searchTerms=f.searchScope==='script'?{positive:String(f.search||'').trim(),exclude:[]}:splitSearchTerms(f.search);
   add('search',{body:'body',id:'id',script:'saved search'}[f.searchScope]||'search',searchTerms.positive);
   searchTerms.exclude.forEach((term,i)=>{items.push(`<span class="chip not"><span>excluding <b>${esc(term)}</b></span><button type="button" class="x" data-exterm="${i}" title="Remove exclusion" aria-label="Stop excluding ${escAttr(term)}">${icon('close')}</button></span>`);});
   if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">${icon('close')}</button></span>`);
@@ -2567,10 +2571,13 @@ export function renderChips(){
   });
   const hasFilters=items.length>0;
   if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ${icon('close')}</button>`);
-  box.innerHTML=items.join('');
+  const nextHTML=items.join('');
+  syncFiltersButton();
+  if(box._chipsHTML===nextHTML)return;
+  box._chipsHTML=nextHTML;
+  box.innerHTML=nextHTML;
   box.classList.toggle('has',hasFilters);
   const bar=$('#activeFilterBar');if(bar)bar.hidden=!hasFilters;
-  syncFiltersButton();
   box.querySelectorAll('[data-toggle]').forEach(x=>x.onclick=()=>{$(x.dataset.toggle)?.click();});
   box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
   box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
@@ -2700,7 +2707,7 @@ function flowFilterRoot(f){
     {head:'FILTER',items:[
       {label:'This host',val:f.host,on:state.filters.host===f.host,act:()=>setFilter('host',f.host)},
       dom&&dom!==f.host?{label:'This domain (+subs)',val:dom,on:state.filters.host===dom,act:()=>setFilter('host',dom)}:null,
-      {label:'This path',val:f.path,act:()=>setFilter('search',f.path)},
+      {label:'This path',val:f.path,act:()=>setFilter('search',formatSearchLiteral(f.path))},
       {label:'This method',val:f.method,on:state.filters.method===f.method,act:()=>setFilter('method',f.method)},
       cls?{label:'This status class',val:cls+'xx',on:state.filters.status===String(cls),act:()=>setFilter('status',String(cls))}:null,
     ]},
@@ -2798,7 +2805,7 @@ function flowColumnRoot(f,field){
   }
   if(field==='path'){
     return {label:'Path',val:f.path,children:[
-      {label:'Filter path',val:f.path,act:()=>setFilter('search',f.path)},
+      {label:'Filter path',val:f.path,act:()=>setFilter('search',formatSearchLiteral(f.path))},
       {label:'Exclude path',val:f.path,danger:true,act:()=>addExclude('path',f.path)},
       {label:'Copy path',icon:'copy',act:()=>copyText(f.path,'path copied')},
     ]};
@@ -2850,7 +2857,7 @@ export function showInspectorCtx(x,y,side){
       {label:'Copy',icon:'copy',act:()=>copyText(sel,'copied')},
       {label:'Encode / decode selection',icon:'codec',val:short,children:DEC_OPS.map(([op,label])=>({label,act:()=>copyDecoded(sel,op)}))},
       {label:'Send selection to',icon:'arrow-up',children:[
-        {label:'History search filter',icon:'search',val:short,act:()=>setFilter('search',sel)},
+        {label:'History search filter',icon:'search',val:short,act:()=>setFilter('search',formatSearchLiteral(sel))},
         {label:'Decoder',icon:'decode',act:()=>openDecoder(sel)},
         {label:'Map search (body)',icon:'map',val:short,act:()=>focusMapSearch(sel,'body')},
         looksLikeHost(sel)?{label:'Scope',icon:'scope',val:sel,act:()=>addHostToScope(sel)}:null,
@@ -2920,7 +2927,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())r
 // registers the actions it owns: the Decoder, the History search filter and the
 // roots of the fallback workspace menu.
 registerCtxDecoder(text=>openDecoder(text||''));
-registerCtxHistorySearch(text=>{if(text)setFilter('search',text);});
+registerCtxHistorySearch(text=>{if(text)setFilter('search',formatSearchLiteral(text));});
 registerWorkspaceCtxSection(()=>({head:'WORKSPACE',items:[
   {label:'Command palette',icon:'search',val:modShortcut('K'),act:()=>import('./cmdk.js').then(m=>m.cmdkOpen()).catch(e=>toastError('Command palette failed',e))},
   // Browsers reserve Ctrl/⌘+T for their own tabs, so the chord is only
@@ -2959,7 +2966,7 @@ function showWsFrameCtx(e,frame){
     ]},
     {label:'Decode payload',icon:'codec',children:DEC_OPS.map(([dop,label])=>({label,act:()=>copyDecoded(text,dop)}))},
     {label:'Open in Decoder',icon:'decode',act:()=>openDecoder(text)},
-    {label:'Filter History by opcode',icon:'filter',val:op,act:()=>setFilter('search',op)},
+    {label:'Filter History by opcode',icon:'filter',val:op,act:()=>setFilter('search',formatSearchLiteral(op))},
   ]}]);
 }
 wireSelectionDecode($('#reqView'),$('#reqDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'req'}:null});
@@ -3604,7 +3611,7 @@ function watchPanelHeader() {
 // search field is still on screen in row B, so its own value is not one of them.
 function phoneFilterCount() {
   const n = activeFilterCount(state);
-  return state.filters && state.filters.search ? Math.max(0, n - 1) : n;
+  return hasEffectiveSearch(state.filters) ? Math.max(0, n - 1) : n;
 }
 function syncPhoneFiltersBtn() {
   const btn = $('#proxyFiltersBtn');

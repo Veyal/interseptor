@@ -217,7 +217,7 @@ func ftsDrivenListQuery(f FlowFilter, columns string, limit int) (string, []any,
 	// An excluded term is not text to match: the positive part drives the walk and
 	// the exclusions ride along as ordinary filters.
 	positive, excluded := SplitNegativeSearch(f.Search)
-	if _, isID := flowSearchAsID(positive, f.SearchScope); isID || len(f.FlowIDs) > 0 {
+	if _, isID := flowSearchAsID(positive, f.SearchScope); isID || f.SearchScope == "id" || len(f.FlowIDs) > 0 {
 		return "", nil, false
 	}
 	match := ftsMatchQuery(positive)
@@ -241,7 +241,7 @@ func ftsDrivenListQuery(f FlowFilter, columns string, limit int) (string, []any,
 	}
 	rest := f
 	rest.Search = ""
-	rest.NotTerms = append(rest.NotTerms, excluded...)
+	rest.NotTerms = append(append([]string(nil), f.NotTerms...), excluded...)
 	where, whereArgs := buildFlowFilterWhere(rest)
 	q := "SELECT " + columns + " FROM (" + sub + ") AS fts_match CROSS JOIN flows ON flows.id = fts_match.fts_id"
 	if len(where) > 0 {

@@ -33,9 +33,9 @@ GET /api/flows?search=api+-.jpg+-analytics
 
 - `-.jpg`, `-.pdf` drop a file extension. The URL includes the query string, so an extension or keyword anywhere in it matches.
 - `-analytics`, `-gtag` drop a keyword found in the URL, method, MIME type, client address, error, note, tag, or a request or response header.
-- `-"image/png"` quotes a term that contains a space, with or without the `-` prefix.
-- Exclusions AND with each other and with the positive query. In `anywhere` scope a search of exclusions alone leaves everything else: `search=-.jpg+-.pdf` lists History without those files. `body` scope still needs a positive term, so an exclusion-only body search returns nothing.
-- In `anywhere` scope an exclusion matches the stored fields above, not response bodies; the body is read only to find the positive term. `body` scope excludes on body text. `id` scope ignores exclusions unless they also match the stored fields of that flow.
+- `-"image/png"` quotes a term that contains a space; wrap a term starting with `-` inside quotes (`"-admin"`, `"-image/png"`) to search for it literally instead of excluding it.
+- Exclusions AND with each other and with the positive query. In `anywhere` scope a search of exclusions alone leaves everything else: `search=-.jpg+-.pdf` lists History without those files. `body` and `id` scopes still require a positive match (a body query or a numeric flow ID), so an exclusion-only search — or a non-numeric positive query in `id` scope — returns nothing.
+- In `anywhere` scope an exclusion matches the stored fields above, not response bodies; the body is read only to find the positive term. `body` scope excludes on body text. `id` scope matches the numeric flow ID unless an exclusion matches the stored fields of that flow.
 - The 8,000-flow and 256 KiB caps below are unchanged: an exclusion does not widen the scan.
 
 The UI shows each excluded term as its own removable chip, and clearing the query

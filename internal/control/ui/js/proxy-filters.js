@@ -8,7 +8,8 @@
 export function activeFilterCount(st) {
   const f = st.filters || {};
   let n = 0;
-  for (const k of ['scheme', 'method', 'status', 'host', 'search', 'tag']) if (f[k]) n++;
+  for (const k of ['scheme', 'method', 'status', 'host', 'tag']) if (f[k]) n++;
+  if (hasEffectiveSearch(f)) n++;
   n += (f.exclude || []).length;
   if (st.notesOnly) n++;
   if (st.inScopeOnly) n++;
@@ -52,30 +53,55 @@ function rawSearchTokens(input) {
   return tokens;
 }
 
-// isExcludedToken mirrors the server's rule: "-term" excludes, a lone "-" is text.
-function isExcludedToken(raw) {
-  const token = raw.replaceAll('"', '');
-  return token.startsWith('-') && token.length > 1;
+function parseRawToken(raw) {
+  const canExclude = !raw.startsWith('"');
+  const hadQuote = raw.includes('"');
+  const text = raw.replaceAll('"', '');
+  if (canExclude && text.startsWith('-') && (text.length > 1 || hadQuote)) {
+    const term = text.slice(1).trim().toLowerCase();
+    return term ? { kind: 'exclude', term } : null;
+  }
+  if (!text.trim()) return null;
+  return { kind: 'positive', text };
 }
 
 // splitSearchTerms mirrors internal/store/flows_search_terms.go: a token prefixed
-// with "-" excludes matching flows; the other tokens are the positive query.
-// Quotes group a term that contains a space, with or without the prefix. Only the
-// server decides which rows match; this copy labels the exclusion chips and edits
-// the box, so keep the two rules in step (both have a case-per-rule test).
+// with unquoted "-" excludes matching flows; a token beginning with a quote
+// (such as `"-admin"`) stays literal positive text. Quotes group spaces with or
+// without the "-" prefix. Only the server decides which rows match; this copy labels
+// the exclusion chips and edits the box, so keep the two rules in step.
 export function splitSearchTerms(input) {
   const positive = [];
   const exclude = [];
   for (const raw of rawSearchTokens(input)) {
-    const token = raw.replaceAll('"', '');
-    if (isExcludedToken(raw)) {
-      const term = token.slice(1).trim().toLowerCase();
-      if (term && !exclude.includes(term)) exclude.push(term);
-    } else if (token) {
-      positive.push(token);
+    const tok = parseRawToken(raw);
+    if (!tok) continue;
+    if (tok.kind === 'exclude') {
+      if (!exclude.includes(tok.term)) exclude.push(tok.term);
+    } else {
+      positive.push(tok.text);
     }
   }
   return { positive: positive.join(' '), exclude };
+}
+
+// hasEffectiveSearch reports whether a search filter has a query, exclusion,
+// or saved script name (ignoring whitespace-only inputs or empty -"").
+export function hasEffectiveSearch(f) {
+  if (!f || !f.search) return false;
+  if (f.searchScope === 'script') return String(f.search).trim().length > 0;
+  const { positive, exclude } = splitSearchTerms(f.search);
+  return Boolean(positive || exclude.length);
+}
+
+// formatSearchLiteral wraps values starting with "-" (other than a bare "-")
+// in quotes so context menu and selection actions run positive searches.
+export function formatSearchLiteral(value) {
+  const s = String(value == null ? '' : value);
+  const trimmed = s.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('-') && trimmed.length > 1) return '"' + trimmed + '"';
+  return s;
 }
 
 // withoutSearchTerm removes the index-th exclusion (every copy of that term) and
@@ -85,15 +111,18 @@ export function withoutSearchTerm(input, index) {
   const target = exclude[index];
   if (target == null) return String(input == null ? '' : input);
   return rawSearchTokens(input).filter((raw) => {
-    if (!isExcludedToken(raw)) return true;
-    return raw.replaceAll('"', '').slice(1).trim().toLowerCase() !== target;
+    const tok = parseRawToken(raw);
+    return !tok || tok.kind !== 'exclude' || tok.term !== target;
   }).join(' ');
 }
 
 // onlyExcludedTerms keeps the exclusions of a search and drops the positive query,
 // so clearing the search chip does not also un-hide the noise the operator excluded.
 export function onlyExcludedTerms(input) {
-  return rawSearchTokens(input).filter(isExcludedToken).join(' ');
+  return rawSearchTokens(input).filter((raw) => {
+    const tok = parseRawToken(raw);
+    return Boolean(tok && tok.kind === 'exclude');
+  }).join(' ');
 }
 
 // BROWSER_NOISE mirrors internal/store/flows_noise.go (the server applies it

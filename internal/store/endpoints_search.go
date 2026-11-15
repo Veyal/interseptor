@@ -1,9 +1,11 @@
 package store
 
 import (
+	"database/sql"
 	"fmt"
-	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -22,39 +24,39 @@ func (s *Store) Endpoints(f EndpointFilter) ([]Endpoint, string, error) {
 	scope := normalizeEndpointSearchScope(f.SearchScope)
 	term := strings.TrimSpace(f.Search)
 	if term == "" {
-		eps, err := s.queryEndpointsAggregate(f, "", scope)
+		eps, err := s.queryEndpointsAggregate(f, "", scope, nil)
 		return eps, "", err
 	}
 	switch scope {
 	case EndpointSearchHeaders:
-		eps, err := s.queryEndpointsAggregate(f, term, scope)
+		eps, err := s.queryEndpointsAggregate(f, term, scope, nil)
 		return eps, "", err
 	case EndpointSearchBody:
 		keys, note, err := s.endpointKeysBodySearch(f)
 		if err != nil {
 			return nil, "", err
 		}
+		if len(keys) == 0 {
+			return nil, note, nil
+		}
 		base := f
 		base.Search = ""
-		eps, err := s.queryEndpointsAggregate(base, "", EndpointSearchPath)
-		if err != nil {
-			return nil, "", err
-		}
-		return filterEndpointsByKeys(eps, keys), note, nil
+		eps, err := s.queryEndpointsAggregate(base, "", EndpointSearchPath, keys)
+		return eps, note, err
 	case EndpointSearchAll:
 		keys, note, err := s.endpointKeysAllSearch(f)
 		if err != nil {
 			return nil, "", err
 		}
+		if len(keys) == 0 {
+			return nil, note, nil
+		}
 		base := f
 		base.Search = ""
-		eps, err := s.queryEndpointsAggregate(base, "", EndpointSearchPath)
-		if err != nil {
-			return nil, "", err
-		}
-		return filterEndpointsByKeys(eps, keys), note, nil
+		eps, err := s.queryEndpointsAggregate(base, "", EndpointSearchPath, keys)
+		return eps, note, err
 	default:
-		eps, err := s.queryEndpointsAggregate(f, term, EndpointSearchPath)
+		eps, err := s.queryEndpointsAggregate(f, term, EndpointSearchPath, nil)
 		return eps, "", err
 	}
 }
@@ -68,7 +70,7 @@ func normalizeEndpointSearchScope(scope string) string {
 	}
 }
 
-func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string) ([]Endpoint, error) {
+func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string, onlyKeys map[endpointKey]struct{}) ([]Endpoint, error) {
 	where, args := endpointBaseWhere(f)
 	term = strings.TrimSpace(term)
 	if term != "" {
@@ -99,8 +101,9 @@ func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string) ([
 	      GROUP BY host, method, path` + having + `
 	      )
 	      SELECT a.host, a.method, a.path,
-	             f.scheme, f.port, f.status, f.res_body_hash, f.res_len,
-	             a.last_id, a.hits, a.statuses
+	             COALESCE(f.scheme, ''), COALESCE(f.port, 0), COALESCE(f.status, 0),
+	             COALESCE(f.res_body_hash, ''), COALESCE(f.res_len, 0),
+	             a.last_id, a.hits, COALESCE(a.statuses, '')
 	      FROM agg a
 	      JOIN flows f ON f.id = a.last_id
 	      ORDER BY a.host, a.path, a.method`
@@ -110,18 +113,70 @@ func (s *Store) queryEndpointsAggregate(f EndpointFilter, term, scope string) ([
 		return nil, err
 	}
 	defer rows.Close()
+
 	var out []Endpoint
+	softIdx := map[string]int{}
+	var softHashes []string
 	for rows.Next() {
 		var e Endpoint
 		var statusCSV string
 		if err := rows.Scan(&e.Host, &e.Method, &e.Path, &e.Scheme, &e.Port, &e.LastStatus, &e.ResBodyHash, &e.ResLen, &e.LastFlowID, &e.Hits, &statusCSV); err != nil {
 			return nil, err
 		}
+		if onlyKeys != nil {
+			if _, ok := onlyKeys[endpointKey{e.Host, e.Method, e.Path}]; !ok {
+				continue
+			}
+		}
 		e.Statuses = parseStatusCSV(statusCSV)
-		e.Soft404 = s.endpointSoft404(e.LastStatus, e.ResBodyHash)
+		if e.LastStatus >= 200 && e.LastStatus < 400 && e.ResBodyHash != "" {
+			if _, seen := softIdx[e.ResBodyHash]; !seen {
+				softIdx[e.ResBodyHash] = len(softHashes)
+				softHashes = append(softHashes, e.ResBodyHash)
+			}
+		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(softHashes) > 0 {
+		softHits := s.checkSoft404Hashes(softHashes)
+		for i := range out {
+			if out[i].LastStatus >= 200 && out[i].LastStatus < 400 && out[i].ResBodyHash != "" {
+				out[i].Soft404 = softHits[softIdx[out[i].ResBodyHash]]
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) checkSoft404Hashes(hashes []string) []bool {
+	hits := make([]bool, len(hashes))
+	workers := min(bodySearchWorkers, len(hashes))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var rawBuf []byte
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= len(hashes) {
+					return
+				}
+				var data []byte
+				var err error
+				data, rawBuf, err = s.readRawBodyPrefixInto(hashes[i], maxEndpointBodyReadBytes, rawBuf)
+				if err == nil {
+					hits[i] = isSoft404Mutable(data)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return hits
 }
 
 func endpointBaseWhere(f EndpointFilter) ([]string, []any) {
@@ -148,7 +203,7 @@ func (s *Store) endpointKeysBodySearch(f EndpointFilter) (map[endpointKey]struct
 		return nil, "", nil
 	}
 	where, args := endpointBaseWhere(f)
-	q := `SELECT host, method, path, req_body_hash, res_body_hash FROM flows`
+	q := `SELECT host, method, path, COALESCE(req_body_hash, ''), COALESCE(res_body_hash, '') FROM flows`
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -161,43 +216,96 @@ func (s *Store) endpointKeysBodySearch(f EndpointFilter) (map[endpointKey]struct
 	}
 	defer rows.Close()
 
-	hashHit := map[string]bool{}
-	keys := map[endpointKey]struct{}{}
+	type rowRefs struct {
+		key    endpointKey
+		reqIdx int
+		resIdx int
+	}
+	hashIdx := map[string]int{}
+	var hashes []string
+	addHash := func(h string) int {
+		if h == "" {
+			return -1
+		}
+		if idx, seen := hashIdx[h]; seen {
+			return idx
+		}
+		idx := len(hashes)
+		hashIdx[h] = idx
+		hashes = append(hashes, h)
+		return idx
+	}
+
+	var candidates []rowRefs
 	scanned := 0
 	for rows.Next() {
 		scanned++
-		var host, method, path, reqH, resH string
+		var host, method, path, reqH, resH sql.NullString
 		if err := rows.Scan(&host, &method, &path, &reqH, &resH); err != nil {
 			return nil, "", err
 		}
-		k := endpointKey{host: host, method: method, path: path}
-		for _, hash := range []string{reqH, resH} {
-			if hash == "" {
-				continue
-			}
-			hit, ok := hashHit[hash]
-			if !ok {
-				var err error
-				hit, err = s.bodyContainsTerm(hash, term, maxEndpointBodyReadBytes)
-				if err != nil {
-					hit = false
-				}
-				hashHit[hash] = hit
-			}
-			if hit {
-				keys[k] = struct{}{}
-				break
-			}
+		rIdxReq := addHash(reqH.String)
+		rIdxRes := addHash(resH.String)
+		if rIdxReq < 0 && rIdxRes < 0 {
+			continue
 		}
+		candidates = append(candidates, rowRefs{
+			key:    endpointKey{host: host.String, method: method.String, path: path.String},
+			reqIdx: rIdxReq,
+			resIdx: rIdxRes,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", err
+	}
+	rows.Close()
+
+	keys := map[endpointKey]struct{}{}
+	if len(hashes) > 0 {
+		hits := s.matchRawBodyTerm(hashes, term, maxEndpointBodyReadBytes)
+		for _, c := range candidates {
+			if (c.reqIdx >= 0 && hits[c.reqIdx]) || (c.resIdx >= 0 && hits[c.resIdx]) {
+				keys[c.key] = struct{}{}
+			}
+		}
 	}
 	var note string
 	if scanned >= maxEndpointBodyScanFlows {
 		note = fmt.Sprintf("Body search scanned the latest %d flows (limit). Narrow by domain or query if results look incomplete.", maxEndpointBodyScanFlows)
 	}
 	return keys, note, nil
+}
+
+func (s *Store) matchRawBodyTerm(hashes []string, lowerTerm string, maxBytes int64) []bool {
+	hits := make([]bool, len(hashes))
+	matcher := prepareBodyMatcher([]string{lowerTerm})
+	workers := min(bodySearchWorkers, len(hashes))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var rawBuf []byte
+			var one [1]bool
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= len(hashes) {
+					return
+				}
+				var data []byte
+				var err error
+				data, rawBuf, err = s.readRawBodyPrefixInto(hashes[i], maxBytes, rawBuf)
+				if err == nil {
+					one[0] = false
+					matcher.matchInto(data, one[:])
+					hits[i] = one[0]
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return hits
 }
 
 func (s *Store) endpointKeysAllSearch(f EndpointFilter) (map[endpointKey]struct{}, string, error) {
@@ -241,46 +349,4 @@ func (s *Store) endpointKeysAllSearch(f EndpointFilter) (map[endpointKey]struct{
 		keys[k] = struct{}{}
 	}
 	return keys, note, nil
-}
-
-func (s *Store) endpointSoft404(status int, resBodyHash string) bool {
-	if status < 200 || status >= 400 || resBodyHash == "" {
-		return false
-	}
-	rc, err := s.OpenBody(resBodyHash)
-	if err != nil {
-		return false
-	}
-	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, maxEndpointBodyReadBytes))
-	if err != nil {
-		return false
-	}
-	return isSoft404Content(data)
-}
-
-func (s *Store) bodyContainsTerm(hash, term string, maxBytes int64) (bool, error) {
-	rc, err := s.OpenBody(hash)
-	if err != nil {
-		return false, err
-	}
-	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, maxBytes))
-	if err != nil {
-		return false, err
-	}
-	return strings.Contains(strings.ToLower(string(data)), strings.ToLower(term)), nil
-}
-
-func filterEndpointsByKeys(eps []Endpoint, keys map[endpointKey]struct{}) []Endpoint {
-	if len(keys) == 0 {
-		return nil
-	}
-	out := make([]Endpoint, 0, len(keys))
-	for _, e := range eps {
-		if _, ok := keys[endpointKey{e.Host, e.Method, e.Path}]; ok {
-			out = append(out, e)
-		}
-	}
-	return out
 }

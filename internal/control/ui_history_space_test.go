@@ -41,6 +41,18 @@ func TestUIHistorySearchChipNamesTheScope(t *testing.T) {
 	)
 }
 
+// Saved Starlark search names can contain '-' and spaces (e.g. "auth -admin");
+// the chip and its clear button treat saved searches as a single script name, not
+// "-term" exclusions, and editing a regex-shaped scope rule warns about anchoring.
+func TestUIHistorySavedSearchChipAndUpdateScopeWarning(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"f.searchScope==='script'",
+		"state.filters.searchScope!=='script'",
+		"saved.pathWarning",
+	)
+}
+
 // The "scope switch moved" tip is for viewers who knew the old layout.
 func TestUIHistoryScopeCoachTipOnlyForReturningViewers(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"strconv"
 	"strings"
 	"time"
@@ -99,15 +100,43 @@ func (s *Store) statusClassIsCommon(f FlowFilter) bool {
 
 func scanFlowList(row scanner) (*Flow, error) {
 	var (
-		f        Flow
-		tsMillis int64
+		f          Flow
+		tsMillis   int64
+		method     sql.NullString
+		scheme     sql.NullString
+		host       sql.NullString
+		port       sql.NullInt64
+		path       sql.NullString
+		httpVer    sql.NullString
+		status     sql.NullInt64
+		reqLen     sql.NullInt64
+		resLen     sql.NullInt64
+		mime       sql.NullString
+		durationMs sql.NullInt64
+		clientAddr sql.NullString
+		flowErr    sql.NullString
+		note       sql.NullString
 	)
 	if err := row.Scan(
-		&f.ID, &tsMillis, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.HTTPVersion, &f.Status,
-		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &f.Note,
+		&f.ID, &tsMillis, &method, &scheme, &host, &port, &path, &httpVer, &status,
+		&reqLen, &resLen, &mime, &durationMs, &clientAddr, &flowErr, &f.Flags, &note,
 	); err != nil {
 		return nil, err
 	}
+	f.Method = method.String
+	f.Scheme = scheme.String
+	f.Host = host.String
+	f.Port = int(port.Int64)
+	f.Path = path.String
+	f.HTTPVersion = httpVer.String
+	f.Status = int(status.Int64)
+	f.ReqLen = reqLen.Int64
+	f.ResLen = resLen.Int64
+	f.Mime = mime.String
+	f.DurationMs = durationMs.Int64
+	f.ClientAddr = clientAddr.String
+	f.Error = flowErr.String
+	f.Note = note.String
 	f.TS = time.UnixMilli(tsMillis).UTC()
 	return &f, nil
 }
@@ -149,7 +178,19 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 	// "-term" tokens are exclusions, never text to match; a caller may also name
 	// exclusions directly in NotTerms (the search rewriter does).
 	search, notFromSearch := SplitNegativeSearch(f.Search)
-	if search != "" {
+	if f.SearchScope == "id" {
+		if search != "" {
+			if id, ok := flowSearchAsID(search, f.SearchScope); ok {
+				where = append(where, "id = ?")
+				args = append(args, id)
+			} else {
+				where = append(where, "1 = 0")
+			}
+		} else if len(notFromSearch) > 0 {
+			// An exclusion alone has no id to select in id scope.
+			where = append(where, "1 = 0")
+		}
+	} else if search != "" {
 		if id, ok := flowSearchAsID(search, f.SearchScope); ok {
 			where = append(where, "id = ?")
 			args = append(args, id)

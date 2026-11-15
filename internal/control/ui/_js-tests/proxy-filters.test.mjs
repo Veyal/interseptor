@@ -85,8 +85,28 @@ test('hiding collection flows counts as an active filter and a popover filter', 
 });
 
 
-import { methodChoices } from '../js/proxy-filters.js';
+import { methodChoices, hasEffectiveSearch } from '../js/proxy-filters.js';
 test('methodChoices always offers the common verbs and adds unusual ones seen', () => {
   assert.deepEqual(methodChoices([]), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
   assert.deepEqual(methodChoices(['GET', 'PROPFIND', 'CONNECT'], 'TRACE'), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PROPFIND']);
+});
+
+test('whitespace and empty exclusions do not count as active filters', () => {
+  for (const search of ['   ', '\t\n', '"   "', '-"   "', '-""']) {
+    const s = base();
+    s.filters.search = search;
+    assert.equal(hasEffectiveSearch(s.filters), false, `search=${JSON.stringify(search)}`);
+    assert.equal(activeFilterCount(s), 0, `activeFilterCount for ${JSON.stringify(search)}`);
+    assert.equal(emptyStateModel(s, { proxyAddr: '127.0.0.1:8080' }).kind, 'empty-first', `emptyStateModel for ${JSON.stringify(search)}`);
+  }
+  const scriptState = base();
+  scriptState.filters.search = 'auth -admin';
+  scriptState.filters.searchScope = 'script';
+  assert.equal(hasEffectiveSearch(scriptState.filters), true);
+  assert.equal(activeFilterCount(scriptState), 1);
+
+  const quotedDash = base();
+  quotedDash.filters.search = '"-admin"';
+  assert.equal(hasEffectiveSearch(quotedDash.filters), true);
+  assert.equal(activeFilterCount(quotedDash), 1);
 });

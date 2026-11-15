@@ -1,11 +1,15 @@
 package store
 
 import (
+	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Veyal/interseptor/internal/codec"
 )
@@ -137,8 +141,19 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, ma
 			order = " ORDER BY id ASC"
 		}
 	}
-	q := `SELECT id, scheme, host, path, method, mime, client_addr, error, note,
-		req_headers, res_headers, req_body_hash, res_body_hash FROM flows`
+
+	// Only U+0130 ('İ' -> 'i') and U+212A ('K' -> 'k') fold from non-ASCII to
+	// ASCII under Go's strings.ToLower, so pure-ASCII queries without 'i' or 'k'
+	// are already answered exhaustively by SQLite's ASCII lower() above and need
+	// neither the 8 metadata columns nor Go-side lowercasing.
+	termHigh := hasHighByteString(term)
+	needMetaCheck := skipText && (termHigh || strings.ContainsAny(term, "ik"))
+	selectCols := `id, req_headers, res_headers, req_body_hash, res_body_hash`
+	if needMetaCheck {
+		selectCols = `id, scheme, host, path, method, mime, client_addr, error, note,
+		req_headers, res_headers, req_body_hash, res_body_hash`
+	}
+	q := `SELECT ` + selectCols + ` FROM flows`
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -166,16 +181,23 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, ma
 	for rows.Next() {
 		scanned++
 		var id int64
-		var scheme, host, path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders, reqH, resH string
-		if err := rows.Scan(&id, &scheme, &host, &path, &method, &mime, &clientAddr, &flowErr, &note, &reqHeaders, &resHeaders, &reqH, &resH); err != nil {
+		var scheme, host, path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders, reqH, resH sql.NullString
+		if needMetaCheck {
+			err = rows.Scan(&id, &scheme, &host, &path, &method, &mime, &clientAddr, &flowErr, &note, &reqHeaders, &resHeaders, &reqH, &resH)
+		} else {
+			err = rows.Scan(&id, &reqHeaders, &resHeaders, &reqH, &resH)
+		}
+		if err != nil {
 			return nil, false, 0, err
 		}
 		lastID = id
 		c := candidate{id: id}
-		if skipText && anyFieldContains(term, scheme+"://"+host+path, method, mime, clientAddr, flowErr, note, reqHeaders, resHeaders) {
-			c.textHit = true
+		if needMetaCheck && (termHigh || anyStringHasHighByte(scheme.String, host.String, path.String, method.String, mime.String, clientAddr.String, flowErr.String, note.String, reqHeaders.String, resHeaders.String)) {
+			if anyFieldContains(term, scheme.String+"://"+host.String+path.String, method.String, mime.String, clientAddr.String, flowErr.String, note.String, reqHeaders.String, resHeaders.String) {
+				c.textHit = true
+			}
 		}
-		for i, side := range [2][2]string{{reqH, reqHeaders}, {resH, resHeaders}} {
+		for i, side := range [2][2]string{{reqH.String, reqHeaders.String}, {resH.String, resHeaders.String}} {
 			if side[0] == "" {
 				continue
 			}
@@ -187,16 +209,12 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, ma
 			}
 		}
 		if c.refs[0].hash == "" && c.refs[1].hash == "" {
-			// Nothing stored to read: a stored-field match still counts, and an
-			// exclusion was already applied against those same fields in SQL.
 			if c.textHit {
 				ids = append(ids, id)
 			}
 			continue
 		}
 		if c.textHit && len(excluded) == 0 {
-			// The stored fields already matched and no exclusion can drop the row
-			// on body text, so there is nothing a read would decide.
 			ids = append(ids, id)
 			continue
 		}
@@ -207,44 +225,50 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, ma
 	}
 	rows.Close()
 
+	needles := make([]string, 1+len(excluded))
+	needles[0] = term
+	copy(needles[1:], excluded)
+	stride := len(needles)
+	hits := make([]bool, len(keys)*stride)
+	matcher := prepareBodyMatcher(needles)
+
 	// Body reads dominate the cost (one file per distinct body), so they run on a
-	// small worker pool; each distinct body is read once and checked against the
-	// positive term and every exclusion.
-	needles := append([]string{term}, excluded...)
-	hits := make([][]bool, len(keys))
-	next := make(chan int)
+	// bounded worker pool; each worker reuses scratch buffers to keep GC flat.
+	workers := min(bodySearchWorkers, len(keys))
+	var next atomic.Int64
 	var wg sync.WaitGroup
-	for w := 0; w < min(bodySearchWorkers, len(keys)); w++ {
+	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range next {
-				text, err := s.encodedBodyText(keys[i].hash, keys[i].enc, maxEndpointBodyReadBytes)
-				keyHits := make([]bool, len(needles))
-				if err == nil {
-					for n, needle := range needles {
-						keyHits[n] = strings.Contains(text, needle)
-					}
+			var rawBuf, decBuf []byte
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= len(keys) {
+					return
 				}
-				hits[i] = keyHits
+				var data []byte
+				var err error
+				data, rawBuf, decBuf, err = s.readEncodedBodyPrefixInto(keys[i].hash, keys[i].enc, maxEndpointBodyReadBytes, rawBuf, decBuf)
+				if err != nil {
+					continue
+				}
+				matcher.matchInto(data, hits[i*stride:(i+1)*stride])
 			}
 		}()
 	}
-	for i := range keys {
-		next <- i
-	}
-	close(next)
 	wg.Wait()
+
 	for _, c := range candidates {
 		matched, dropped := c.textHit, false
 		for _, ref := range c.refs {
 			if ref.hash == "" {
 				continue
 			}
-			keyHits := hits[unique[ref]]
-			matched = matched || keyHits[0]
-			for _, negHit := range keyHits[1:] {
-				dropped = dropped || negHit
+			baseIdx := unique[ref] * stride
+			matched = matched || hits[baseIdx]
+			for j := 1; j < stride; j++ {
+				dropped = dropped || hits[baseIdx+j]
 			}
 		}
 		if matched && !dropped {
@@ -262,6 +286,106 @@ func (s *Store) flowIDsBodyScan(f FlowFilter, term string, excluded []string, ma
 // bodySearchWorkers bounds concurrent body-file reads during one History search.
 const bodySearchWorkers = 8
 
+type bodyNeedleMatcher struct {
+	needles     [][]byte
+	hasHighByte bool
+	hasIK       bool
+}
+
+func prepareBodyMatcher(lowerNeedles []string) bodyNeedleMatcher {
+	m := bodyNeedleMatcher{needles: make([][]byte, len(lowerNeedles))}
+	for i, s := range lowerNeedles {
+		b := []byte(s)
+		m.needles[i] = b
+		if hasHighByteString(s) {
+			m.hasHighByte = true
+		}
+		if !m.hasIK && strings.ContainsAny(s, "ik") {
+			m.hasIK = true
+		}
+	}
+	return m
+}
+
+// matchInto searches data (which may be modified in place) for each needle and
+// records the boolean hits in dst. Pure-ASCII needles without 'i'/'k', as well
+// as non-IK needles in pure-ASCII bodies, run completely allocation-free.
+func (m bodyNeedleMatcher) matchInto(data []byte, dst []bool) {
+	if len(data) == 0 {
+		return
+	}
+	haystack := data
+	if m.hasHighByte {
+		haystack = bytes.ToLower(data)
+	} else {
+		hasHigh := foldASCIIInPlace(data)
+		if hasHigh && m.hasIK {
+			haystack = bytes.ToLower(data)
+		}
+	}
+	for i, n := range m.needles {
+		if len(n) > 0 && bytes.Contains(haystack, n) {
+			dst[i] = true
+		}
+	}
+}
+
+func foldASCIIInPlace(b []byte) bool {
+	var high byte
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
+		high |= c
+	}
+	return high&0x80 != 0
+}
+
+func hasHighByteString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i]&0x80 != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func anyStringHasHighByte(fields ...string) bool {
+	for _, f := range fields {
+		if hasHighByteString(f) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsASCIIFold(s, lowerSub string) bool {
+	if len(lowerSub) == 0 {
+		return true
+	}
+	if len(s) < len(lowerSub) {
+		return false
+	}
+	limit := len(s) - len(lowerSub)
+	for i := 0; i <= limit; i++ {
+		matched := true
+		for j := 0; j < len(lowerSub); j++ {
+			c := s[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != lowerSub[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 // anyFieldContains mirrors anyTextPredicate per field with Unicode case folding.
 func anyFieldContains(term string, fields ...string) bool {
 	for _, f := range fields {
@@ -273,10 +397,10 @@ func anyFieldContains(term string, fields ...string) bool {
 }
 
 // headerJSONContentEncoding returns the Content-Encoding value from a stored header
-// JSON object, or "" when absent. The cheap substring check keeps the common
-// uncompressed row free of JSON decoding.
+// JSON object, or "" when absent. The zero-alloc substring check keeps the common
+// uncompressed row free of JSON decoding and string copies.
 func headerJSONContentEncoding(raw string) string {
-	if raw == "" || !strings.Contains(strings.ToLower(raw), "content-encoding") {
+	if raw == "" || !containsASCIIFold(raw, "content-encoding") {
 		return ""
 	}
 	var hdr map[string][]string
@@ -295,37 +419,68 @@ func headerJSONContentEncoding(raw string) string {
 	return ""
 }
 
-// encodedBodyText decodes a content-encoded body before matching, so a gzip or
-// brotli response captured from a browser is searchable like the inspector shows
-// it. A body that does not decode is read as stored. The text is lower-cased once;
-// every search term is matched against it.
-func (s *Store) encodedBodyText(hash, enc string, maxBytes int64) (string, error) {
-	if enc == "" {
-		return s.bodyText(hash, maxBytes)
+func (s *Store) readEncodedBodyPrefixInto(hash, enc string, maxBytes int64, rawBuf, decBuf []byte) (data, nextRaw, nextDec []byte, err error) {
+	if enc != "" {
+		rc, err := s.OpenBody(hash)
+		if err != nil {
+			return nil, rawBuf, decBuf, err
+		}
+		dec, ok, _ := codec.DecompressReaderLimitInto(enc, rc, int(maxBytes), decBuf)
+		_ = rc.Close()
+		if ok {
+			if cap(dec) > cap(decBuf) {
+				decBuf = dec[:0]
+			}
+			return dec, rawBuf, decBuf, nil
+		}
 	}
-	rc, err := s.OpenBody(hash)
-	if err != nil {
-		return "", err
-	}
-	data, ok, _ := codec.DecompressReaderLimit(enc, rc, int(maxBytes))
-	_ = rc.Close()
-	if !ok {
-		return s.bodyText(hash, maxBytes)
-	}
-	return strings.ToLower(string(data)), nil
+	raw, nextRaw, err := s.readRawBodyPrefixInto(hash, maxBytes, rawBuf)
+	return raw, nextRaw, decBuf, err
 }
 
-func (s *Store) bodyText(hash string, maxBytes int64) (string, error) {
+func (s *Store) readRawBodyPrefixInto(hash string, maxBytes int64, dst []byte) (data, nextDst []byte, err error) {
 	rc, err := s.OpenBody(hash)
 	if err != nil {
-		return "", err
+		return nil, dst, err
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, maxBytes))
-	if err != nil {
-		return "", err
+	buf := dst[:0]
+	var sizeHint int
+	if sf, ok := rc.(interface{ Stat() (os.FileInfo, error) }); ok {
+		if fi, statErr := sf.Stat(); statErr == nil && fi.Size() >= 0 {
+			n := fi.Size()
+			if n > maxBytes {
+				n = maxBytes
+			}
+			sizeHint = int(n)
+		}
 	}
-	return strings.ToLower(string(data)), nil
+	if sizeHint > 0 && cap(buf) < sizeHint {
+		buf = make([]byte, 0, sizeHint)
+	} else if cap(buf) == 0 {
+		buf = make([]byte, 0, 4096)
+	}
+	limit := int(maxBytes)
+	for len(buf) < limit {
+		if len(buf) == cap(buf) {
+			nextCap := min(cap(buf)*2, limit)
+			if nextCap <= cap(buf) {
+				nextCap = limit
+			}
+			grown := make([]byte, len(buf), nextCap)
+			copy(grown, buf)
+			buf = grown
+		}
+		n, readErr := rc.Read(buf[len(buf):min(cap(buf), limit)])
+		buf = buf[:len(buf)+n]
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			return nil, buf[:0], readErr
+		}
+	}
+	return buf, buf[:0], nil
 }
 
 // anyTextPredicate is the SQL half of an anywhere search: the term (lower-cased)
@@ -333,8 +488,8 @@ func (s *Store) bodyText(hash string, maxBytes int64) (string, error) {
 // OR'ed with the body-hit ids found by the bounded body scan.
 func anyTextPredicate(term string, ids []int64) (string, []any) {
 	parts := []string{
-		"instr(lower(scheme || '://' || host || path), ?) > 0",
-		"instr(lower(method), ?) > 0",
+		"instr(lower(COALESCE(scheme, '') || '://' || COALESCE(host, '') || COALESCE(path, '')), ?) > 0",
+		"instr(lower(COALESCE(method, '')), ?) > 0",
 		"instr(lower(COALESCE(mime, '')), ?) > 0",
 		"instr(lower(COALESCE(client_addr, '')), ?) > 0",
 		"instr(lower(COALESCE(error, '')), ?) > 0",

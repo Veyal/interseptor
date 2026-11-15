@@ -328,3 +328,78 @@ func Test_ListFlows_search_minus_term_excludes_matches(t *testing.T) {
 		}
 	}
 }
+
+func Test_ListFlows_id_scope_non_id_and_exclusion_only_return_empty(t *testing.T) {
+	h, s, _ := newHub(t)
+	if _, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "api.example.com", Path: "/orders/1", Status: http.StatusOK}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(h.Handler())
+	t.Cleanup(server.Close)
+
+	for _, tc := range []string{"-.jpg", "orders", "#abc", "id:orders"} {
+		resp, err := http.Get(server.URL + "/api/flows?search=" + url.QueryEscape(tc) + "&searchScope=id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Flows []flowJSON `json:"flows"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("search %q: %v", tc, err)
+		}
+		resp.Body.Close()
+		if len(result.Flows) != 0 {
+			t.Fatalf("searchScope=id search=%q returned %+v, want empty", tc, result.Flows)
+		}
+	}
+}
+
+func Test_ListFlows_quoted_leading_dash_searches_literally_and_empty_exclusion_is_ignored(t *testing.T) {
+	h, s, _ := newHub(t)
+	dashID, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "api.example.com", Path: "/-admin/flag", Status: http.StatusOK})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainID, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Scheme: "https", Host: "api.example.com", Path: "/orders/1", Status: http.StatusOK})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(h.Handler())
+	t.Cleanup(server.Close)
+
+	// Quoted leading dash searches for "-admin" positively instead of excluding "admin".
+	resp, err := http.Get(server.URL + "/api/flows?search=" + url.QueryEscape(`"-admin"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var quoted struct {
+		Flows []flowJSON `json:"flows"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&quoted); err != nil {
+		resp.Body.Close()
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(quoted.Flows) != 1 || quoted.Flows[0].ID != dashID {
+		t.Fatalf(`search="-admin" returned %+v, want [%d]`, quoted.Flows, dashID)
+	}
+
+	// Whitespace-only exclusion -"   " is dropped rather than matching or rejecting flows.
+	resp2, err := http.Get(server.URL + "/api/flows?search=" + url.QueryEscape(`-"   "`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var emptyEx struct {
+		Flows []flowJSON `json:"flows"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&emptyEx); err != nil {
+		resp2.Body.Close()
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if len(emptyEx.Flows) != 2 || (emptyEx.Flows[0].ID != plainID && emptyEx.Flows[1].ID != plainID) {
+		t.Fatalf(`search=-"   " returned %+v, want both flows (%d, %d)`, emptyEx.Flows, dashID, plainID)
+	}
+}

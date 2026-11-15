@@ -30,6 +30,13 @@ func Test_SplitNegativeSearch_separates_excluded_terms_from_the_positive_query(t
 		{"unterminated quote keeps the rest", `"foo bar`, "foo bar", nil},
 		{"exclusion without a positive term keeps order", "-b -a", "", []string{"b", "a"}},
 		{"tabs and newlines separate terms", "api\t-.png\n-analytics", "api", []string{".png", "analytics"}},
+		{"empty quoted exclusion is dropped", `-"   "`, "", nil},
+		{"empty exclusion is dropped", `-""`, "", nil},
+		{"whitespace-only quoted token is dropped", `"   "`, "", nil},
+		{"whitespace-only unquoted is empty", "   ", "", nil},
+		{"quoted leading dash is literal positive", `"-admin"`, "-admin", nil},
+		{"quoted leading dash with exclusion", `"-admin" -.jpg`, "-admin", []string{".jpg"}},
+		{"quoted leading dash with spaces", `"-admin bar"`, "-admin bar", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -233,5 +240,47 @@ func Test_QueryFlowsFilter_id_lookup_still_resolves_with_an_exclusion(t *testing
 	// An exclusion the flow does name still drops it.
 	if flows, err := s.QueryFlowsFilter(FlowFilter{Limit: 10, Search: "#" + strconv.FormatInt(id, 10) + " -profile"}); err != nil || len(flows) != 0 {
 		t.Fatalf("id lookup with matching exclusion = %+v, err=%v", flows, err)
+	}
+}
+
+func Test_FlowSearch_handles_NULL_columns_in_NOT_anyTextPredicate_and_non_id_in_id_scope(t *testing.T) {
+	s := openExtensionStore(t)
+	if _, err := s.db.Exec(`INSERT INTO flows (ts, method, scheme, host, port, path, http_version, status) VALUES (1, NULL, NULL, NULL, 443, '/ok', 'HTTP/1.1', 200)`); err != nil {
+		t.Fatal(err)
+	}
+	filtered, note, err := s.AnywhereSearchFilter(FlowFilter{Search: "-.jpg"}, 8000)
+	if err != nil || note != "" {
+		t.Fatalf("AnywhereSearchFilter: note=%q err=%v", note, err)
+	}
+	flows, err := s.QueryFlowsListFilter(filtered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 1 || flows[0].Path != "/ok" {
+		t.Fatalf("flows surviving NOT anyTextPredicate with NULL scheme/host/method = %+v, want [/ok]", flows)
+	}
+
+	// searchScope=id with exclusion-only or non-id text must return no flows, never fall back to full list or FTS.
+	for _, q := range []string{"-.jpg", "ok"} {
+		got, err := s.QueryFlowsListFilter(FlowFilter{Search: q, SearchScope: "id", Limit: 10})
+		if err != nil {
+			t.Fatalf("id scope %q: %v", q, err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("id scope %q = %+v, want empty", q, got)
+		}
+	}
+}
+
+func Test_ftsDrivenListQuery_does_not_alias_caller_NotTerms_backing_array(t *testing.T) {
+	backing := make([]string, 1, 4)
+	backing[0] = ".png"
+	f := FlowFilter{Search: "api -.jpg", NotTerms: backing}
+	if _, _, ok := ftsDrivenListQuery(f, flowListColumns, 50); !ok {
+		t.Fatal("expected FTS-driven query")
+	}
+	full := backing[:2]
+	if full[1] == ".jpg" {
+		t.Fatalf("ftsDrivenListQuery mutated caller NotTerms backing slice: %q", full)
 	}
 }

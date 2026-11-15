@@ -92,3 +92,23 @@ func TestDecompressBodyLimitRejectsZstdWindowAboveLimit(t *testing.T) {
 		t.Fatalf("oversized-window zstd decode=(%d,%v,%v), want bounded rejection", len(got), ok, truncated)
 	}
 }
+
+func TestDecompressReaderLimitIntoReusesCallerBuffer(t *testing.T) {
+	plain := bytes.Repeat([]byte("abc123"), 4096)
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dst := make([]byte, 0, len(plain)+1)
+	got, ok, truncated := DecompressReaderLimitInto("gzip", bytes.NewReader(compressed.Bytes()), len(plain), dst)
+	if !ok || truncated || !bytes.Equal(got, plain) {
+		t.Fatalf("decode into dst = (len=%d ok=%v truncated=%v), want full plain", len(got), ok, truncated)
+	}
+	if cap(got) != cap(dst) {
+		t.Fatalf("expected backing buffer reuse: got cap %d, dst cap %d", cap(got), cap(dst))
+	}
+}

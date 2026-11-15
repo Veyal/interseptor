@@ -72,6 +72,13 @@ func DecompressBodyLimit(contentEncoding string, body []byte, max int) ([]byte, 
 }
 
 func DecompressReaderLimit(contentEncoding string, body io.Reader, max int) ([]byte, bool, bool) {
+	return DecompressReaderLimitInto(contentEncoding, body, max, nil)
+}
+
+// DecompressReaderLimitInto decodes contentEncoding into dst[:0] (reusing its
+// backing array when large enough) up to max uncompressed bytes. It returns the
+// decoded slice, whether decoding succeeded, and whether output exceeded max.
+func DecompressReaderLimitInto(contentEncoding string, body io.Reader, max int, dst []byte) ([]byte, bool, bool) {
 	if body == nil || contentEncoding == "" || max <= 0 {
 		return nil, false, false
 	}
@@ -106,7 +113,7 @@ func DecompressReaderLimit(contentEncoding string, body io.Reader, max int) ([]b
 	if !decoded {
 		return nil, false, false
 	}
-	out, err := io.ReadAll(io.LimitReader(current, int64(max)+1))
+	out, err := readLimitedInto(current, max+1, dst)
 	// io.ErrUnexpectedEOF means the compressed stream ended before its frame
 	// did (truncated capture, failed transfer). That is not a complete decode:
 	// report failure so callers fall back to the raw body instead of presenting
@@ -118,6 +125,40 @@ func DecompressReaderLimit(contentEncoding string, body io.Reader, max int) ([]b
 		return out[:max], true, true
 	}
 	return out, true, false
+}
+
+func readLimitedInto(r io.Reader, limit int, dst []byte) ([]byte, error) {
+	buf := dst[:0]
+	if cap(buf) == 0 {
+		initCap := min(limit, 4096)
+		if initCap < 512 {
+			initCap = 512
+		}
+		buf = make([]byte, 0, initCap)
+	}
+	for len(buf) < limit {
+		if len(buf) == cap(buf) {
+			nextCap := cap(buf) * 2
+			if nextCap > limit {
+				nextCap = limit
+			}
+			if nextCap <= cap(buf) {
+				nextCap = cap(buf) + 512
+			}
+			grown := make([]byte, len(buf), nextCap)
+			copy(grown, buf)
+			buf = grown
+		}
+		n, err := r.Read(buf[len(buf):min(cap(buf), limit)])
+		buf = buf[:len(buf)+n]
+		if err != nil {
+			if err == io.EOF {
+				return buf, nil
+			}
+			return buf, err
+		}
+	}
+	return buf, nil
 }
 
 func decompressionReader(enc string, body io.Reader, max int) (io.Reader, io.Closer, bool) {
