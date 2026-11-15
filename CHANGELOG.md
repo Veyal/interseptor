@@ -9,8 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.23.1] - 2026-11-15
+
+> Patch release: harden `-term` History search edge cases (`id` scope, empty or
+> whitespace exclusions, quoted `"-literal"` tokens, NULL-safe scanning, FTS
+> slice aliasing, UI `script` saved-search chips and `curVal` sorting cursors),
+> surface scope `pathWarning` notices in the UI, and speed up body, endpoint
+> and soft-404 scans by avoiding redundant SQL columns, per-flow allocations
+> and serial regex passes.
+
+### Fixed
+
+- **History search edge cases for `-term`, quoting and `id` scope.** Empty or whitespace-only exclusions (`-""`, `-"   "`) and whitespace queries no longer count as active filters or alter results, bare `-` remains a positive search token, and quoting a leading dash (`"-admin"`, emitted automatically by `formatSearchLiteral` from context-menu actions) searches literally instead of excluding `admin`. `id`-scoped queries now skip FTS and return empty results cleanly on exclusion-only or non-numeric inputs. (`internal/store/flows_search_terms.go`, `flows_list.go`, `flows_fts.go`, `internal/control/ui/js/proxy-filters.js`, `proxy.js`, `docs/history-search.md`.)
+- **NULL-safe History list & exclusion scanning, FTS slice isolation and `curVal` paging.** `scanFlowList` now scans nullable string/integer columns via `sql.NullString`/`sql.NullInt64`, `anyTextPredicate` wraps `scheme`/`host`/`path`/`method` in `COALESCE` so NULL columns never break negated predicates, `ftsDrivenListQuery` stops aliasing caller `NotTerms` slices, and History UI pagination passes `curVal` with `curId` on column-sorted views. (`internal/store/flows_list.go`, `flows_body_search.go`, `flows_fts.go`, `internal/control/ui/js/proxy.js`.)
+- **Saved-search filter chip and scope edit `pathWarning`.** Restored `saved search` chip rendering, filter-active badge/mobile count inclusion and clearing when `searchScope` is `script`, and wired `PUT /api/scope` responses so any returned `pathWarning` shows as a toast and scope-badge tooltip. (`internal/control/ui/js/proxy.js`.)
+
 ### Changed
 
+- **Faster History body/anywhere scans, Endpoint body search and soft-404 classification.** Added buffer-reusing bounded decompression (`codec.DecompressReaderLimitInto`), parallel hash-deduplicated soft-404 classification (`soft404.go`) with zero-alloc ASCII folding and SIMD substring prefiltering before RE2 fallback, parallel raw-body endpoint scanning with early `onlyKeys`/empty exits, zero-alloc ASCII query folding and worker-reused body read buffers in `FlowIDsBodySearch`, and `#chips` HTML memoization in `proxy.js`. On local Apple M4 `BenchmarkBodyAndAnywhereSearch` benchmarks, 300×64 KiB body/anywhere search improved from `17.2 ms` to `4.9–5.3 ms` (~40× fewer allocated bytes), gzip-mixed search from `12.3 ms` to `3.7 ms`, endpoint body search from `2.17 s` to `6.0–9.4 ms`, and endpoint soft-404 scans from `2.13 s` to `9.9–10.1 ms`. (`internal/codec/body.go`, `internal/store/flows_body_search.go`, `soft404.go`, `endpoints_search.go`, `internal/control/ui/js/proxy.js`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.23.0` release.
 
 ## [2.23.0] - 2026-11-13
