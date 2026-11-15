@@ -3,7 +3,7 @@ import { dismissOnDocumentClick } from './ctxmenu-model.js';
 import { formatFlowWhen, msUntilNextMidnight } from './flow-when.js';
 import { decodedShape } from './codec-view-model.js';
 import { on as busOn, EVENTS } from './bus.js';
-import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL, subtreeVisibility } from './inspector-structure.js';
+import { splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie, queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart, flattenJson, tryParseJson, detectGraphQL, subtreeVisibility, isDecodedAvailable, inspectorViewAvailability, needsBackgroundBodyProbe, fallbackInspectorView } from './inspector-structure.js';
 import { highlightJSON, apiBytes } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
@@ -27,7 +27,7 @@ import { copyAs, COPY_AS_KINDS, urlHost } from './copyas.js';
 import { createKeyRegistry } from './keys.js';
 import { openFlowDiff } from './flow-diff.js';
 import { createFinder } from './finder.js';
-import { getShellApi } from './shell-hooks.js';
+import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { modShortcut, hasNativeHost } from './desktop-panel-kit.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
@@ -1616,6 +1616,8 @@ function showInspectorLoading(id){
 }
 function showInspectorLoadError(id,error){
   setInspectorActionState(true);
+  hideInspectorSeg('req');
+  hideInspectorSeg('res');
   const message=error&&error.message?error.message:String(error||'unknown error');
   const retry='<button type="button" class="btn xs" data-inspector-retry>Retry</button>';
   const content='<span class="state-error-msg">Flow #'+esc(id)+' could not be loaded: '+esc(message)+'</span> '+retry;
@@ -1628,6 +1630,8 @@ function showInspectorLoadError(id,error){
 }
 function showInspectorFilterLoadError(id,error){
   setInspectorActionState(true);
+  hideInspectorSeg('req');
+  hideInspectorSeg('res');
   const message=error&&error.message?error.message:String(error||'unknown error');
   const retry='<button type="button" class="btn xs" data-inspector-filter-retry>Retry History refresh</button>';
   const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
@@ -1640,6 +1644,8 @@ function showInspectorFilterLoadError(id,error){
 }
 function showInspectorSelectionUnavailable(id){
   setInspectorActionState(true);
+  hideInspectorSeg('req');
+  hideInspectorSeg('res');
   const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
   if(noteBar)noteBar.style.display='none';
   if(req)req.innerHTML='<div class="state-empty" role="status"><div class="state-empty-title">Flow #'+esc(id)+' is not available under the current search or scope filters.</div><p class="state-empty-hint">Clear or adjust the History filters to inspect this flow.</p></div>';
@@ -1711,23 +1717,28 @@ export async function selectFlow(id){
     if(!current())return;
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
+      syncWsResButtons(id,d,selectEpoch,filterEpoch);
       await renderWSFrames(id);
       if(!current())return;
     }else if(d.flags&FLAG_TLS){
+      hideInspectorSeg('res');
       $('#resView').innerHTML=`<div class="tls-blocked"><strong class="u-danger">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span class="u-fg3">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
       $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
     }else if(clientAborted(d)){
       // The client hung up (in flight or while held): nobody dropped it.
+      hideInspectorSeg('res');
       $('#resView').innerHTML=`<span class="u-fg3">No response — aborted: ${esc(d.error)}.</span>`;
       $('#resStatus').textContent='aborted';$('#resStatus').style.color='var(--fg3)';
     }else if(!d.status&&(d.flags&FLAG_DROPPED)){
       // Dropped while held by the operator: there is no response, and there
       // never will be.
+      hideInspectorSeg('res');
       $('#resView').innerHTML=`<span class="u-fg3">No response — ${esc(d.error||'dropped by interseptor')}.</span>`;
       $('#resStatus').textContent='dropped';$('#resStatus').style.color='var(--fg3)';
     }else if(flowPending(d)){
       // In-flight request: response not back yet. The flow.update handler
       // re-selects this flow once it lands, filling the pane in automatically.
+      hideInspectorSeg('res');
       $('#resView').innerHTML='<span class="blink u-fg3">waiting for response…</span>';
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
@@ -1740,14 +1751,152 @@ export async function selectFlow(id){
 }
 // fetchRawMessage caches the raw message per flowId:side for the lifetime of one
 // state.detail, so typing in Find-in-response re-highlights without a refetch.
-let rawCache={detail:null,map:new Map()};
-function fetchRawMessage(flowId,side,detail){
-  if(rawCache.detail!==detail)rawCache={detail,map:new Map()};
-  const key=flowId+':'+side;
-  if(rawCache.map.has(key))return Promise.resolve(rawCache.map.get(key));
-  const cache=rawCache;
-  return api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{cache.map.set(key,raw);return raw;});
+let rawCache={detail:null,map:new Map(),inflight:new Map()};
+function ensureRawCache(detail){
+  if(rawCache.detail!==detail)rawCache={detail,map:new Map(),inflight:new Map()};
+  return rawCache;
 }
+function peekCachedRaw(flowId,side,detail){
+  if(rawCache.detail!==detail)return null;
+  const val=rawCache.map.get(flowId+':'+side);
+  return typeof val==='string'?val:null;
+}
+function fetchRawMessage(flowId,side,detail){
+  const cache=ensureRawCache(detail);
+  const key=flowId+':'+side;
+  if(cache.map.has(key))return Promise.resolve(cache.map.get(key));
+  if(cache.inflight.has(key))return cache.inflight.get(key);
+  const p=api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{
+    cache.map.set(key,raw);
+    cache.inflight.delete(key);
+    return raw;
+  },err=>{
+    cache.inflight.delete(key);
+    throw err;
+  });
+  cache.inflight.set(key,p);
+  return p;
+}
+// Codec + decoded-view availability caches avoid hitting /decoded on every flow
+// when a project has no codecs, while invalidating immediately on codecs.update.
+let projectHasCodecs=null;
+let codecsProbePromise=null;
+let codecsGeneration=0;
+let codecsProject;
+let decodedCache={detail:null,gen:-1,map:new Map(),inflight:new Map()};
+function resetCodecAvailabilityCache(){
+  codecsProject=state.project;
+  projectHasCodecs=null;
+  codecsProbePromise=null;
+  codecsGeneration++;
+  decodedCache={detail:null,gen:-1,map:new Map(),inflight:new Map()};
+}
+function ensureCodecProject(){
+  if(codecsProject!==state.project)resetCodecAvailabilityCache();
+}
+function ensureProjectHasCodecs(){
+  ensureCodecProject();
+  if(projectHasCodecs!==null)return Promise.resolve(projectHasCodecs);
+  if(codecsProbePromise)return codecsProbePromise;
+  const gen=codecsGeneration;
+  const p=api('/api/codecs').then(r=>{
+    if(gen===codecsGeneration)projectHasCodecs=Boolean(r&&Array.isArray(r.codecs)&&r.codecs.length>0);
+    if(codecsProbePromise===p)codecsProbePromise=null;
+    return gen===codecsGeneration?projectHasCodecs:ensureProjectHasCodecs();
+  },()=>{
+    if(codecsProbePromise===p)codecsProbePromise=null;
+    return false;
+  });
+  codecsProbePromise=p;
+  return p;
+}
+function ensureDecodedCache(detail){
+  ensureCodecProject();
+  if(decodedCache.detail!==detail||decodedCache.gen!==codecsGeneration){
+    decodedCache={detail,gen:codecsGeneration,map:new Map(),inflight:new Map()};
+  }
+  return decodedCache;
+}
+function peekCachedDecoded(flowId,side,detail){
+  ensureCodecProject();
+  if(decodedCache.detail!==detail||decodedCache.gen!==codecsGeneration)return null;
+  return decodedCache.map.get(flowId+':'+side)||null;
+}
+function fetchDecodedMessage(flowId,side,detail){
+  const cache=ensureDecodedCache(detail);
+  const key=flowId+':'+side;
+  if(cache.map.has(key))return Promise.resolve(cache.map.get(key));
+  if(cache.inflight.has(key))return cache.inflight.get(key);
+  const gen=codecsGeneration;
+  const p=api('/api/flows/'+flowId+'/decoded?side='+side).then(d=>{
+    if(gen===codecsGeneration&&cache.detail===detail)cache.map.set(key,d);
+    cache.inflight.delete(key);
+    return d;
+  },err=>{
+    cache.inflight.delete(key);
+    throw err;
+  });
+  cache.inflight.set(key,p);
+  return p;
+}
+function currentDecodedFlagFor(flowId,side,detail){
+  ensureCodecProject();
+  if(projectHasCodecs===false)return false;
+  const cached=peekCachedDecoded(flowId,side,detail);
+  return cached?isDecodedAvailable(cached):null;
+}
+function computeSideAvailability(side,flowId,detail,rawVal,decodedOverride){
+  const mime=bodyMime(detail,side);
+  const decodedMatched=decodedOverride!==undefined?decodedOverride:currentDecodedFlagFor(flowId,side,detail);
+  return inspectorViewAvailability({
+    side,detail,raw:rawVal,mime,binary:isBinaryMime(mime),renderCap:RENDER_CAP,
+    decodedMatched,hasMessage:true,
+  });
+}
+function setSideSegSelection(side,view){
+  const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
+  if(!seg)return;
+  if(view==='pretty'){
+    seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+    return;
+  }
+  seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+}
+function applyInspectorViewButtons(side,avail){
+  const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
+  if(!seg)return;
+  seg.querySelectorAll('button').forEach(b=>{b.hidden=!avail.visible[b.dataset.view];});
+  seg.hidden=!avail.anyVisible;
+}
+function hideInspectorSeg(side){
+  applyInspectorViewButtons(side,inspectorViewAvailability({side,hasMessage:false}));
+}
+function syncWsResButtons(flowId,detail,selectEpoch,filterEpoch){
+  applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail)));
+  if(currentDecodedFlagFor(flowId,'res',detail)===null){
+    ensureProjectHasCodecs().then(hasCodecs=>{
+      if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail)return;
+      if(!hasCodecs){
+        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),false));
+        return;
+      }
+      return fetchDecodedMessage(flowId,'res',detail).then(()=>{
+        if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail)return;
+        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail)));
+      },()=>{});
+    },()=>{});
+  }
+}
+registerSseHandler('codecs.update',()=>{
+  resetCodecAvailabilityCache();
+  const flowId=state.selId,detail=state.detail;
+  if(!flowId||!detail)return;
+  renderSide('req');
+  if(detail.flags&FLAG_WS)syncWsResButtons(flowId,detail,selectFlowEpoch,flowFilterEpoch);
+  else if(!(detail.flags&FLAG_TLS)&&!clientAborted(detail)&&!(!detail.status&&(detail.flags&FLAG_DROPPED))&&!flowPending(detail)){
+    renderSide('res');
+  }
+});
 // A socket can stream far more frames than are worth holding in the DOM at once
 // (the issue flags 10,000+ nodes). Render the most recent WS_FRAME_RENDER_CAP and
 // note the rest, so the pane stays light without pausing capture to disk.
@@ -1887,9 +2036,18 @@ function inspParamsHTML(detail,raw){
   const ct=bodyMime(detail,'req');
   const {body}=splitHeadBody(raw);
   let formSection='';
-  if(isFormUrlEncoded(ct))formSection=`<div class="micro-label">FORM BODY (urlencoded)</div>${kvTable(parseFormEncoded(body),'No form fields.')}`;
-  else{const b=multipartBoundary(ct);if(b)formSection=`<div class="micro-label">FORM BODY (multipart)</div>${kvTable(parseMultipart(body,b),'No multipart fields.')}`;}
-  return `<div class="insp-struct insp-params"><div class="micro-label">QUERY STRING</div>${kvTable(query,'No query parameters.')}${formSection}</div>`;
+  if(isFormUrlEncoded(ct)){
+    const form=parseFormEncoded(body);
+    if(form.length)formSection=`<div class="micro-label">FORM BODY (urlencoded)</div>${kvTable(form,'No form fields.')}`;
+  }else{
+    const b=multipartBoundary(ct);
+    if(b){
+      const parts=parseMultipart(body,b);
+      if(parts.length)formSection=`<div class="micro-label">FORM BODY (multipart)</div>${kvTable(parts,'No multipart fields.')}`;
+    }
+  }
+  const querySection=query.length||!formSection?`<div class="micro-label">QUERY STRING</div>${kvTable(query,'No query parameters.')}`:'';
+  return `<div class="insp-struct insp-params">${querySection}${formSection}</div>`;
 }
 function inspGraphQLHTML(detail,raw){
   const ct=bodyMime(detail,'req');
@@ -1950,32 +2108,68 @@ export async function renderSide(side){
   const selectEpoch=selectFlowEpoch;
   const filterEpoch=flowFilterEpoch;
   const epoch=++renderSideEpoch[side];
-  if(!flowId||!detail){return;}
+  if(!flowId||!detail){hideInspectorSeg(side);return;}
   const len=side==='req'?detail.reqLen:detail.resLen;
   // Binary body (image/font/media/archive/…): show only the headers — the bytes
   // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
   const mime=bodyMime(detail,side);
-  // "Render" only makes sense for HTML; for JSON/images/etc. it used to silently
-  // fall through to an ugly raw view. Hide the button and fall back to Pretty.
+  const binary=isBinaryMime(mime);
   if(side==='res'){
-    const isHtml=!!mime&&/html/i.test(mime);
     const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
-    if(renderBtn)renderBtn.style.display=isHtml?'':'none';
-    if(!isHtml&&state.view.res==='render'){
-      state.view.res='pretty';
-      const seg=document.querySelector('#inspect .seg[data-side="res"]');
-      if(seg)seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
-    }
+    if(renderBtn)renderBtn.style.display='';
+  }
+  const peekRaw=peekCachedRaw(flowId,side,detail);
+  const initialAvail=computeSideAvailability(side,flowId,detail,peekRaw);
+  applyInspectorViewButtons(side,initialAvail);
+  if(!initialAvail.visible[state.view[side]]&&!initialAvail.pending[state.view[side]]){
+    const fb=fallbackInspectorView(initialAvail);
+    state.view[side]=fb;
+    setSideSegSelection(side,fb);
   }
   const view=state.view[side];
-  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch&&state.view[side]===view;
-  const draw=async()=>{await drawBody();refreshInspectFinder(side);};
+  const sameFlow=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch;
+  const current=()=>sameFlow()&&state.view[side]===view;
+  const fallbackToAvailable=async(latest)=>{
+    const fb=fallbackInspectorView(latest);
+    if(fb===view||!latest.visible[fb])return false;
+    state.view[side]=fb;
+    setSideSegSelection(side,fb);
+    await renderSide(side);
+    return true;
+  };
+  const syncFromRaw=async(raw)=>{
+    const latest=computeSideAvailability(side,flowId,detail,raw);
+    applyInspectorViewButtons(side,latest);
+    if(!latest.visible[view])return await fallbackToAvailable(latest);
+    return false;
+  };
+  if(view!=='decoded'&&currentDecodedFlagFor(flowId,side,detail)===null){
+    ensureProjectHasCodecs().then(hasCodecs=>{
+      if(!sameFlow())return;
+      if(!hasCodecs){
+        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),false));
+        return;
+      }
+      return fetchDecodedMessage(flowId,side,detail).then(()=>{
+        if(!sameFlow())return;
+        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail)));
+      },()=>{});
+    },()=>{});
+  }
+  if((view==='headers'||view==='decoded')&&needsBackgroundBodyProbe({side,detail,mime,binary,renderCap:RENDER_CAP,rawKnown:peekRaw!==null})){
+    fetchRawMessage(flowId,side,detail).then(raw=>{
+      if(!sameFlow())return;
+      applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,raw));
+    },()=>{});
+  }
+  const draw=async()=>{await drawBody();if(current())refreshInspectFinder(side);};
   const drawBody=async()=>{
     try{
       if(view==='headers'){el.innerHTML=inspHeadersHTML(detail,side);return;}
       if(view==='json'||view==='params'||view==='gql'){
         const raw=await fetchRawMessage(flowId,side,detail);
         if(!current())return;
+        if(await syncFromRaw(raw)||!current())return;
         el._rawText=raw;el._pretty=true;
         if(view==='json')el.innerHTML=inspJsonHTML(splitHeadBody(raw).body);
         else if(view==='params')el.innerHTML=inspParamsHTML(detail,raw);
@@ -1983,9 +2177,16 @@ export async function renderSide(side){
         return;
       }
       if(view==='decoded'){
-        const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
+        const hasCodecs=await ensureProjectHasCodecs();
         if(!current())return;
-        if(!d.matched){
+        const d=hasCodecs?await fetchDecodedMessage(flowId,side,detail):null;
+        if(!current())return;
+        const latest=computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),hasCodecs?undefined:false);
+        applyInspectorViewButtons(side,latest);
+        if(!hasCodecs||!isDecodedAvailable(d)){
+          if(await fallbackToAvailable(latest)||!current())return;
+        }
+        if(!d||!d.matched){
           el.innerHTML=`<div class="hint body-note">No project message codec matched this ${side==='req'?'request':'response'}.<br>
             Add one in <b>Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
           return;
@@ -2034,6 +2235,7 @@ export async function renderSide(side){
         const raw=await fetchRawMessage(flowId,side,detail);
         const bytes=await apiBytes('/api/flows/'+flowId+'/raw?side='+side);
         if(!current())return;
+        if(await syncFromRaw(raw)||!current())return;
         el._rawText=raw;
         el._pretty=false;
         mountHexDump(el,bytes);
@@ -2041,6 +2243,7 @@ export async function renderSide(side){
       }
       const raw=await fetchRawMessage(flowId,side,detail);
       if(!current())return;
+      if(await syncFromRaw(raw)||!current())return;
       el._rawText=raw;
       el._pretty=view==='pretty';
       if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
@@ -2053,8 +2256,8 @@ export async function renderSide(side){
   };
   // Structured views (Headers always; JSON/Params/GraphQL best-effort) take
   // precedence over the binary-body note so headers stay readable for an image.
-  if(STRUCT_VIEWS.includes(view)){await draw();return;}
-  if(isBinaryMime(mime)){
+  if(STRUCT_VIEWS.includes(view)||view==='decoded'){await draw();return;}
+  if(binary){
     if(view==='hex'){
       await draw();
       return;
@@ -2072,8 +2275,7 @@ export async function renderSide(side){
     const bHex=el.querySelector('[data-bin-hex]');
     if(bHex)bHex.onclick=()=>{
       state.view[side]='hex';
-      const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
-      if(seg)seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.view==='hex';x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+      setSideSegSelection(side,'hex');
       el.innerHTML='<span class="hint body-pad">rendering…</span>';
       setTimeout(draw,10);
     };

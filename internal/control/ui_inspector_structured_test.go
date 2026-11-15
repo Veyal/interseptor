@@ -41,7 +41,25 @@ func TestUIInspectorStructuredSubTabsPresent(t *testing.T) {
 		"export function flattenJson(", "export function detectGraphQL(",
 		"export function parseFormEncoded(", "export function parseCookies(",
 		"export function headerRows(", "export function splitHeadBody(",
+		"export function inspectorViewAvailability(", "export function isJsonInspectorBody(",
+		"export function isDecodedAvailable(", "export function needsBackgroundBodyProbe(",
+		"export function fallbackInspectorView(",
 	)
+}
+
+func TestUIInspectorEmptyViewButtonsHidden(t *testing.T) {
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
+	requireUIContains(t, proxy,
+		"inspectorViewAvailability(",
+		"isDecodedAvailable(",
+		"needsBackgroundBodyProbe(",
+		"fallbackInspectorView(",
+		"applyInspectorViewButtons(",
+		"hideInspectorSeg(",
+		"registerSseHandler('codecs.update'",
+	)
+	// Hide both the button and, on non-HTTP response states, the segmented strip itself.
+	requireUIContains(t, proxy, "b.hidden=!avail.visible[b.dataset.view]", "seg.hidden=!avail.anyVisible")
 }
 
 func TestUIInterceptModifierHotkeys(t *testing.T) {

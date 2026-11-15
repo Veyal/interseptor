@@ -4,6 +4,8 @@ import {
   splitHeadBody, headerRows, filterHeaderRows, parseCookies, parseSetCookie,
   queryOf, parseFormEncoded, isFormUrlEncoded, multipartBoundary, parseMultipart,
   flattenJson, jsonPathAppend, tryParseJson, detectGraphQL,
+  isJsonInspectorBody, isDecodedAvailable, inspectorViewAvailability,
+  needsBackgroundBodyProbe, fallbackInspectorView,
 } from '../js/inspector-structure.js';
 
 test('splitHeadBody splits on the first blank line (CRLF or LF)', () => {
@@ -122,4 +124,206 @@ test('detectGraphQL handles application/graphql raw bodies and rejects plain JSO
   assert.equal(batch.isGraphQL, true);
   assert.equal(batch.batched, true);
   assert.equal(batch.query, 'query A { a }');
+});
+
+test('tryParseJson strips UTF-8 BOM and isJsonInspectorBody gates primitives by Content-Type', () => {
+  assert.deepEqual(tryParseJson('\uFEFF{"ok":true}'), { ok: true, value: { ok: true } });
+  assert.equal(isJsonInspectorBody('\uFEFF{"ok":true}', 'text/plain'), true);
+  assert.equal(isJsonInspectorBody('[1,2]', ''), true);
+  assert.equal(isJsonInspectorBody('true', 'application/json'), true);
+  assert.equal(isJsonInspectorBody('null', 'application/problem+json'), true);
+  assert.equal(isJsonInspectorBody('123', 'text/plain'), false);
+  assert.equal(isJsonInspectorBody('   ', 'application/json'), false);
+  assert.equal(isJsonInspectorBody('{broken', 'application/json'), false);
+});
+
+test('isDecodedAvailable requires a matched codec with non-empty output', () => {
+  assert.equal(isDecodedAvailable(null), false);
+  assert.equal(isDecodedAvailable({ matched: false, plaintext: 'x' }), false);
+  assert.equal(isDecodedAvailable({ matched: true, plaintext: '', fields: [] }), false);
+  assert.equal(isDecodedAvailable({ matched: true, plaintext: 'hello' }), true);
+  assert.equal(isDecodedAvailable({ matched: true, fields: [{ name: 'k', value: 'v' }] }), true);
+  assert.equal(isDecodedAvailable({ matched: true, note: 'hint' }), true);
+  assert.equal(isDecodedAvailable({ matched: true, error: 'decode failed' }), true);
+});
+
+test('inspectorViewAvailability hides empty structured/decoded views on GET and empty headers', () => {
+  const getAvail = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/items', reqHeaders: { Host: ['example.com'] }, reqLen: 0 },
+    raw: 'GET /items HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    mime: '',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.deepEqual(getAvail.visible, {
+    raw: true,
+    pretty: true,
+    headers: true,
+    json: false,
+    params: false,
+    gql: false,
+    decoded: false,
+    hex: true,
+  });
+  assert.equal(getAvail.anyVisible, true);
+
+  const noHeaders = inspectorViewAvailability({
+    side: 'res',
+    detail: { resHeaders: {}, resLen: 4 },
+    raw: 'HTTP/1.1 200 OK\r\n\r\ntest',
+    mime: 'text/plain',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(noHeaders.visible.headers, false);
+  assert.equal(noHeaders.visible.json, false);
+  assert.equal(noHeaders.visible.render, false);
+  assert.equal(noHeaders.visible.decoded, false);
+  assert.equal(noHeaders.visible.pretty, true);
+});
+
+test('inspectorViewAvailability enables params, json, gql, decoded, and render only when populated', () => {
+  const queryReq = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/search?q=1', reqHeaders: { Host: ['example.com'] }, reqLen: 0 },
+    raw: null,
+    mime: '',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(queryReq.visible.params, true);
+  assert.equal(queryReq.pending.params, false);
+  assert.equal(queryReq.visible.json, false);
+  assert.equal(queryReq.visible.gql, false);
+
+  const formEmpty = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/submit', reqHeaders: { Host: ['example.com'] }, reqLen: 0 },
+    raw: 'POST /submit HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n',
+    mime: 'application/x-www-form-urlencoded',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(formEmpty.visible.params, false);
+
+  const multipartPopulated = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/upload', reqHeaders: { Host: ['example.com'] }, reqLen: 120 },
+    raw: 'POST /upload HTTP/1.1\r\n\r\n--B\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n--B--',
+    mime: 'multipart/form-data; boundary=B',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(multipartPopulated.visible.params, true);
+
+  const gqlJson = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/graphql', reqHeaders: { Host: ['example.com'] }, reqLen: 40 },
+    raw: 'POST /graphql HTTP/1.1\r\n\r\n{"query":"query{me{id}}"}',
+    mime: 'application/json',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: true,
+  });
+  assert.equal(gqlJson.visible.json, true);
+  assert.equal(gqlJson.visible.gql, true);
+  assert.equal(gqlJson.visible.decoded, true);
+
+  const gqlRaw = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/graphql', reqHeaders: { Host: ['example.com'] }, reqLen: 15 },
+    raw: 'POST /graphql HTTP/1.1\r\n\r\nquery { me { id } }',
+    mime: 'application/graphql',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(gqlRaw.visible.json, false);
+  assert.equal(gqlRaw.visible.gql, true);
+
+  const htmlEmpty = inspectorViewAvailability({
+    side: 'res',
+    detail: { resHeaders: { 'Content-Type': ['text/html'] }, resLen: 0 },
+    raw: 'HTTP/1.1 304 Not Modified\r\nContent-Type: text/html\r\n\r\n',
+    mime: 'text/html',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(htmlEmpty.visible.render, false);
+
+  const htmlNonEmpty = inspectorViewAvailability({
+    side: 'res',
+    detail: { resHeaders: { 'Content-Type': ['text/html'] }, resLen: 12 },
+    raw: 'HTTP/1.1 200 OK\r\n\r\n<h1>hi</h1>',
+    mime: 'text/html',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(htmlNonEmpty.visible.render, true);
+});
+
+test('inspectorViewAvailability handles binary, over-cap, missing-message, pending, and fallback states', () => {
+  const binReq = inspectorViewAvailability({
+    side: 'req',
+    detail: { path: '/img?size=2x', reqHeaders: { Host: ['example.com'] }, reqLen: 512 },
+    raw: null,
+    mime: 'image/png',
+    binary: true,
+    renderCap: 2048 * 1024,
+    decodedMatched: null,
+  });
+  assert.equal(binReq.visible.json, false);
+  assert.equal(binReq.visible.gql, false);
+  assert.equal(binReq.visible.params, true);
+  assert.equal(binReq.pending.decoded, true);
+
+  const overCapJson = inspectorViewAvailability({
+    side: 'res',
+    detail: { resHeaders: { 'Content-Type': ['application/json'] }, resLen: 5000000 },
+    raw: null,
+    mime: 'application/json',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+  });
+  assert.equal(overCapJson.visible.json, true);
+  assert.equal(overCapJson.pending.json, false);
+
+  const noMsg = inspectorViewAvailability({
+    side: 'res',
+    detail: { resHeaders: {}, resLen: 0 },
+    raw: null,
+    mime: '',
+    binary: false,
+    renderCap: 2048 * 1024,
+    decodedMatched: false,
+    hasMessage: false,
+  });
+  assert.equal(noMsg.anyVisible, false);
+  assert.equal(noMsg.visible.pretty, false);
+  assert.equal(noMsg.visible.raw, false);
+
+  assert.equal(fallbackInspectorView({ pretty: false, raw: true, headers: true }), 'raw');
+  assert.equal(fallbackInspectorView({ visible: { pretty: true, raw: true } }), 'pretty');
+});
+
+test('needsBackgroundBodyProbe avoids fetching HTML/CSS/binary/empty bodies on Headers tab', () => {
+  const cap = 2048 * 1024;
+  assert.equal(needsBackgroundBodyProbe({ side: 'req', detail: { path: '/', reqLen: 0 }, mime: '', binary: false, renderCap: cap, rawKnown: false }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 4000 }, mime: 'text/html', binary: false, renderCap: cap, rawKnown: false }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 4000 }, mime: 'text/css', binary: false, renderCap: cap, rawKnown: false }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 4000 }, mime: 'application/javascript', binary: false, renderCap: cap, rawKnown: false }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 4000 }, mime: 'image/png', binary: true, renderCap: cap, rawKnown: false }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'req', detail: { path: '/api', reqLen: 40 }, mime: 'application/json', binary: false, renderCap: cap, rawKnown: true }), false);
+  assert.equal(needsBackgroundBodyProbe({ side: 'req', detail: { path: '/api', reqLen: 40 }, mime: 'application/json', binary: false, renderCap: cap, rawKnown: false }), true);
+  assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 40 }, mime: 'text/plain', binary: false, renderCap: cap, rawKnown: false }), true);
+  assert.equal(needsBackgroundBodyProbe({ side: 'req', detail: { path: '/post', reqLen: 40 }, mime: 'application/x-www-form-urlencoded', binary: false, renderCap: cap, rawKnown: false }), true);
 });

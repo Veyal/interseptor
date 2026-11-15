@@ -191,8 +191,22 @@ export function subtreeVisibility(rows, at, expand) {
 
 // tryParseJson(text) returns {ok, value} without throwing.
 export function tryParseJson(text) {
-  try { return { ok: true, value: JSON.parse(String(text == null ? '' : text)) }; }
+  const clean = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+  try { return { ok: true, value: JSON.parse(clean) }; }
   catch (e) { return { ok: false, error: e.message }; }
+}
+
+// isJsonInspectorBody(body, contentType) reports whether the JSON inspector
+// view can meaningfully display the message body. Objects and arrays always
+// qualify; JSON primitives (strings, numbers, booleans, null) qualify only when
+// the Content-Type declares JSON so plain-text numbers are not mislabelled.
+export function isJsonInspectorBody(body, contentType) {
+  const clean = String(body == null ? '' : body).replace(/^\uFEFF/, '').trim();
+  if (!clean) return false;
+  const parsed = tryParseJson(clean);
+  if (!parsed.ok) return false;
+  if (parsed.value !== null && typeof parsed.value === 'object') return true;
+  return /json/i.test(String(contentType || ''));
 }
 
 // detectGraphQL(body, contentType) returns {isGraphQL, query, variables,
@@ -200,7 +214,7 @@ export function tryParseJson(text) {
 // string `query`; application/graphql sends the query as the raw body.
 export function detectGraphQL(body, contentType) {
   const ct = String(contentType || '').toLowerCase();
-  const text = String(body == null ? '' : body);
+  const text = String(body == null ? '' : body).replace(/^\uFEFF/, '');
   if (ct && ct.indexOf('json') < 0 && ct.indexOf('graphql') < 0) return { isGraphQL: false };
   let parsed;
   try { parsed = JSON.parse(text); }
@@ -219,4 +233,128 @@ export function detectGraphQL(body, contentType) {
     operationName: typeof op.operationName === 'string' ? op.operationName : '',
     batched: Array.isArray(parsed),
   };
+}
+
+// isDecodedAvailable(d) reports whether /api/flows/{id}/decoded yielded a
+// matched project codec with non-empty decoded content, fields, note, or error.
+export function isDecodedAvailable(d) {
+  if (!d || !d.matched) return false;
+  if (typeof d.plaintext === 'string' && d.plaintext.length > 0) return true;
+  if (Array.isArray(d.fields) && d.fields.length > 0) return true;
+  if (d.fields && typeof d.fields === 'object' && !Array.isArray(d.fields) && Object.keys(d.fields).length > 0) return true;
+  if (typeof d.note === 'string' && d.note.length > 0) return true;
+  if (typeof d.error === 'string' && d.error.length > 0) return true;
+  return false;
+}
+
+const REQ_INSPECTOR_VIEWS = ['raw', 'pretty', 'headers', 'json', 'params', 'gql', 'decoded', 'hex'];
+const RES_INSPECTOR_VIEWS = ['raw', 'pretty', 'headers', 'json', 'decoded', 'hex', 'render'];
+const FALLBACK_VIEW_ORDER = ['raw', 'headers', 'json', 'params', 'gql', 'decoded', 'hex', 'render'];
+
+// inspectorViewAvailability computes per-view visibility and pending-probe flags
+// for #inspect's request or response segmented control from known flow detail
+// plus optional raw message / codec probe results.
+export function inspectorViewAvailability({
+  side = 'req',
+  detail = null,
+  raw = null,
+  mime = '',
+  binary = false,
+  renderCap = 0,
+  decodedMatched = null,
+  hasMessage = true,
+} = {}) {
+  const views = side === 'res' ? RES_INSPECTOR_VIEWS : REQ_INSPECTOR_VIEWS;
+  const visible = Object.fromEntries(views.map((v) => [v, false]));
+  const pending = Object.fromEntries(views.map((v) => [v, false]));
+  if (!hasMessage || !detail) return { visible, pending, anyVisible: false };
+
+  const ct = String(mime || '').toLowerCase();
+  const len = side === 'req' ? detail.reqLen : detail.resLen;
+  const hasLen = typeof len === 'number' && Number.isFinite(len);
+  const bodyDefinitelyEmpty = hasLen && len <= 0;
+  const overCap = typeof renderCap === 'number' && renderCap > 0 && hasLen && len > renderCap;
+  const rawKnown = typeof raw === 'string';
+  const bodyText = rawKnown ? splitHeadBody(raw).body : '';
+  const hasBodyText = rawKnown ? bodyText.length > 0 : !bodyDefinitelyEmpty;
+  const hasRawText = rawKnown ? raw.length > 0 : true;
+
+  visible.raw = hasRawText;
+  visible.pretty = hasRawText;
+  visible.hex = hasRawText;
+  visible.headers = headerRows(side === 'req' ? detail.reqHeaders : detail.resHeaders).length > 0;
+
+  if (decodedMatched === true) visible.decoded = true;
+  else if (decodedMatched === false) visible.decoded = false;
+  else pending.decoded = true;
+
+  if (!binary && hasBodyText) {
+    if (rawKnown) {
+      visible.json = isJsonInspectorBody(bodyText, ct);
+    } else if (overCap) {
+      visible.json = ct.indexOf('json') >= 0;
+    } else {
+      visible.json = ct.indexOf('json') >= 0;
+      pending.json = !ct || ((ct.indexOf('json') >= 0 || ct.indexOf('text/plain') >= 0) && ct.indexOf('jsonp') < 0);
+    }
+  }
+
+  if (side === 'req') {
+    const hasQuery = parseFormEncoded(queryOf(detail.path || '')).length > 0;
+    const isForm = isFormUrlEncoded(ct);
+    const boundary = multipartBoundary(ct);
+    const bodyCouldHaveForm = !binary && hasBodyText && (isForm || !!boundary);
+    if (hasQuery) {
+      visible.params = true;
+    } else if (bodyCouldHaveForm) {
+      if (rawKnown) {
+        visible.params = isForm
+          ? parseFormEncoded(bodyText).length > 0
+          : parseMultipart(bodyText, boundary).length > 0;
+      } else {
+        visible.params = true;
+        pending.params = !overCap;
+      }
+    }
+
+    if (!binary && hasBodyText) {
+      if (rawKnown) {
+        visible.gql = detectGraphQL(bodyText, ct).isGraphQL;
+      } else if (overCap) {
+        visible.gql = ct.indexOf('graphql') >= 0;
+      } else {
+        visible.gql = ct.indexOf('graphql') >= 0;
+        pending.gql = !ct || ct.indexOf('json') >= 0 || ct.indexOf('graphql') >= 0;
+      }
+    }
+  } else {
+    const isHtml = !!ct && ct.indexOf('html') >= 0;
+    if (isHtml && !binary && !bodyDefinitelyEmpty) {
+      visible.render = rawKnown ? bodyText.trim().length > 0 : true;
+    }
+  }
+
+  return { visible, pending, anyVisible: views.some((v) => visible[v]) };
+}
+
+// needsBackgroundBodyProbe returns true when a body-less view (Headers/Decoded)
+// needs a background raw fetch to determine whether JSON, Params, or GraphQL
+// applies without downloading large HTML/CSS/JS/binary payloads unnecessarily.
+export function needsBackgroundBodyProbe({ side, detail, mime, binary, renderCap, rawKnown } = {}) {
+  if (rawKnown || binary || !detail) return false;
+  const len = side === 'req' ? detail.reqLen : detail.resLen;
+  if (typeof len !== 'number' || !Number.isFinite(len) || len <= 0) return false;
+  if (typeof renderCap === 'number' && renderCap > 0 && len > renderCap) return false;
+  const avail = inspectorViewAvailability({ side, detail, raw: null, mime, binary, renderCap, decodedMatched: false, hasMessage: true });
+  return Boolean(avail.pending.json || avail.pending.params || avail.pending.gql);
+}
+
+// fallbackInspectorView picks 'pretty' when visible, or the first visible view.
+export function fallbackInspectorView(availOrVisible) {
+  const visible = availOrVisible && availOrVisible.visible ? availOrVisible.visible : availOrVisible;
+  if (visible && visible.pretty) return 'pretty';
+  for (const v of FALLBACK_VIEW_ORDER) {
+    if (visible && visible[v]) return v;
+  }
+  return 'pretty';
 }

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Hide empty History inspector view buttons.** `#inspect` request/response segmented controls now hide `Headers`, `JSON`, `Params`, `GraphQL`, `Decoded`, and `Render` whenever the selected flow has no content for that view (and hide the strip on non-HTTP response states such as TLS-blocked, aborted, dropped, or pending flows), falling back cleanly to `Pretty` when the active tab becomes unavailable. Codec availability is cached per project and invalidated on `codecs.update` SSE events, and `Params` omits an empty `QUERY STRING` section when only form fields are present. (`internal/control/ui/js/inspector-structure.js`, `internal/control/ui/js/proxy.js`, `internal/control/ui/_js-tests/inspector-structure.test.mjs`, `internal/control/ui_inspector_structured_test.go`.)
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.23.1` release.
 
 ## [2.23.1] - 2026-11-15
