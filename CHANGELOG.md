@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.23.2` release.
+
 ## [2.23.2] - 2026-11-15
 
 > Patch release: hide empty or inapplicable view buttons (`Headers`, `JSON`,
