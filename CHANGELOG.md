@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.23.1` release.
+
 ## [2.23.1] - 2026-11-15
 
 > Patch release: harden `-term` History search edge cases (`id` scope, empty or
