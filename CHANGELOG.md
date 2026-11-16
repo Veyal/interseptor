@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-11-17
+
+> Minor release: add an `Original` / `Modified` view toggle in the Proxy
+> History inspector and Flow Drawer for intercepted requests and responses,
+> preserve pre-edit method/path/status alongside headers and body, and fix
+> empty original body variant handling.
+
 ### Added
 
 - **`Original` / `Modified` view toggle for intercepted flows.** When a held request or response (or response rule) was modified before delivery, the Proxy History bottom inspector (`#inspectReqVariant`, `#inspectResVariant`) now surfaces an `Original` / `Modified` toggle in the Request and Response pane headers across all views (`Raw`, `Pretty`, `Headers`, `JSON`, `Params`, `GraphQL`, `Decoded`, `Hex`, `Render`, binary previews, and body downloads). The proxy also captures pre-edit method, path, and status (`OriginalMethod`, `OriginalPath`, `OriginalStatus`) alongside headers and body, exposes `originalReqLen` / `originalResLen` in flow details, supports `?variant=original` on `/body` and `/decoded`, and aligns Flow Drawer (`#fdVariant`) to `Original` / `Modified`. (`internal/store/store.go`, `internal/proxy/proxy.go`, `internal/control/control.go`, `internal/control/codecs.go`, `internal/control/ui/index.html`, `internal/control/ui/js/flowbody.js`, `internal/control/ui/js/inspector-structure.js`, `internal/control/ui/js/proxy.js`, `internal/control/ui/js/flowdrawer.js`.)
