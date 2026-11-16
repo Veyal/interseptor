@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.24.0` release.
+
 ## [2.24.0] - 2026-11-16
 
 > Minor release: hide `Hex`, `JSON`, and `Params` inspector view buttons by
