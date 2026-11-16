@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-11-16
+
+> Minor release: hide `Hex`, `JSON`, and `Params` inspector view buttons by
+> default with per-view Settings → Appearance toggles, and redesign the
+> Message codecs and Decoder workbenches.
+
 ### Changed
 
 - **Hide `Hex`, `JSON`, and `Params` views by default with Appearance toggles.** The `Hex`, `JSON`, and `Params` inspector view buttons (along with the inline `Hex dump` binary-body shortcut) are now hidden by default in the History flow inspector and Repeater response viewer, with per-view toggles under **Settings → Appearance → Inspector views** (`interseptor.hexView`, `interseptor.jsonView`, `interseptor.paramsView` in `localStorage`) that update open panes live on toggle and fall back to `Pretty` when turned off. (`internal/control/ui/index.html`, `internal/control/ui/js/settings-model.js`, `internal/control/ui/js/settings-appearance.js`, `internal/control/ui/js/inspector-structure.js`, `internal/control/ui/js/proxy.js`, `internal/control/ui/js/tools.js`.)
