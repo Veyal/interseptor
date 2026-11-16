@@ -263,3 +263,14 @@ func TestUIFlowDrawerBottomAndPopupModes(t *testing.T) {
 		`data-flow-layout="side"`,
 	)
 }
+
+func TestUIFlowDrawerOriginalModifiedVariantWiring(t *testing.T) {
+	drawer := executableJS(readUIAsset(t, "js/flowdrawer.js"))
+	requireUIContains(t, drawer,
+		`['original', 'Original']`,
+		`['current', 'Modified']`,
+		`bodyMime(detail, side, variant)`,
+		`headerBlockText(detail, side, variant)`,
+		`flowBodyDownloadHref(id, side, variant)`,
+	)
+}

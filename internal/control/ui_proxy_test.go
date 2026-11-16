@@ -295,3 +295,53 @@ func TestUIProxyRowMoreButtonIsReachableAtEveryWidth(t *testing.T) {
 	js := executableJS(readUIAsset(t, "js/proxy.js"))
 	requireUIContains(t, js, "var(--row-more-w)", `aria-label="Actions for flow #`)
 }
+
+func TestUIProxyInspectorOriginalModifiedToggle(t *testing.T) {
+	region := proxyRegion(t)
+	// Request and Response panes each have an Original / Modified segmented toggle,
+	// hidden by default and separate from .seg[data-side] so view-tab hiding never hides it.
+	for _, spec := range []struct {
+		id   string
+		side string
+	}{
+		{"inspectReqVariant", "req"},
+		{"inspectResVariant", "res"},
+	} {
+		idx := strings.Index(region, `id="`+spec.id+`"`)
+		if idx < 0 {
+			t.Fatalf("index.html missing #%s variant toggle in proxy inspector", spec.id)
+		}
+		segEnd := strings.Index(region[idx:], "</div>")
+		if segEnd < 0 {
+			t.Fatalf("#%s missing closing div", spec.id)
+		}
+		seg := region[idx : idx+segEnd]
+		requireUIContains(t, seg, `data-variant-side="`+spec.side+`"`, `data-variant="original"`, `data-variant="modified"`, "Original", "Modified", " hidden")
+		if strings.Contains(seg, `data-side="`) {
+			t.Errorf("#%s must use data-variant-side, not data-side, so view toggles do not collide with it", spec.id)
+		}
+	}
+
+	dskCSS := stripCSSComments(readUIAsset(t, "css/desktop/panel-proxy.css"))
+	requireUIContains(t, dskCSS, "#inspect .seg[hidden]{display:none}")
+
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	requireUIContains(t, core, "variant:{req:'modified',res:'modified'}")
+
+	// Raw source: executableJS treats "codecs/*.star" inside template literals as a block comment start.
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"from './inspector-structure.js'",
+		"state.variant",
+		"syncVariantToggle(",
+		"hasOriginalSide(",
+		"flowSideHeaders(",
+		"flowSideLen(",
+		"flowSidePath(",
+		"variant==='original'?'&variant=original':''",
+		"data-variant-side",
+		"flowBodyDownloadHref(flowId,side,variant)",
+		"bodyMime(detail,side,variant)",
+		"headerBlockText(detail,side,variant)",
+	)
+}

@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FLOW_TABS, tabsForFlow, nextTab, isWebSocketFlow, flowUrl, wsOpcodeName, wsFramesHTML, timelineHTML, authHTML, renderFlowBody, MAX_RENDER_BYTES, escapeHTML, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, stepSibling } from '../js/flowbody.js';
+import {
+  FLOW_TABS, tabsForFlow, nextTab, isWebSocketFlow, flowUrl, wsOpcodeName, wsFramesHTML, timelineHTML, authHTML, renderFlowBody,
+  MAX_RENDER_BYTES, escapeHTML, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, stepSibling,
+  hasOriginalSide, hasOriginalFlow, normalizeFlowVariant, flowSideMethod, flowSidePath, flowSideStatus, flowSideHeaders, flowSideLen,
+} from '../js/flowbody.js';
 
 const detail = { id: 7, method: 'GET', scheme: 'https', host: 'example.com', port: 443, path: '/a?b=1', status: 200, reqLen: 10, resLen: 20, flags: 0 };
 
@@ -181,4 +185,54 @@ test('renderFlowBody: the Render view states the 1 MB truncation too', () => {
   // A small page keeps its Render view clean.
   const small = renderFlowBody({ ...big, raw: { res: '<p>x</p>' } }, 'response', deps);
   assert.ok(small.includes('<iframe') && !small.includes('Truncated'));
+});
+
+test('original/modified helpers and renderFlowBody handle original variants cleanly', () => {
+  const edited = {
+    id: 42,
+    method: 'POST',
+    originalMethod: 'GET',
+    path: '/after?a=2',
+    originalPath: '/before?a=1',
+    status: 200,
+    originalStatus: 403,
+    reqHeaders: { Host: ['example.com'], 'X-Step': ['after'], 'Content-Type': ['application/json'] },
+    originalReqHeaders: { Host: ['example.com'], 'X-Step': ['before'] },
+    resHeaders: { 'Content-Type': ['image/png'] },
+    originalResHeaders: { 'Content-Type': ['image/jpeg'] },
+    reqLen: 20,
+    originalReqLen: 0,
+    resLen: 4096,
+    originalResLen: 512,
+    flags: 3,
+  };
+  assert.equal(hasOriginalSide(edited, 'req'), true);
+  assert.equal(hasOriginalSide(edited, 'res'), true);
+  assert.equal(hasOriginalSide({ method: 'GET' }, 'req'), false);
+  assert.equal(hasOriginalFlow({ originalMethod: 'GET' }), true);
+  assert.equal(normalizeFlowVariant('original'), 'original');
+  assert.equal(normalizeFlowVariant('anything'), 'modified');
+
+  assert.equal(flowSideMethod(edited, 'original'), 'GET');
+  assert.equal(flowSideMethod(edited, 'modified'), 'POST');
+  assert.equal(flowSidePath(edited, 'original'), '/before?a=1');
+  assert.equal(flowSidePath(edited, 'modified'), '/after?a=2');
+  assert.equal(flowSideStatus(edited, 'original'), 403);
+  assert.equal(flowSideStatus(edited, 'modified'), 200);
+  assert.deepEqual(flowSideHeaders(edited, 'req', 'original')['X-Step'], ['before']);
+  assert.equal(flowSideLen(edited, 'req', 'original'), 0);
+  assert.equal(flowSideLen(edited, 'res', 'original'), 512);
+
+  const deps = {
+    highlight: escapeHTML,
+    mimeOf: (d, side, variant) => (flowSideHeaders(d, side, variant)['Content-Type'] || [''])[0],
+    isBinaryMime: (m) => m.startsWith('image/'),
+    headerText: (d, side, variant) => `${flowSideMethod(d, variant)} ${flowSidePath(d, variant)}`,
+    downloadHref: (id, side, variant) => `/api/flows/${id}/body?side=${side}${variant === 'original' ? '&variant=original' : ''}`,
+  };
+  const out = renderFlowBody({ id: 42, detail: edited, variant: 'original', raw: {} }, 'response', deps);
+  assert.ok(out.includes('image/jpeg'), 'binary original view must report original mime');
+  assert.ok(out.includes('512 B'), 'binary original view must report original byte length');
+  assert.ok(out.includes('GET /before?a=1'), 'binary header preview must pass variant to headerText');
+  assert.ok(out.includes('&amp;variant=original'), 'binary download link must include variant=original');
 });

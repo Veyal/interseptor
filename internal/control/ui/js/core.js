@@ -45,7 +45,7 @@ export function projectSwitchBlocker(){
 }
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
-  rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
+  rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},variant:{req:'modified',res:'modified'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
   filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false,findingsUIEditing:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
@@ -1037,7 +1037,7 @@ export function mimeExt(mime){
   return 'bin';
 }
 export function flowBodyDownloadName(flowId,side,mime){return `flow-${flowId}-${side}.${mimeExt(mime)}`;}
-export function flowBodyDownloadHref(flowId,side){return `/api/flows/${flowId}/body?side=${side}`;}
+export function flowBodyDownloadHref(flowId,side,variant=''){return `/api/flows/${flowId}/body?side=${side}${variant==='original'?'&variant=original':''}`;}
 export const fmtSize=n=>!n?'0 B':n<1024?n+' B':n<1048576?(n/1024).toFixed(n<10240?1:0)+' KB':(n/1048576).toFixed(1)+' MB';
 // fmtBytes matches the backend/MCP byte-formatting convention exactly:
 // < 1 KB → "N B";  < 1 MB → "N.N KB";  < 1 GB → "N.N MB";  else "N.N GB"
@@ -2999,12 +2999,14 @@ export function renderMD(src){
 
 // bodyMime returns the body's content type for a side: the response MIME for "res",
 // or the request's Content-Type header for "req".
-export function bodyMime(detail, side){
+export function bodyMime(detail, side, variant='modified'){
   if(!detail) return '';
-  if(side==='res') return detail.mime||'';
-  const h=detail.reqHeaders||{};
-  for(const k in h){ if(k.toLowerCase()==='content-type') return (h[k]&&h[k][0])||''; }
-  return '';
+  const orig=variant==='original';
+  const h=side==='res'
+    ? ((orig&&detail.originalResHeaders)||detail.resHeaders||{})
+    : ((orig&&detail.originalReqHeaders)||detail.reqHeaders||{});
+  for(const k in h){ if(k.toLowerCase()==='content-type'&&h[k]&&h[k][0]) return h[k][0]; }
+  return side==='res' ? (detail.mime||'') : '';
 }
 // isBinaryMime is true for content that isn't human-readable as text (images, media,
 // fonts, archives, office/binary docs). SVG and the text/* family stay printable.
@@ -3018,11 +3020,19 @@ export function isBinaryMime(m){
 function headerLines(h){const out=[];if(h)Object.keys(h).forEach(k=>(h[k]||[]).forEach(v=>out.push(k+': '+v)));return out.join('\n');}
 // headerBlockText reconstructs just the HTTP header block (start line + headers) from
 // a flow-detail DTO — no body, no network fetch — for rendering binary flows.
-export function headerBlockText(detail, side){
+export function headerBlockText(detail, side, variant='modified'){
   if(!detail) return '';
-  if(side==='req') return `${detail.method||'GET'} ${detail.path||'/'} ${detail.httpVersion||'HTTP/1.1'}\n`+headerLines(detail.reqHeaders);
-  const line=`${detail.httpVersion||'HTTP/1.1'} ${detail.status||''} ${statusText(detail.status)}`.replace(/\s+$/,'');
-  return line+'\n'+headerLines(detail.resHeaders);
+  const orig=variant==='original';
+  if(side==='req'){
+    const method=(orig&&detail.originalMethod)||detail.method||'GET';
+    const path=(orig&&detail.originalPath)||detail.path||'/';
+    const hdrs=(orig&&detail.originalReqHeaders)||detail.reqHeaders;
+    return `${method} ${path} ${detail.httpVersion||'HTTP/1.1'}\n`+headerLines(hdrs);
+  }
+  const st=(orig&&detail.originalStatus)||detail.status||'';
+  const hdrs=(orig&&detail.originalResHeaders)||detail.resHeaders;
+  const line=`${detail.httpVersion||'HTTP/1.1'} ${st} ${statusText(st)}`.replace(/\s+$/,'');
+  return line+'\n'+headerLines(hdrs);
 }
 
 // Wrap each heading + the content beneath it in a collapsible <details>, so long

@@ -120,52 +120,94 @@ export function authHTML(data) {
 }
 
 const sideKey = (side) => (side === 'req' ? 'req' : 'res');
-const lenOf = (detail, side) => (side === 'req' ? detail.reqLen : detail.resLen) || 0;
+export const normalizeFlowVariant = (variant) => (variant === 'original' ? 'original' : 'modified');
+export function hasOriginalSide(detail, side) {
+  if (!detail) return false;
+  if (side === 'res') return Boolean(detail.originalResBodyHash || detail.originalResHeaders || detail.originalStatus);
+  return Boolean(detail.originalReqBodyHash || detail.originalReqHeaders || detail.originalMethod || detail.originalPath);
+}
+export function hasOriginalFlow(detail) {
+  return hasOriginalSide(detail, 'req') || hasOriginalSide(detail, 'res');
+}
+export function flowSideMethod(detail, variant = 'modified') {
+  if (!detail) return '';
+  return normalizeFlowVariant(variant) === 'original' && detail.originalMethod ? detail.originalMethod : (detail.method || '');
+}
+export function flowSidePath(detail, variant = 'modified') {
+  if (!detail) return '';
+  return normalizeFlowVariant(variant) === 'original' && detail.originalPath ? detail.originalPath : (detail.path || '');
+}
+export function flowSideStatus(detail, variant = 'modified') {
+  if (!detail) return 0;
+  return normalizeFlowVariant(variant) === 'original' && detail.originalStatus ? detail.originalStatus : (detail.status || 0);
+}
+export function flowSideHeaders(detail, side, variant = 'modified') {
+  if (!detail) return null;
+  if (normalizeFlowVariant(variant) === 'original') {
+    return side === 'res' ? (detail.originalResHeaders || detail.resHeaders || null) : (detail.originalReqHeaders || detail.reqHeaders || null);
+  }
+  return side === 'res' ? (detail.resHeaders || null) : (detail.reqHeaders || null);
+}
+export function flowSideLen(detail, side, variant = 'modified') {
+  if (!detail) return 0;
+  if (normalizeFlowVariant(variant) === 'original') {
+    if (side === 'res') return detail.originalResLen != null ? detail.originalResLen : (detail.originalResBodyHash ? 0 : (detail.resLen || 0));
+    if (detail.originalReqLen != null) return detail.originalReqLen;
+    if (detail.originalReqHeaders || detail.originalMethod || detail.originalPath) return 0;
+  }
+  return (side === 'req' ? detail.reqLen : detail.resLen) || 0;
+}
+const activeVariant = (deps, explicit) => normalizeFlowVariant(explicit || (typeof deps?.variant === 'function' ? deps.variant() : deps?.variant));
+const lenOf = (detail, side, variant = 'modified') => flowSideLen(detail, side, variant);
 const sizeText = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B');
 
-function downloadLink(deps, id, side) {
-  const href = deps.downloadHref ? deps.downloadHref(id, side) : '';
+function downloadLink(deps, id, side, variant) {
+  const href = deps.downloadHref ? deps.downloadHref(id, side, variant) : '';
   return href ? ` <a class="btn flow-download" href="${escapeHTML(href)}" download>Download body</a>` : '';
 }
 
 // rawState tells the drawer whether raw text is worth fetching: never for
 // binary bodies or bodies above the render cap.
-export function rawState(detail, side, deps = {}) {
+export function rawState(detail, side, deps = {}, explicitVariant) {
   if (!detail) return 'none';
-  const mime = deps.mimeOf ? deps.mimeOf(detail, side) : '';
+  const variant = activeVariant(deps, explicitVariant);
+  const mime = deps.mimeOf ? deps.mimeOf(detail, side, variant) : '';
   if (deps.isBinaryMime && mime && deps.isBinaryMime(mime)) return 'binary';
-  if (lenOf(detail, side) > MAX_RENDER_BYTES) return 'huge';
+  if (lenOf(detail, side, variant) > MAX_RENDER_BYTES) return 'huge';
   return 'text';
 }
 
 function rawHTML(flow, side, deps) {
   const detail = flow.detail;
-  const state = rawState(detail, side, deps);
+  const variant = activeVariant(deps, flow.variant);
+  const state = rawState(detail, side, deps, variant);
   const label = side === 'req' ? 'Request' : 'Response';
   if (state === 'binary') {
-    const mime = deps.mimeOf(detail, side);
-    const head = deps.headerText ? `<pre class="flow-raw">${deps.highlight ? deps.highlight(deps.headerText(detail, side), side) : escapeHTML(deps.headerText(detail, side))}</pre>` : '';
-    return `${head}<p class="flow-note">${label} body is ${escapeHTML(mime)} (${sizeText(lenOf(detail, side))}): binary, not rendered.${downloadLink(deps, flow.id, side)}</p>`;
+    const mime = deps.mimeOf(detail, side, variant);
+    const headRaw = deps.headerText ? deps.headerText(detail, side, variant) : '';
+    const head = deps.headerText ? `<pre class="flow-raw">${deps.highlight ? deps.highlight(headRaw, side, variant) : escapeHTML(headRaw)}</pre>` : '';
+    return `${head}<p class="flow-note">${label} body is ${escapeHTML(mime)} (${sizeText(lenOf(detail, side, variant))}): binary, not rendered.${downloadLink(deps, flow.id, side, variant)}</p>`;
   }
   if (state === 'huge') {
-    return `<p class="flow-note">${label} body is ${sizeText(lenOf(detail, side))}: not rendered to keep the browser responsive.${downloadLink(deps, flow.id, side)}</p>`;
+    return `<p class="flow-note">${label} body is ${sizeText(lenOf(detail, side, variant))}: not rendered to keep the browser responsive.${downloadLink(deps, flow.id, side, variant)}</p>`;
   }
   const raw = flow.raw && flow.raw[sideKey(side)];
   if (typeof raw !== 'string') return '<p class="flow-note" role="status">Loading ' + label.toLowerCase() + '...</p>';
   const cut = raw.length > MAX_RENDER_BYTES;
   const text = cut ? raw.slice(0, MAX_RENDER_BYTES) : raw;
-  const mime = deps.mimeOf ? deps.mimeOf(detail, side) : '';
-  const notice = cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side)}</p>` : '';
+  const mime = deps.mimeOf ? deps.mimeOf(detail, side, variant) : '';
+  const notice = cut ? `<p class="flow-note" role="status">Truncated at 1 MB.${downloadLink(deps, flow.id, side, variant)}</p>` : '';
   if (side === 'res' && deps.renderHTML && mime && /html/i.test(mime)) {
     const view = flow.resView === 'render' ? 'render' : 'raw';
     const seg = '<div class="seg fd-res-seg" role="group" aria-label="Response view">' +
       [['raw', 'Raw'], ['render', 'Render']].map(([v, l]) => `<button type="button" data-fd-res-view="${v}" aria-pressed="${v === view}"${v === view ? ' class="on"' : ''}>${l}</button>`).join('') + '</div>';
     // The page shown in Render is cut at the same 1 MB, so it carries the same
     // notice: a partial document must never look like the whole response.
-    if (view === 'render') return seg + deps.renderHTML(text, flowUrl(detail)) + notice;
-    return seg + `<pre class="flow-raw">${deps.highlight ? deps.highlight(text, side) : escapeHTML(text)}</pre>` + notice;
+    const baseUrl = flowUrl({ ...detail, path: flowSidePath(detail, variant) || detail.path });
+    if (view === 'render') return seg + deps.renderHTML(text, baseUrl) + notice;
+    return seg + `<pre class="flow-raw">${deps.highlight ? deps.highlight(text, side, variant) : escapeHTML(text)}</pre>` + notice;
   }
-  const body = deps.highlight ? deps.highlight(text, side) : escapeHTML(text);
+  const body = deps.highlight ? deps.highlight(text, side, variant) : escapeHTML(text);
   return `<pre class="flow-raw">${body}</pre>${notice}`;
 }
 

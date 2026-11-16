@@ -145,3 +145,53 @@ func TestQueryFlowsFilter(t *testing.T) {
 		t.Fatalf("combine include+exclude: %+v", got)
 	}
 }
+
+func TestOriginalMethodPathStatusRoundTrip(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	in := &Flow{
+		TS:                 time.UnixMilli(1),
+		Method:             "POST",
+		OriginalMethod:     "GET",
+		Scheme:             "https",
+		Host:               "example.com",
+		Port:               443,
+		Path:               "/after?v=2",
+		OriginalPath:       "/before?v=1",
+		HTTPVersion:        "HTTP/1.1",
+		Status:             200,
+		OriginalStatus:     403,
+		OriginalReqHeaders: map[string][]string{"X-Role": {"user"}},
+		OriginalResHeaders: map[string][]string{"X-Origin": {"denied"}},
+		Flags:              FlagIntercepted | FlagEdited | FlagResponseEdited,
+	}
+	id, err := s.InsertFlow(in)
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	got, err := s.GetFlow(id)
+	if err != nil {
+		t.Fatalf("GetFlow: %v", err)
+	}
+	if got.OriginalMethod != "GET" || got.OriginalPath != "/before?v=1" || got.OriginalStatus != 403 {
+		t.Fatalf("after insert: got (%q %q %d), want (GET /before?v=1 403)", got.OriginalMethod, got.OriginalPath, got.OriginalStatus)
+	}
+
+	got.OriginalMethod = "PUT"
+	got.OriginalPath = "/before?v=0"
+	got.OriginalStatus = 401
+	if err := s.UpdateFlow(got); err != nil {
+		t.Fatalf("UpdateFlow: %v", err)
+	}
+	updated, err := s.GetFlow(id)
+	if err != nil {
+		t.Fatalf("GetFlow after update: %v", err)
+	}
+	if updated.OriginalMethod != "PUT" || updated.OriginalPath != "/before?v=0" || updated.OriginalStatus != 401 {
+		t.Fatalf("after update: got (%q %q %d), want (PUT /before?v=0 401)", updated.OriginalMethod, updated.OriginalPath, updated.OriginalStatus)
+	}
+}

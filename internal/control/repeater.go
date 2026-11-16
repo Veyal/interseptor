@@ -386,14 +386,7 @@ func querylessPath(path string) string {
 
 // flowDetail builds the detail DTO for a freshly-sent flow.
 func (h *toolsAPI) flowDetail(f *store.Flow) flowDetailJSON {
-	return flowDetailJSON{
-		flowJSON:    toFlowJSON(f),
-		HTTPVersion: f.HTTPVersion,
-		ReqHeaders:  f.ReqHeaders,
-		ResHeaders:  f.ResHeaders,
-		ReqBodyHash: f.ReqBodyHash,
-		ResBodyHash: f.ResBodyHash,
-	}
+	return h.toFlowDetailJSON(f, nil)
 }
 
 // parseHeaderLines turns a raw "Key: Value" block into a header map.

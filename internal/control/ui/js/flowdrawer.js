@@ -13,7 +13,7 @@ import { renderHTMLResponse, $, api, state, toastError, openModal, closeModal, r
 import { renderState } from './statepanel.js';
 import { readSingleKeyPref, isTypingTarget } from './keys.js';
 import { createFinder } from './finder.js';
-import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, DEFAULT_FLOW_DRAWER_LAYOUT, stepSibling, linkedFindings, rawState, DRAWER_WIDTH, DRAWER_HEIGHT } from './flowbody.js';
+import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, DEFAULT_FLOW_DRAWER_LAYOUT, stepSibling, linkedFindings, rawState, DRAWER_WIDTH, DRAWER_HEIGHT, hasOriginalFlow, flowSideMethod, flowSidePath, flowSideStatus } from './flowbody.js';
 
 const root = document.getElementById('flowDrawer');
 const OVERLAY_QUERY = '(max-width: 1100px)';
@@ -25,8 +25,8 @@ const cur = { id: 0, detail: null, raw: {}, rawOrig: {}, variant: 'current', ws:
 
 // A flow modified in Intercept carries its pre-interception bytes; the Compare
 // control (folded in from the deleted flowmodal.js) switches the Request/Response
-// body between the forwarded "current" bytes and the captured "original".
-function hasOriginal(d) { return !!(d && (d.originalReqBodyHash || d.originalResBodyHash || d.originalReqHeaders || d.originalResHeaders)); }
+// body between the forwarded "Modified" bytes and the captured "Original".
+function hasOriginal(d) { return hasOriginalFlow(d); }
 
 function storedWidth() {
   try { return clampDrawerWidth(localStorage.getItem(projectStorageKey(WIDTH_KEY))); } catch (e) { return DRAWER_WIDTH.def; }
@@ -69,15 +69,16 @@ const finder = createFinder($('#fdPanel'), { root: $('#fdBody'), insertBefore: (
 
 /* ---- body rendering ---- */
 const bodyDeps = {
-  highlight: (raw, side) => highlightHTTP(prettify(raw), true, bodyMime(cur.detail, side)),
-  downloadHref: (id, side) => flowBodyDownloadHref(id, side),
-  mimeOf: (detail, side) => bodyMime(detail, side),
+  variant: () => cur.variant,
+  highlight: (raw, side, variant = cur.variant) => highlightHTTP(prettify(raw), true, bodyMime(cur.detail, side, variant)),
+  downloadHref: (id, side, variant = cur.variant) => flowBodyDownloadHref(id, side, variant),
+  mimeOf: (detail, side, variant = cur.variant) => bodyMime(detail, side, variant),
   isBinaryMime,
-  headerText: (detail, side) => headerBlockText(detail, side),
+  headerText: (detail, side, variant = cur.variant) => headerBlockText(detail, side, variant),
   renderHTML: (raw, url) => renderHTMLResponse(raw, url),
 };
 const rawStore = () => (cur.variant === 'original' ? cur.rawOrig : cur.raw);
-const flowView = () => ({ resView: cur.resView, id: cur.id, detail: cur.detail, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
+const flowView = () => ({ resView: cur.resView, id: cur.id, detail: cur.detail, variant: cur.variant, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
 
 function paintBody() {
   const body = $('#fdBody');
@@ -182,13 +183,18 @@ $('#fdTabs').addEventListener('keydown', (e) => {
 /* ---- header, linked findings, step buttons ---- */
 function paintHeader() {
   const d = cur.detail;
-  $('#fdTitle').textContent = `${d.method} ${flowUrl(d)}`;
-  $('#fdStatus').textContent = d.status ? `${d.status}${d.durationMs ? ' in ' + d.durationMs + ' ms' : ''}` : (d.error || 'No response');
+  if (!d) return;
+  const v = cur.variant === 'original' ? 'original' : 'modified';
+  const method = flowSideMethod(d, v);
+  const path = flowSidePath(d, v);
+  const status = flowSideStatus(d, v);
+  $('#fdTitle').textContent = `${method} ${flowUrl({ ...d, path })}`;
+  $('#fdStatus').textContent = status ? `${status}${d.durationMs ? ' in ' + d.durationMs + ' ms' : ''}` : (d.error || 'No response');
   mountFlowCopyPng($('#fdCopyPng'), cur.id, 'btn');
   syncSteps();
   syncVariantToggle();
 }
-// syncVariantToggle injects an Original/Current segmented control into the drawer
+// syncVariantToggle injects an Original/Modified segmented control into the drawer
 // head when (and only when) the flow was modified in Intercept, preserving the
 // deleted modal's Compare. It is built dynamically so index.html carries no dead
 // control for the common unmodified flow.
@@ -203,7 +209,7 @@ function syncVariantToggle() {
     wrap.className = 'seg fd-variant';
     wrap.setAttribute('role', 'group');
     wrap.setAttribute('aria-label', 'Compare request/response with the pre-interception original');
-    for (const [value, label] of [['current', 'Current'], ['original', 'Original']]) {
+    for (const [value, label] of [['original', 'Original'], ['current', 'Modified']]) {
       const b = document.createElement('button');
       b.type = 'button';
       b.dataset.variant = value;
@@ -223,7 +229,7 @@ function setVariant(v) {
   const next = v === 'original' ? 'original' : 'current';
   if (next === cur.variant) return;
   cur.variant = next;
-  syncVariantToggle();
+  paintHeader();
   loadTab(cur.tab);
 }
 function syncSteps() {

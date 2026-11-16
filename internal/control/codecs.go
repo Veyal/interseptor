@@ -30,18 +30,24 @@ func (h *Hub) flowForCodec(f *store.Flow) (msgcodec.Flow, error) {
 // flowForCodecLimit is flowForCodec with an explicit per-body limit. truncated
 // reports that a body (after decompression) was cut at it.
 func (h *Hub) flowForCodecLimit(f *store.Flow, max int) (flow msgcodec.Flow, truncated bool, err error) {
-	_, reqBody, reqCut, err := h.bodyForDisplayLimit(f.ReqBodyHash, f.ReqHeaders, max)
+	return h.flowForCodecVariantLimit(f, max, false)
+}
+
+func (h *Hub) flowForCodecVariantLimit(f *store.Flow, max int, original bool) (flow msgcodec.Flow, truncated bool, err error) {
+	reqMethod, reqPath, _, reqHeaders, reqHash, _ := flowVariantSide(f, false, original)
+	_, _, resStatus, resHeaders, resHash, resMime := flowVariantSide(f, true, original)
+	_, reqBody, reqCut, err := h.bodyForDisplayLimit(reqHash, reqHeaders, max)
 	if err != nil {
 		return msgcodec.Flow{}, false, err
 	}
-	_, resBody, resCut, err := h.bodyForDisplayLimit(f.ResBodyHash, f.ResHeaders, max)
+	_, resBody, resCut, err := h.bodyForDisplayLimit(resHash, resHeaders, max)
 	if err != nil {
 		return msgcodec.Flow{}, false, err
 	}
 	return msgcodec.Flow{
-		Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
-		Path: f.Path, Status: f.Status, Mime: f.Mime,
-		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
+		Method: reqMethod, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
+		Path: reqPath, Status: resStatus, Mime: resMime,
+		ReqHeaders: reqHeaders, ResHeaders: resHeaders,
 		ReqBody: string(reqBody), ResBody: string(resBody),
 	}, reqCut || resCut, nil
 }
@@ -303,7 +309,8 @@ func (h *flowAPI) getFlowDecoded(w http.ResponseWriter, r *http.Request) {
 	if side == "" {
 		side = "req"
 	}
-	flow, truncated, err := h.flowForCodecLimit(f, decodeMax)
+	original := r.URL.Query().Get("variant") == "original"
+	flow, truncated, err := h.flowForCodecVariantLimit(f, decodeMax, original)
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
 		return

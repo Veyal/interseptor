@@ -147,6 +147,7 @@ html.desktop-app #inspect .seg .dsk-seg-more{display:inline-flex;align-items:cen
 html.desktop-app #inspect .seg .dsk-seg-more[hidden]{display:none}
 html.desktop-app #inspect .seg .dsk-seg-more .icon{width:12px;height:12px;color:var(--text-muted)}
 html.desktop-app #inspect .seg{display:inline-flex}
+html.desktop-app #inspect .seg[hidden]{display:none}
 html.desktop-app #inspect .seg>button{white-space:nowrap}
 
 /* ---- note: compact until used ---- */

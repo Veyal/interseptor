@@ -413,3 +413,58 @@ test('needsBackgroundBodyProbe avoids fetching HTML/CSS/binary/empty bodies on H
   assert.equal(needsBackgroundBodyProbe({ side: 'req', detail: { path: '/post', reqLen: 40 }, mime: 'application/x-www-form-urlencoded', binary: false, renderCap: cap, rawKnown: false }), true);
   assert.equal(needsBackgroundBodyProbe({ side: 'res', detail: { resLen: 40 }, mime: 'text/plain', binary: false, renderCap: cap, rawKnown: false, jsonEnabled: false, paramsEnabled: false }), false);
 });
+
+test('inspectorViewAvailability and background probing respect original vs modified variant', () => {
+  const cap = 2048 * 1024;
+  const edited = {
+    method: 'POST',
+    originalMethod: 'GET',
+    path: '/after',
+    originalPath: '/before?step=orig',
+    reqHeaders: { Host: ['example.com'], 'Content-Type': ['application/json'] },
+    originalReqHeaders: { Host: ['example.com'], 'X-Before': ['1'] },
+    reqLen: 25,
+    originalReqLen: 0,
+    originalReqBodyHash: '',
+  };
+
+  const modAvail = inspectorViewAvailability({
+    side: 'req',
+    variant: 'modified',
+    detail: edited,
+    raw: 'POST /after HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\n\r\n{"edited":true}',
+    mime: 'application/json',
+    binary: false,
+    renderCap: cap,
+    decodedMatched: false,
+    jsonEnabled: true,
+    paramsEnabled: true,
+  });
+  assert.equal(modAvail.visible.json, true);
+  assert.equal(modAvail.visible.params, false);
+
+  const origAvail = inspectorViewAvailability({
+    side: 'req',
+    variant: 'original',
+    detail: edited,
+    raw: 'GET /before?step=orig HTTP/1.1\r\nHost: example.com\r\nX-Before: 1\r\n\r\n',
+    mime: '',
+    binary: false,
+    renderCap: cap,
+    decodedMatched: false,
+    jsonEnabled: true,
+    paramsEnabled: true,
+  });
+  assert.equal(origAvail.visible.json, false);
+  assert.equal(origAvail.visible.params, true);
+  assert.equal(origAvail.visible.headers, true);
+  assert.equal(needsBackgroundBodyProbe({
+    side: 'req',
+    variant: 'original',
+    detail: edited,
+    mime: '',
+    binary: false,
+    renderCap: cap,
+    rawKnown: false,
+  }), false);
+});

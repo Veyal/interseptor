@@ -149,6 +149,7 @@
 
 /* Copy as PNG mounts hold one button each; they must not add a flex item of their own. */
 #inspectCopyPng,#fdCopyPng{display:contents}
+.insp-variant[hidden]{display:none}
 
 /* ---- #104 structured inspector sub-tabs (Headers grid, JSON tree, Params,
    GraphQL, inline image). They render inside the #reqView/#resView <pre>, so

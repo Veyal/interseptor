@@ -79,11 +79,19 @@ func peerFlowQuery(peer *sql.DB) (string, error) {
 		}
 		return `''`
 	}
+	optionalInt := func(name string) string {
+		if columns[name] {
+			return name
+		}
+		return `0`
+	}
 	return `SELECT id, ts, method, scheme, host, port, path, http_version, status,
 		req_headers, res_headers, req_body_hash, res_body_hash, req_len, res_len, mime,
 		duration_ms, client_addr, error, flags, note,
 		` + optional("original_req_headers") + `, ` + optional("original_res_headers") + `,
-		` + optional("original_req_body_hash") + `, ` + optional("original_res_body_hash") + ` FROM flows`, nil
+		` + optional("original_req_body_hash") + `, ` + optional("original_res_body_hash") + `,
+		` + optional("original_method") + `, ` + optional("original_path") + `,
+		` + optionalInt("original_status") + ` FROM flows`, nil
 }
 
 // scanPeerFlow decodes one peerFlowQuery row, including the pre-edit ("original")
@@ -95,7 +103,8 @@ func scanPeerFlow(rows *sql.Rows) (Flow, error) {
 	if err := rows.Scan(&f.ID, &tsMs, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path,
 		&f.HTTPVersion, &f.Status, &reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
 		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &f.Note,
-		&orh, &osh, &f.OriginalReqBodyHash, &f.OriginalResBodyHash); err != nil {
+		&orh, &osh, &f.OriginalReqBodyHash, &f.OriginalResBodyHash,
+		&f.OriginalMethod, &f.OriginalPath, &f.OriginalStatus); err != nil {
 		return f, err
 	}
 	f.TS = time.UnixMilli(tsMs)

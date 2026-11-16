@@ -2091,6 +2091,89 @@ func TestProxyInterceptEditedHostRetargetsConnection(t *testing.T) {
 	}
 }
 
+func TestProxyInterceptEditPreservesOriginalMethodPathAndEmptyBody(t *testing.T) {
+	var seenMethod, seenPath, seenBody, seenHeader string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenMethod = r.Method
+		seenPath = r.URL.RequestURI()
+		seenHeader = r.Header.Get("X-Role")
+		b, _ := io.ReadAll(r.Body)
+		seenBody = string(b)
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), nil, eng, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+
+	done := make(chan error, 1)
+	go func() {
+		req, _ := http.NewRequest("GET", upstream.URL+"/orig?v=1", nil)
+		req.Header.Set("X-Role", "user")
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		done <- err
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	u, _ := url.Parse(upstream.URL)
+	editedBody := `{"admin":true}`
+	edited := fmt.Sprintf("POST /edited?v=2 HTTP/1.1\r\nHost: %s\r\nX-Role: admin\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+		u.Host, len(editedBody), editedBody)
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("client error: %v", err)
+	}
+	if seenMethod != "POST" || seenPath != "/edited?v=2" || seenHeader != "admin" || seenBody != editedBody {
+		t.Fatalf("upstream saw (%s %s role=%q body=%q), want edited values", seenMethod, seenPath, seenHeader, seenBody)
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	if f.Flags&store.FlagEdited == 0 {
+		t.Fatalf("expected FlagEdited, got flags=%d", f.Flags)
+	}
+	if f.OriginalMethod != "GET" || f.OriginalPath != "/orig?v=1" {
+		t.Fatalf("original request line = (%q %q), want (GET /orig?v=1)", f.OriginalMethod, f.OriginalPath)
+	}
+	if http.Header(f.OriginalReqHeaders).Get("X-Role") != "user" {
+		t.Fatalf("original header X-Role = %q, want user", http.Header(f.OriginalReqHeaders).Get("X-Role"))
+	}
+	if f.OriginalReqBodyHash != "" {
+		t.Fatalf("original body hash = %q, want empty", f.OriginalReqBodyHash)
+	}
+	if f.Method != "POST" || f.Path != "/edited?v=2" || f.ReqBodyHash == "" {
+		t.Fatalf("modified flow = (%q %q hash=%q), want POST /edited?v=2 non-empty body", f.Method, f.Path, f.ReqBodyHash)
+	}
+}
+
 // Regression: an UNEDITED held request must still route to the original host
 // (existing behavior preserved) — this is the common case and must not
 // regress when the edited-Host retargeting fix lands.

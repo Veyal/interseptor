@@ -1433,6 +1433,12 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 			// path enforces the same rule).
 			removeHeaders(out.Header, hopRequestHeaders)
 			if d.Edited {
+				if flow.OriginalMethod == "" && out.Method != flow.Method {
+					flow.OriginalMethod = flow.Method
+				}
+				if flow.OriginalPath == "" && out.URL.RequestURI() != flow.Path {
+					flow.OriginalPath = flow.Path
+				}
 				if flow.OriginalReqHeaders == nil {
 					flow.OriginalReqHeaders = cloneHeaders(flow.ReqHeaders)
 				}
@@ -1932,6 +1938,9 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 				}
 				if flow.OriginalResBodyHash == "" {
 					flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
+				}
+				if flow.OriginalStatus == 0 && nst != st {
+					flow.OriginalStatus = st
 				}
 				st, h, b = nst, nh, nb
 				flow.Flags |= store.FlagResponseEdited

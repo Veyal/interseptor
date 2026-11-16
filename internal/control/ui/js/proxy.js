@@ -22,7 +22,7 @@ import { placeFloatingSurface } from './surface-position.js';
 import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
 import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK, listKeyTarget, pruneSelection } from './proxy-selection.js';
 import { activeFilterCount, popoverFilterCount, isBrowserNoise, emptyStateModel, attachedLabel, bulkVerbs, middleEllipsis, methodChoices, splitSearchTerms, withoutSearchTerm, onlyExcludedTerms, hasEffectiveSearch, formatSearchLiteral } from './proxy-filters.js';
-import { wsOpcodeName, flowUrl } from './flowbody.js';
+import { wsOpcodeName, flowUrl, hasOriginalSide, normalizeFlowVariant, flowSideStatus, flowSidePath, flowSideHeaders, flowSideLen } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS, urlHost } from './copyas.js';
 import { createKeyRegistry } from './keys.js';
@@ -954,6 +954,7 @@ export function syncInspectorVisibility(){
 export function closeInspector(){
   if(state.selId==null)return false;
   state.selId=null;state.detail=null;
+  resetInspectVariants();
   setInspectorActionState(true);
   onAuthzSelectionChanged();
   renderRows();
@@ -1688,6 +1689,7 @@ export async function selectFlow(id){
   const needsLoadingState=switching||!state.detail;
   if(switching){
     state.detail=null;
+    resetInspectVariants();
     const note=$('#noteInput');if(note)note.value='';
   }
   const prevSelId=state.selId;
@@ -1745,12 +1747,41 @@ export async function selectFlow(id){
     }else{
       await renderSide('res');
       if(!current())return;
-      $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
-      $('#resStatus').style.color=statusColor(d.status);
+      syncResStatusLine(d);
     }
   }catch(e){if(current())showInspectorLoadError(id,e);}
 }
-// fetchRawMessage caches the raw message per flowId:side for the lifetime of one
+function activeInspectVariant(detail,side,explicit){
+  if(!detail||!hasOriginalSide(detail,side))return 'modified';
+  const v=explicit!==undefined?explicit:(state.variant&&state.variant[side]);
+  return normalizeFlowVariant(v);
+}
+function syncVariantToggle(side,detail){
+  const seg=document.querySelector('#inspect [data-variant-side="'+side+'"]');
+  if(!seg)return;
+  const hasOrig=Boolean(detail&&hasOriginalSide(detail,side));
+  seg.hidden=!hasOrig;
+  const active=activeInspectVariant(detail,side);
+  seg.querySelectorAll('button[data-variant]').forEach(b=>{
+    const on=hasOrig&&b.dataset.variant===active;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+  });
+}
+function resetInspectVariants(){
+  if(!state.variant)state.variant={req:'modified',res:'modified'};
+  else{state.variant.req='modified';state.variant.res='modified';}
+  syncVariantToggle('req',null);
+  syncVariantToggle('res',null);
+}
+function syncResStatusLine(detail){
+  const stEl=$('#resStatus');if(!stEl||!detail)return;
+  if((detail.flags&FLAG_WS)||(detail.flags&FLAG_TLS)||clientAborted(detail)||(!detail.status&&(detail.flags&FLAG_DROPPED))||flowPending(detail))return;
+  const st=flowSideStatus(detail,activeInspectVariant(detail,'res'));
+  stEl.textContent=(st?`${st} ${statusText(st)}`:(detail.error||''))+(detail.durationMs?` · ${fmtDur(detail.durationMs)}`:'');
+  stEl.style.color=statusColor(st);
+}
+// fetchRawMessage caches the raw message per flowId:side:variant for the lifetime of one
 // state.detail, so typing in Find-in-response re-highlights without a refetch.
 let rawCache={detail:null,map:new Map(),inflight:new Map()};
 function ensureRawCache(detail){
@@ -1759,15 +1790,18 @@ function ensureRawCache(detail){
 }
 function peekCachedRaw(flowId,side,detail){
   if(rawCache.detail!==detail)return null;
-  const val=rawCache.map.get(flowId+':'+side);
+  const variant=activeInspectVariant(detail,side);
+  const val=rawCache.map.get(flowId+':'+side+':'+variant);
   return typeof val==='string'?val:null;
 }
 function fetchRawMessage(flowId,side,detail){
   const cache=ensureRawCache(detail);
-  const key=flowId+':'+side;
+  const variant=activeInspectVariant(detail,side);
+  const key=flowId+':'+side+':'+variant;
   if(cache.map.has(key))return Promise.resolve(cache.map.get(key));
   if(cache.inflight.has(key))return cache.inflight.get(key);
-  const p=api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{
+  const q=variant==='original'?'&variant=original':'';
+  const p=api('/api/flows/'+flowId+'/raw?side='+side+q).then(raw=>{
     cache.map.set(key,raw);
     cache.inflight.delete(key);
     return raw;
@@ -1818,18 +1852,21 @@ function ensureDecodedCache(detail){
   }
   return decodedCache;
 }
-function peekCachedDecoded(flowId,side,detail){
+function peekCachedDecoded(flowId,side,detail,explicitVariant){
   ensureCodecProject();
   if(decodedCache.detail!==detail||decodedCache.gen!==codecsGeneration)return null;
-  return decodedCache.map.get(flowId+':'+side)||null;
+  const variant=activeInspectVariant(detail,side,explicitVariant);
+  return decodedCache.map.get(flowId+':'+side+':'+variant)||null;
 }
-function fetchDecodedMessage(flowId,side,detail){
+function fetchDecodedMessage(flowId,side,detail,explicitVariant){
   const cache=ensureDecodedCache(detail);
-  const key=flowId+':'+side;
+  const variant=activeInspectVariant(detail,side,explicitVariant);
+  const key=flowId+':'+side+':'+variant;
   if(cache.map.has(key))return Promise.resolve(cache.map.get(key));
   if(cache.inflight.has(key))return cache.inflight.get(key);
   const gen=codecsGeneration;
-  const p=api('/api/flows/'+flowId+'/decoded?side='+side).then(d=>{
+  const q=variant==='original'?'&variant=original':'';
+  const p=api('/api/flows/'+flowId+'/decoded?side='+side+q).then(d=>{
     if(gen===codecsGeneration&&cache.detail===detail)cache.map.set(key,d);
     cache.inflight.delete(key);
     return d;
@@ -1840,17 +1877,18 @@ function fetchDecodedMessage(flowId,side,detail){
   cache.inflight.set(key,p);
   return p;
 }
-function currentDecodedFlagFor(flowId,side,detail){
+function currentDecodedFlagFor(flowId,side,detail,explicitVariant){
   ensureCodecProject();
   if(projectHasCodecs===false)return false;
-  const cached=peekCachedDecoded(flowId,side,detail);
+  const cached=peekCachedDecoded(flowId,side,detail,explicitVariant);
   return cached?isDecodedAvailable(cached):null;
 }
-function computeSideAvailability(side,flowId,detail,rawVal,decodedOverride){
-  const mime=bodyMime(detail,side);
-  const decodedMatched=decodedOverride!==undefined?decodedOverride:currentDecodedFlagFor(flowId,side,detail);
+function computeSideAvailability(side,flowId,detail,rawVal,decodedOverride,explicitVariant){
+  const variant=activeInspectVariant(detail,side,explicitVariant);
+  const mime=bodyMime(detail,side,variant);
+  const decodedMatched=decodedOverride!==undefined?decodedOverride:currentDecodedFlagFor(flowId,side,detail,variant);
   return inspectorViewAvailability({
-    side,detail,raw:rawVal,mime,binary:isBinaryMime(mime),renderCap:RENDER_CAP,
+    side,variant,detail,raw:rawVal,mime,binary:isBinaryMime(mime),renderCap:RENDER_CAP,
     decodedMatched,hasMessage:true,hexEnabled:readHexViewPref(),jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref(),
   });
 }
@@ -1871,19 +1909,22 @@ function applyInspectorViewButtons(side,avail){
 }
 function hideInspectorSeg(side){
   applyInspectorViewButtons(side,inspectorViewAvailability({side,hasMessage:false}));
+  syncVariantToggle(side,null);
 }
 function syncWsResButtons(flowId,detail,selectEpoch,filterEpoch){
-  applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail)));
-  if(currentDecodedFlagFor(flowId,'res',detail)===null){
+  syncVariantToggle('res',detail);
+  const variant=activeInspectVariant(detail,'res');
+  applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),undefined,variant));
+  if(currentDecodedFlagFor(flowId,'res',detail,variant)===null){
     ensureProjectHasCodecs().then(hasCodecs=>{
-      if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail)return;
+      if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail||activeInspectVariant(detail,'res')!==variant)return;
       if(!hasCodecs){
-        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),false));
+        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),false,variant));
         return;
       }
-      return fetchDecodedMessage(flowId,'res',detail).then(()=>{
-        if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail)return;
-        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail)));
+      return fetchDecodedMessage(flowId,'res',detail,variant).then(()=>{
+        if(selectFlowEpoch!==selectEpoch||flowFilterEpoch!==filterEpoch||state.selId!==flowId||state.detail!==detail||activeInspectVariant(detail,'res')!==variant)return;
+        applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),undefined,variant));
       },()=>{});
     },()=>{});
   }
@@ -2009,8 +2050,8 @@ async function wsReplay(url){
    so re-rendering a view never leaks per-row handlers. ---- */
 const STRUCT_VIEWS=['headers','json','params','gql'];
 function kvCopyBtn(text,label){return `<button type="button" class="btn xs insp-copy" data-copy="${escAttr(text)}" aria-label="${escAttr(label)}" title="${escAttr(label)}">${icon('copy')}</button>`;}
-function inspHeadersHTML(detail,side){
-  const rows=headerRows(side==='req'?detail.reqHeaders:detail.resHeaders);
+function inspHeadersHTML(detail,side,variant='modified'){
+  const rows=headerRows(flowSideHeaders(detail,side,variant));
   if(!rows.length)return '<div class="insp-struct"><div class="hint body-note">No headers.</div></div>';
   const body=rows.map(r=>{
     let extra='';
@@ -2037,9 +2078,9 @@ function kvTable(pairs,emptyLabel){
   if(!pairs.length)return `<div class="hint body-note">${esc(emptyLabel)}</div>`;
   return `<table class="insp-kv"><tbody>${pairs.map(p=>`<tr data-name="${escAttr(p.key||p.name||'')}"><td class="insp-kv-k">${esc(p.key!=null?p.key:p.name)}</td><td class="insp-kv-v">${esc(p.value!=null?p.value:'')}${p.filename?' <span class="insp-file">'+icon('attach')+' '+esc(p.filename)+(p.contentType?' · '+esc(p.contentType):'')+'</span>':''}${kvCopyBtn(p.value!=null?p.value:'','Copy value')}</td></tr>`).join('')}</tbody></table>`;
 }
-function inspParamsHTML(detail,raw){
-  const query=parseFormEncoded(queryOf(detail.path||''));
-  const ct=bodyMime(detail,'req');
+function inspParamsHTML(detail,raw,variant='modified'){
+  const query=parseFormEncoded(queryOf(flowSidePath(detail,variant)||''));
+  const ct=bodyMime(detail,'req',variant);
   const {body}=splitHeadBody(raw);
   let formSection='';
   if(isFormUrlEncoded(ct)){
@@ -2055,15 +2096,16 @@ function inspParamsHTML(detail,raw){
   const querySection=query.length||!formSection?`<div class="micro-label">QUERY STRING</div>${kvTable(query,'No query parameters.')}`:'';
   return `<div class="insp-struct insp-params">${querySection}${formSection}</div>`;
 }
-function inspGraphQLHTML(detail,raw){
-  const ct=bodyMime(detail,'req');
+function inspGraphQLHTML(detail,raw,variant='modified'){
+  const ct=bodyMime(detail,'req',variant);
   const {body}=splitHeadBody(raw);
   const g=detectGraphQL(body,ct);
   if(!g.isGraphQL)return '<div class="insp-struct"><div class="hint body-note">Not a GraphQL request (no JSON <code>query</code> field).</div></div>';
   return `<div class="insp-struct insp-gql">${g.operationName||g.batched?`<div class="insp-gql-op">${g.operationName?'Operation: <b>'+esc(g.operationName)+'</b>':''}${g.batched?' <span class="hint">· batched (first operation shown)</span>':''}</div>`:''}<div class="micro-label">QUERY</div><pre class="insp-gql-query">${highlightBodyText(g.query,'application/graphql')}</pre>${g.variables?`<div class="micro-label">VARIABLES</div><pre class="insp-gql-vars">${highlightJSON(g.variables)}</pre>`:''}</div>`;
 }
 function inspImageHTML(el,flowId,side,mime,len){
-  const href=flowBodyDownloadHref(flowId,side),dl=flowBodyDownloadName(flowId,side,mime);
+  const variant=activeInspectVariant(state.detail,side);
+  const href=flowBodyDownloadHref(flowId,side,variant),dl=flowBodyDownloadName(flowId,side,mime);
   el.innerHTML=`<div class="insp-struct insp-image"><img class="insp-image-img" alt="Inline ${escAttr(side==='req'?'request':'response')} image preview" src="${escAttr(href)}"><div class="hint insp-image-meta"><b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} · <span class="insp-image-dims" aria-live="polite">measuring…</span></div><a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download</a></div>`;
   const img=el.querySelector('.insp-image-img'),dims=el.querySelector('.insp-image-dims');
   if(img&&dims){const show=()=>{dims.textContent=img.naturalWidth?img.naturalWidth+'×'+img.naturalHeight+' px':'unknown size';};img.onload=show;img.onerror=()=>{dims.textContent='could not load';};if(img.complete)show();}
@@ -2115,17 +2157,20 @@ export async function renderSide(side){
   const filterEpoch=flowFilterEpoch;
   const epoch=++renderSideEpoch[side];
   if(!flowId||!detail){hideInspectorSeg(side);return;}
-  const len=side==='req'?detail.reqLen:detail.resLen;
+  syncVariantToggle(side,detail);
+  const variant=activeInspectVariant(detail,side);
+  const variantQuery=variant==='original'?'&variant=original':'';
+  const len=flowSideLen(detail,side,variant);
   // Binary body (image/font/media/archive/…): show only the headers — the bytes
   // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
-  const mime=bodyMime(detail,side);
+  const mime=bodyMime(detail,side,variant);
   const binary=isBinaryMime(mime);
   if(side==='res'){
     const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
     if(renderBtn)renderBtn.style.display='';
   }
   const peekRaw=peekCachedRaw(flowId,side,detail);
-  const initialAvail=computeSideAvailability(side,flowId,detail,peekRaw);
+  const initialAvail=computeSideAvailability(side,flowId,detail,peekRaw,undefined,variant);
   applyInspectorViewButtons(side,initialAvail);
   if(!initialAvail.visible[state.view[side]]&&!initialAvail.pending[state.view[side]]){
     const fb=fallbackInspectorView(initialAvail);
@@ -2133,7 +2178,7 @@ export async function renderSide(side){
     setSideSegSelection(side,fb);
   }
   const view=state.view[side];
-  const sameFlow=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch;
+  const sameFlow=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch&&activeInspectVariant(detail,side)===variant;
   const current=()=>sameFlow()&&state.view[side]===view;
   const fallbackToAvailable=async(latest)=>{
     const fb=fallbackInspectorView(latest);
@@ -2144,50 +2189,50 @@ export async function renderSide(side){
     return true;
   };
   const syncFromRaw=async(raw)=>{
-    const latest=computeSideAvailability(side,flowId,detail,raw);
+    const latest=computeSideAvailability(side,flowId,detail,raw,undefined,variant);
     applyInspectorViewButtons(side,latest);
     if(!latest.visible[view])return await fallbackToAvailable(latest);
     return false;
   };
-  if(view!=='decoded'&&currentDecodedFlagFor(flowId,side,detail)===null){
+  if(view!=='decoded'&&currentDecodedFlagFor(flowId,side,detail,variant)===null){
     ensureProjectHasCodecs().then(hasCodecs=>{
       if(!sameFlow())return;
       if(!hasCodecs){
-        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),false));
+        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),false,variant));
         return;
       }
-      return fetchDecodedMessage(flowId,side,detail).then(()=>{
+      return fetchDecodedMessage(flowId,side,detail,variant).then(()=>{
         if(!sameFlow())return;
-        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail)));
+        applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),undefined,variant));
       },()=>{});
     },()=>{});
   }
-  if((view==='headers'||view==='decoded')&&needsBackgroundBodyProbe({side,detail,mime,binary,renderCap:RENDER_CAP,rawKnown:peekRaw!==null,jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref()})){
+  if((view==='headers'||view==='decoded')&&needsBackgroundBodyProbe({side,variant,detail,mime,binary,renderCap:RENDER_CAP,rawKnown:peekRaw!==null,jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref()})){
     fetchRawMessage(flowId,side,detail).then(raw=>{
       if(!sameFlow())return;
-      applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,raw));
+      applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,raw,undefined,variant));
     },()=>{});
   }
   const draw=async()=>{await drawBody();if(current())refreshInspectFinder(side);};
   const drawBody=async()=>{
     try{
-      if(view==='headers'){el.innerHTML=inspHeadersHTML(detail,side);return;}
+      if(view==='headers'){el.innerHTML=inspHeadersHTML(detail,side,variant);return;}
       if(view==='json'||view==='params'||view==='gql'){
         const raw=await fetchRawMessage(flowId,side,detail);
         if(!current())return;
         if(await syncFromRaw(raw)||!current())return;
         el._rawText=raw;el._pretty=true;
         if(view==='json')el.innerHTML=inspJsonHTML(splitHeadBody(raw).body);
-        else if(view==='params')el.innerHTML=inspParamsHTML(detail,raw);
-        else el.innerHTML=inspGraphQLHTML(detail,raw);
+        else if(view==='params')el.innerHTML=inspParamsHTML(detail,raw,variant);
+        else el.innerHTML=inspGraphQLHTML(detail,raw,variant);
         return;
       }
       if(view==='decoded'){
         const hasCodecs=await ensureProjectHasCodecs();
         if(!current())return;
-        const d=hasCodecs?await fetchDecodedMessage(flowId,side,detail):null;
+        const d=hasCodecs?await fetchDecodedMessage(flowId,side,detail,variant):null;
         if(!current())return;
-        const latest=computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),hasCodecs?undefined:false);
+        const latest=computeSideAvailability(side,flowId,detail,peekCachedRaw(flowId,side,detail),hasCodecs?undefined:false,variant);
         applyInspectorViewButtons(side,latest);
         if(!hasCodecs||!isDecodedAvailable(d)){
           if(await fallbackToAvailable(latest)||!current())return;
@@ -2239,7 +2284,7 @@ export async function renderSide(side){
       if(view==='hex'){
         // Bytes, not text: decoding would turn every byte >= 0x80 into U+FFFD.
         const raw=await fetchRawMessage(flowId,side,detail);
-        const bytes=await apiBytes('/api/flows/'+flowId+'/raw?side='+side);
+        const bytes=await apiBytes('/api/flows/'+flowId+'/raw?side='+side+variantQuery);
         if(!current())return;
         if(await syncFromRaw(raw)||!current())return;
         el._rawText=raw;
@@ -2253,7 +2298,8 @@ export async function renderSide(side){
       el._rawText=raw;
       el._pretty=view==='pretty';
       if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
-        el.innerHTML=renderHTMLResponse(raw,flowUrl(detail));
+        const renderDetail=variant==='original'&&detail.originalPath?{...detail,path:detail.originalPath}:null;
+        el.innerHTML=renderDetail?renderHTMLResponse(raw,flowUrl(renderDetail)):renderHTMLResponse(raw,flowUrl(detail));
         return;
       }
       let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);
@@ -2270,9 +2316,9 @@ export async function renderSide(side){
     }
     // Inline image preview instead of "binary, not rendered" for image bodies.
     if(/^image\//i.test(mime)){inspImageHTML(el,flowId,side,mime,len);return;}
-    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side,variant);
     const hexEnabled=readHexViewPref();
-    el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
+    el.innerHTML=highlightHTTP(headerBlockText(detail,side,variant))+
       `<div class="hint body-note body-note-flush">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
         <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a>
         <button class="btn body-action body-action-next" data-bin="1">Show raw anyway</button>
@@ -2289,7 +2335,7 @@ export async function renderSide(side){
     return;
   }
   if(len>RENDER_CAP){
-    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side,variant);
     el.innerHTML=`<div class="hint body-note body-note-lg">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
       <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a>
       <button class="btn body-action" data-bigshow="1">Show anyway</button></div>`;
@@ -2304,6 +2350,27 @@ export async function renderSide(side){
 // $$('.seg') here would clobber them since this module loads after them.
 $$('.seg[data-side]').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});renderSide(side);});});
+$$('#inspect [data-variant-side]').forEach(seg=>{
+  const side=seg.dataset.variantSide;
+  const choose=variant=>{
+    if(!state.detail||!hasOriginalSide(state.detail,side))return;
+    if(!state.variant)state.variant={req:'modified',res:'modified'};
+    const next=normalizeFlowVariant(variant);
+    if(state.variant[side]===next)return;
+    state.variant[side]=next;
+    syncVariantToggle(side,state.detail);
+    if(side==='res')syncResStatusLine(state.detail);
+    renderSide(side);
+  };
+  seg.querySelectorAll('button[data-variant]').forEach(b=>{b.onclick=()=>choose(b.dataset.variant);});
+  seg.addEventListener('keydown',e=>{
+    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+    e.preventDefault();
+    const next=e.key==='ArrowRight'?'modified':'original';
+    choose(next);
+    seg.querySelector(`button[data-variant="${next}"]`)?.focus();
+  });
+});
 // Request and response panes each host the shared Finder (finder.js): Ctrl+F opens
 // the pane that holds focus (the response pane by default) and `/` opens it while
 // focus is inside the inspector. Matches are <mark> ranges over the rendered text,
@@ -2854,8 +2921,7 @@ async function exportRawFlow(f,side,variant=''){
 function rawExportItems(f,side){
   const label=side==='req'?'request':'response';
   const items=[{label:'Export raw '+label,act:()=>exportRawFlow(f,side)}];
-  const hasOriginal=side==='req'?!!(f.originalReqBodyHash||f.originalReqHeaders):!!(f.originalResBodyHash||f.originalResHeaders);
-  if(hasOriginal)items.push({label:'Export original raw '+label,act:()=>exportRawFlow(f,side,'original')});
+  if(hasOriginalSide(f,side))items.push({label:'Export original raw '+label,act:()=>exportRawFlow(f,side,'original')});
   return items;
 }
 /* ---- categorised flow menus ----

@@ -251,11 +251,33 @@ const REQ_INSPECTOR_VIEWS = ['raw', 'pretty', 'headers', 'json', 'params', 'gql'
 const RES_INSPECTOR_VIEWS = ['raw', 'pretty', 'headers', 'json', 'decoded', 'hex', 'render'];
 const FALLBACK_VIEW_ORDER = ['raw', 'headers', 'json', 'params', 'gql', 'decoded', 'hex', 'render'];
 
+function variantHeaders(detail, side, variant) {
+  if (!detail) return null;
+  if (variant === 'original') {
+    return side === 'res' ? (detail.originalResHeaders || detail.resHeaders || null) : (detail.originalReqHeaders || detail.reqHeaders || null);
+  }
+  return side === 'res' ? (detail.resHeaders || null) : (detail.reqHeaders || null);
+}
+function variantPath(detail, variant) {
+  if (!detail) return '';
+  return variant === 'original' && detail.originalPath ? detail.originalPath : (detail.path || '');
+}
+function variantLen(detail, side, variant) {
+  if (!detail) return undefined;
+  if (variant === 'original') {
+    if (side === 'res') return detail.originalResLen != null ? detail.originalResLen : (detail.originalResBodyHash ? undefined : detail.resLen);
+    if (detail.originalReqLen != null) return detail.originalReqLen;
+    if (detail.originalReqHeaders || detail.originalMethod || detail.originalPath) return 0;
+  }
+  return side === 'req' ? detail.reqLen : detail.resLen;
+}
+
 // inspectorViewAvailability computes per-view visibility and pending-probe flags
 // for #inspect's request or response segmented control from known flow detail
 // plus optional raw message / codec probe results.
 export function inspectorViewAvailability({
   side = 'req',
+  variant = 'modified',
   detail = null,
   raw = null,
   mime = '',
@@ -273,7 +295,7 @@ export function inspectorViewAvailability({
   if (!hasMessage || !detail) return { visible, pending, anyVisible: false };
 
   const ct = String(mime || '').toLowerCase();
-  const len = side === 'req' ? detail.reqLen : detail.resLen;
+  const len = variantLen(detail, side, variant);
   const hasLen = typeof len === 'number' && Number.isFinite(len);
   const bodyDefinitelyEmpty = hasLen && len <= 0;
   const overCap = typeof renderCap === 'number' && renderCap > 0 && hasLen && len > renderCap;
@@ -285,7 +307,7 @@ export function inspectorViewAvailability({
   visible.raw = hasRawText;
   visible.pretty = hasRawText;
   visible.hex = Boolean(hexEnabled) && hasRawText;
-  visible.headers = headerRows(side === 'req' ? detail.reqHeaders : detail.resHeaders).length > 0;
+  visible.headers = headerRows(variantHeaders(detail, side, variant)).length > 0;
 
   if (decodedMatched === true) visible.decoded = true;
   else if (decodedMatched === false) visible.decoded = false;
@@ -304,7 +326,7 @@ export function inspectorViewAvailability({
 
   if (side === 'req') {
     if (Boolean(paramsEnabled)) {
-      const hasQuery = parseFormEncoded(queryOf(detail.path || '')).length > 0;
+      const hasQuery = parseFormEncoded(queryOf(variantPath(detail, variant))).length > 0;
       const isForm = isFormUrlEncoded(ct);
       const boundary = multipartBoundary(ct);
       const bodyCouldHaveForm = !binary && hasBodyText && (isForm || !!boundary);
@@ -345,12 +367,12 @@ export function inspectorViewAvailability({
 // needsBackgroundBodyProbe returns true when a body-less view (Headers/Decoded)
 // needs a background raw fetch to determine whether JSON, Params, or GraphQL
 // applies without downloading large HTML/CSS/JS/binary payloads unnecessarily.
-export function needsBackgroundBodyProbe({ side, detail, mime, binary, renderCap, rawKnown, jsonEnabled = true, paramsEnabled = true } = {}) {
+export function needsBackgroundBodyProbe({ side, variant = 'modified', detail, mime, binary, renderCap, rawKnown, jsonEnabled = true, paramsEnabled = true } = {}) {
   if (rawKnown || binary || !detail) return false;
-  const len = side === 'req' ? detail.reqLen : detail.resLen;
+  const len = variantLen(detail, side, variant);
   if (typeof len !== 'number' || !Number.isFinite(len) || len <= 0) return false;
   if (typeof renderCap === 'number' && renderCap > 0 && len > renderCap) return false;
-  const avail = inspectorViewAvailability({ side, detail, raw: null, mime, binary, renderCap, decodedMatched: false, hasMessage: true, jsonEnabled, paramsEnabled });
+  const avail = inspectorViewAvailability({ side, variant, detail, raw: null, mime, binary, renderCap, decodedMatched: false, hasMessage: true, jsonEnabled, paramsEnabled });
   return Boolean(avail.pending.json || avail.pending.params || avail.pending.gql);
 }
 

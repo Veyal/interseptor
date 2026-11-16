@@ -109,3 +109,59 @@ func TestInterceptEditedResponseKeepsOriginalEvidence(t *testing.T) {
 		t.Fatalf("original body = %q, want %q", orig, originBody)
 	}
 }
+
+func TestInterceptEditedResponseKeepsOriginalStatus(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, "denied")
+	}))
+	defer origin.Close()
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	eng := intercept.New()
+	eng.SetResponseEnabled(true)
+	srv := New(st, capture.New(st), nil, eng, nil)
+	pl := httptest.NewServer(srv)
+	defer pl.Close()
+	pu, _ := url.Parse(pl.URL)
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}, Timeout: 10 * time.Second}
+
+	done := make(chan int, 1)
+	go func() {
+		resp, err := client.Get(origin.URL + "/check")
+		if err != nil {
+			done <- 0
+			return
+		}
+		resp.Body.Close()
+		done <- resp.StatusCode
+	}()
+
+	var held intercept.HeldResponse
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if q := eng.ResponseQueue(); len(q) > 0 {
+			held = q[0]
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("response never held")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	edited := strings.Replace(string(held.Raw), "403 Forbidden", "200 OK", 1)
+	if err := eng.ForwardResponse(held.ID, []byte(edited)); err != nil {
+		t.Fatalf("forward edited response: %v", err)
+	}
+	if code := <-done; code != http.StatusOK {
+		t.Fatalf("client saw status %d, want 200", code)
+	}
+	f := waitFlows(t, st, 1)[0]
+	if f.OriginalStatus != http.StatusForbidden || f.Status != http.StatusOK {
+		t.Fatalf("status (orig=%d, current=%d), want (403, 200)", f.OriginalStatus, f.Status)
+	}
+}

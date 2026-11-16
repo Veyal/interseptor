@@ -108,12 +108,15 @@ type Flow struct {
 	ID                  int64
 	TS                  time.Time
 	Method              string
+	OriginalMethod      string
 	Scheme              string
 	Host                string
 	Port                int
 	Path                string
+	OriginalPath        string
 	HTTPVersion         string
 	Status              int
+	OriginalStatus      int
 	ReqHeaders          map[string][]string
 	ResHeaders          map[string][]string
 	OriginalReqHeaders  map[string][]string
@@ -152,7 +155,7 @@ const (
 )
 
 // flowColumns is the canonical SELECT column order; scanFlow consumes it.
-const flowColumns = `id, ts, method, scheme, host, port, path, http_version, status,
+const flowColumns = `id, ts, method, original_method, scheme, host, port, path, original_path, http_version, status, original_status,
 		req_headers, res_headers, original_req_headers, original_res_headers,
 		req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
 		req_len, res_len, mime, duration_ms, client_addr, error, flags, note`
@@ -161,8 +164,8 @@ const schema = `
 CREATE TABLE IF NOT EXISTS flows (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
-  method TEXT, scheme TEXT, host TEXT, port INTEGER, path TEXT,
-  http_version TEXT, status INTEGER,
+  method TEXT, original_method TEXT NOT NULL DEFAULT '', scheme TEXT, host TEXT, port INTEGER, path TEXT, original_path TEXT NOT NULL DEFAULT '',
+  http_version TEXT, status INTEGER, original_status INTEGER NOT NULL DEFAULT 0,
   req_headers TEXT, res_headers TEXT,
   original_req_headers TEXT, original_res_headers TEXT,
   req_body_hash TEXT, res_body_hash TEXT,
@@ -467,6 +470,9 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE flows ADD COLUMN original_res_headers TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE flows ADD COLUMN original_req_body_hash TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE flows ADD COLUMN original_res_body_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_method TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_status INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE activity ADD COLUMN intent TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN summary TEXT NOT NULL DEFAULT ''`,
@@ -672,12 +678,12 @@ func insertFlowRowExec(ex flowExec, f *Flow, tags []string, id int64) error {
 	osh, _ := json.Marshal(f.OriginalResHeaders)
 	_, err := ex.Exec(
 		`INSERT INTO flows
-			 (id, ts, method, scheme, host, port, path, http_version, status,
+			 (id, ts, method, original_method, scheme, host, port, path, original_path, http_version, status, original_status,
 			  req_headers, res_headers, original_req_headers, original_res_headers,
 			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
 			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, f.TS.UnixMilli(), f.Method, f.OriginalMethod, f.Scheme, f.Host, f.Port, f.Path, f.OriginalPath, f.HTTPVersion, f.Status, f.OriginalStatus,
 		string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
 		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
@@ -735,13 +741,13 @@ func writeFlowUpdateExec(ex flowExec, f *Flow) error {
 	osh, _ := json.Marshal(f.OriginalResHeaders)
 	res, err := ex.Exec(
 		`UPDATE flows SET
-		   method=?, path=?, status=?, req_headers=?, res_headers=?,
+		   method=?, original_method=?, path=?, original_path=?, status=?, original_status=?, req_headers=?, res_headers=?,
 		   original_req_headers=?, original_res_headers=?,
 		   req_body_hash=?, res_body_hash=?, original_req_body_hash=?, original_res_body_hash=?,
 		   req_len=?, res_len=?,
 		   mime=?, duration_ms=?, error=?, flags=?
 		 WHERE id=?`,
-		f.Method, f.Path, f.Status, string(rh), string(sh), string(orh), string(osh),
+		f.Method, f.OriginalMethod, f.Path, f.OriginalPath, f.Status, f.OriginalStatus, string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash, f.ReqLen, f.ResLen,
 		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID)
 	if err != nil {
@@ -867,7 +873,7 @@ func scanFlow(row scanner) (*Flow, error) {
 		orh, osh   string
 	)
 	if err := row.Scan(
-		&f.ID, &tsMillis, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.HTTPVersion, &f.Status,
+		&f.ID, &tsMillis, &f.Method, &f.OriginalMethod, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.OriginalPath, &f.HTTPVersion, &f.Status, &f.OriginalStatus,
 		&reqH, &resH, &orh, &osh, &f.ReqBodyHash, &f.ResBodyHash,
 		&f.OriginalReqBodyHash, &f.OriginalResBodyHash,
 		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &f.Note,

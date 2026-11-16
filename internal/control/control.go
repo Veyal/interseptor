@@ -343,11 +343,14 @@ type flowJSON struct {
 	ID                  int64               `json:"id"`
 	TS                  int64               `json:"ts"`
 	Method              string              `json:"method"`
+	OriginalMethod      string              `json:"originalMethod,omitempty"`
 	Scheme              string              `json:"scheme"`
 	Host                string              `json:"host"`
 	Port                int                 `json:"port"`
 	Path                string              `json:"path"`
+	OriginalPath        string              `json:"originalPath,omitempty"`
 	Status              int                 `json:"status"`
+	OriginalStatus      int                 `json:"originalStatus,omitempty"`
 	Mime                string              `json:"mime"`
 	ReqLen              int64               `json:"reqLen"`
 	ResLen              int64               `json:"resLen"`
@@ -365,11 +368,13 @@ type flowJSON struct {
 
 type flowDetailJSON struct {
 	flowJSON
-	HTTPVersion string              `json:"httpVersion"`
-	ReqHeaders  map[string][]string `json:"reqHeaders"`
-	ResHeaders  map[string][]string `json:"resHeaders"`
-	ReqBodyHash string              `json:"reqBodyHash"`
-	ResBodyHash string              `json:"resBodyHash"`
+	HTTPVersion    string              `json:"httpVersion"`
+	ReqHeaders     map[string][]string `json:"reqHeaders"`
+	ResHeaders     map[string][]string `json:"resHeaders"`
+	ReqBodyHash    string              `json:"reqBodyHash"`
+	ResBodyHash    string              `json:"resBodyHash"`
+	OriginalReqLen *int64              `json:"originalReqLen,omitempty"`
+	OriginalResLen *int64              `json:"originalResLen,omitempty"`
 	// InterceptionProvenance states how this flow's traffic was obtained: the
 	// interception setup version in force at capture time. Omitted when no
 	// setup was recorded or it did not cover the flow's host.
@@ -483,14 +488,106 @@ func parseHostList(s string) []string {
 
 func toFlowJSON(f *store.Flow) flowJSON {
 	return flowJSON{
-		ID: f.ID, TS: f.TS.UnixMilli(), Method: f.Method, Scheme: f.Scheme, Host: f.Host,
-		Port: f.Port, Path: f.Path, Status: f.Status, Mime: f.Mime, ReqLen: f.ReqLen,
+		ID: f.ID, TS: f.TS.UnixMilli(), Method: f.Method, OriginalMethod: f.OriginalMethod,
+		Scheme: f.Scheme, Host: f.Host, Port: f.Port, Path: f.Path, OriginalPath: f.OriginalPath,
+		Status: f.Status, OriginalStatus: f.OriginalStatus, Mime: f.Mime, ReqLen: f.ReqLen,
 		ResLen: f.ResLen, DurationMs: f.DurationMs, ClientAddr: f.ClientAddr, Error: f.Error, Flags: f.Flags,
 
 		Note: f.Note, Tags: f.Tags,
 		OriginalReqBodyHash: f.OriginalReqBodyHash, OriginalResBodyHash: f.OriginalResBodyHash,
 		OriginalReqHeaders: f.OriginalReqHeaders, OriginalResHeaders: f.OriginalResHeaders,
 	}
+}
+
+func (h *Hub) toFlowDetailJSON(f *store.Flow, prov *store.InterceptionProvenance) flowDetailJSON {
+	d := flowDetailJSON{
+		InterceptionProvenance: prov,
+		flowJSON:               toFlowJSON(f),
+		HTTPVersion:            f.HTTPVersion,
+		ReqHeaders:             f.ReqHeaders,
+		ResHeaders:             f.ResHeaders,
+		ReqBodyHash:            f.ReqBodyHash,
+		ResBodyHash:            f.ResBodyHash,
+	}
+	if f.OriginalReqHeaders != nil || f.OriginalReqBodyHash != "" || f.OriginalMethod != "" || f.OriginalPath != "" {
+		d.OriginalReqLen = h.variantBodySize(f, false)
+	}
+	if f.OriginalResHeaders != nil || f.OriginalResBodyHash != "" || f.OriginalStatus != 0 {
+		d.OriginalResLen = h.variantBodySize(f, true)
+	}
+	return d
+}
+
+// flowVariantSide resolves the start-line fields, headers, body hash, and MIME
+// type for either the current (modified) message or its pre-interception original.
+func flowVariantSide(f *store.Flow, res, original bool) (method, path string, status int, headers map[string][]string, hash, mimeType string) {
+	if res {
+		status = f.Status
+		headers, hash, mimeType = f.ResHeaders, f.ResBodyHash, f.Mime
+		if original {
+			if f.OriginalStatus != 0 {
+				status = f.OriginalStatus
+			}
+			if f.OriginalResHeaders != nil {
+				headers = f.OriginalResHeaders
+			}
+			// Intercept-edited responses snapshot OriginalResBodyHash explicitly, so ""
+			// with FlagResponseEdited means an empty original body; header-only rules leave
+			// OriginalResBodyHash empty and share the unchanged ResBodyHash.
+			if f.OriginalResBodyHash != "" || (f.OriginalResHeaders != nil && f.Flags&store.FlagResponseEdited != 0) {
+				hash = f.OriginalResBodyHash
+			}
+			if ct := headerContentType(headers); ct != "" {
+				mimeType = ct
+			}
+		}
+		return "", "", status, headers, hash, mimeType
+	}
+	method, path = f.Method, orVal(f.Path, "/")
+	headers, hash = f.ReqHeaders, f.ReqBodyHash
+	if original {
+		if f.OriginalMethod != "" {
+			method = f.OriginalMethod
+		}
+		if f.OriginalPath != "" {
+			path = f.OriginalPath
+		}
+		if f.OriginalReqHeaders != nil {
+			headers = f.OriginalReqHeaders
+		}
+		if f.OriginalReqBodyHash != "" || (f.OriginalReqHeaders != nil && f.Flags&store.FlagEdited != 0) {
+			hash = f.OriginalReqBodyHash
+		}
+	}
+	return method, path, 0, headers, hash, headerContentType(headers)
+}
+
+func (h *Hub) variantBodySize(f *store.Flow, res bool) *int64 {
+	_, _, _, _, origHash, _ := flowVariantSide(f, res, true)
+	if origHash == "" {
+		zero := int64(0)
+		return &zero
+	}
+	if !res && origHash == f.ReqBodyHash {
+		n := f.ReqLen
+		return &n
+	}
+	if res && origHash == f.ResBodyHash {
+		n := f.ResLen
+		return &n
+	}
+	rc, err := h.st.OpenBody(origHash)
+	if err != nil {
+		return nil
+	}
+	defer rc.Close()
+	if st, ok := rc.(interface{ Stat() (fs.FileInfo, error) }); ok {
+		if info, err := st.Stat(); err == nil {
+			n := info.Size()
+			return &n
+		}
+	}
+	return nil
 }
 
 // setFlowNote attaches (or clears, with an empty string) a free-text note on a
@@ -957,15 +1054,7 @@ func (h *flowAPI) getFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.st.AttachTags([]*store.Flow{f})
 	prov, _ := h.st.InterceptionProvenance(f.TS, f.Host) // best-effort metadata
-	writeJSON(w, http.StatusOK, flowDetailJSON{
-		InterceptionProvenance: prov,
-		flowJSON:               toFlowJSON(f),
-		HTTPVersion:            f.HTTPVersion,
-		ReqHeaders:             f.ReqHeaders,
-		ResHeaders:             f.ResHeaders,
-		ReqBodyHash:            f.ReqBodyHash,
-		ResBodyHash:            f.ResBodyHash,
-	})
+	writeJSON(w, http.StatusOK, h.toFlowDetailJSON(f, prov))
 }
 
 func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
@@ -1008,22 +1097,7 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 // having written nothing, when the body must be decoded first (a compressed
 // body small enough to decode within the display cap).
 func (h *Hub) streamRawMessage(w http.ResponseWriter, f *store.Flow, res, original bool) bool {
-	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
-	if res {
-		hdrs, hash = f.ResHeaders, f.ResBodyHash
-	}
-	if original {
-		oh, ohash := f.OriginalReqHeaders, f.OriginalReqBodyHash
-		if res {
-			oh, ohash = f.OriginalResHeaders, f.OriginalResBodyHash
-		}
-		if oh != nil {
-			hdrs = oh
-		}
-		if ohash != "" {
-			hash = ohash
-		}
-	}
+	method, path, status, hdrs, hash, _ := flowVariantSide(f, res, original)
 	body, err := h.st.OpenBody(hash)
 	if err != nil {
 		httpFileNotFoundOrInternal(w, err, "flow body not found")
@@ -1046,10 +1120,10 @@ func (h *Hub) streamRawMessage(w http.ResponseWriter, f *store.Flow, res, origin
 	}
 	var b bytes.Buffer
 	if res {
-		fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
+		fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), status, http.StatusText(status))
 		writeHeaders(&b, hdrs, "")
 	} else {
-		fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
+		fmt.Fprintf(&b, "%s %s %s\r\n", method, orVal(path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
 		writeHeaders(&b, hdrs, f.Host)
 	}
 	b.WriteString("\r\n")
@@ -1072,18 +1146,8 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	side := r.URL.Query().Get("side")
-	var mimeType string
-	var headers map[string][]string
-	var hash string
-	if side == "res" {
-		mimeType = f.Mime
-		headers = f.ResHeaders
-		hash = f.ResBodyHash
-	} else {
-		headers = f.ReqHeaders
-		hash = f.ReqBodyHash
-		mimeType = headerContentType(f.ReqHeaders)
-	}
+	original := r.URL.Query().Get("variant") == "original"
+	_, _, _, headers, hash, mimeType := flowVariantSide(f, side == "res", original)
 	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
 	var stream io.ReadCloser
 	var body []byte
@@ -1162,17 +1226,9 @@ func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
 }
 
 func (h *Hub) rawRequestVariantResult(f *store.Flow, original bool) ([]byte, error) {
+	method, path, _, hdrs, hash, _ := flowVariantSide(f, false, original)
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
-	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
-	if original {
-		if f.OriginalReqHeaders != nil {
-			hdrs = f.OriginalReqHeaders
-		}
-		if f.OriginalReqBodyHash != "" {
-			hash = f.OriginalReqBodyHash
-		}
-	}
+	fmt.Fprintf(&b, "%s %s %s\r\n", method, orVal(path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
 	body, err := h.bodyBytesResult(hash)
 	if err != nil {
 		return nil, err
@@ -1190,17 +1246,9 @@ func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
 }
 
 func (h *Hub) rawResponseVariantResult(f *store.Flow, original bool) ([]byte, error) {
+	_, _, status, hdrs, hash, _ := flowVariantSide(f, true, original)
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
-	hdrs, hash := f.ResHeaders, f.ResBodyHash
-	if original {
-		if f.OriginalResHeaders != nil {
-			hdrs = f.OriginalResHeaders
-		}
-		if f.OriginalResBodyHash != "" {
-			hash = f.OriginalResBodyHash
-		}
-	}
+	fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), status, http.StatusText(status))
 	body, err := h.bodyBytesResult(hash)
 	if err != nil {
 		return nil, err
