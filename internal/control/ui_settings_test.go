@@ -79,7 +79,7 @@ func TestUISettingsKeepsSectionIdsAndNavLinks(t *testing.T) {
 
 func TestUISettingsAppearanceSection(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"themeSeg", "densitySeg", "singleKeySwitch", "hintsSwitch"} {
+	for _, id := range []string{"themeSeg", "densitySeg", "singleKeySwitch", "hintsSwitch", "hexViewSwitch", "jsonViewSwitch", "paramsViewSwitch"} {
 		if !strings.Contains(index, `id="`+id+`"`) {
 			t.Errorf("Appearance control #%s missing", id)
 		}
@@ -96,6 +96,8 @@ func TestUISettingsAppearanceSection(t *testing.T) {
 	}
 	src := executableJS(readUIAsset(t, "js/settings-appearance.js"))
 	requireUIContains(t, src, "setDensity(", "setSingleKeyShortcuts(", "SINGLE_KEY_EVENT", "readSingleKeyPref(", "themeStoragePlan(", "writeHintsPref(",
+		"INSPECTOR_VIEW_SWITCHES", "readHexViewPref", "writeHexViewPref", "'hexviewchange'",
+		"readJsonViewPref", "writeJsonViewPref", "readParamsViewPref", "writeParamsViewPref", "'inspectorviewchange'",
 		"prefers-color-scheme", "aria-pressed", "data-hints", "'densitychange'")
 }
 

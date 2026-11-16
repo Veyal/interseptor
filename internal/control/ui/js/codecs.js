@@ -40,6 +40,7 @@ let codecBusy = false;
 let codecLoadEpoch = 0;
 let codecDocsLoadEpoch = 0;
 let codecListLoadEpoch = 0;
+let codecTestSide = 'req';
 
 // codecCleanSource is the editor text that is not a draft: the template, or the
 // source last loaded from or saved to the server. Anything else in #codecSrc is
@@ -48,6 +49,24 @@ let codecListLoadEpoch = 0;
 // null until the dialog first fills the editor.
 let codecCleanSource = null;
 const codecDirty = () => codecCleanSource !== null && (($('#codecSrc') || {}).value || '') !== codecCleanSource;
+function setCodecOutMeta(text) {
+  const meta = $('#codecOutMeta');
+  if (meta) meta.textContent = text;
+}
+export function syncCodecDirtyState() {
+  const badge = $('#codecDirtyBadge');
+  if (badge) badge.hidden = !codecDirty();
+}
+export function setCodecTestSide(side) {
+  codecTestSide = side === 'res' ? 'res' : 'req';
+  const seg = $('#codecTestSideSeg');
+  if (!seg || typeof seg.querySelectorAll !== 'function') return;
+  seg.querySelectorAll('[data-side]').forEach((b) => {
+    const on = b.dataset.side === codecTestSide;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
 async function codecDiscardDraft(next) {
   if (!codecDirty()) return true;
   return uiConfirm('Discard unsaved changes', `The codec editor has unsaved changes. Discard them and ${next}?`, 'Discard', 'btn danger', 'var(--red)');
@@ -131,13 +150,13 @@ function codecRow(c) {
   const err = !!c.error;
   const send = !!(c.meta && c.meta.applyOnSend);
   const badges = [
-    err ? '<span class="checks-cat" style="color:var(--red);border-color:var(--red)">error</span>' : '',
-    send ? '<span class="checks-cat" style="color:var(--accent);border-color:var(--accent)">re-encode on send</span>' : '<span class="checks-cat">display</span>',
+    err ? '<span class="codecs-tag codecs-tag-danger">error</span>' : '',
+    send ? '<span class="codecs-tag codecs-tag-accent">re-encode on send</span>' : '<span class="codecs-tag">display</span>',
   ].filter(Boolean).join('');
   return `<div class="checks-row checks-pick codecs-row${codecSel === id ? ' sel' : ''}" id="codec-option-${escAttr(id)}" data-id="${escAttr(id)}" role="option" tabindex="${codecSel === id ? '0' : '-1'}" aria-selected="${codecSel === id ? 'true' : 'false'}" title="${escAttr(err ? c.error : title)}" aria-label="codec ${escAttr(id)}">
     <div class="checks-body">
-      <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>' : ''}</span>
-      <div class="checks-meta"><span class="checks-cat">${esc(id)}</span>${badges}</div>
+      <span class="checks-title codecs-row-title${err ? ' is-err' : ''}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>' : ''}</span>
+      <div class="checks-meta"><span class="codecs-tag">${esc(id)}</span>${badges}</div>
     </div>
   </div>`;
 }
@@ -204,7 +223,7 @@ export async function loadCodecsList() {
       budget.hidden = false;
     }
     if (!list.length) {
-      box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> or consult <b>Docs</b> → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
+      box.innerHTML = '<div class="state-empty codecs-empty"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> or consult <b>Docs</b> → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
       return;
     }
     box.innerHTML = list.map(codecRow).join('');
@@ -232,6 +251,8 @@ export async function openCodec(id) {
     $('#codecId').value = d.id || id;
     $('#codecSrc').value = d.source || '';
     codecCleanSource = d.source || '';
+    syncCodecDirtyState();
+    setCodecOutMeta(d.error ? `Compile error in ${id}` : `Loaded ${id}`);
     const out = $('#codecOut');
     if (out) {
       out.innerHTML = d.error
@@ -254,9 +275,12 @@ export function openCodecs() {
     $('#codecId').value = '';
     $('#codecSrc').value = TEMPLATE;
     codecCleanSource = TEMPLATE;
+    setCodecOutMeta('Ready');
     const out = $('#codecOut');
     if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   }
+  syncCodecDirtyState();
+  setCodecTestSide(codecTestSide);
   updateCodecFlowHint();
   codecSetMode('code');
   loadCodecsList();
@@ -269,6 +293,8 @@ export async function codecNew({ force = false } = {}) {
   $('#codecId').value = 'aes-content-field';
   $('#codecSrc').value = TEMPLATE;
   codecCleanSource = TEMPLATE;
+  syncCodecDirtyState();
+  setCodecOutMeta('New draft');
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   codecSetMode('code');
@@ -284,6 +310,7 @@ export async function codecSave() {
   if (!id) { toast('enter a codec id'); return; }
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">saving…</div>';
+  setCodecOutMeta(`Saving ${id}…`);
   const button = $('#codecSave');
   setCodecBusy(true);
   if (button) button.textContent = 'Saving…';
@@ -295,12 +322,17 @@ export async function codecSave() {
     if (codecEditorMatches(epoch, id, source)) {
       codecSel = id;
       codecCleanSource = source;
+      syncCodecDirtyState();
+      setCodecOutMeta(`Saved ${id}`);
       if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> — available in History / Repeater <b>Decoded</b> views.</div>';
     }
     toast('codec saved');
     loadCodecsList();
   } catch (e) {
-    if (out && codecEditorMatches(epoch, id, source)) out.innerHTML = '<div class="check-status check-status-error"><b>Save failed</b><pre>' + esc(e.message) + '</pre></div>';
+    if (out && codecEditorMatches(epoch, id, source)) {
+      setCodecOutMeta('Save failed');
+      out.innerHTML = '<div class="check-status check-status-error"><b>Save failed</b><pre>' + esc(e.message) + '</pre></div>';
+    }
     else toast(e.message);
   } finally {
     setCodecBusy(false);
@@ -329,7 +361,9 @@ async function codecDelete() {
 async function codecTest() {
   if (codecBusy) return;
   const out = $('#codecOut');
+  const sideLabel = codecTestSide === 'res' ? 'Response' : 'Request';
   if (out) out.innerHTML = '<div class="check-status check-status-pending">running…</div>';
+  setCodecOutMeta(`Running against ${sideLabel.toLowerCase()}…`);
   const button = $('#codecTest');
   const id = ($('#codecId').value || '').trim();
   const epoch = codecLoadEpoch;
@@ -340,27 +374,37 @@ async function codecTest() {
   try {
     const d = await api('/api/codecs/test', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ source, flowId, side: 'req' }),
+      body: JSON.stringify({ source, flowId, side: codecTestSide }),
     });
     if (!codecEditorMatches(epoch, id, source)) return;
     if (!out) return;
     if (d.error) {
-      out.innerHTML = '<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>' + esc(d.error) + '</pre></div>';
+      setCodecOutMeta(`${sideLabel} · error`);
+      out.innerHTML = '<div class="check-status check-status-error"><b>Compile/runtime error</b><pre class="codecs-pre codecs-pre-err">' + esc(d.error) + '</pre></div>';
       return;
     }
     if (d.note && !d.matched) {
+      setCodecOutMeta(`${sideLabel} · skipped`);
       out.innerHTML = `<div class="check-status check-status-pending"><div class="hint">${esc(d.note)}</div></div>`;
       return;
     }
     if (!d.matched) {
-      out.innerHTML = `<div class="check-status check-status-ok"><div class="hint">no match on flow #${esc(String(d.flowId || flowId || '?'))}</div><div style="color:var(--accent);margin-top:4px"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> Codec compiles — match() skipped this flow.</div></div>`;
+      const targetFlow = d.flowId || flowId || '?';
+      setCodecOutMeta(`${sideLabel} · flow #${targetFlow} · no match`);
+      out.innerHTML = `<div class="check-status check-status-ok"><div class="hint">no match on ${esc(sideLabel.toLowerCase())} of flow #${esc(String(targetFlow))}</div><div class="codecs-compile-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg> Codec compiles — match() skipped this flow.</div></div>`;
       return;
     }
-    const note = (d.title || d.codecId || 'matched') + ' · flow #' + (d.flowId || flowId || '?');
-    const body = esc(d.plaintext || '').slice(0, 4000);
-    out.innerHTML = `<div class="check-status check-status-ok"><div class="hint" style="margin-bottom:6px">${esc(note)}${d.note ? ' — ' + esc(d.note) : ''}</div><pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:var(--fs-xs)">${body}</pre></div>`;
+    const targetFlow = d.flowId || flowId || '?';
+    const note = (d.title || d.codecId || 'matched') + ' · ' + sideLabel + ' · flow #' + targetFlow;
+    const raw = d.plaintext || '';
+    const body = esc(raw).slice(0, 4000);
+    setCodecOutMeta(`${sideLabel} · flow #${targetFlow} · ${raw.length} chars`);
+    out.innerHTML = `<div class="check-status check-status-ok"><div class="hint codecs-match-note">${esc(note)}${d.note ? ' — ' + esc(d.note) : ''}</div><pre class="codecs-pre">${body}</pre></div>`;
   } catch (e) {
-    if (out && codecEditorMatches(epoch, id, source)) out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre>' + esc(e.message) + '</pre></div>';
+    if (out && codecEditorMatches(epoch, id, source)) {
+      setCodecOutMeta(`${sideLabel} · request failed`);
+      out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre class="codecs-pre codecs-pre-err">' + esc(e.message) + '</pre></div>';
+    }
     else toast(e.message);
   } finally {
     setCodecBusy(false);
@@ -374,6 +418,10 @@ if ($('#codecNew')) $('#codecNew').onclick = () => codecNew();
 if ($('#codecSave')) $('#codecSave').onclick = codecSave;
 if ($('#codecDelete')) $('#codecDelete').onclick = codecDelete;
 if ($('#codecTest')) $('#codecTest').onclick = codecTest;
+if ($('#codecTestSideSeg') && typeof $('#codecTestSideSeg').querySelectorAll === 'function') {
+  $('#codecTestSideSeg').querySelectorAll('[data-side]').forEach(b => b.onclick = () => setCodecTestSide(b.dataset.side));
+}
 if ($('#codecModeSeg')) $('#codecModeSeg').querySelectorAll('[data-mode]').forEach(b => b.onclick = () => codecSetMode(b.dataset.mode));
 wireCodecModeKeys($('#codecModeSeg'));
 if ($('#codecsSearch')) $('#codecsSearch').addEventListener('input', codecsApplyFilter);
+if ($('#codecSrc') && typeof $('#codecSrc').addEventListener === 'function') $('#codecSrc').addEventListener('input', syncCodecDirtyState);

@@ -351,7 +351,7 @@
     <div id="inspect">
       <div class="pane">
         <div class="pane-head"><span class="lbl">REQUEST</span>
-          <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false">JSON</button><button type="button" data-view="params" title="Query string and form parameters" aria-pressed="false">Params</button><button type="button" data-view="gql" title="GraphQL query and variables" aria-pressed="false">GraphQL</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
+          <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false" hidden>JSON</button><button type="button" data-view="params" title="Query string and form parameters" aria-pressed="false" hidden>Params</button><button type="button" data-view="gql" title="GraphQL query and variables" aria-pressed="false">GraphQL</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false" hidden>Hex</button></div>
           <div class="spacer"></div>
           <button class="btn btn-compact accent findings-write" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-attach"/></svg> Attach as evidence</button>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
@@ -368,7 +368,7 @@
       <div class="pane">
         <div class="pane-head"><span class="lbl">RESPONSE</span>
           <span id="resStatus" class="statusline"></span>
-          <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false">JSON</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
+          <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="headers" title="Header key-value grid with cookie parsing" aria-pressed="false">Headers</button><button type="button" data-view="json" title="Collapsible JSON tree with JSONPath copy" aria-pressed="false" hidden>JSON</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false" hidden>Hex</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
         </div>
         <div class="sel-decode" id="resDecode" hidden></div>
         <pre id="resView"><span class="u-fg3">Select a flow to inspect its response.</span></pre>
@@ -499,7 +499,7 @@
       <section class="pane rep-res">
         <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline" role="status" aria-live="polite"></span>
           <div class="spacer"></div>
-          <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button><button type="button" data-view="render" aria-pressed="false" hidden>Render</button></div>
+          <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false" hidden>Hex</button><button type="button" data-view="render" aria-pressed="false" hidden>Render</button></div>
         </div>
         <pre id="repResView"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeater"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
       </section>
@@ -1409,6 +1409,11 @@ Content-Type: application/json
             <p class="hint u-mb-2">Hover and focus hints explain controls. Labels and help text stay either way.</p>
             <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="hintsSwitch" aria-pressed="false">Hints are off</button></div>
           </div>
+          <div class="section settings-appearance">
+            <h3>Inspector views</h3>
+            <p class="hint u-mb-2">Optionally show Hex (hexadecimal byte dump), JSON (collapsible tree), and Params (query and form grid) tabs in History inspector and Repeater. All three are hidden by default to keep the view bar compact.</p>
+            <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="hexViewSwitch" aria-pressed="false">Hex view is off</button><button type="button" class="uisw" id="jsonViewSwitch" aria-pressed="false">JSON view is off</button><button type="button" class="uisw" id="paramsViewSwitch" aria-pressed="false">Params view is off</button></div>
+          </div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><h2>Project &amp; data</h2></header>
@@ -1587,9 +1592,10 @@ Content-Type: application/json
   </div>
 </div>
 <div id="codecsModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="codecsModalTitle" class="modal-shell checks-dialog">
+  <div role="dialog" aria-modal="true" aria-labelledby="codecsModalTitle" class="modal-shell checks-dialog codecs-dialog">
     <div class="row modal-shell-head">
       <span id="codecsModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-codec"/></svg> Message codecs</span>
+      <span id="codecDirtyBadge" class="codecs-dirty-pill" hidden>Unsaved</span>
       <div class="spacer"></div>
       <button class="btn" id="codecsClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
@@ -1601,13 +1607,22 @@ Content-Type: application/json
         <div id="codecsList" class="codecs-list" role="listbox" aria-label="Message codecs"></div>
         <div class="checks-sidebar-foot">
           <button class="btn btn-primary" id="codecNew">+ New codec</button>
-          <div class="hint codecs-dir-hint u-mt-2 u-truncate" id="codecsDirHint"></div>
-          <div class="hint u-mt-1" id="codecsStepBudget" hidden></div>
+          <div class="codecs-foot-meta">
+            <div class="hint codecs-dir-hint u-truncate" id="codecsDirHint"></div>
+            <div class="hint u-mt-1" id="codecsStepBudget" hidden></div>
+          </div>
         </div>
       </div>
       <div class="checks-editor">
         <div class="row checks-editor-actions">
-          <input id="codecId" class="btn btn-field checks-editor-id" aria-label="Codec ID" placeholder="codec-id (letters, - or _)">
+          <div class="codecs-id-field">
+            <label class="codecs-id-label" for="codecId">ID</label>
+            <input id="codecId" class="btn btn-field checks-editor-id" aria-label="Codec ID" placeholder="codec-id (letters, - or _)" spellcheck="false">
+          </div>
+          <div class="seg codecs-test-side" id="codecTestSideSeg" role="group" aria-label="Test flow side">
+            <button type="button" class="on" data-side="req" aria-pressed="true">Req</button>
+            <button type="button" data-side="res" aria-pressed="false">Res</button>
+          </div>
           <button class="btn" id="codecTest">Test ▸</button>
           <button class="btn btn-primary" id="codecSave">Save</button>
           <div class="spacer"></div>
@@ -1626,7 +1641,13 @@ Content-Type: application/json
         <div id="codecPaneDocs" class="check-pane" role="tabpanel" aria-labelledby="codecModeDocs" hidden>
           <div id="codecDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
         </div>
-        <div id="codecOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the codec under this project.</span></div>
+        <div class="codecs-out-wrap">
+          <div class="codecs-out-head">
+            <span class="codecs-out-title">Test console</span>
+            <span class="hint u-truncate" id="codecOutMeta">Ready</span>
+          </div>
+          <div id="codecOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the codec under this project.</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1877,21 +1898,44 @@ Content-Type: application/json
   </div>
 </div>
 <div id="decModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="decModalTitle" class="modal-shell modal-lg">
-    <div class="row modal-shell-head">
-      <span id="decModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-decode"/></svg> Decoder</span>
-      <span class="hint u-ml-2">↓ decode · ↑ encode</span>
-      <div class="spacer"></div><button class="btn" id="decClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
-    </div>
-    <div class="modal-shell-body u-col u-gap-2">
-      <div class="list-file-bar">
-        <button class="btn" id="decLoad" type="button" title="Load text from a file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder-open"/></svg> Load file</button>
-        <span class="hint">Paste or load tokens, JWTs, base64 blobs…</span>
+  <div role="dialog" aria-modal="true" aria-labelledby="decModalTitle" class="modal-shell modal-lg dec-shell">
+    <div class="row modal-shell-head dec-head">
+      <div class="dec-title-row">
+        <span id="decModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-decode"/></svg> Decoder</span>
+        <span class="hint dec-subtitle">↓ decode · ↑ encode</span>
       </div>
-      <textarea id="decIn" class="rep-edit" aria-label="Decoder input" spellcheck="false" placeholder="Paste a token, parameter, or blob…"></textarea>
-      <div class="row u-gap-2 u-wrap" id="decOps"></div>
-      <div class="row u-gap-2"><span class="hint" id="decErr" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
-      <textarea id="decOut" class="rep-edit" aria-label="Decoder output" spellcheck="false" readonly placeholder="output"></textarea>
+      <div class="dec-head-right">
+        <span class="dec-chain-pill u-truncate" id="decChain" hidden></span>
+        <button class="btn" id="decClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      </div>
+    </div>
+    <div class="modal-shell-body dec-body">
+      <div class="dec-ops" id="decOps" role="group" aria-label="Codec operations"></div>
+      <div class="dec-panes">
+        <section class="dec-pane" aria-labelledby="decInLabel">
+          <div class="dec-pane-head">
+            <span id="decInLabel" class="dec-pane-title">Input</span>
+            <span class="dec-meta" id="decInMeta">0 chars · 0 B</span>
+            <div class="dec-pane-actions">
+              <button class="btn" id="decLoad" type="button" title="Load text from a file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder-open"/></svg> Load file</button>
+              <button class="btn" id="decClear" type="button" title="Clear input, output, and chain">Clear</button>
+            </div>
+          </div>
+          <textarea id="decIn" class="rep-edit" aria-label="Decoder input" spellcheck="false" placeholder="Paste a token, parameter, JWT, or encoded blob…"></textarea>
+        </section>
+        <section class="dec-pane" aria-labelledby="decOutLabel">
+          <div class="dec-pane-head">
+            <span id="decOutLabel" class="dec-pane-title">Output</span>
+            <span class="dec-meta" id="decOutMeta">0 chars · 0 B</span>
+            <span class="dec-status" id="decErr" role="status" aria-live="polite"></span>
+            <div class="dec-pane-actions">
+              <button class="btn" id="decUp" type="button" title="Use the output as the next input">↑ Chain</button>
+              <button class="btn btn-primary" id="decCopy" type="button">Copy output</button>
+            </div>
+          </div>
+          <textarea id="decOut" class="rep-edit" aria-label="Decoder output" spellcheck="false" readonly placeholder="Transformed output appears here…"></textarea>
+        </section>
+      </div>
     </div>
   </div>
 </div>

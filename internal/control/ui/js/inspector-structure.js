@@ -263,6 +263,9 @@ export function inspectorViewAvailability({
   renderCap = 0,
   decodedMatched = null,
   hasMessage = true,
+  hexEnabled = false,
+  jsonEnabled = false,
+  paramsEnabled = false,
 } = {}) {
   const views = side === 'res' ? RES_INSPECTOR_VIEWS : REQ_INSPECTOR_VIEWS;
   const visible = Object.fromEntries(views.map((v) => [v, false]));
@@ -281,14 +284,14 @@ export function inspectorViewAvailability({
 
   visible.raw = hasRawText;
   visible.pretty = hasRawText;
-  visible.hex = hasRawText;
+  visible.hex = Boolean(hexEnabled) && hasRawText;
   visible.headers = headerRows(side === 'req' ? detail.reqHeaders : detail.resHeaders).length > 0;
 
   if (decodedMatched === true) visible.decoded = true;
   else if (decodedMatched === false) visible.decoded = false;
   else pending.decoded = true;
 
-  if (!binary && hasBodyText) {
+  if (Boolean(jsonEnabled) && !binary && hasBodyText) {
     if (rawKnown) {
       visible.json = isJsonInspectorBody(bodyText, ct);
     } else if (overCap) {
@@ -300,20 +303,22 @@ export function inspectorViewAvailability({
   }
 
   if (side === 'req') {
-    const hasQuery = parseFormEncoded(queryOf(detail.path || '')).length > 0;
-    const isForm = isFormUrlEncoded(ct);
-    const boundary = multipartBoundary(ct);
-    const bodyCouldHaveForm = !binary && hasBodyText && (isForm || !!boundary);
-    if (hasQuery) {
-      visible.params = true;
-    } else if (bodyCouldHaveForm) {
-      if (rawKnown) {
-        visible.params = isForm
-          ? parseFormEncoded(bodyText).length > 0
-          : parseMultipart(bodyText, boundary).length > 0;
-      } else {
+    if (Boolean(paramsEnabled)) {
+      const hasQuery = parseFormEncoded(queryOf(detail.path || '')).length > 0;
+      const isForm = isFormUrlEncoded(ct);
+      const boundary = multipartBoundary(ct);
+      const bodyCouldHaveForm = !binary && hasBodyText && (isForm || !!boundary);
+      if (hasQuery) {
         visible.params = true;
-        pending.params = !overCap;
+      } else if (bodyCouldHaveForm) {
+        if (rawKnown) {
+          visible.params = isForm
+            ? parseFormEncoded(bodyText).length > 0
+            : parseMultipart(bodyText, boundary).length > 0;
+        } else {
+          visible.params = true;
+          pending.params = !overCap;
+        }
       }
     }
 
@@ -340,12 +345,12 @@ export function inspectorViewAvailability({
 // needsBackgroundBodyProbe returns true when a body-less view (Headers/Decoded)
 // needs a background raw fetch to determine whether JSON, Params, or GraphQL
 // applies without downloading large HTML/CSS/JS/binary payloads unnecessarily.
-export function needsBackgroundBodyProbe({ side, detail, mime, binary, renderCap, rawKnown } = {}) {
+export function needsBackgroundBodyProbe({ side, detail, mime, binary, renderCap, rawKnown, jsonEnabled = true, paramsEnabled = true } = {}) {
   if (rawKnown || binary || !detail) return false;
   const len = side === 'req' ? detail.reqLen : detail.resLen;
   if (typeof len !== 'number' || !Number.isFinite(len) || len <= 0) return false;
   if (typeof renderCap === 'number' && renderCap > 0 && len > renderCap) return false;
-  const avail = inspectorViewAvailability({ side, detail, raw: null, mime, binary, renderCap, decodedMatched: false, hasMessage: true });
+  const avail = inspectorViewAvailability({ side, detail, raw: null, mime, binary, renderCap, decodedMatched: false, hasMessage: true, jsonEnabled, paramsEnabled });
   return Boolean(avail.pending.json || avail.pending.params || avail.pending.gql);
 }
 

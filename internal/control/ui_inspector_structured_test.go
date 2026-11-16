@@ -1,6 +1,7 @@
 package control
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,71 @@ func TestUIInspectorEmptyViewButtonsHidden(t *testing.T) {
 	)
 	// Hide both the button and, on non-HTTP response states, the segmented strip itself.
 	requireUIContains(t, proxy, "b.hidden=!avail.visible[b.dataset.view]", "seg.hidden=!avail.anyVisible")
+}
+
+func TestUIInspectorHexHiddenByDefault(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, spec := range []struct {
+		marker string
+		view   string
+	}{
+		{`data-side="req"`, "hex"},
+		{`data-side="req"`, "json"},
+		{`data-side="req"`, "params"},
+		{`data-side="res"`, "hex"},
+		{`data-side="res"`, "json"},
+		{`id="repResSeg"`, "hex"},
+	} {
+		idx := strings.Index(index, spec.marker)
+		if idx < 0 {
+			t.Fatalf("index.html missing %s", spec.marker)
+		}
+		seg := index[idx:]
+		seg = seg[:strings.Index(seg, "</div>")]
+		viewAttr := `data-view="` + spec.view + `"`
+		viewIdx := strings.Index(seg, viewAttr)
+		if viewIdx < 0 {
+			t.Fatalf("%s missing %s button", spec.marker, viewAttr)
+		}
+		endBtn := strings.Index(seg[viewIdx:], ">")
+		if endBtn < 0 || !strings.Contains(seg[viewIdx:viewIdx+endBtn], " hidden") {
+			t.Errorf("%s %s button must be hidden by default in index.html", spec.marker, viewAttr)
+		}
+	}
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"hexEnabled:readHexViewPref()",
+		"jsonEnabled:readJsonViewPref()",
+		"paramsEnabled:readParamsViewPref()",
+		"const hexEnabled=readHexViewPref()",
+		"window.addEventListener('hexviewchange',refreshSelectedInspectorSides)",
+		"window.addEventListener('inspectorviewchange',refreshSelectedInspectorSides)",
+	)
+	toolsRaw := readUIAsset(t, "js/tools.js")
+	tools := executableJS(toolsRaw)
+	requireUIContains(t, tools,
+		"import { readHexViewPref } from './settings-model.js';",
+		"if(t.resView==='hex'&&!hexAllowed)t.resView='pretty';",
+		"if(button.dataset.view==='hex'){button.hidden=!hexAllowed;}",
+		"window.addEventListener('hexviewchange',",
+	)
+	script := `let hexSetting=false; const readHexViewPref=()=>hexSetting;
+const buttons=['raw','pretty','decoded','hex','render'].map(v=>({dataset:{view:v},hidden:v==='hex'||v==='render',disabled:false,attrs:{},on:v==='pretty',classList:{toggle(c,on){if(c==='on')this._on=on;}},setAttribute(k,val){this.attrs[k]=val;}}));
+const $=()=>({querySelectorAll:()=>buttons});
+` + repeaterRenderJS(t, toolsRaw, "function repSyncResView(t)") + `
+const tab={resId:1,resMime:'application/json',resView:'hex'};
+repSyncResView(tab);
+if(tab.resView!=='pretty')throw Error('expected hex to fall back to pretty when disabled, got '+tab.resView);
+if(!buttons.find(b=>b.dataset.view==='hex').hidden)throw Error('hex button must stay hidden when disabled');
+hexSetting=true;
+tab.resView='hex';
+repSyncResView(tab);
+if(tab.resView!=='hex')throw Error('expected hex to stay active when enabled, got '+tab.resView);
+if(buttons.find(b=>b.dataset.view==='hex').hidden)throw Error('hex button must be visible when enabled');
+`
+	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("Repeater hex view toggle behavior failed: %v\n%s", err, out)
+	}
 }
 
 func TestUIInterceptModifierHotkeys(t *testing.T) {

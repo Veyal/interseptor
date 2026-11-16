@@ -8,8 +8,17 @@ import { readSingleKeyPref } from './keys.js';
 import { setSingleKeyShortcuts, SINGLE_KEY_EVENT } from './keyboard.js';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
+  readHexViewPref, writeHexViewPref,
+  readJsonViewPref, writeJsonViewPref,
+  readParamsViewPref, writeParamsViewPref,
   readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref, themeToggleLabel,
 } from './settings-model.js';
+
+const INSPECTOR_VIEW_SWITCHES = [
+  { id: 'hexViewSwitch', read: readHexViewPref, write: writeHexViewPref, events: ['hexviewchange', 'inspectorviewchange'], on: 'Hex view is on', off: 'Hex view is off' },
+  { id: 'jsonViewSwitch', read: readJsonViewPref, write: writeJsonViewPref, events: ['inspectorviewchange'], on: 'JSON view is on', off: 'JSON view is off' },
+  { id: 'paramsViewSwitch', read: readParamsViewPref, write: writeParamsViewPref, events: ['inspectorviewchange'], on: 'Params view is on', off: 'Params view is off' },
+];
 
 const root = document.documentElement;
 const prefersLight = () => { try { return window.matchMedia('(prefers-color-scheme: light)').matches; } catch (e) { return false; } };
@@ -69,6 +78,7 @@ export function syncAppearance() {
   $$('#flowDrawerLayoutSeg button').forEach((b) => setSeg(b, b.dataset.flowLayout === flowLayout));
   syncSwitch('singleKeySwitch', readSingleKeyPref(), 'Single-key shortcuts are on', 'Single-key shortcuts are off');
   syncSwitch('hintsSwitch', readHintsPref(), 'Hints are on', 'Hints are off');
+  INSPECTOR_VIEW_SWITCHES.forEach((s) => syncSwitch(s.id, s.read(), s.on, s.off));
 }
 
 function applyHints() { root.setAttribute('data-hints', readHintsPref() ? 'on' : 'off'); }
@@ -88,12 +98,24 @@ function wire() {
   document.addEventListener(SINGLE_KEY_EVENT, syncAppearance);
   const hints = $('#hintsSwitch');
   if (hints) hints.onclick = () => { writeHintsPref(!readHintsPref()); applyHints(); syncAppearance(); };
+  INSPECTOR_VIEW_SWITCHES.forEach((s) => {
+    const btn = $('#' + s.id);
+    if (!btn) return;
+    btn.onclick = () => {
+      const next = !s.read();
+      s.write(next);
+      syncAppearance();
+      s.events.forEach((ev) => window.dispatchEvent(new CustomEvent(ev, { detail: next })));
+    };
+  });
   // System follows the OS live; the topbar toggle and other writers change data-theme.
   try {
     window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (currentThemeChoice() === 'system') applyThemeChoice('system'); syncAppearance(); });
   } catch (e) { /* matchMedia unavailable */ }
   new MutationObserver(syncAppearance).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
   window.addEventListener('densitychange', syncAppearance);
+  window.addEventListener('hexviewchange', syncAppearance);
+  window.addEventListener('inspectorviewchange', syncAppearance);
 }
 
 applyHints();

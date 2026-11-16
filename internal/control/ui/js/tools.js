@@ -11,6 +11,7 @@ import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm, intrRo
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, mountHexDump } from './core.js';
 import { flowPngMenuItems, flowSelectionImageItems, copyPreviewPng, mountFlowCopyPng, openTextFieldCtxMenu, saveFile } from './core.js';
 import { createListView, openFlow } from './core.js';
+import { readHexViewPref } from './settings-model.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -46,12 +47,15 @@ let repResponseEpoch=0;
 
 function repSyncResView(t){
   const isHTML=!!t.resId&&/html/i.test(t.resMime||'');
+  const hexAllowed=typeof readHexViewPref==='function'?readHexViewPref():true;
   if(t.resView==='render'&&t.resId&&!isHTML)t.resView='pretty';
+  if(t.resView==='hex'&&!hexAllowed)t.resView='pretty';
   t.resView=t.resView||'pretty';
   $('#repResSeg').querySelectorAll('button').forEach(button=>{
     const on=button.dataset.view===t.resView;
     button.classList.toggle('on',on);button.setAttribute('aria-pressed',on?'true':'false');
     if(button.dataset.view==='render'){button.hidden=!isHTML;button.disabled=!!(t.sendPending||t.sendError);}
+    if(button.dataset.view==='hex'){button.hidden=!hexAllowed;}
   });
 }
 
@@ -1334,6 +1338,20 @@ $('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#repResSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   renderRepResponse();
   repPersistDebounced();
+});
+function syncRepHexButton(){
+  const hexAllowed=readHexViewPref();
+  const btn=$('#repResSeg')?.querySelector('button[data-view="hex"]');
+  if(btn)btn.hidden=!hexAllowed;
+  return hexAllowed;
+}
+syncRepHexButton();
+window.addEventListener('hexviewchange',()=>{
+  const hexAllowed=syncRepHexButton();
+  const t=repCur();if(!t)return;
+  const wasHex=t.resView==='hex';
+  repSyncResView(t);
+  if(!hexAllowed&&wasHex&&t.resId){renderRepResponse();repPersistDebounced();}
 });
 
 /* ---- intruder ---- */

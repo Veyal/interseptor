@@ -10,6 +10,7 @@ import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFind
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, openNewRepeaterTab, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
+import { readHexViewPref, readJsonViewPref, readParamsViewPref } from './settings-model.js';
 import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder } from './decoder.js';
 import { openSessionInspector } from './session-inspection.js';
@@ -1850,7 +1851,7 @@ function computeSideAvailability(side,flowId,detail,rawVal,decodedOverride){
   const decodedMatched=decodedOverride!==undefined?decodedOverride:currentDecodedFlagFor(flowId,side,detail);
   return inspectorViewAvailability({
     side,detail,raw:rawVal,mime,binary:isBinaryMime(mime),renderCap:RENDER_CAP,
-    decodedMatched,hasMessage:true,
+    decodedMatched,hasMessage:true,hexEnabled:readHexViewPref(),jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref(),
   });
 }
 function setSideSegSelection(side,view){
@@ -1887,8 +1888,7 @@ function syncWsResButtons(flowId,detail,selectEpoch,filterEpoch){
     },()=>{});
   }
 }
-registerSseHandler('codecs.update',()=>{
-  resetCodecAvailabilityCache();
+function refreshSelectedInspectorSides(){
   const flowId=state.selId,detail=state.detail;
   if(!flowId||!detail)return;
   renderSide('req');
@@ -1896,7 +1896,13 @@ registerSseHandler('codecs.update',()=>{
   else if(!(detail.flags&FLAG_TLS)&&!clientAborted(detail)&&!(!detail.status&&(detail.flags&FLAG_DROPPED))&&!flowPending(detail)){
     renderSide('res');
   }
+}
+registerSseHandler('codecs.update',()=>{
+  resetCodecAvailabilityCache();
+  refreshSelectedInspectorSides();
 });
+window.addEventListener('hexviewchange',refreshSelectedInspectorSides);
+window.addEventListener('inspectorviewchange',refreshSelectedInspectorSides);
 // A socket can stream far more frames than are worth holding in the DOM at once
 // (the issue flags 10,000+ nodes). Render the most recent WS_FRAME_RENDER_CAP and
 // note the rest, so the pane stays light without pausing capture to disk.
@@ -2156,7 +2162,7 @@ export async function renderSide(side){
       },()=>{});
     },()=>{});
   }
-  if((view==='headers'||view==='decoded')&&needsBackgroundBodyProbe({side,detail,mime,binary,renderCap:RENDER_CAP,rawKnown:peekRaw!==null})){
+  if((view==='headers'||view==='decoded')&&needsBackgroundBodyProbe({side,detail,mime,binary,renderCap:RENDER_CAP,rawKnown:peekRaw!==null,jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref()})){
     fetchRawMessage(flowId,side,detail).then(raw=>{
       if(!sameFlow())return;
       applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,raw));
@@ -2265,11 +2271,12 @@ export async function renderSide(side){
     // Inline image preview instead of "binary, not rendered" for image bodies.
     if(/^image\//i.test(mime)){inspImageHTML(el,flowId,side,mime,len);return;}
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
+    const hexEnabled=readHexViewPref();
     el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint body-note body-note-flush">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
         <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download body</a>
         <button class="btn body-action body-action-next" data-bin="1">Show raw anyway</button>
-        <button class="btn body-action body-action-next" data-bin-hex="1">Hex dump</button></div>`;
+        ${hexEnabled?'<button class="btn body-action body-action-next" data-bin-hex="1">Hex dump</button>':''}</div>`;
     const b=el.querySelector('[data-bin]');
     if(b)b.onclick=()=>{el.innerHTML='<span class="hint body-pad">rendering…</span>';setTimeout(draw,10);};
     const bHex=el.querySelector('[data-bin-hex]');

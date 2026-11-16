@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeThemeChoice, themeAttribute, themeStoragePlan, normalizeDensityChoice, readHintsPref, writeHintsPref,
+  HEX_VIEW_PREF, readHexViewPref, writeHexViewPref,
+  JSON_VIEW_PREF, readJsonViewPref, writeJsonViewPref,
+  PARAMS_VIEW_PREF, readParamsViewPref, writeParamsViewPref,
   highlightRanges, matchSections, searchSummary, saveStatusText, validateTargetLines, sectionHealth, typedConfirmMatches,
   projectImportSummary, restoreNoticeText, upstreamPasswordDropWarning,
   readFlowDrawerLayoutPref, writeFlowDrawerLayoutPref, normalizeFlowDrawerLayoutChoice,
@@ -199,4 +202,46 @@ test('flow drawer layout preference defaults to bottom and persists valid choice
   assert.equal(readFlowDrawerLayoutPref(mem), 'popup');
   writeFlowDrawerLayoutPref('invalid', mem);
   assert.equal(readFlowDrawerLayoutPref(mem), 'bottom');
+});
+
+test('hex view preference defaults to off and persists on/off choices', () => {
+  assert.equal(HEX_VIEW_PREF, 'interseptor.hexView');
+  const mem = memory();
+  assert.equal(readHexViewPref(mem), false);
+
+  mem.setItem(HEX_VIEW_PREF, 'maybe');
+  assert.equal(readHexViewPref(mem), false);
+
+  assert.equal(writeHexViewPref(true, mem), true);
+  assert.equal(mem.getItem(HEX_VIEW_PREF), 'on');
+  assert.equal(readHexViewPref(mem), true);
+
+  assert.equal(writeHexViewPref(false, mem), true);
+  assert.equal(mem.getItem(HEX_VIEW_PREF), 'off');
+  assert.equal(readHexViewPref(mem), false);
+
+  const broken = {
+    getItem() { throw new Error('blocked'); },
+    setItem() { throw new Error('blocked'); },
+  };
+  assert.equal(readHexViewPref(broken), false);
+  assert.equal(writeHexViewPref(true, broken), false);
+});
+
+test('json and params view preferences default to off and persist on/off choices', () => {
+  assert.equal(JSON_VIEW_PREF, 'interseptor.jsonView');
+  assert.equal(PARAMS_VIEW_PREF, 'interseptor.paramsView');
+  const mem = memory();
+  assert.equal(readJsonViewPref(mem), false);
+  assert.equal(readParamsViewPref(mem), false);
+
+  assert.equal(writeJsonViewPref(true, mem), true);
+  assert.equal(readJsonViewPref(mem), true);
+  assert.equal(writeJsonViewPref(false, mem), true);
+  assert.equal(readJsonViewPref(mem), false);
+
+  assert.equal(writeParamsViewPref(true, mem), true);
+  assert.equal(readParamsViewPref(mem), true);
+  assert.equal(writeParamsViewPref(false, mem), true);
+  assert.equal(readParamsViewPref(mem), false);
 });

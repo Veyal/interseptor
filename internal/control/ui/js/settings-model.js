@@ -15,6 +15,9 @@ export const DENSITY_CHOICES = [
   { id: 'comfortable', label: 'Comfortable' },
 ];
 export const HINTS_PREF = 'interseptor.hints';
+export const HEX_VIEW_PREF = 'interseptor.hexView';
+export const JSON_VIEW_PREF = 'interseptor.jsonView';
+export const PARAMS_VIEW_PREF = 'interseptor.paramsView';
 export const FLOW_DRAWER_LAYOUT_PREF = 'interseptor.flowDrawerLayout';
 export const FLOW_DRAWER_LAYOUT_CHOICES = [
   { id: 'bottom', label: 'Bottom panel' },
@@ -68,12 +71,20 @@ export function themeToggleLabel(theme) {
   return 'Theme: ' + (t === 'hc' ? 'high contrast' : t) + '. Switch to ' + (t === 'dark' ? 'light' : 'dark') + '.';
 }
 
-export function readHintsPref(storage) {
-  try { return (storage || globalThis.localStorage).getItem(HINTS_PREF) === 'on'; } catch (e) { return false; }
+function readBoolPref(key, storage) {
+  try { return (storage || globalThis.localStorage).getItem(key) === 'on'; } catch (e) { return false; }
 }
-export function writeHintsPref(on, storage) {
-  try { (storage || globalThis.localStorage).setItem(HINTS_PREF, on ? 'on' : 'off'); return true; } catch (e) { return false; }
+function writeBoolPref(key, on, storage) {
+  try { (storage || globalThis.localStorage).setItem(key, on ? 'on' : 'off'); return true; } catch (e) { return false; }
 }
+export function readHintsPref(storage) { return readBoolPref(HINTS_PREF, storage); }
+export function writeHintsPref(on, storage) { return writeBoolPref(HINTS_PREF, on, storage); }
+export function readHexViewPref(storage) { return readBoolPref(HEX_VIEW_PREF, storage); }
+export function writeHexViewPref(on, storage) { return writeBoolPref(HEX_VIEW_PREF, on, storage); }
+export function readJsonViewPref(storage) { return readBoolPref(JSON_VIEW_PREF, storage); }
+export function writeJsonViewPref(on, storage) { return writeBoolPref(JSON_VIEW_PREF, on, storage); }
+export function readParamsViewPref(storage) { return readBoolPref(PARAMS_VIEW_PREF, storage); }
+export function writeParamsViewPref(on, storage) { return writeBoolPref(PARAMS_VIEW_PREF, on, storage); }
 
 /* ---- section search ---- */
 

@@ -1460,9 +1460,34 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .checks-row .checks-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
 .checks-cat{font-size:var(--fs-xs);color:var(--fg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:0 4px}
 /* Message codecs sidebar reuses checks-row; keep a dedicated hook for empty/list spacing. */
-.codecs-list .codecs-row{cursor:pointer}
+.codecs-list .codecs-row{display:flex;flex-direction:column;gap:3px;cursor:pointer}
 .codecs-list .codecs-row:hover,.codecs-list .codecs-row.sel{background:var(--bg3)}
 .codecs-dir-hint{max-width:100%}
+.codecs-foot-meta{margin-top:var(--sp-2)}
+.codecs-row-title{color:var(--fg);font-weight:500}
+.codecs-row-title.is-err{color:var(--red)}
+.codecs-tag{display:inline-flex;align-items:center;padding:1px 6px;border-radius:var(--r-pill);border:1px solid var(--line2);font-size:var(--fs-xs);color:var(--fg3);flex:none}
+.codecs-tag-accent{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accentDim)}
+.codecs-tag-danger{color:var(--dangerFg);border-color:var(--dangerLine);background:var(--redDim)}
+.codecs-empty{padding:var(--sp-4) var(--sp-3)}
+.codecs-dialog .modal-shell-head{gap:var(--sp-2)}
+.codecs-dialog .modal-shell-title{flex:0 0 auto}
+.codecs-dialog .check-pane:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column}
+.codecs-id-field{display:flex;align-items:center;gap:var(--sp-2);min-width:0;flex:1 1 220px;max-width:340px}
+.codecs-id-label{font-size:var(--fs-xs);font-weight:600;color:var(--fg3);text-transform:uppercase;letter-spacing:.04em;flex:none}
+.codecs-id-field>.checks-editor-id{flex:1;min-width:0;width:auto}
+.codecs-test-side{flex:none}
+.codecs-dirty-pill{display:inline-flex;align-items:center;padding:2px var(--sp-2);border-radius:var(--r-pill);background:var(--noteDim);border:1px solid var(--warnLine);color:var(--warnFg);font-size:var(--fs-xs);font-weight:600;flex:none}
+.codecs-out-wrap{flex:none;display:flex;flex-direction:column;border-top:1px solid var(--line);background:var(--bg1)}
+.codecs-out-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);padding:6px var(--sp-3);border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-xs)}
+.codecs-out-title{font-weight:600;color:var(--fg2);letter-spacing:.03em;text-transform:uppercase;flex:none}
+.codecs-match-note{margin-bottom:6px;font-weight:600}
+.codecs-compile-ok{color:var(--accent);margin-top:4px}
+.codecs-pre{white-space:pre-wrap;word-break:break-word;margin:0;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.55;color:var(--fg)}
+.codecs-pre-err{color:var(--dangerFg)}
+@media (max-width:720px){
+  .codecs-id-field{max-width:none;flex:1 1 100%}
+}
 .checks-work{flex:1;display:flex;min-height:0;overflow:hidden}
 @media (max-width:720px){
   .checks-work>.checks-sidebar{width:100%;min-width:0;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
@@ -1484,7 +1509,9 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .check-docs th,.check-docs td{border:1px solid var(--line);padding:5px 8px;text-align:left}
 .check-docs th{background:var(--bg1)}
 #checkSrc{flex:1;min-height:420px;font-size:var(--fs-sm);line-height:1.55}
-#checkOut,#codecOut{flex:none;min-height:110px;max-height:34vh;overflow:auto;border-top:1px solid var(--line);padding:10px 12px;font-size:var(--fs-xs)}
+#codecSrc{flex:1;min-height:180px;height:100%;padding:14px 18px;font-size:var(--fs-sm);line-height:1.6;tab-size:4}
+#checkOut{flex:none;min-height:110px;max-height:34vh;overflow:auto;border-top:1px solid var(--line);padding:10px 12px;font-size:var(--fs-xs)}
+#codecOut{flex:none;min-height:96px;max-height:28vh;overflow:auto;padding:10px 14px;font-size:var(--fs-xs);background:var(--bg1)}
 .check-status{border-left:3px solid var(--line2);border-radius:var(--r-md);background:var(--bg1);padding:8px 10px;margin-bottom:8px}
 .check-status:last-child{margin-bottom:0}
 .check-status-error{border-color:var(--red)}
@@ -1874,8 +1901,7 @@ summary::-webkit-details-marker{display:none}
 .host-list-edit{width:100%;min-height:96px;padding:var(--sp-2) var(--sp-3);background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:var(--r-md);font-family:var(--mono);font-size:var(--fs-xs);line-height:var(--lh-normal);resize:vertical}
 #originTLSVerifyBypassList{min-height:72px}
 #flowSearchScriptEditor{width:100%;min-height:96px;resize:vertical;font-family:var(--mono)}
-#decIn{height:120px;border:1px solid var(--line);border-radius:var(--r-md)}
-#decOut{height:170px;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md)}
+/* Decoder textarea framing lives under .dec-pane in surfaces.css */
 /* Bulleted reference lists inside a .ca-how disclosure. */
 .ca-how ul{margin:var(--sp-2) 0 var(--sp-1);padding-left:20px;color:var(--fg2);line-height:var(--lh-loose)}
 /* Checks/codecs editor chrome — was duplicated inline on both dialogs. */
