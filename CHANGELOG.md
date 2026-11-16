@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.25.0` release.
+
 ## [2.25.0] - 2026-11-17
 
 > Minor release: add an `Original` / `Modified` view toggle in the Proxy
