@@ -25,7 +25,7 @@ import (
 const aiMaxIntruderThreads = 10
 
 // aiScopeFix is the remediation every out-of-scope refusal carries.
-const aiScopeFix = "ask the operator (request_human_input) to add the host to scope in the UI; the AI channel cannot send outside scope"
+const aiScopeFix = "ask the operator to add the host to scope in the UI; the AI channel cannot send outside scope"
 
 // aiInvalidTargetPrefix starts the refusal for a target that cannot be
 // scope-checked at all; writeAIScopeRefusal reports it as code invalid_target.

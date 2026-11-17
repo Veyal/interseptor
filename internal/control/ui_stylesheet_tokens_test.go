@@ -241,7 +241,7 @@ func TestUIResponsiveCollapseAt900720And600(t *testing.T) {
 	m600 := mediaBlock(t, css, "@media (max-width:600px)")
 	for _, want := range []string{
 		".oob-row{grid-template-columns:44px minmax(0,1fr) auto", ".authz-id{flex-wrap:wrap", ".act-filter{width:100%",
-		".hi-prompt .hi-input{width:100%", "min-width:0",
+		"min-width:0",
 	} {
 		if !strings.Contains(m600, want) {
 			t.Errorf("600px block missing %q", want)

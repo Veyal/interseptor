@@ -2858,7 +2858,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scope") })
 
 	s.add("add_scope_rule",
-		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list needs the operator (request_human_input).",
+		"Add a scope rule. host allows a leading wildcard (*.acme.com); path is a prefix. Scope focuses history/intercept and bounds every agent send. The AI channel may set the first include rule and add exclude rules; widening an existing allow-list must be done by the operator in the UI.",
 		obj(map[string]any{
 			"action":  pe("", "include", "exclude"),
 			"host":    p("string", "e.g. *.acme.com"),
@@ -3166,64 +3166,6 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/scope", map[string]any{
 				"action": "include", "host": host, "scheme": scheme, "enabled": true,
 			})
-		})
-
-	s.add("request_human_input",
-		"Pause and ASK THE OPERATOR before a high-impact or ambiguous INTERCEPTOR/TARGET-ENGAGEMENT action. The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Use this instead of guessing or exceeding the operator's engagement authority.\n\n"+
-			"Use for (Interseptor/target engagement ONLY): (1) scope ambiguity — e.g. \"is a new host in scope?\"; (2) destructive or high-blast-radius target actions — e.g. \"I found IDOR on /api/user/{id} — fuzz ids 1-100?\" or dropping/modifying target data; (3) auth/identity choices — e.g. which authz identity to escalate with, whether to use a real credential; (4) anything that exceeds the operator's declared engagement authority.\n\n"+
-			"Do not use for (this is host/OS/dev work, not Interseptor): local machine/OS admin (sudo, enabling Remote Login, package installs like brew/apt, SSH/Tailscale HOST setup); general coding, git, or Cursor session questions; non-Interseptor tooling prompts or how-to-run-it questions. For anything in this Do-not-use-for list, do not call this tool — use normal chat, or stop and tell the operator exactly which local command to run.",
-		obj(map[string]any{
-			"message": p("string", "the engagement question, or what target action you want to take and why"),
-			"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional suggested answers, e.g. [\"yes\",\"no\"]"},
-		}, "message"),
-		func(a map[string]any) (string, error) {
-			if _, err := reqStr(a, "message"); err != nil {
-				return "", err
-			}
-			body := map[string]any{"message": argStr(a, "message")}
-			if opts, ok := a["options"].([]any); ok && len(opts) > 0 {
-				body["options"] = opts
-			}
-			raw, err := s.api(http.MethodPost, "/api/human-input", body)
-			if err != nil {
-				return "", err
-			}
-			var pr struct {
-				ID       int64  `json:"id"`
-				Answered bool   `json:"answered"`
-				Answer   string `json:"answer"`
-			}
-			json.Unmarshal([]byte(raw), &pr)
-			if pr.Answered {
-				return "Human answered: " + pr.Answer, nil
-			}
-			return fmt.Sprintf("No answer yet (the prompt is showing in the operator's UI). Do other read-only work if useful, then call get_human_response with id=%d to fetch their reply before proceeding.", pr.ID), nil
-		})
-
-	s.add("get_human_response",
-		"Retrieve the human's answer to an earlier request_human_input (poll this until they've answered).",
-		obj(map[string]any{"id": pt("integer")}, "id"),
-		func(a map[string]any) (string, error) {
-			id, err := reqInt(a, "id")
-			if err != nil {
-				return "", err
-			}
-			if id == 0 {
-				return "", fmt.Errorf("id is required (a non-zero pending-prompt id)")
-			}
-			raw, err := s.apiGet(fmt.Sprintf("/api/human-input/%d", id))
-			if err != nil {
-				return "", err
-			}
-			var pr struct {
-				Answered bool   `json:"answered"`
-				Answer   string `json:"answer"`
-			}
-			json.Unmarshal([]byte(raw), &pr)
-			if pr.Answered {
-				return "Human answered: " + pr.Answer, nil
-			}
-			return "Still pending — the human hasn't answered yet. Poll again shortly.", nil
 		})
 
 	s.add("host_stats",

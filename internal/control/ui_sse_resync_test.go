@@ -80,7 +80,6 @@ func TestUISSEResyncRefetchesEveryStore(t *testing.T) {
 		"loadSettings()",
 		"loadProject()",
 		"refreshIntercept()",
-		"loadHumanInput()",
 	} {
 		if !strings.Contains(body, refetch) {
 			t.Errorf("stale-reconnect resync must refetch via %q", refetch)

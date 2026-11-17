@@ -145,7 +145,7 @@ if(calls!==1)throw Error('burst must coalesce into one call, got '+calls);
 	}
 }
 
-func TestUIVersionBadgeAndHumanInputReportFailures(t *testing.T) {
+func TestUIVersionBadgeReportsFailures(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	requireUIContains(t, app,
 		"el.textContent='v?'",
@@ -153,20 +153,45 @@ func TestUIVersionBadgeAndHumanInputReportFailures(t *testing.T) {
 		"catch(e){if(el)markVersionFailed(el);}",
 		"el.classList.add('is-update')",
 	)
-	hi := executableJS(readUIAsset(t, "js/humaninput.js"))
-	requireUIContains(t, hi,
-		"function renderHumanInputError(e)",
-		`role="alert"`,
-		"hi-retry",
-		"if(!humanInputShown)renderHumanInputError(e)",
-		"toastError('Could not send answer', e)",
-	)
-	// respond()'s catch must refresh the list after reporting the failure.
-	respond := hi[strings.Index(hi, "async function respond("):]
-	catchAt := strings.Index(respond, "catch (e)")
-	if catchAt < 0 || strings.Index(respond[catchAt:], "loadHumanInput()") < 0 {
-		t.Error("a failed answer must reload prompts to clear expired ones")
+}
+
+func TestUIHumanInputRemovedAndNeighborsIntact(t *testing.T) {
+	if _, err := uiFS.Open("ui/js/humaninput.js"); err == nil {
+		t.Fatal("ui/js/humaninput.js must be removed from embedded UI assets")
 	}
+	index := readUIAsset(t, "index.html")
+	for _, banned := range []string{"humanInputBar", "actAttention", "humaninput.js"} {
+		if strings.Contains(index, banned) {
+			t.Errorf("index.html must not contain %q", banned)
+		}
+	}
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	for _, banned := range []string{"humaninput.js", "loadHumanInput", "human.input"} {
+		if strings.Contains(app, banned) {
+			t.Errorf("js/app.js must not reference %q", banned)
+		}
+	}
+	requireUIContains(t, app,
+		"loadSettings()",
+		"loadActivity()",
+		"loadProject()",
+		"loadVersion(true)",
+		"loadFindings()",
+		"loadTags()",
+		"connectEvents()",
+	)
+	activity := executableJS(readUIAsset(t, "js/activity.js"))
+	for _, banned := range []string{"humanInputBar", "actAttention", "renderAttention", "hi-prompt"} {
+		if strings.Contains(activity, banned) {
+			t.Errorf("js/activity.js must not reference %q", banned)
+		}
+	}
+	requireUIContains(t, activity,
+		"export function renderActivity()",
+		"export function onActivity(it)",
+		"export async function loadActivity()",
+		"$('#actClear').onclick=",
+	)
 }
 
 func TestUITagChipColorsNormalizeAndFollowTheme(t *testing.T) {

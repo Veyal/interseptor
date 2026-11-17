@@ -97,7 +97,7 @@ type ConfirmResult struct {
 }
 
 // Confirmer is Gate 4: a human confirm for Critical/High candidates. The concrete
-// impl is built in Phase 2 over the humaninput surface; tests inject a fake.
+// implementation is injected by the caller; tests inject a fake.
 type Confirmer interface {
 	Confirm(ctx context.Context, c Candidate, proof Proof) ConfirmResult
 }

@@ -301,7 +301,7 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 	assets := []string{"index.html", "login.html", "js/core.js", "js/app.js", "js/proxy.js",
 		"js/tools.js", "js/findings.js", "js/playbooks.js", "js/oob.js", "js/decoder.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js",
-		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
+		"js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/apipanel.js", "js/setup.js"}
 
 	// These ranges were originally too narrow and let ⚡ (U+26A1, which has
@@ -749,7 +749,7 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	for _, name := range append(append([]string{}, foundationStylesheets...), "index.html", "login.html", "js/core.js", "js/app.js",
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/playbooks.js", "js/oob.js", "js/decoder.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
-		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
+		"js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/setup.js") {
 		for _, m := range regexp.MustCompile(`font-size:\s*([0-9.]+)px`).FindAllStringSubmatch(readUIAsset(t, name), -1) {
 			f, _ := strconv.ParseFloat(m[1], 64)

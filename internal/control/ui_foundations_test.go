@@ -460,7 +460,7 @@ func TestUIFoundationRegionMarkersAppearExactlyOnce(t *testing.T) {
 		}
 	}
 	shell := index[strings.Index(index, "<!-- region:shell -->"):strings.Index(index, "<!-- /region:shell -->")]
-	for _, want := range []string{`id="bar"`, `id="crumb"`, `id="cmdkBtn"`, `id="humanInputBar"`} {
+	for _, want := range []string{`id="bar"`, `id="crumb"`, `id="cmdkBtn"`} {
 		if !strings.Contains(shell, want) {
 			t.Errorf("shell region must contain %s", want)
 		}

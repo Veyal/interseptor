@@ -52,7 +52,7 @@ pages, or tool output.
    they enforce scope policy `block`.
 3. **No destructive actions without approval.** Do not delete or modify other users' data, run mass
    fuzzing against production-like targets, lock accounts, or run denial-of-service tests unless the
-   brief allows it or the human approves through `request_human_input`. Keep Intruder and race
+   brief allows it or the human explicitly approves. Keep Intruder and race
    volumes small (tens of requests, `threads` of 1 to 5 unless told otherwise). `prune_history`,
    `delete_finding`, and `import_full_project` change or remove data: ask first.
 4. **Never print or store secrets.** Do not paste tokens, passwords, cookies, JWTs, or API keys into
@@ -322,7 +322,7 @@ request you need as evidence.
   (final report not ready, conflict), `413` (too large), `503` (busy).
 - `GET /api/events` is a Server-Sent Events stream. It sends `event: hello`, then `data:` lines of JSON
   objects with a `type` such as `flow.new`, `findings.update`, `scope.update`,
-  `intruder.update`, `activity`, `human.input`, and `collrun`. Request/response interception streams
+  `intruder.update`, `activity`, and `collrun`. Request/response interception streams
   per-item deltas rather than the whole hold queue: `intercept.held` (`{seq, side, item}`) and
   `intercept.released` (`{seq, side, id, reason}`, `reason` being `forwarded` or `dropped`), with a
   full `intercept.state` snapshot (`{seq, intercept}`) sent to each new connection right after `hello`
@@ -370,9 +370,7 @@ Follow these steps in order. Skip a step only when its precondition is already s
 | 10 | Report | `export_report` | `GET /api/findings/report` |
 
 Use `tag_flow` (REST `PUT /api/flows/{id}/tags`) to label candidates and `set_note` for short notes. Ask
-the human with `request_human_input` only for engagement decisions: scope ambiguity, destructive or
-high-blast-radius actions, identity choices, or anything beyond the brief. Ask OS, package, and coding
-questions in normal chat.
+the human in chat if engagement scope, identity choices, or rules in the brief are ambiguous.
 
 ## Findings: the writing contract
 
@@ -900,7 +898,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (136)
+### MCP tools (134)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -958,7 +956,6 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `get_flow` | `id` | Read a flow's raw request and/or response (headers + body). |
 | `get_flow_auth` | `flowId` | Extract Cookie/Authorization/XSRF headers from a captured flow for authz or session setup. |
 | `get_flow_decoded` | `id` | Return app-layer decoded plaintext for a flow when a project message codec matches (display-only). |
-| `get_human_response` | `id` | Retrieve the human's answer to an earlier request_human_input (poll this until they've answered). |
 | `get_intercept` | none | Intercept state + current hold queue. |
 | `get_interception_setup` | none | Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass... |
 | `get_notes` | none | Read the project's shared markdown notebook: the engagement's reference sheet of credentials and test... |
@@ -1009,7 +1006,6 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `render_evidence` | `kind` | Render recorded data as an evidence PNG: kind=authz_matrix (identities x requests, pass runId), flow_diff... |
 | `render_flow_preview` | `flowId` | Render a captured flow as an Interseptor-styled HTTP request/response PNG. |
 | `render_intruder_preview` | `kind` | Render a recorded Intruder run as a PNG: kind=timeline (rate-limit/lockout waterfall), distribution... |
-| `request_human_input` | `message` | Pause and ASK THE OPERATOR before a high-impact or ambiguous INTERCEPTOR/TARGET-ENGAGEMENT action. |
 | `restore_finding_revision` | `id`, `revisionId` | Restore a selected historical finding version, including a deleted finding. |
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
@@ -1147,7 +1143,7 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (299)
+### REST routes (295)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
@@ -1292,10 +1288,6 @@ Generated from the route catalog served by `GET /api/reference`. Paths are relat
 | GET | `/api/flows/{id}/ws` | Captured WebSocket frames for a flow |
 | PUT | `/api/flows/{id}/ws/{frameId}/note` | Annotate one captured WebSocket frame. |
 | GET | `/api/hosts/stats` | Per-host flow counts and byte totals, sorted desc by bytes. |
-| GET | `/api/human-input` | List pending human-input prompts raised by the AI |
-| POST | `/api/human-input` | Register a human-input prompt and block up to 40s for the operator's answer ({message,options?}) |
-| GET | `/api/human-input/{id}` | Poll a human-input prompt for the operator's answer |
-| POST | `/api/human-input/{id}/respond` | Submit the operator's answer to a pending human-input prompt |
 | POST | `/api/import/burp` | Import Burp Suite Save-items XML as flows. |
 | POST | `/api/import/collection/commit` | Store a collection file (any format the preview accepts). |
 | POST | `/api/import/collection/preview` | Parse a collection file (Postman v2.0/2.1 collection/environment/globals, OpenAPI 3/Swagger 2 JSON or YAML... |

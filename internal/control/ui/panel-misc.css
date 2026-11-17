@@ -10,10 +10,6 @@
 .act-chip:hover{background:var(--bg3)}
 .act-chip.on{border-width:2px;border-color:var(--accent);background:var(--accentDim)}
 .act-chip-n{font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)}
-.act-attention{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--rd-gap);background:var(--bg2);font-size:var(--fs-sm)}
-.act-attention[hidden]{display:none}
-.act-attention strong{color:var(--rd-gap)}
-.act-attention span{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
 .act-new-pill{align-self:center;margin:var(--sp-2) 0;border-radius:var(--r-pill);font-weight:700}
 .act-new-pill[hidden]{display:none}
 .act-day-h{position:sticky;top:0;z-index:var(--z-sticky);margin:0;padding:var(--sp-2) var(--sp-4);background:var(--bg1);border-bottom:1px solid var(--line2);font-size:var(--fs-sm);font-weight:700;color:var(--fg2)}

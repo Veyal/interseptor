@@ -76,7 +76,6 @@ type Hub struct {
 	intr          *intruder.Engine
 	sc            *scope.Engine
 	oob           *oob.Catcher
-	hi            *humanInput // pending AI→human input prompts (request_human_input)
 	mux           *http.ServeMux
 	authzMu       sync.Mutex // serializes read-modify-write of saved authz identities
 	authzEventsMu sync.Mutex // serializes read-modify-write of the per-identity event log
@@ -235,7 +234,6 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.oob = oob.New()
 	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })
-	h.hi = newHumanInput()
 	h.tun = tunnel.New(func() string {
 		addr := h.currentControlAddr()
 		if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {

@@ -67,7 +67,7 @@ func TestOpenAPIDocumentHasTheRequiredRootFields(t *testing.T) {
 func TestOpenAPIRetiredScannerRoutesAndCodecs(t *testing.T) {
 	paths := openapiDoc(t)["paths"].(map[string]any)
 	for path := range paths {
-		for _, prefix := range []string{"/api/scanner", "/api/checks", "/api/packs"} {
+		for _, prefix := range []string{"/api/scanner", "/api/checks", "/api/packs", "/api/human-input"} {
 			if path == prefix || strings.HasPrefix(path, prefix+"/") {
 				t.Errorf("retired route %s remains in OpenAPI", path)
 			}
@@ -76,6 +76,42 @@ func TestOpenAPIRetiredScannerRoutesAndCodecs(t *testing.T) {
 	for _, path := range []string{"/api/codecs", "/api/codecs/test", "/api/codecs/{id}"} {
 		if _, ok := paths[path]; !ok {
 			t.Errorf("codec route %s missing from OpenAPI", path)
+		}
+	}
+}
+
+func TestRetiredHumanInputRoutesReturnNotFound(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/human-input"},
+		{http.MethodPost, "/api/human-input"},
+		{http.MethodGet, "/api/human-input/1"},
+		{http.MethodPost, "/api/human-input/1/respond"},
+	} {
+		req, err := http.NewRequest(tc.method, ts.URL+tc.path, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s %s = %d, want 404", tc.method, tc.path, resp.StatusCode)
+		}
+	}
+	for _, r := range RouteCatalog() {
+		if strings.HasPrefix(r.Path, "/api/human-input") {
+			t.Errorf("retired route %s %s remains in RouteCatalog", r.Method, r.Path)
+		}
+	}
+	tools, _ := mcpDescriptor["tools"].([]map[string]string)
+	for _, tool := range tools {
+		if tool["name"] == "request_human_input" || tool["name"] == "get_human_response" {
+			t.Errorf("retired MCP tool %q remains in mcpDescriptor", tool["name"])
 		}
 	}
 }

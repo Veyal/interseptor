@@ -99,7 +99,7 @@ test('real MCP tool names (verb_noun) land in their category', () => {
     add_scope_rule: 'scope', list_scope: 'scope', scope_from_url: 'scope',
     get_settings: 'settings', add_rule: 'settings', list_rules: 'settings', android_setup: 'settings',
     ios_ssh_setup: 'settings', ca_info: 'settings', set_interception_setup: 'settings', export_full_project: 'settings',
-    check_readiness: 'agent', request_human_input: 'agent',
+    check_readiness: 'agent',
   };
   for (const [tool, cat] of Object.entries(cases)) assert.equal(activityCategory(tool), cat, tool);
 });

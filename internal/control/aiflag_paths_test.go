@@ -266,7 +266,6 @@ var aiFlagNotFlowCreating = map[string]string{
 	"/api/flows/{}/interception":           "flow bookkeeping",
 	"/api/flows/{}/note":                   "flow bookkeeping",
 	"/api/flows/{}/ws/{}/note":             "flow bookkeeping",
-	"/api/human-input":                     "operator prompt",
 	"/api/import/full/file":                "archive import",
 	"/api/intercept/response/toggle":       "proxy interception state",
 	"/api/intercept/response/{}/drop":      "proxy interception state",

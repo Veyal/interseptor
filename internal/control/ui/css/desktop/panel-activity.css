@@ -19,9 +19,6 @@ html.desktop-app .act-chip:hover{background:transparent;color:var(--text-primary
 html.desktop-app .act-chip.on{border:0;background:var(--surface-2);color:var(--text-primary);box-shadow:var(--hairline-shadow)}
 html.desktop-app[data-theme="light"] .act-chip.on{background:var(--surface-1)}
 html.desktop-app .act-chip-n{font-family:var(--ui);font-size:var(--text-caption);font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}
-html.desktop-app .act-attention{margin:8px var(--gutter);padding:6px 10px;gap:8px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);background:var(--warning-subtle);font-size:var(--text-ui)}
-html.desktop-app .act-attention strong{color:var(--warning);font-weight:600}
-html.desktop-app .act-attention[hidden]{display:none}
 html.desktop-app .act-new-pill{margin:8px 0;min-height:var(--control-h-sm);border-radius:999px;background:var(--accent-subtle);border-color:transparent;color:var(--accent);font-weight:500}
 
 /* ---- empty state: centred in the pane ---- */

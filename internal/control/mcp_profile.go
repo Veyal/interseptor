@@ -9,7 +9,7 @@ import (
 // mcpProfileForRequest resolves which MCP tool profile a /mcp request gets.
 // Precedence is explicit over implicit, and an unknown name is an error rather
 // than a silent fallback: a client that asks for a profile it misspelled should
-// hear about it, not quietly receive all 133 tools.
+// hear about it, not quietly receive all 134 tools.
 //
 //  1. ?profile= on the request
 //  2. INTERSEPTOR_MCP_PROFILE in the server's environment

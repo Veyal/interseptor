@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Removed `request_human_input` and the AI-to-human input handoff.** Deleted the `request_human_input` and `get_human_response` MCP tools (and their references from connect instructions, tool profiles, scope-refusal remediation text, and documentation), the `/api/human-input`, `/api/human-input/{id}`, and `/api/human-input/{id}/respond` control endpoints, the `human.input` SSE event, and the `#humanInputBar` / `#actAttention` UI banners (`internal/mcp/mcp.go`, `internal/mcp/instructions.go`, `internal/mcp/profile.go`, `internal/control/control.go`, `internal/control/routes_register.go`, `internal/control/api.go`, `internal/control/ai_scope.go`, `internal/control/ui/index.html`, `internal/control/ui/js/app.js`, `internal/control/ui/js/activity.js`, `docs/agents.md`).
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.25.0` release.

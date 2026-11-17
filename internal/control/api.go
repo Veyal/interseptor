@@ -335,10 +335,6 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/flows/retention", "Set the retention policy; body {maxAgeHours, maxFlows}"},
 	{"POST", "/api/flows/retention/run", "Apply the retention policy now and return {deleted}"},
 	{"GET", "/api/hosts/stats", "Per-host flow counts and byte totals, sorted desc by bytes. Response: {hosts:[{host,flows,bytes}],totalFlows,totalBytes}"},
-	{"POST", "/api/human-input", "Register a human-input prompt and block up to 40s for the operator's answer ({message,options?})"},
-	{"GET", "/api/human-input", "List pending human-input prompts raised by the AI"},
-	{"GET", "/api/human-input/{id}", "Poll a human-input prompt for the operator's answer"},
-	{"POST", "/api/human-input/{id}/respond", "Submit the operator's answer to a pending human-input prompt"},
 }
 
 func (h *metaAPI) apiReference(w http.ResponseWriter, r *http.Request) {
@@ -444,8 +440,6 @@ var mcpDescriptor = map[string]any{
 		{"name": "scope_from_url", "desc": "Add a target URL's host/scheme to scope (self-scope)"},
 		{"name": "check_readiness", "desc": "Structured pre-flight checklist (proxy, scope, traffic, capture drops, tls_intercept, OOB, auth identities, login macro)"},
 		{"name": "detect_ssl_pinning", "desc": "Diagnose SSL pinning / untrusted CA vs no traffic (mobile pentest)"},
-		{"name": "request_human_input", "desc": "Pause and ask the human a question (handoff gate)"},
-		{"name": "get_human_response", "desc": "Retrieve the human's answer to a request_human_input"},
 		{"name": "get_settings", "desc": "Proxy/intercept settings"},
 		{"name": "set_session", "desc": "Auth headers auto-applied to every send (keeps requests authenticated)"},
 		{"name": "run_login_macro", "desc": "Run login macro — refresh session from login response"},

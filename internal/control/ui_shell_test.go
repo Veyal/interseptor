@@ -177,7 +177,7 @@ func TestUIShellAppExposesExtensionPointsAndKeepsOriginalSSEEvents(t *testing.T)
 	// Every original event name is still handled by the original chain.
 	for _, ev := range []string{
 		"flow.new", "flow.update", "activity", "activity.clear", "intercept.update", "rules.update", "ws.frame",
-		"scope.update", "views.update", "session.update", "settings.update", "human.input", "tunnel.update",
+		"scope.update", "views.update", "session.update", "settings.update", "tunnel.update",
 		"codecs.update", "oob.update", "intruder.update", "notes.update",
 		"engagement.update", "findings.update", "tags.update", "allowlist.update",
 	} {

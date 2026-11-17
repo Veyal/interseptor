@@ -80,9 +80,6 @@ func (h *Hub) StopTunnel() {
 func (h *Hub) Close() {
 	h.CloseStreams()
 	h.tunnelCloseOnce.Do(func() {
-		if h.hi != nil {
-			h.hi.close()
-		}
 		h.upd.stop()
 		h.stopProjectSwitch()
 		h.StopTunnel()

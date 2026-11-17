@@ -10,7 +10,7 @@ import (
 	"github.com/Veyal/interseptor/internal/version"
 )
 
-// Profiles are named subsets of the MCP tool surface. The full surface is 136
+// Profiles are named subsets of the MCP tool surface. The full surface is 134
 // tools; an eager-loading MCP client injects every schema into every prompt
 // before the user has said anything, so a client that only replays requests and
 // files findings pays for the mobile, codec, collection and vault tools too. A
@@ -128,8 +128,6 @@ var webPentestTools = []string{
 	// recording the work
 	"create_finding", "update_finding", "add_finding_poc", "add_finding_image",
 	"render_flow_preview", "list_findings",
-	// asking the operator
-	"request_human_input", "get_human_response",
 }
 
 // reportingTools is the pass over findings that already exist: close gaps, tidy
@@ -143,7 +141,6 @@ var reportingTools = []string{
 	"evaluate_finding_cvss", "redact_value",
 	"render_evidence", "render_flow_preview",
 	"export_report", "export_full_project",
-	"request_human_input", "get_human_response",
 }
 
 // mobileTools is device interception setup. list_flows and check_readiness are
@@ -154,7 +151,6 @@ var mobileTools = []string{
 	"ios_status", "ios_setup", "ios_install_ca",
 	"ios_ssh_status", "ios_ssh_setup", "ios_ssh_install_ca",
 	"list_flows",
-	"request_human_input", "get_human_response",
 }
 
 // profileDescriptions are one-liners for the catalogue served by GET /api/mcp.
@@ -285,7 +281,6 @@ func instructionSections() []string {
 		sectionPlaybooks,
 		findingFormatGuide + "\n\n",
 		sectionTagging,
-		sectionHumanInput,
 		sectionAskForFindings,
 		sectionImprove,
 	}

@@ -103,34 +103,6 @@ func TestUITagLoadsAndColorWritesHaveLatestOwners(t *testing.T) {
 	}
 }
 
-func TestUIHumanInputRejectsStaleLoadsAndDuplicateResponses(t *testing.T) {
-	index := requireUIContracts(t, "index.html",
-		`id="humanInputBar"`,
-		`role="region"`,
-		`aria-live="polite"`,
-		"hidden",
-	)
-	if strings.Count(index, `id="humanInputBar"`) != 1 {
-		t.Fatal("AI-to-human input needs exactly one persistent live region")
-	}
-	human := requireUIContracts(t, "js/humaninput.js",
-		"let humanInputLoadEpoch=0",
-		"const humanInputPending=new Set()",
-		"const epoch=++humanInputLoadEpoch",
-		"if(epoch!==humanInputLoadEpoch)return",
-		"if(humanInputPending.has(id))return",
-		"humanInputPending.add(id)",
-		"row.setAttribute('aria-busy','true')",
-		"humanInputLoadEpoch++",
-		"await loadHumanInput()",
-		"bar.hidden = true",
-		"bar.hidden = false",
-	)
-	if strings.Count(human, "if(epoch!==humanInputLoadEpoch)return") < 2 {
-		t.Error("human-input loading must guard both success and failure effects")
-	}
-}
-
 func TestUIActivityReconcilesLiveEventsAcrossLoadsAndClears(t *testing.T) {
 	requireUIContracts(t, "js/activity.js",
 		"let activityPendingEvents=[]",

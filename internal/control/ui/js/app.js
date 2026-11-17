@@ -17,7 +17,6 @@ import { loadEngagementBrief } from './engagement.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
 import { loadFindings, handleAppHash, addFlowToFinding, pickFindingForSelection } from './findings.js';
 import { loadTags } from './tags.js';
-import { loadHumanInput } from './humaninput.js';
 import './authz.js'; // side-effect: wires authz modal buttons
 import './capture-loss.js'; // side-effect: History banner when capture drops traffic
 import './suppressed-banner.js'; // side-effect: History banner when the capture filters drop traffic
@@ -384,7 +383,6 @@ function resyncAfterStaleReconnect(){
   if(isPanelVisible('playbooks'))loadPlaybooks();
 
   refreshIntercept().then(()=>renderIcptStat());
-  loadHumanInput();
 }
 // debounce coalesces bursts of nudge events (a bulk tag/finding/note change fires
 // one SSE message per row) into one trailing fetch.
@@ -521,7 +519,6 @@ function dispatchSseMessage(m){
     else if(m.type==='session.update')loadSession();
 
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadChromeStatus();applyOobDisabledUI();}
-    else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   }
 }
@@ -1027,7 +1024,7 @@ projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
 ['scope.update','settings.update','session.update','activity','findings.update','engagement.update'].forEach(type=>registerSseHandler(type,()=>refreshProjectState(type)));
 registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
 
-renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadChromeStatus();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();const bootSettings=loadSettings();loadEngagementBrief();loadSysProxy();loadChromeStatus();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadFindings();loadTags();connectEvents();
 bootReads.clear(); // a boot answer nobody took above is never handed out later
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.

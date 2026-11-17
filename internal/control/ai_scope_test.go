@@ -78,7 +78,7 @@ func TestAISendsOutsideScopeAreRefused(t *testing.T) {
 
 	before := f.flowCount(t)
 	code, body := f.do(t, "POST", "/api/repeater/send", map[string]any{"method": "GET", "url": outURL}, true)
-	if code != http.StatusForbidden || !strings.Contains(body, `"code":"out_of_scope"`) || !strings.Contains(body, "request_human_input") {
+	if code != http.StatusForbidden || !strings.Contains(body, `"code":"out_of_scope"`) || !strings.Contains(body, "ask the operator") || strings.Contains(body, "request_human_input") {
 		t.Fatalf("AI repeater out of scope = %d %s", code, body)
 	}
 	if f.flowCount(t) != before {

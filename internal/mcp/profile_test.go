@@ -39,7 +39,7 @@ var fullToolNames = []string{
 	"android_status", "android_setup", "android_teardown",
 	"ios_status", "ios_setup", "ios_install_ca", "ios_ssh_status", "ios_ssh_setup", "ios_ssh_install_ca",
 	"check_readiness", "detect_ssl_pinning", "scope_from_url",
-	"request_human_input", "get_human_response", "host_stats", "prune_history", "list_playbooks", "get_playbook", "match_playbooks", "record_playbook_coverage", "playbook_coverage", "list_suppressed", "prune_undo", "prune_pending",
+	"host_stats", "prune_history", "list_playbooks", "get_playbook", "match_playbooks", "record_playbook_coverage", "playbook_coverage", "list_suppressed", "prune_undo", "prune_pending",
 	"run_login_macro", "get_authz", "list_authz", "set_authz", "add_authz_identity",
 	"list_authz_runs", "get_authz_run",
 	"remove_authz_identity", "authz_differential", "auth_timeline", "authz_run",
@@ -136,24 +136,24 @@ func TestCuratedProfilesExposeTheirDocumentedTools(t *testing.T) {
 		ProfileWebPentest: {
 			"add_authz_identity", "add_finding_image", "add_finding_poc", "analyze_flow",
 			"authz_differential", "authz_run", "ca_info", "check_readiness", "create_finding",
-			"cross_host_token_replay", "get_flow", "get_human_response", "get_playbook", "host_stats",
+			"cross_host_token_replay", "get_flow", "get_playbook", "host_stats",
 			"intruder_state", "list_authz", "list_endpoints", "list_findings", "list_flows",
 			"list_params", "list_scope", "match_playbooks",
 			"oob_new", "oob_state", "promote_flow_to_authz", "record_playbook_coverage",
-			"render_flow_preview", "request_human_input", "run_login_macro", "scope_from_url",
+			"render_flow_preview", "run_login_macro", "scope_from_url",
 			"send_request", "set_login_macro_from_flow", "start_intruder", "update_finding",
 		},
 		ProfileReporting: {
 			"check_readiness", "evaluate_finding_cvss", "export_full_project", "export_report",
-			"finding_readiness", "get_finding", "get_human_response", "list_findings",
+			"finding_readiness", "get_finding", "list_findings",
 			"normalize_finding_targets", "preview_finding_targets", "redact_value",
-			"render_evidence", "render_flow_preview", "request_human_input", "update_finding",
+			"render_evidence", "render_flow_preview", "update_finding",
 		},
 		ProfileMobile: {
 			"android_setup", "android_status", "android_teardown", "ca_info", "check_readiness",
-			"detect_ssl_pinning", "get_human_response", "ios_install_ca", "ios_setup",
+			"detect_ssl_pinning", "ios_install_ca", "ios_setup",
 			"ios_ssh_install_ca", "ios_ssh_setup", "ios_ssh_status", "ios_status", "list_flows",
-			"request_human_input", "scope_from_url",
+			"scope_from_url",
 		},
 	}
 	for p, wantNames := range want {
@@ -219,7 +219,7 @@ func TestToolListAndSchemaHashHonourProfile(t *testing.T) {
 }
 
 // A tool outside the active profile is not callable: a profile that advertises
-// 30 tools but silently runs 133 would make tools/list a lie.
+// 30 tools but silently runs 134 would make tools/list a lie.
 func TestOutOfProfileCallIsRefusedWithAWayOut(t *testing.T) {
 	web := NewProfile("http://127.0.0.1:1", ProfileWebPentest)
 	_, err := web.Call("drop_request", map[string]any{"id": 1})
@@ -329,7 +329,7 @@ func TestInstructionsStayHonestPerProfile(t *testing.T) {
 	// tool those sections name.
 	webVisible := NewProfile("http://127.0.0.1:1", ProfileWebPentest).visibleSet()
 	webInstr := instructionsFor(ProfileWebPentest, webVisible)
-	for _, want := range []string{"SETUP:", "AUTH:", "RECON:", "SCAN:", "RECORD:", "ASK FOR FINDINGS:", "HUMAN INPUT"} {
+	for _, want := range []string{"SETUP:", "AUTH:", "RECON:", "SCAN:", "RECORD:", "ASK FOR FINDINGS:"} {
 		if !strings.Contains(webInstr, want) {
 			t.Errorf("web profile instructions dropped the %q section", want)
 		}

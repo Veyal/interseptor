@@ -77,25 +77,6 @@ function setActivityPill(n){
   pill.textContent=n>0?pillLabel(n)+' — show':'';
   if(n>0)pill.setAttribute('aria-label',pillLabel(n)+' activity events, show them');
 }
-// Pending human input is owned by humaninput.js and rendered into #humanInputBar;
-// the timeline only mirrors what is there, never a second source of truth.
-function renderAttention(){
-  const host=$('#actAttention');if(!host)return;
-  const prompts=[...document.querySelectorAll('#humanInputBar .hi-prompt[data-id] .hi-msg')].map(n=>n.textContent.trim()).filter(Boolean);
-  host.hidden=!prompts.length;
-  host.textContent='';
-  if(!prompts.length)return;
-  const label=document.createElement('strong');
-  label.textContent='Needs attention';
-  const msg=document.createElement('span');
-  msg.textContent=prompts.length===1?prompts[0]:prompts.length+' AI requests are waiting for your answer';
-  const go=document.createElement('button');
-  go.type='button';go.className='btn xs';go.textContent='Answer';
-  go.onclick=()=>{const field=document.querySelector('#humanInputBar .hi-input, #humanInputBar .hi-opt');if(field)field.focus();};
-  host.append(label,msg,go);
-}
-const attentionBar=document.getElementById('humanInputBar');
-if(attentionBar&&typeof MutationObserver==='function')new MutationObserver(renderAttention).observe(attentionBar,{childList:true,subtree:true});
 export function renderActivity(){
   initActivityDesktop();
   const box=$('#actFeed');if(!box)return;
@@ -109,7 +90,6 @@ export function renderActivity(){
   const a=all.filter(passesFilter);
   const total=all.length;
   renderActivityChips(all);
-  renderAttention();
   $('#actCount').textContent=total?(a.length<total?a.length+' / '+total:total+(total===1?' action':' actions')):'';
   const appendix=$('#actAppendix');if(appendix)appendix.disabled=!a.length;
   if(!total){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg></div><div class="state-empty-title">No activity yet</div><p class="state-empty-hint">Assistant activity appears here when connected through Settings → API &amp; MCP.</p></div>';return;}

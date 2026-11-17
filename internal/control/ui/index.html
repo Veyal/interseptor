@@ -223,8 +223,6 @@
 <div id="offlineBanner" class="offline-banner" role="status" hidden>Reconnecting&hellip; live updates paused</div>
 <div id="startupNotice" class="startup-notice" role="status" aria-live="polite" hidden></div>
 
-<div id="humanInputBar" role="region" aria-label="AI is asking for your input" aria-live="polite" hidden></div>
-
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
 <div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
@@ -830,7 +828,6 @@ Content-Type: application/json
       <button class="btn act-clear" id="actClear">Clear</button>
     </div>
     <div class="act-chips" id="actChips" role="group" aria-label="Filter activity by category"></div>
-    <div class="act-attention" id="actAttention" hidden></div>
     <button type="button" class="btn act-new-pill" id="actNewPill" hidden></button>
     <div id="actFeed" class="scroll"></div>
   </div>
@@ -2093,7 +2090,7 @@ Content-Type: application/json
     var tabs=document.querySelectorAll('.tab');
     for(var i=0;i<tabs.length;i++)tabs[i].disabled=true;
     var command=document.getElementById('cmdkBtn');if(command)command.disabled=true;
-    var surfaces=document.querySelectorAll('#bar,#humanInputBar,#main,.nav-rail-foot');
+    var surfaces=document.querySelectorAll('#bar,#main,.nav-rail-foot');
     for(var j=0;j<surfaces.length;j++){
       var surface=surfaces[j];
       if(!surface.inert){surface.inert=true;guardedSurfaces.push(surface);}

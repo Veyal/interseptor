@@ -2,7 +2,7 @@
 layout: landing
 permalink: /
 title: Interseptor — an intercepting proxy that makes you prove it
-description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 133-tool MCP server for agent-assisted testing.
+description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 134-tool MCP server for agent-assisted testing.
 image: /website/assets/img/social-card.png
 image_alt: "Interseptor: the interception workspace for web and API pentests, beside a screenshot of captured requests and a decoded response."
 css: [css/landing.css]
@@ -310,7 +310,7 @@ sections:
       <li class="lp-ability card-surface card-hover">
         <span class="lp-ability-icon lp-fill-grape" aria-hidden="true">{{icon "bot"}}</span>
         <h3 class="lp-ability-title">MCP server</h3>
-        <p class="lp-ability-text">133 tools over stdio and Streamable HTTP, built into the binary. Nothing to install, nothing to keep in version lockstep.</p>
+        <p class="lp-ability-text">134 tools over stdio and Streamable HTTP, built into the binary. Nothing to install, nothing to keep in version lockstep.</p>
         <a class="lp-ability-link" href="{{url "/api-and-mcp/"}}">API and MCP guide</a>
       </li>
       <li class="lp-ability card-surface card-hover">
@@ -339,7 +339,6 @@ sections:
       <ul class="lp-points">
         <li>{{icon "check"}}<span>It can recon, replay, fuzz, run an authorization matrix and file the finding, through the same control plane the UI uses.</span></li>
         <li>{{icon "check"}}<span>Its calls are stamped, so you can tell its traffic from yours in History.</span></li>
-        <li>{{icon "check"}}<span>It can pause and ask you before anything with real blast radius.</span></li>
         <li>{{icon "check"}}<span>Scope policy and script trust are refused to AI callers outright. An agent cannot loosen either.</span></li>
       </ul>
       <p class="lp-agents-core"><strong>The core is model-free:</strong> no provider keys, no built-in chat, no autonomous loop. You bring the agent; Interseptor supplies deterministic tools and keeps the receipts.</p>
@@ -352,7 +351,7 @@ sections:
       <img class="lp-agents-art" src="{{asset "img/kirby/kirby-laptop.webp"}}" width="640" height="575" alt="" loading="lazy" decoding="async">
       <div class="lp-belt card-surface">
         <h3 class="lp-belt-title">On its tool belt</h3>
-        <p class="lp-belt-note">16 of the 133 MCP tools, by their real names, in the order an engagement uses them.</p>
+        <p class="lp-belt-note">15 of the 134 MCP tools, by their real names, in the order an engagement uses them.</p>
         <ul class="lp-belt-list">
           <li><code>check_readiness</code></li>
           <li><code>list_flows</code></li>
@@ -365,7 +364,6 @@ sections:
           <li><code>collection_identity_matrix</code></li>
           <li><code>run_scanner</code></li>
           <li><code>redact_value</code></li>
-          <li><code>request_human_input</code></li>
           <li><code>create_finding</code></li>
           <li><code>add_finding_poc</code></li>
           <li><code>finding_readiness</code></li>
@@ -397,7 +395,7 @@ sections:
           <ul class="lp-stat-rows">
             <li class="lp-stat"><span class="lp-stat-name">Intercept and replay<small>requests and responses, no throttle</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Evidence discipline<small>final export returns 409 until it is proven</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
-            <li class="lp-stat"><span class="lp-stat-name">Agent tooling<small>133 MCP tools in the binary</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Agent tooling<small>134 MCP tools in the binary</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Extension ecosystem<small>Starlark checks and signed packs, no marketplace</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Maturity<small>first commit June 2026</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Active scanning<small>passive checks only; use ZAP</small></span><span class="lp-stars" aria-hidden="true">{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 0 of 5.</span></li>
@@ -435,7 +433,7 @@ sections:
       </details>
       <details class="lp-faq-item">
         <summary><span>Burp and ZAP have MCP too. Why does yours matter?</span>{{icon "plus" "lp-faq-icon"}}</summary>
-        <div class="lp-faq-body"><p>They do, and anyone saying otherwise is selling you something. There are three honest differences. Ours is in the binary rather than an extension you install and version-match. It is 133 first-party tools covering the workflow end to end, including findings and reporting. And <code>create_finding</code> makes the agent attach evidence before the finding counts. None of the tools on the comparison page has an equivalent of that last one.</p></div>
+        <div class="lp-faq-body"><p>They do, and anyone saying otherwise is selling you something. There are three honest differences. Ours is in the binary rather than an extension you install and version-match. It is 134 first-party tools covering the workflow end to end, including findings and reporting. And <code>create_finding</code> makes the agent attach evidence before the finding counts. None of the tools on the comparison page has an equivalent of that last one.</p></div>
       </details>
       <details class="lp-faq-item">
         <summary><span>Is my captured traffic going anywhere?</span>{{icon "plus" "lp-faq-icon"}}</summary>

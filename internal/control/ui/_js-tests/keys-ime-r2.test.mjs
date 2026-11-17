@@ -35,7 +35,6 @@ test('the key registry ignores a composition keydown', () => {
 // Every owned field that submits or runs something on Enter. The handler must
 // consult the guard before it looks at the key.
 const ENTER_FIELDS = [
-  ['humaninput.js', 'inp.onkeydown = e => {', 'respond(inp.dataset.id, inp.value)'],
   ['cmdk.js', 'cmdk.input.onkeydown=e=>{', 'cmdkRun(cmdk.sel'],
   ['evidence-attach.js', "root.addEventListener('keydown', (e) => {", 'finish(rows[active].value)'],
   ['report-preflight.js', "type?.addEventListener('keydown', (e) => {", 'go();'],

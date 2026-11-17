@@ -51,7 +51,7 @@ func TestUIMapNotesActivityMarkupKeepsIdsAndAddsControls(t *testing.T) {
 	}
 	a := uiRegion(t, "activity")
 	for _, want := range []string{`id="actFeed" class="scroll"></div>`, `id="actCount" role="status" aria-live="polite" aria-atomic="true"`,
-		`id="actChips" role="group"`, `id="actAttention"`, `id="actNewPill"`, `id="actAppendix"`, `id="actClear"`, `id="actIntentFilter"`} {
+		`id="actChips" role="group"`, `id="actNewPill"`, `id="actAppendix"`, `id="actClear"`, `id="actIntentFilter"`} {
 		if !strings.Contains(a, want) {
 			t.Errorf("region:activity missing %s", want)
 		}
@@ -125,7 +125,6 @@ func TestUIActivityTimelineKeepsPersistenceContract(t *testing.T) {
 		"selectFlow(id)",
 		"shouldDeferRender($('#actFeed')?.scrollTop)",
 		"activityAppendix(rows)",
-		"#humanInputBar .hi-prompt",
 		// Unchanged reconciliation of live events and snapshots.
 		"let activityPendingEvents=[]",
 		"state.activity=mergeActivitySnapshot(d.activity||[])",
