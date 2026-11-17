@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.26.0` release.
+
 ## [2.26.0] - 2026-11-17
 
 > Minor release: remove `request_human_input`, `get_human_response`, the
