@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.27.0` release.
+
 ## [2.27.0] - 2026-11-19
 
 > Minor release: introduce the Copy Abilities extensibility system with
