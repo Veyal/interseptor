@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-11-19
+
+> Minor release: introduce the Copy Abilities extensibility system with
+> machine-owned SHA-256 quarantine/trust, inert Starlark hooks and actions,
+> dynamic UI slots, CLI & MCP integration, example abilities, and updated
+> docs and landing page preview.
+
 ### Added
 
 - **Copy Abilities extensibility system (`internal/abilities`, `Configure → Abilities`, CLI, REST/SSE, MCP, examples, docs, and landing demo).** Added installable **Copy Abilities** (`ability.json` schema `interseptor.ability/v1`) across global (`~/.interseptor/abilities/<id>/`) and project-scoped (`<projectDir>/abilities/<id>/`) directories with machine-owned SHA-256 quarantine/trust tracking (`~/.interseptor/abilities-state.json` and `~/.interseptor/ability-approvals/<sha256>/abilities-state.json`, never trusted from project dirs):
