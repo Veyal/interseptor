@@ -191,6 +191,31 @@ MCP tools: `list_collections`, `get_collection` (with script approval status), `
 (a local current value; secrets are never echoed) and `script_approval_status` (read-only). No MCP
 tool can trust a script or grant a capability.
 
+### Copy Abilities API and MCP
+
+Installable **Copy Abilities** (see [Copy Abilities](abilities.md)) expose discovery, trust/lifecycle management, Starlark action execution, archive export, and asset serving over the control API:
+
+| Area | Routes |
+| --- | --- |
+| Discovery & export | `GET /api/abilities` (`{abilities: [...], projectScopeAvailable: bool}`), `GET /api/abilities/{id}` (`{ability}`), `GET /api/abilities/{id}/export` (deterministic `.tar.gz` stream from the verified snapshot) |
+| Lifecycle (UI-session only) | `POST /api/abilities/install` (raw `.tar.gz`/`.zip` body or multipart `"file"` part, 32 MiB cap, `?scope=global\|project`), `POST /api/abilities/scaffold` (`{id, name, description?, author?, scope?, group?}`), `POST /api/abilities/reload`, `DELETE /api/abilities/{id}?scope=&digest=` |
+| Trust & toggle (UI-session only) | `POST /api/abilities/{id}/trust` (`{digest, scope, enabled?: bool}`, `enabled` defaults to `true`, `409` on digest/scope mismatch), `POST /api/abilities/{id}/revoke`, `POST /api/abilities/{id}/toggle` (`{enabled: bool, digest?, scope?}`) |
+| Actions & UI assets | `POST /api/abilities/{id}/actions/{action}` (optional JSON input object including optional `flowId`; returns `{ok: true, result}`), `GET /abilities/{id}/{digest}/{asset...}` (immutable `ui/` snapshot bytes while trusted, enabled, and digest matches; `Cache-Control: no-store`) |
+
+Trust, quarantine, and AI isolation rules:
+
+- **UI-session only for lifecycle and trust.** `install`, `scaffold`, `reload`, `trust`, `revoke`, `toggle`, and `DELETE /api/abilities/{id}` require an interactive UI session (`X-Interseptor-CSRF` + valid UI session cookie, with `X-Interseptor-Source` unset or `ui`); AI, MCP, and API-key callers receive `403`.
+- **Inert quarantine, machine-owned project approvals & SHA-256 drift detection.** Installed and scaffolded abilities start quarantined (`trusted: false`, `enabled: false`) with no Starlark top-level initialization until approved and enabled. Project approvals live in machine-owned `~/.interseptor/ability-approvals/<sha256>/abilities-state.json` (never read from `<projectDir>`). Any post-approval file edit changes the canonical SHA-256 digest and re-quarantines the ability (`toggle` and `actions/{action}` return `403` when untrusted/disabled or `409` when drifted; `/abilities/{id}/{digest}/*` returns `404`).
+- **Non-UI action gate.** Actions without `"mcp": true` require an interactive UI session (`requireUISession`); non-UI callers (API keys, MCP, or `X-Interseptor-Source: ai`) receive `403`.
+- **Live SSE updates.** `install`, `scaffold`, `reload`, `trust`, `revoke`, `toggle`, and `remove` broadcast `{"type": "ability.update"}` on `GET /api/events`.
+
+MCP tools (served in the `full` and `web-pentest` profiles):
+
+- `list_abilities` — lists installed abilities with scope, manifest metadata, trust, enablement, quarantine, and drift state (optional `enabledOnly` and `trustedOnly` booleans; calls `GET /api/abilities`).
+- `run_ability_action` — runs an action declared by a trusted, enabled ability with `"mcp": true` (required `abilityId`, `action`; optional `flowId`, `input`; calls `POST /api/abilities/{abilityId}/actions/{action}`).
+
+No MCP tool can install, scaffold, trust, revoke, enable, disable, or delete an ability.
+
 ### Findings: one canonical evidence format
 
 Findings are persistent, curated records shared by the UI, REST API, MCP tools, and report

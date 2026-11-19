@@ -52,7 +52,7 @@ func isLoopbackBind(addr string) bool {
 
 func knownTopLevelCommand(arg string) bool {
 	switch arg {
-	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "install-chrome", "chrome", "install-desktop", "help", "-h", "--help", "mcp":
+	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "install-chrome", "chrome", "install-desktop", "ability", "abilities", "help", "-h", "--help", "mcp":
 		return true
 	}
 	return false
@@ -110,6 +110,12 @@ func main() {
 		case "install-desktop":
 			if err := runInstallDesktop(os.Args[2:]); err != nil {
 				fmt.Fprintf(os.Stderr, "install-desktop failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "ability", "abilities":
+			if err := runAbilityCmd(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "ability failed: %v\n", err)
 				os.Exit(1)
 			}
 			return
@@ -272,6 +278,9 @@ func run() error {
 	hub.StartupNotice = sel.notice
 	_ = os.MkdirAll(filepath.Join(dir, "codecs"), 0o755)
 	hub.GlobalDir = globalDir
+	if err := hub.ConfigureAbilities(globalDir, dir); err != nil {
+		log.Printf("abilities init: %v", err)
+	}
 	recoverSystemProxy(hub) // undo an OS proxy left on by a crashed previous run
 	// Switching projects re-execs this binary with --project <target>: a clean
 	// fresh start on the new project's store/CA, no mid-session store swapping.

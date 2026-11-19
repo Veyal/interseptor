@@ -335,6 +335,17 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/flows/retention", "Set the retention policy; body {maxAgeHours, maxFlows}"},
 	{"POST", "/api/flows/retention/run", "Apply the retention policy now and return {deleted}"},
 	{"GET", "/api/hosts/stats", "Per-host flow counts and byte totals, sorted desc by bytes. Response: {hosts:[{host,flows,bytes}],totalFlows,totalBytes}"},
+	{"GET", "/api/abilities", "List discovered Copy Abilities (global and project-scoped) with trust, enablement, quarantine, drift, and load status: {abilities:[...]}"},
+	{"GET", "/api/abilities/{id}", "Get one Copy Ability by id: {ability}"},
+	{"POST", "/api/abilities/install", "Install a Copy Ability from a raw .tgz/.zip body or multipart/form-data \"file\" part (max 32 MiB; ?scope=global|project, default global). UI-session only (AI/MCP/API-key callers get 403). Always installs quarantined (trusted:false, enabled:false) and returns 201 {ability}"},
+	{"POST", "/api/abilities/scaffold", "Create a starter Copy Ability directory on disk, installed quarantined. UI-session only. Body: {id, name, description?, author?, scope?: global|project, group?: capture|test|recon|report|configure|abilities}. Returns 201 {ability}"},
+	{"POST", "/api/abilities/reload", "Re-scan global and project ability directories, recompute SHA-256 trust/drift state, and broadcast ability.update. UI-session only. Returns {abilities}"},
+	{"POST", "/api/abilities/{id}/trust", "Approve the reviewed SHA-256 digest and scope of an ability. UI-session only. Body: {digest, scope: global|project, enabled?: bool} (enabled defaults to true). Stale approval returns 409. Returns {ability}"},
+	{"POST", "/api/abilities/{id}/revoke", "Revoke an ability's trust approval and disable it (returns it to quarantine). UI-session only. Returns {ability}"},
+	{"POST", "/api/abilities/{id}/toggle", "Enable or disable a trusted ability. UI-session only. Body: {enabled: bool}; refuses untrusted (403) or drifted (409) abilities. Returns {ability}"},
+	{"POST", "/api/abilities/{id}/actions/{action}", "Invoke a declared Starlark action on a trusted, enabled ability. Optional JSON object body (input, including optional flowId). Actions with mcp:false require an interactive UI session; non-UI callers (API keys, MCP, or AI) require mcp:true. Returns {ok:true, result}"},
+	{"GET", "/api/abilities/{id}/export", "Stream a deterministic .tar.gz archive of an ability (<id>/... entries)"},
+	{"DELETE", "/api/abilities/{id}", "Delete an ability directory and clear its trust record. UI-session only. Returns {ok:true, id}"},
 }
 
 func (h *metaAPI) apiReference(w http.ResponseWriter, r *http.Request) {
@@ -485,6 +496,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "record_playbook_coverage", "desc": "Record considered/run/found/dismissed against a surface"},
 		{"name": "playbook_coverage", "desc": "Read the coverage ledger and per-playbook rollup"},
 		{"name": "list_suppressed", "desc": "Requests dropped by the capture filters, per host — explains an empty History"},
+		{"name": "list_abilities", "desc": "List installed Copy Abilities and their trust, enablement, UI slots, hooks, and actions"},
+		{"name": "run_ability_action", "desc": "Invoke a Starlark action declared by a trusted, enabled Copy Ability"},
 	},
 }
 

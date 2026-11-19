@@ -1,4 +1,5 @@
 /* Landing page behaviour: the intercept hold tray (a toy of the real Intercept flow),
+   the Copy Abilities playground (Kirby swallowing an ability package and copying it),
    the real recording's controls and chapters, and the workflow stage tabs.
    Nothing here touches the network. Every piece enhances markup that already
    works without JavaScript, and every motion is skipped under reduced motion. */
@@ -713,7 +714,483 @@
     });
   }
 
+  /* ------------------------------------------------------------------------
+     Copy Abilities playground: pick a package chip, watch Kirby inhale it,
+     puff up full, spin into that Copy Ability, and inject its UI/MCP slots.
+     ------------------------------------------------------------------------ */
+  function initCopyAbilities(rootBox) {
+    if (!rootBox) return;
+    const pick = (selector) => rootBox.querySelector(selector);
+    const ui = {
+      items: [...rootBox.querySelectorAll('[data-ca-item]')],
+      reset: pick('[data-ca-reset]'),
+      wire: pick('[data-ca-wire]'),
+      kirbyBox: pick('[data-ca-kirbybox]'),
+      kirby: pick('[data-ca-kirby]'),
+      suck: pick('[data-ca-suck]'),
+      dock: pick('[data-ca-dock]'),
+      dockIcon: rootBox.querySelector('.ca-dock-badge svg'),
+      tag: pick('[data-ca-tag]'),
+      statusText: pick('[data-ca-status-text]'),
+      live: pick('[data-ca-live]'),
+      preview: pick('[data-ca-preview]'),
+      previewIcon: pick('[data-ca-preview-icon]'),
+      previewName: pick('[data-ca-preview-name]'),
+      trustText: pick('[data-ca-trust-text]'),
+      previewPath: pick('[data-ca-preview-path]'),
+      slots: pick('[data-ca-slots]'),
+      codeKind: pick('[data-ca-code-kind]'),
+      manifest: pick('[data-ca-manifest]'),
+    };
+    if (!ui.items.length || Object.values(ui).some((el) => !el)) return;
+
+    const ABILITIES = {
+      'jwt-xray': {
+        id: 'jwt-xray',
+        name: 'JWT X-Ray',
+        pkg: 'jwt-xray.tar.gz',
+        pose: 'detective',
+        color: 'sky',
+        path: '~/.interseptor/abilities/jwt-xray/',
+        summary: 'Injected Recon sidebar menu JWT X-Ray and Flow Inspector tab JWT.',
+        slots: [
+          ['Sidebar menu', ['Recon menu adds ', { code: 'JWT X-Ray' }]],
+          ['Inspector tab', ['Adds ', { code: 'JWT' }, ' tab beside Raw, Pretty and Render']],
+          ['Example behavior', ['Decodes bearer claims (', { code: 'alg: RS256' }, ', ', { code: 'sub: cust_7731' }, ') and flags ', { code: 'alg=none' }, '.']],
+        ],
+        manifest: {
+          schema: 'interseptor.ability/v1',
+          id: 'jwt-xray',
+          name: 'JWT X-Ray',
+          version: '1.0.0',
+          menus: [{ id: 'jwt-panel', label: 'JWT X-Ray', group: 'recon' }],
+          inspectorTabs: [{ id: 'jwt-inspector', label: 'JWT', side: 'both' }],
+        },
+      },
+      'session-ninja': {
+        id: 'session-ninja',
+        name: 'Session Ninja',
+        pkg: 'session-ninja/',
+        pose: 'ninja',
+        color: 'pink',
+        path: '~/.interseptor/abilities/session-ninja/',
+        summary: 'Injected Flow context action Replay as Guest and Command palette entry Compare role cookies.',
+        slots: [
+          ['Context menu', ['Flow row adds ', { code: 'Replay as Guest' }]],
+          ['Command palette', [{ code: 'Ctrl/Cmd+K' }, ' adds ', { code: 'Compare role cookies' }]],
+          ['Example behavior', ['Example: strips session tokens and inspects ', { code: 'GET /api/v1/orders/1043' }, ' via the control API.']],
+        ],
+        manifest: {
+          schema: 'interseptor.ability/v1',
+          id: 'session-ninja',
+          name: 'Session Ninja',
+          version: '1.0.0',
+          contextMenus: [{ id: 'guest-replay', label: 'Replay as Guest', target: 'flow' }],
+          commands: [{ id: 'diff-roles', title: 'Compare role cookies' }],
+        },
+      },
+      'playbook-reader': {
+        id: 'playbook-reader',
+        name: 'Playbook Reader',
+        pkg: 'playbook-reader.zip',
+        pose: 'book',
+        color: 'mint',
+        path: '~/.interseptor/abilities/playbook-reader/',
+        summary: 'Injected Abilities sidebar menu API Checklist and Flow Inspector tab Coverage.',
+        slots: [
+          ['Sidebar menu', ['Abilities menu adds ', { code: 'API Checklist' }]],
+          ['Inspector tab', ['Adds ', { code: 'Coverage' }, ' tab on response panes']],
+          ['Example behavior', ['Maps captured endpoints on ', { code: 'api.example.com' }, ' to checklist rows in the panel UI.']],
+        ],
+        manifest: {
+          schema: 'interseptor.ability/v1',
+          id: 'playbook-reader',
+          name: 'Playbook Reader',
+          version: '1.0.0',
+          menus: [{ id: 'api-checklist', label: 'API Checklist', group: 'abilities' }],
+          inspectorTabs: [{ id: 'coverage-tab', label: 'Coverage', side: 'res' }],
+        },
+      },
+      'agent-tool': {
+        id: 'agent-tool',
+        name: 'Agent Tool',
+        pkg: 'agent-tool/',
+        pose: 'laptop',
+        color: 'grape',
+        path: '~/.interseptor/abilities/agent-tool/',
+        summary: 'Exposed action scope_probe via MCP run_ability_action and Command palette.',
+        slots: [
+          ['MCP action', ['Exposes ', { code: 'scope_probe' }, ' via ', { code: 'run_ability_action' }]],
+          ['Command palette', [{ code: 'Ctrl/Cmd+K' }, ' adds ', { code: 'Run Ability Scope Probe' }]],
+          ['Example behavior', ['Runs a Starlark action over captured traffic and returns bounded JSON to the caller.']],
+        ],
+        manifest: {
+          schema: 'interseptor.ability/v1',
+          id: 'agent-tool',
+          name: 'Agent Tool',
+          version: '1.0.0',
+          commands: [{ id: 'run-scope-probe', title: 'Run Ability Scope Probe', action: 'scope_probe' }],
+          actions: [{ id: 'scope_probe', entry: 'hooks/probe.star', mcp: true }],
+          capabilities: ['ability.action', 'mcp.tool'],
+        },
+      },
+      'turbo-hook': {
+        id: 'turbo-hook',
+        name: 'Turbo Hook',
+        pkg: 'turbo-hook.tar.gz',
+        pose: 'warpstar',
+        color: 'yellow',
+        path: '~/.interseptor/abilities/turbo-hook/',
+        summary: 'Attached Starlark flow.captured hook to tag GraphQL introspection flows.',
+        slots: [
+          ['Starlark hook', [{ code: 'flow.captured' }, ' runs ', { code: 'hooks/on_flow.star' }]],
+          ['Flow tag', ['Auto-tags ', { code: 'POST /graphql' }, ' as ', { code: 'graphql-introspection' }]],
+          ['Example behavior', ['Runs asynchronously via ', { code: 'OnFlowCaptured' }, ' so forwarding never stalls.']],
+        ],
+        manifest: {
+          schema: 'interseptor.ability/v1',
+          id: 'turbo-hook',
+          name: 'Turbo Hook',
+          version: '1.0.0',
+          hooks: [{ event: 'flow.captured', entry: 'hooks/on_flow.star' }],
+          capabilities: ['flow.hook'],
+        },
+      },
+    };
+
+    const IDLE_SPEC = {
+      id: 'none',
+      name: 'Interseptor workspace',
+      trust: 'Quarantined until approved',
+      path: '~/.interseptor/abilities/',
+      codeKind: 'template',
+      slots: [
+        ['UI slots', ['Sidebar menus, inspector tabs, context actions and ', { code: 'Ctrl/Cmd+K' }, ' commands']],
+        ['Hooks & MCP', ['Starlark ', { code: 'flow.captured' }, ' hooks and ', { code: 'mcp: true' }, ' actions']],
+        ['Trust rule', ['Imported packages stay quarantined until a human approves their SHA-256 digest.']],
+      ],
+      manifest: {
+        schema: 'interseptor.ability/v1',
+        id: 'my-ability',
+        name: 'My Copy Ability',
+        version: '1.0.0',
+        menus: [],
+        inspectorTabs: [],
+        hooks: [],
+      },
+    };
+
+    const poses = {};
+    ['idle', 'inhale', 'full', 'detective', 'ninja', 'book', 'laptop', 'warpstar'].forEach((name) => {
+      const src = ui.kirby.dataset[`pose${name[0].toUpperCase()}${name.slice(1)}`];
+      if (src) poses[name] = src;
+    });
+    const MOUTH = { x: 0.66, y: 0.56 };
+
+    const itemIcons = {};
+    ui.items.forEach((btn) => {
+      const icon = btn.querySelector('svg.icon');
+      if (icon) itemIcons[btn.dataset.caItem] = icon;
+    });
+
+    let pose = 'idle';
+    let epoch = 0;
+    let preloaded = false;
+    const timers = new Set();
+
+    function preloadPoses() {
+      if (preloaded) return;
+      preloaded = true;
+      Object.values(poses).forEach((src) => { const img = new Image(); img.src = src; });
+    }
+
+    function later(ms, fn) {
+      const mine = epoch;
+      const id = window.setTimeout(() => {
+        timers.delete(id);
+        if (mine === epoch) fn();
+      }, ms);
+      timers.add(id);
+    }
+
+    function clearMotion() {
+      timers.forEach((id) => window.clearTimeout(id));
+      timers.clear();
+      ui.wire.querySelectorAll('.ca-fly-chip').forEach((el) => {
+        if (typeof el.getAnimations === 'function') {
+          el.getAnimations().forEach((animation) => animation.cancel());
+        }
+        el.remove();
+      });
+      ui.suck.classList.remove('is-out');
+      ui.kirbyBox.classList.remove('is-popping', 'is-copying');
+      ui.preview.classList.remove('is-popping');
+    }
+
+    function setPose(name, pop) {
+      const next = poses[name];
+      if (!next) return;
+      if (name !== pose) {
+        pose = name;
+        ui.kirby.src = next;
+      }
+      if (pop && !reducedMotion()) replay(ui.kirbyBox, 'is-popping');
+    }
+
+    function say(text) {
+      ui.live.textContent = '';
+      window.setTimeout(() => { ui.live.textContent = text; }, 60);
+    }
+
+    function setStatus(tag, text) {
+      ui.tag.textContent = tag;
+      ui.statusText.textContent = text;
+    }
+
+    function tok(cls, text) {
+      const span = doc.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      return span;
+    }
+
+    function appendJSON(frag, value, indent) {
+      const pad = '  '.repeat(indent);
+      if (Array.isArray(value)) {
+        if (!value.length) { frag.append('[]'); return; }
+        const allFlat = value.every((v) => v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length <= 2 && Object.values(v).every((x) => typeof x !== 'object'));
+        const allPrimitives = value.every((v) => v === null || typeof v !== 'object');
+        if (allPrimitives || (value.length === 1 && allFlat)) {
+          frag.append('[');
+          value.forEach((v, i) => {
+            if (i > 0) frag.append(', ');
+            appendJSON(frag, v, 0);
+          });
+          frag.append(']');
+          return;
+        }
+        frag.append('[\n');
+        value.forEach((v, i) => {
+          frag.append(`${pad}  `);
+          appendJSON(frag, v, indent + 1);
+          if (i + 1 < value.length) frag.append(',');
+          frag.append('\n');
+        });
+        frag.append(`${pad}]`);
+        return;
+      }
+      if (value && typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (!keys.length) { frag.append('{}'); return; }
+        const flat = indent >= 2 && keys.length <= 2 && keys.every((k) => value[k] === null || typeof value[k] !== 'object');
+        if (flat) {
+          frag.append('{ ');
+          keys.forEach((k, i) => {
+            if (i > 0) frag.append(', ');
+            frag.append(tok('tok-key', JSON.stringify(k)), ': ');
+            appendJSON(frag, value[k], 0);
+          });
+          frag.append(' }');
+          return;
+        }
+        frag.append('{\n');
+        keys.forEach((k, i) => {
+          frag.append(`${pad}  `, tok('tok-key', JSON.stringify(k)), ': ');
+          appendJSON(frag, value[k], indent + 1);
+          if (i + 1 < keys.length) frag.append(',');
+          frag.append('\n');
+        });
+        frag.append(`${pad}}`);
+        return;
+      }
+      if (typeof value === 'string') frag.append(tok('tok-string', JSON.stringify(value)));
+      else if (typeof value === 'number') frag.append(tok('tok-number', String(value)));
+      else frag.append(tok('tok-keyword', String(value)));
+    }
+
+    function renderSlots(list) {
+      const frag = doc.createDocumentFragment();
+      list.forEach(([label, parts]) => {
+        const row = doc.createElement('div');
+        const dt = doc.createElement('dt');
+        dt.textContent = label;
+        const dd = doc.createElement('dd');
+        parts.forEach((part) => {
+          if (typeof part === 'string') dd.append(part);
+          else if (part && part.code) {
+            const code = doc.createElement('code');
+            code.textContent = part.code;
+            dd.append(code);
+          }
+        });
+        row.append(dt, dd);
+        frag.append(row);
+      });
+      ui.slots.replaceChildren(frag);
+    }
+
+    function applyPreview(spec, animate) {
+      const isIdle = spec.id === 'none';
+      if (isIdle) delete ui.preview.dataset.color;
+      else ui.preview.dataset.color = spec.color;
+
+      const iconSource = isIdle ? ui.dockIcon : itemIcons[spec.id];
+      if (iconSource) ui.previewIcon.replaceChildren(iconSource.cloneNode(true));
+      ui.previewName.textContent = spec.name;
+      ui.trustText.textContent = isIdle ? spec.trust : 'Simulated approval';
+      ui.previewPath.textContent = spec.path;
+      ui.codeKind.textContent = spec.codeKind || 'excerpt';
+      renderSlots(spec.slots);
+
+      const codeFrag = doc.createDocumentFragment();
+      appendJSON(codeFrag, spec.manifest, 0);
+      ui.manifest.replaceChildren(codeFrag);
+
+      if (animate && !reducedMotion()) replay(ui.preview, 'is-popping');
+    }
+
+    function setActiveButtons(activeId) {
+      ui.items.forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.caItem === activeId));
+      });
+      ui.reset.setAttribute('aria-disabled', String(activeId === 'none' && rootBox.dataset.phase === 'idle'));
+    }
+
+    function finishCopy(spec) {
+      rootBox.dataset.phase = 'active';
+      rootBox.dataset.ability = spec.id;
+      setPose(spec.pose, false);
+      applyPreview(spec, true);
+      setActiveButtons(spec.id);
+      setStatus('Active', `${spec.name} copied. ${spec.summary}`);
+      say(`Copied ${spec.name}. ${spec.summary}`);
+    }
+
+    function runAbility(id) {
+      const spec = ABILITIES[id];
+      if (!spec) return;
+      preloadPoses();
+      epoch += 1;
+      const mine = epoch;
+      clearMotion();
+
+      rootBox.dataset.ability = spec.id;
+      setActiveButtons(spec.id);
+      ui.reset.setAttribute('aria-disabled', 'false');
+
+      if (reducedMotion()) {
+        finishCopy(spec);
+        return;
+      }
+
+      // 1. Inhale: suction lines appear at Kirby's mouth while the ability chip flies in.
+      rootBox.dataset.phase = 'inhaling';
+      setPose('inhale', false);
+      setStatus('Inhale', `Pulling ${spec.pkg} in…`);
+
+      const wireRect = ui.wire.getBoundingClientRect();
+      const kirbyRect = ui.kirbyBox.getBoundingClientRect();
+      const dockRect = ui.dock.getBoundingClientRect();
+      const mx = kirbyRect.left + kirbyRect.width * MOUTH.x;
+      const my = kirbyRect.top + kirbyRect.height * MOUTH.y;
+      ui.suck.style.transform = `translate(${mx - wireRect.left + 2}px, ${my - wireRect.top - 15}px)`;
+      ui.suck.classList.add('is-out');
+
+      const flyChip = doc.createElement('span');
+      flyChip.className = 'ca-fly-chip';
+      flyChip.dataset.color = spec.color;
+      if (itemIcons[spec.id]) flyChip.append(itemIcons[spec.id].cloneNode(true));
+      const label = doc.createElement('span');
+      label.textContent = spec.pkg;
+      flyChip.append(label);
+      flyChip.style.right = `${Math.max(0, wireRect.right - dockRect.right)}px`;
+      ui.wire.append(flyChip);
+
+      const chipRect = flyChip.getBoundingClientRect();
+      const dx = mx - (chipRect.left + chipRect.width / 2);
+      const dy = my - (chipRect.top + chipRect.height / 2);
+
+      const afterInhale = () => {
+        ui.suck.classList.remove('is-out');
+        flyChip.remove();
+        if (mine !== epoch) return;
+
+        // 2. Swallow / Full: cheeks puff out with a squish.
+        rootBox.dataset.phase = 'full';
+        setPose('full', true);
+        setStatus('Swallow', `Holding ${spec.pkg}…`);
+
+        // 3. Transform: copy-spin + Warp Yellow star burst, swapping mid-spin.
+        later(320, () => {
+          if (mine !== epoch) return;
+          rootBox.dataset.phase = 'copying';
+          replay(ui.kirbyBox, 'is-copying');
+          setStatus('Copying', `Transforming into ${spec.name}…`);
+
+          later(280, () => {
+            if (mine !== epoch) return;
+            setPose(spec.pose, false);
+          });
+
+          later(680, () => {
+            if (mine !== epoch) return;
+            ui.kirbyBox.classList.remove('is-copying');
+            finishCopy(spec);
+          });
+        });
+      };
+
+      if (typeof flyChip.animate === 'function') {
+        flyChip.animate(
+          [
+            { transform: 'translate(0px, 0px) scale(0.9)', opacity: 0 },
+            { transform: `translate(${dx * 0.25}px, ${dy * 0.22}px) scale(1)`, opacity: 1, offset: 0.2 },
+            { transform: `translate(${dx}px, ${dy}px) scale(0.14)`, opacity: 0.15 },
+          ],
+          { duration: 460, easing: 'cubic-bezier(0.45, 0, 0.88, 0.55)', fill: 'forwards' },
+        ).onfinish = afterInhale;
+      } else {
+        later(60, afterInhale);
+      }
+    }
+
+    function reset({ speak = true } = {}) {
+      epoch += 1;
+      clearMotion();
+      rootBox.dataset.phase = 'idle';
+      rootBox.dataset.ability = 'none';
+      setPose('idle', false);
+      applyPreview(IDLE_SPEC, false);
+      setActiveButtons('none');
+      setStatus('Idle', 'Pick any Copy Ability above to feed it to Kirby.');
+      if (speak) say('Reset. Kirby is back to idle; no Copy Ability active.');
+    }
+
+    ui.items.forEach((btn) => {
+      btn.addEventListener('click', () => runAbility(btn.dataset.caItem));
+    });
+    ui.reset.addEventListener('click', () => {
+      if (ui.reset.getAttribute('aria-disabled') === 'true') return;
+      const moveFocus = doc.activeElement === ui.reset;
+      reset();
+      if (moveFocus) ui.items[0].focus();
+    });
+
+    if ('IntersectionObserver' in window) {
+      const obs = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          preloadPoses();
+          obs.disconnect();
+        }
+      }, { rootMargin: '200px 0px' });
+      obs.observe(rootBox);
+    }
+
+    reset({ speak: false });
+  }
+
   initTray(doc.querySelector('[data-tray]'));
+  initCopyAbilities(doc.querySelector('[data-ca]'));
   initDemo(doc.querySelector('[data-demo-video]'));
   initStages(doc.querySelector('[data-stages]'));
 })();

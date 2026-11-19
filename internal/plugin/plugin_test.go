@@ -38,3 +38,24 @@ func TestMultipleHooksAllFire(t *testing.T) {
 		t.Fatalf("expected 3 hooks fired, got %d", n)
 	}
 }
+
+func TestRegisterFlowHookCancelIdempotent(t *testing.T) {
+	Reset()
+	defer Reset()
+
+	var calls int
+	unreg := RegisterFlowHook(func(int64) { calls++ })
+	EmitFlowCaptured(1)
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+
+	unreg()
+	unreg() // idempotent
+	RegisterFlowHook(nil)()
+
+	EmitFlowCaptured(2)
+	if calls != 1 {
+		t.Fatalf("calls after unregister = %d, want 1", calls)
+	}
+}

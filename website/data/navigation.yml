@@ -70,6 +70,9 @@
     - title: Extensions
       url: /extensions/
       icon: puzzle
+    - title: Abilities
+      url: /abilities/
+      icon: sparkles
 - title: Reference
   id: reference
   color: grape

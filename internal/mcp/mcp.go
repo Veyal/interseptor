@@ -3708,5 +3708,97 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/session/login/test", nil)
 		})
 
+	s.add("list_abilities",
+		"List installed Copy Abilities (id, name, version, scope, trusted, enabled, quarantined, drift, capabilities, menus, contextMenus, inspectorTabs, actions, hooks). Trust, enablement, install, and removal remain human-only in the UI or CLI.",
+		obj(map[string]any{
+			"enabledOnly": p("boolean", "only return enabled abilities"),
+			"trustedOnly": p("boolean", "only return trusted abilities"),
+		}),
+		func(a map[string]any) (string, error) {
+			raw, err := s.apiGet("/api/abilities")
+			if err != nil {
+				return "", err
+			}
+			enabledOnly := argBool(a, "enabledOnly", false)
+			trustedOnly := argBool(a, "trustedOnly", false)
+			if !enabledOnly && !trustedOnly {
+				return raw, nil
+			}
+			return filterAbilitiesJSON(raw, enabledOnly, trustedOnly)
+		})
+
+	s.add("run_ability_action",
+		"Invoke a Starlark action declared by a trusted, enabled Copy Ability (`POST /api/abilities/{id}/actions/{action}`). Pass optional `flowId` and `input` object; untrusted or disabled abilities are refused.",
+		obj(map[string]any{
+			"abilityId": p("string", "ability id from list_abilities"),
+			"action":    p("string", "declared action id (must have mcp:true)"),
+			"flowId":    p("integer", "optional flow id passed as ctx[\"flow\"]"),
+			"input":     p("object", "optional JSON input passed to run(ctx)"),
+		}, "abilityId", "action"),
+		func(a map[string]any) (string, error) {
+			abilityID, err := reqStr(a, "abilityId")
+			if err != nil {
+				return "", err
+			}
+			action, err := reqStr(a, "action")
+			if err != nil {
+				return "", err
+			}
+			abilityID = strings.TrimSpace(abilityID)
+			action = strings.TrimSpace(action)
+			if abilityID == "." || abilityID == ".." {
+				return "", fmt.Errorf("invalid abilityId %q", abilityID)
+			}
+			if action == "." || action == ".." {
+				return "", fmt.Errorf("invalid action %q", action)
+			}
+			payload := map[string]any{}
+			if rawIn, ok := a["input"]; ok && rawIn != nil {
+				inMap, ok := rawIn.(map[string]any)
+				if !ok {
+					return "", fmt.Errorf("input must be an object (got %T %s)", rawIn, describeValue("input", rawIn))
+				}
+				for k, v := range inMap {
+					payload[k] = v
+				}
+			}
+			if flowID := argInt(a, "flowId", 0); flowID > 0 {
+				payload["flowId"] = flowID
+			}
+			path := fmt.Sprintf("/api/abilities/%s/actions/%s", url.PathEscape(abilityID), url.PathEscape(action))
+			return s.api(http.MethodPost, path, payload)
+		})
+
 	s.advertiseExpectedProject()
+}
+
+func filterAbilitiesJSON(raw string, enabledOnly, trustedOnly bool) (string, error) {
+	var resp struct {
+		Abilities []json.RawMessage `json:"abilities"`
+	}
+	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+		return "", fmt.Errorf("parse abilities response: %w", err)
+	}
+	filtered := make([]json.RawMessage, 0, len(resp.Abilities))
+	for _, item := range resp.Abilities {
+		var flags struct {
+			Trusted bool `json:"trusted"`
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.Unmarshal(item, &flags); err != nil {
+			return "", fmt.Errorf("parse ability entry: %w", err)
+		}
+		if enabledOnly && !flags.Enabled {
+			continue
+		}
+		if trustedOnly && !flags.Trusted {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	out, err := json.Marshal(map[string]any{"abilities": filtered})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

@@ -2,7 +2,7 @@
 layout: landing
 permalink: /
 title: Interseptor — an intercepting proxy that makes you prove it
-description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 134-tool MCP server for agent-assisted testing.
+description: An HTTP/HTTPS intercepting proxy and pentest workbench in one static Go binary. Intercept, replay and fuzz, then export a report that will not go final until the evidence is real. MIT licensed, with a 136-tool MCP server for agent-assisted testing.
 image: /website/assets/img/social-card.png
 image_alt: "Interseptor: the interception workspace for web and API pentests, beside a screenshot of captured requests and a decoded response."
 css: [css/landing.css]
@@ -14,6 +14,8 @@ sections:
     id: workflow
   - title: What it does
     id: capabilities
+  - title: Copy Abilities
+    id: abilities
   - title: For agents
     id: agents
   - title: Honestly
@@ -39,9 +41,9 @@ sections:
           <span class="window-title">install</span>
           <button class="copy-button chip" type="button" data-copy="#hero-install" aria-label="Copy the install command">Copy</button>
         </div>
-        <div class="lp-cmd-body"><code id="hero-install"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>go install github.com/<wbr>Veyal/<wbr>interseptor/<wbr>cmd/<wbr>interseptor<wbr>@latest</code></div>
+        <div class="lp-cmd-body"><code id="hero-install"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>git clone https://github.com/<wbr>Veyal/<wbr>interseptor.git &amp;&amp; cd interseptor &amp;&amp; make build</code></div>
       </div>
-      <p class="lp-hero-meta">Needs Go 1.25 or later. Or grab a <a href="https://github.com/Veyal/interseptor/releases">prebuilt binary</a> for macOS, Linux or Windows.</p>
+      <p class="lp-hero-meta">Needs Go 1.26 or later to build from source. Or grab a <a href="https://github.com/Veyal/interseptor/releases/latest">prebuilt binary</a> for macOS, Linux or Windows (no Go needed).</p>
     </div>
 
     <div class="lp-hero-toy">
@@ -133,14 +135,14 @@ sections:
   <div class="wrap">
     <div class="lp-head">
       <h2 id="demo-title">Now the real thing.</h2>
-      <p class="lede">The same catch in the real app: a silent 35-second recording of Interseptor v{{.Site.Release.Version}} against a demo shop on example.com. Every click is real; the pointer is drawn on top so you can follow it.</p>
+      <p class="lede">The same catch in the real app: a silent 35-second recording of Interseptor against a demo shop on example.com. Every click is real; the pointer is drawn on top so you can follow it.</p>
     </div>
     <div class="demo-frame">
       <span class="ribbon">Real recording</span>
       <div class="window demo-window">
         <div class="window-bar">
           <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="window-title">interseptor v{{.Site.Release.Version}} · example-shop</span>
+          <span class="window-title">interseptor · example-shop</span>
         </div>
         <div class="window-body demo-body">
           <video class="demo-video" data-demo-video controls muted playsinline loop preload="none" width="1440" height="900" poster="{{asset "media/demo-light-poster.webp"}}" aria-label="Screen recording of Interseptor: a captured HTTP history, a request held in Intercept and edited from order 1042 to 1043, the forwarded response returning another customer's order, and that flow attached as evidence to a High-severity IDOR finding." data-poster-light="{{asset "media/demo-light-poster.webp"}}" data-poster-dark="{{asset "media/demo-dark-poster.webp"}}" data-webm-light="{{asset "media/demo-light.webm"}}" data-mp4-light="{{asset "media/demo-light.mp4"}}" data-webm-dark="{{asset "media/demo-dark.webm"}}" data-mp4-dark="{{asset "media/demo-dark.mp4"}}">
@@ -310,7 +312,7 @@ sections:
       <li class="lp-ability card-surface card-hover">
         <span class="lp-ability-icon lp-fill-grape" aria-hidden="true">{{icon "bot"}}</span>
         <h3 class="lp-ability-title">MCP server</h3>
-        <p class="lp-ability-text">134 tools over stdio and Streamable HTTP, built into the binary. Nothing to install, nothing to keep in version lockstep.</p>
+        <p class="lp-ability-text">136 tools over stdio and Streamable HTTP, built into the binary. Nothing to install, nothing to keep in version lockstep.</p>
         <a class="lp-ability-link" href="{{url "/api-and-mcp/"}}">API and MCP guide</a>
       </li>
       <li class="lp-ability card-surface card-hover">
@@ -320,6 +322,113 @@ sections:
         <a class="lp-ability-link" href="{{url "/collections/#quarantine-and-trust"}}">Quarantine and trust</a>
       </li>
     </ul>
+
+    <div class="ca-block" id="abilities" aria-labelledby="abilities-title">
+      <div class="ca-head">
+        <div class="ca-head-copy">
+          <p class="mono-label">Copy abilities</p>
+          <h3 class="ca-title" id="abilities-title">Eat a package, gain a surface.</h3>
+          <p class="lede">Install a local folder or archive and Interseptor picks up new sidebar menus, inspector tabs, context actions, command-palette entries, Starlark hooks and MCP tools. Imported abilities stay quarantined until a human approves their exact hash.</p>
+        </div>
+        <a class="btn-ghost" href="{{url "/abilities/"}}">Copy Abilities guide</a>
+      </div>
+
+      <div class="ca-frame">
+        <span class="ribbon">Try it</span>
+        <div class="window ca-window" data-ca data-phase="idle" data-ability="none">
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window-title">abilities · ~/.interseptor/abilities</span>
+          </div>
+          <div class="window-body ca-body">
+            <div class="ca-toolbar">
+              <div class="ca-toolbar-head">
+                <p class="ca-prompt" id="ca-picker-label">Pick an ability package for Kirby to swallow:</p>
+                <button class="btn-ghost btn-sm ca-reset" type="button" data-ca-reset aria-disabled="true">{{icon "rotate-ccw"}}Reset</button>
+              </div>
+              <div class="ca-picker" role="group" aria-labelledby="ca-picker-label">
+                <button class="chip ca-item" type="button" data-ca-item="jwt-xray" data-color="sky" aria-pressed="false">{{icon "scan-text"}}<span>JWT X-Ray</span></button>
+                <button class="chip ca-item" type="button" data-ca-item="session-ninja" data-color="pink" aria-pressed="false">{{icon "key-round"}}<span>Session Ninja</span></button>
+                <button class="chip ca-item" type="button" data-ca-item="playbook-reader" data-color="mint" aria-pressed="false">{{icon "book-open"}}<span>Playbook Reader</span></button>
+                <button class="chip ca-item" type="button" data-ca-item="agent-tool" data-color="grape" aria-pressed="false">{{icon "bot"}}<span>Agent Tool</span></button>
+                <button class="chip ca-item" type="button" data-ca-item="turbo-hook" data-color="yellow" aria-pressed="false">{{icon "zap"}}<span>Turbo Hook</span></button>
+              </div>
+              <p class="ca-disclaimer">Interactive preview only. Snippets are abbreviated; no files are installed and no action runs.</p>
+              <p class="ca-nojs">Interactive transformation needs JavaScript. Below is the JWT X-Ray example; read the <a href="{{url "/abilities/"}}">Copy Abilities guide</a> for every slot and manifest field.</p>
+            </div>
+
+            <div class="ca-stage-grid">
+              <div class="ca-arena">
+                <div class="ca-wire" aria-hidden="true" data-ca-wire>
+                  <span class="ca-kirby" data-ca-kirbybox>
+                    <img class="ca-kirby-img ca-kirby-live" data-ca-kirby src="{{asset "img/kirby/kirby-idle.webp"}}" width="640" height="572" alt="" loading="lazy" decoding="async"
+                      data-pose-idle="{{asset "img/kirby/kirby-idle.webp"}}"
+                      data-pose-inhale="{{asset "img/kirby/kirby-inhale.webp"}}"
+                      data-pose-full="{{asset "img/kirby/kirby-full.webp"}}"
+                      data-pose-detective="{{asset "img/kirby/kirby-detective.webp"}}"
+                      data-pose-ninja="{{asset "img/kirby/kirby-ninja.webp"}}"
+                      data-pose-book="{{asset "img/kirby/kirby-book.webp"}}"
+                      data-pose-laptop="{{asset "img/kirby/kirby-laptop.webp"}}"
+                      data-pose-warpstar="{{asset "img/kirby/kirby-warpstar.webp"}}">
+                    <img class="ca-kirby-img ca-kirby-nojs" src="{{asset "img/kirby/kirby-detective.webp"}}" width="636" height="640" alt="" loading="lazy" decoding="async">
+                    <span class="ca-burst" data-ca-burst><i></i><i></i><i></i><i></i></span>
+                  </span>
+                  <span class="ca-track" data-ca-track></span>
+                  <span class="ca-dock" data-ca-dock>
+                    <span class="ca-dock-badge">{{icon "package"}}</span>
+                    <span class="ca-dock-label">ability pkg</span>
+                  </span>
+                  <span class="ca-suck" data-ca-suck><i></i><i></i><i></i></span>
+                </div>
+                <p class="ca-status" data-ca-status><span class="ca-tag" data-ca-tag>Idle</span> <span data-ca-status-text>Pick any Copy Ability above to feed it to Kirby.</span></p>
+              </div>
+
+              <div class="ca-preview card-surface" data-ca-preview data-color="sky">
+                <div class="ca-preview-head">
+                  <span class="ca-preview-icon" data-ca-preview-icon aria-hidden="true">{{icon "scan-text"}}</span>
+                  <div class="ca-preview-meta">
+                    <div class="ca-preview-title-row">
+                      <h4 class="ca-preview-name" data-ca-preview-name>JWT X-Ray</h4>
+                      <span class="chip ca-trust" data-ca-trust>{{icon "shield-check"}}<span data-ca-trust-text>Simulated approval</span></span>
+                    </div>
+                    <p class="ca-preview-path"><code data-ca-preview-path>~/.interseptor/abilities/jwt-xray/</code></p>
+                  </div>
+                </div>
+                <dl class="ca-slots" data-ca-slots>
+                  <div><dt>Sidebar menu</dt><dd>Recon menu adds <code>JWT X-Ray</code></dd></div>
+                  <div><dt>Inspector tab</dt><dd>Adds <code>JWT</code> tab beside Raw, Pretty and Render</dd></div>
+                  <div><dt>Example behavior</dt><dd>Decodes bearer claims (<code>alg: RS256</code>, <code>sub: cust_7731</code>) and flags <code>alg=none</code>.</dd></div>
+                </dl>
+                <div class="ca-code-card">
+                  <div class="ca-code-bar"><span class="ca-code-file">ability.json</span><span class="ca-code-kind" data-ca-code-kind>excerpt</span></div>
+                  <pre class="ca-code-pre"><code data-ca-manifest>{
+  <span class="tok-key">"schema"</span>: <span class="tok-string">"interseptor.ability/v1"</span>,
+  <span class="tok-key">"id"</span>: <span class="tok-string">"jwt-xray"</span>,
+  <span class="tok-key">"name"</span>: <span class="tok-string">"JWT X-Ray"</span>,
+  <span class="tok-key">"version"</span>: <span class="tok-string">"1.0.0"</span>,
+  <span class="tok-key">"menus"</span>: [
+    {
+      <span class="tok-key">"id"</span>: <span class="tok-string">"jwt-panel"</span>,
+      <span class="tok-key">"label"</span>: <span class="tok-string">"JWT X-Ray"</span>,
+      <span class="tok-key">"group"</span>: <span class="tok-string">"recon"</span>
+    }
+  ],
+  <span class="tok-key">"inspectorTabs"</span>: [
+    {
+      <span class="tok-key">"id"</span>: <span class="tok-string">"jwt-inspector"</span>,
+      <span class="tok-key">"label"</span>: <span class="tok-string">"JWT"</span>,
+      <span class="tok-key">"side"</span>: <span class="tok-string">"both"</span>
+    }
+  ]
+}</code></pre>
+                </div>
+              </div>
+            </div>
+            <p class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-ca-live></p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -351,7 +460,7 @@ sections:
       <img class="lp-agents-art" src="{{asset "img/kirby/kirby-laptop.webp"}}" width="640" height="575" alt="" loading="lazy" decoding="async">
       <div class="lp-belt card-surface">
         <h3 class="lp-belt-title">On its tool belt</h3>
-        <p class="lp-belt-note">15 of the 134 MCP tools, by their real names, in the order an engagement uses them.</p>
+        <p class="lp-belt-note">15 of the 136 MCP tools, by their real names, in the order an engagement uses them.</p>
         <ul class="lp-belt-list">
           <li><code>check_readiness</code></li>
           <li><code>list_flows</code></li>
@@ -395,8 +504,8 @@ sections:
           <ul class="lp-stat-rows">
             <li class="lp-stat"><span class="lp-stat-name">Intercept and replay<small>requests and responses, no throttle</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Evidence discipline<small>final export returns 409 until it is proven</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
-            <li class="lp-stat"><span class="lp-stat-name">Agent tooling<small>134 MCP tools in the binary</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
-            <li class="lp-stat"><span class="lp-stat-name">Extension ecosystem<small>Starlark checks and signed packs, no marketplace</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Agent tooling<small>136 MCP tools in the binary</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star" "on"}}</span><span class="sr-only">Rated 5 of 5.</span></li>
+            <li class="lp-stat"><span class="lp-stat-name">Extension ecosystem<small>Local Copy Abilities and Starlark, no store</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Maturity<small>first commit June 2026</small></span><span class="lp-stars" aria-hidden="true">{{icon "star" "on"}}{{icon "star" "on"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 2 of 5.</span></li>
             <li class="lp-stat"><span class="lp-stat-name">Active scanning<small>passive checks only; use ZAP</small></span><span class="lp-stars" aria-hidden="true">{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}{{icon "star"}}</span><span class="sr-only">Rated 0 of 5.</span></li>
           </ul>
@@ -408,7 +517,7 @@ sections:
         <ul class="lp-weak-list">
           <li><strong>No active scanner.</strong> 31 passive checks over traffic you already captured, extensible in sandboxed Starlark. If you want an automated active scan, ZAP is free and good at it.</li>
           <li><strong>It is new.</strong> First commit June 2026. Burp's lineage goes back to 2003, ZAP's to 2010. It is MIT, so read the code: roughly 100k lines of source against 88k of tests.</li>
-          <li><strong>No extension marketplace.</strong> Starlark checks and signed rule packs, and that is all. Burp has 300+ BApps from 250+ authors; that gap is real.</li>
+          <li><strong>No extension marketplace.</strong> Local or archived <a href="{{url "/abilities/"}}">Copy Abilities</a> add UI menus, inspector tabs, context actions, Starlark hooks and MCP tools (quarantined until approved), alongside Starlark checks and rule packs. There is no central store or auto-updating marketplace; Burp has 300+ BApps from 250+ authors, and that gap is real.</li>
           <li><strong>No hosted out-of-band service.</strong> There is a self-hosted catcher, off by default, and it needs your own tunnel to be reachable. It is not Burp Collaborator.</li>
           <li><strong>No HTTP/3.</strong> HTTP/2 upstream with an HTTP/1.1 client leg on the MITM path. mitmproxy does HTTP/3 today.</li>
           <li><strong>Data at rest is not encrypted.</strong> Captured traffic sits unencrypted under your data directory, by design. Secure the machine it runs on.</li>
@@ -433,7 +542,7 @@ sections:
       </details>
       <details class="lp-faq-item">
         <summary><span>Burp and ZAP have MCP too. Why does yours matter?</span>{{icon "plus" "lp-faq-icon"}}</summary>
-        <div class="lp-faq-body"><p>They do, and anyone saying otherwise is selling you something. There are three honest differences. Ours is in the binary rather than an extension you install and version-match. It is 134 first-party tools covering the workflow end to end, including findings and reporting. And <code>create_finding</code> makes the agent attach evidence before the finding counts. None of the tools on the comparison page has an equivalent of that last one.</p></div>
+        <div class="lp-faq-body"><p>They do, and anyone saying otherwise is selling you something. There are three honest differences. Ours is in the binary rather than an extension you install and version-match. It is 136 first-party tools covering the workflow end to end, including findings and reporting. And <code>create_finding</code> makes the agent attach evidence before the finding counts. None of the tools on the comparison page has an equivalent of that last one.</p></div>
       </details>
       <details class="lp-faq-item">
         <summary><span>Is my captured traffic going anywhere?</span>{{icon "plus" "lp-faq-icon"}}</summary>
@@ -464,7 +573,7 @@ sections:
             <span class="window-title">install</span>
             <button class="copy-button chip" type="button" data-copy="#install-go" aria-label="Copy the install command">Copy</button>
           </div>
-          <div class="lp-cmd-body"><code id="install-go"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>go install github.com/<wbr>Veyal/<wbr>interseptor/<wbr>cmd/<wbr>interseptor<wbr>@latest</code></div>
+          <div class="lp-cmd-body"><code id="install-go"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>git clone https://github.com/<wbr>Veyal/<wbr>interseptor.git &amp;&amp; cd interseptor &amp;&amp; make build</code></div>
         </div>
         <div class="window lp-cmd">
           <div class="window-bar">
@@ -472,7 +581,7 @@ sections:
             <span class="window-title">run</span>
             <button class="copy-button chip" type="button" data-copy="#install-run" aria-label="Copy the run command">Copy</button>
           </div>
-          <div class="lp-cmd-body"><code id="install-run"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>interseptor<span class="tok-comment" data-copy-skip>  # proxy on 127.0.0.1:8080, UI on http://127.0.0.1:9966</span></code></div>
+          <div class="lp-cmd-body"><code id="install-run"><span class="lp-prompt" data-copy-skip aria-hidden="true">$ </span>./interseptor<span class="tok-comment" data-copy-skip>  # proxy on 127.0.0.1:8080, UI on http://127.0.0.1:9966</span></code></div>
         </div>
       </div>
       <div class="lp-actions lp-install-actions">

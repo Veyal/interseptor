@@ -31,6 +31,7 @@ import { createFinder } from './finder.js';
 import { getShellApi, registerSseHandler } from './shell-hooks.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { modShortcut, hasNativeHost } from './desktop-panel-kit.js';
+import { abilityFlowContextItems, abilityInspectorTabs } from './abilities.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -953,6 +954,10 @@ export function syncInspectorVisibility(){
 // Returns whether it had anything open, so the Escape handler can chain cleanly.
 export function closeInspector(){
   if(state.selId==null)return false;
+  unmountInspectorAbility('req');
+  unmountInspectorAbility('res');
+  clearAbilityInspectButtons('req');
+  clearAbilityInspectButtons('res');
   state.selId=null;state.detail=null;
   resetInspectVariants();
   setInspectorActionState(true);
@@ -1603,6 +1608,8 @@ function setInspectorActionState(disabled){
   });
 }
 function showInspectorLoading(id){
+  unmountInspectorAbility('req');
+  unmountInspectorAbility('res');
   setInspectorActionState(true);
   const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar'),reqDecode=$('#reqDecode'),resDecode=$('#resDecode');
   if(reqDecode)reqDecode.hidden=true;
@@ -1892,27 +1899,73 @@ function computeSideAvailability(side,flowId,detail,rawVal,decodedOverride,expli
     decodedMatched,hasMessage:true,hexEnabled:readHexViewPref(),jsonEnabled:readJsonViewPref(),paramsEnabled:readParamsViewPref(),
   });
 }
+function unmountInspectorAbility(side){
+  const el=side==='req'?$('#reqView'):$('#resView');
+  if(!el)return;
+  const host=el.querySelector(':scope > .ab-insp-host');
+  if(host&&typeof host._abilityUnmount==='function'){
+    const fn=host._abilityUnmount;
+    host._abilityUnmount=null;
+    try{fn();}catch{}
+  }
+}
+function clearAbilityInspectButtons(side){
+  const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
+  if(seg)seg.querySelectorAll('.ab-insp-btn').forEach(b=>b.remove());
+}
+function syncAbilityInspectButtons(side,detail){
+  const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
+  if(!seg)return [];
+  const tabs=detail&&detail.id?abilityInspectorTabs(detail,side):[];
+  const existing=[...seg.querySelectorAll('.ab-insp-btn')];
+  const same=existing.length===tabs.length&&existing.every((b,i)=>b.dataset.view===tabs[i].id&&b.textContent===tabs[i].label);
+  if(same)return tabs;
+  existing.forEach(b=>b.remove());
+  const more=seg.querySelector('.dsk-seg-more');
+  for(const t of tabs){
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='ab-insp-btn';
+    b.dataset.view=t.id;
+    b.textContent=t.label;
+    const on=state.view[side]===t.id;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+    b.onclick=()=>{
+      state.view[side]=t.id;
+      setSideSegSelection(side,t.id);
+      renderSide(side);
+    };
+    if(more)seg.insertBefore(b,more);
+    else seg.appendChild(b);
+  }
+  return tabs;
+}
 function setSideSegSelection(side,view){
   const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
   if(!seg)return;
   if(view==='pretty'){
-    seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+    seg.querySelectorAll('button:not(.dsk-seg-more)').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
     return;
   }
-  seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+  seg.querySelectorAll('button:not(.dsk-seg-more)').forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
 }
 function applyInspectorViewButtons(side,avail){
   const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
   if(!seg)return;
-  seg.querySelectorAll('button').forEach(b=>{b.hidden=!avail.visible[b.dataset.view];});
-  seg.hidden=!avail.anyVisible;
+  seg.querySelectorAll('button:not(.ab-insp-btn):not(.dsk-seg-more)').forEach(b=>{b.hidden=!avail.visible[b.dataset.view];});
+  const hasAb=!!seg.querySelector('.ab-insp-btn:not([hidden])');
+  seg.hidden=!avail.anyVisible&&!hasAb;
 }
 function hideInspectorSeg(side){
+  unmountInspectorAbility(side);
+  clearAbilityInspectButtons(side);
   applyInspectorViewButtons(side,inspectorViewAvailability({side,hasMessage:false}));
   syncVariantToggle(side,null);
 }
 function syncWsResButtons(flowId,detail,selectEpoch,filterEpoch){
   syncVariantToggle('res',detail);
+  syncAbilityInspectButtons('res',detail);
   const variant=activeInspectVariant(detail,'res');
   applyInspectorViewButtons('res',computeSideAvailability('res',flowId,detail,peekCachedRaw(flowId,'res',detail),undefined,variant));
   if(currentDecodedFlagFor(flowId,'res',detail,variant)===null){
@@ -1942,6 +1995,7 @@ registerSseHandler('codecs.update',()=>{
   resetCodecAvailabilityCache();
   refreshSelectedInspectorSides();
 });
+document.addEventListener('interseptor:abilitiesupdate',refreshSelectedInspectorSides);
 window.addEventListener('hexviewchange',refreshSelectedInspectorSides);
 window.addEventListener('inspectorviewchange',refreshSelectedInspectorSides);
 // A socket can stream far more frames than are worth holding in the DOM at once
@@ -2169,10 +2223,12 @@ export async function renderSide(side){
     const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
     if(renderBtn)renderBtn.style.display='';
   }
+  const abTabs=syncAbilityInspectButtons(side,detail);
+  const activeAb=typeof state.view[side]==='string'&&state.view[side].startsWith('ab:')?abTabs.find(t=>t.id===state.view[side]):null;
   const peekRaw=peekCachedRaw(flowId,side,detail);
   const initialAvail=computeSideAvailability(side,flowId,detail,peekRaw,undefined,variant);
   applyInspectorViewButtons(side,initialAvail);
-  if(!initialAvail.visible[state.view[side]]&&!initialAvail.pending[state.view[side]]){
+  if(!activeAb&&!initialAvail.visible[state.view[side]]&&!initialAvail.pending[state.view[side]]){
     const fb=fallbackInspectorView(initialAvail);
     state.view[side]=fb;
     setSideSegSelection(side,fb);
@@ -2213,6 +2269,26 @@ export async function renderSide(side){
       applyInspectorViewButtons(side,computeSideAvailability(side,flowId,detail,raw,undefined,variant));
     },()=>{});
   }
+  if(activeAb){
+    setSideSegSelection(side,view);
+    let host=el.querySelector(':scope > .ab-insp-host');
+    if(!host||el.children.length!==1){
+      unmountInspectorAbility(side);
+      el.textContent='';
+      host=document.createElement('div');
+      host.className='ab-insp-host';
+      el.appendChild(host);
+    }
+    const unmount=await activeAb.mount(host,{flow:detail,side});
+    if(!current()){
+      if(typeof unmount==='function'){try{unmount();}catch{}}
+      return;
+    }
+    if(typeof unmount==='function'&&!host._abilityUnmount)host._abilityUnmount=unmount;
+    refreshInspectFinder(side);
+    return;
+  }
+  unmountInspectorAbility(side);
   const draw=async()=>{await drawBody();if(current())refreshInspectFinder(side);};
   const drawBody=async()=>{
     try{
@@ -3113,6 +3189,8 @@ export function showCtx(x,y,f,field){
     flowAnalyseRoot(f),
     flowDeleteRoot(f),
   ].filter(Boolean);
+  const abItems=abilityFlowContextItems(f);
+  if(abItems.length)items.push({label:'Abilities',icon:'abilities',children:abItems});
   openMenu(x,y,[{head:(f.method||'')+' '+(f.host||'')+(f.path||''),items}]);
 }
 
@@ -3156,6 +3234,8 @@ export function showInspectorCtx(x,y,side){
     flowFilterRoot(f),
     flowAnalyseRoot(f),
   ];
+  const abItems=abilityFlowContextItems(f);
+  if(abItems.length)items.push({label:'Abilities',icon:'abilities',children:abItems});
   if(!sel)items.push({label:'Open Decoder',icon:'decode',act:()=>openDecoder('')});
   sections.push({head:pane.toUpperCase(),items});
   openMenu(x,y,sections);

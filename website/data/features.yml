@@ -148,3 +148,8 @@
   title: Collections
   text: Saved requests with environments, variables, auth, quarantined pm-compatible scripts, a runner, a CI command with JUnit output, and importers for Postman, OpenAPI, curl, Insomnia, Bruno, HAR, and Burp.
   link: /collections/
+- number: "31"
+  id: abilities
+  title: Abilities
+  text: Installable Copy Abilities stay quarantined until approved and can inject new sidebar menus, inspector tabs, context-menu actions, command-palette entries, Starlark flow hooks, and MCP tools.
+  link: /abilities/

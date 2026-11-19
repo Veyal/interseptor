@@ -1,0 +1,61 @@
+{
+  "schema": "interseptor.ability/v1",
+  "id": "hello-ability",
+  "name": "Hello Ability",
+  "version": "1.0.0",
+  "description": "Minimal starter Copy Ability: adds a sidebar menu, command palette entry, flow context-menu action, Starlark flow hook, and MCP-ready action.",
+  "author": "Veyal",
+  "icon": "abilities",
+  "capabilities": [
+    "ui.menu",
+    "ui.contextMenu",
+    "ui.command",
+    "flow.hook",
+    "ability.action",
+    "mcp.tool"
+  ],
+  "menus": [
+    {
+      "id": "hello-panel",
+      "label": "Hello Ability",
+      "group": "abilities",
+      "icon": "abilities",
+      "entry": "ui/panel.js",
+      "style": "ui/style.css",
+      "description": "Minimal starter Ability panel"
+    }
+  ],
+  "contextMenus": [
+    {
+      "id": "inspect-hello",
+      "label": "Greet with Hello Ability",
+      "target": "flow",
+      "icon": "abilities",
+      "panel": "hello-panel",
+      "action": "summarize_flow"
+    }
+  ],
+  "commands": [
+    {
+      "id": "open-hello",
+      "title": "Hello Ability: Open panel",
+      "keywords": ["hello", "starter", "ability"],
+      "panel": "hello-panel"
+    }
+  ],
+  "hooks": [
+    {
+      "event": "flow.captured",
+      "entry": "hooks/on_flow.star"
+    }
+  ],
+  "actions": [
+    {
+      "id": "summarize_flow",
+      "name": "Summarize flow",
+      "description": "Returns method, host, path, and status summary for a flow",
+      "entry": "hooks/summarize.star",
+      "mcp": true
+    }
+  ]
+}

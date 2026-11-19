@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="/css/identities.css">
 <link rel="stylesheet" href="/css/playbooks.css">
 <link rel="stylesheet" href="/css/projects.css">
+<link rel="stylesheet" href="/css/abilities.css">
 <link rel="stylesheet" href="/canvas.css">
 <link rel="stylesheet" href="/desktop.css">
 <link rel="stylesheet" href="/mobile.css">
@@ -94,6 +95,7 @@
 <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3h12l2 2v14l-2 2H6z"/><path d="M3 8h3M3 12h3M3 16h3M10 8h6M10 12h6"/></symbol>
 <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 14h3V6h4v12h4V10h3v4h4"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><path d="M3 6h8M15 6h6M3 12h4M11 12h10M3 18h10M17 18h4"/><path d="M13 3v6M9 9v6M15 15v6"/></symbol>
+<symbol id="i-abilities" viewBox="0 0 24 24"><path d="M4 16V8l3 3 5-5 5 5 3-3v8z"/><path d="M4 19h16"/><path d="M12 12h.01"/></symbol>
 <symbol id="i-report" viewBox="0 0 24 24"><path d="M5 5l2-2h7l5 5v11l-2 2H7l-2-2z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
 <symbol id="i-collection" viewBox="0 0 24 24"><path d="M3 4l1-1h4l1 1v4l-1 1H4L3 8z"/><path d="M6 10v10M6 15h4M6 20h4"/><path d="M12 6h9M13 15h8M13 20h8"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7l2-2h4l2 2h8l2 2v8l-2 2H5l-2-2z"/></symbol>
@@ -225,7 +227,7 @@
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
-<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="identities">Identities</option><option value="collections">Collections</option><option value="playbooks">Playbooks</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="abilities">Abilities</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <!-- /region:shell -->
 <div id="appRow">
 <nav id="navRail" class="nav-rail" aria-label="Tools">
@@ -255,6 +257,7 @@
   </div>
   <div class="nav-rail-group" data-nav-group="configure">
     <div class="nav-rail-group-label">Configure</div>
+    <button class="tab" id="tab-abilities" role="tab" aria-selected="false" aria-controls="panel-abilities" data-tab="abilities" data-group="Configure" title="Abilities"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-abilities"/></svg>Abilities</button>
     <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure" title="Settings"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-settings"/></svg>Settings</button>
   </div>
 </div>
@@ -1499,6 +1502,7 @@ Content-Type: application/json
     </div>
   </div>
   <!-- /region:settings -->
+  <div class="panel" id="panel-abilities" role="tabpanel" aria-labelledby="tab-abilities" data-panel="abilities"></div>
 </main>
 </div>
 

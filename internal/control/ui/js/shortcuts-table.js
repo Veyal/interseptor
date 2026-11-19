@@ -14,7 +14,7 @@ const L = (group, scope, keys, label, source, probe, extra) => ({ group, scope, 
 
 const GO = [
   ['p', 'Proxy'], ['i', 'Intercept'], ['r', 'Repeater'], ['u', 'Intruder'], ['c', 'Collections'],
-  ['m', 'Map'], ['f', 'Findings'], ['n', 'Notes'], ['a', 'Activity'], ['t', 'Settings'],
+  ['m', 'Map'], ['f', 'Findings'], ['n', 'Notes'], ['a', 'Activity'], ['b', 'Abilities'], ['t', 'Settings'],
 ];
 
 export const LEGACY_SHORTCUTS = [

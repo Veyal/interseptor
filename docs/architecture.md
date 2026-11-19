@@ -34,6 +34,10 @@ The control plane has **two trust modes** (`internal/control/guard.go`):
 
 Captured traffic never leaves your machine unless you deliberately expose it through remote access or an external MCP/REST client. Interseptor has no built-in model provider and stores no provider keys.
 
+### Copy Abilities quarantine
+
+`internal/abilities` loads global (`~/.interseptor/abilities/<id>/`) and project-scoped (`<projectDir>/abilities/<id>/`) **Copy Abilities** into an inert, quarantined state by default (compiling Starlark via `SourceProgramOptions` with no top-level evaluation). No ability UI module or static asset (`/abilities/{id}/{digest}/*`) is served, no `flow.captured` Starlark hook executes, and no ability action runs until a human operator explicitly approves the reviewed SHA-256 digest and scope in **Configure → Abilities** or via `interseptor ability trust`. Trust pins a SHA-256 digest in machine-owned state (`~/.interseptor/abilities-state.json` or `~/.interseptor/ability-approvals/<sha256>/abilities-state.json`, never read from project dirs); any post-trust file modification revokes trust and re-quarantines the ability automatically. AI, MCP, and API-key callers cannot install, trust, toggle, scaffold, or remove abilities, and Starlark scripts run off the proxy hot path inside a bounded worker pool and `100,000`-step sandbox. See [Copy Abilities](abilities.md).
+
 
 **Data at rest is unencrypted.** Captured requests/responses — which can include credentials, session
 tokens, and other PII from whatever you're testing — are stored **unencrypted** under `~/.interseptor/`
@@ -73,6 +77,7 @@ independently tested.
 | `internal/codec` | Pure encode/decode transforms (base64, URL, hex, HTML entities, JWT inspection, smart auto-decode) behind the Decoder tool and MCP `decode` |
 | `internal/auth/jwtextract` | Pulls JWT-shaped tokens out of flows (header/JSON/query/cookie) for cross-host token replay and SSO authz testing |
 | `internal/mcp` | MCP server (stdio + Streamable-HTTP) over the control API |
+| `internal/abilities` | Copy Abilities loader, SHA-256 quarantine/trust registry, archive install/export, and sandboxed Starlark flow hooks & actions |
 | `internal/control` | REST + SSE API, security guard, serves the embedded web UI |
 | `cmd/interseptor` | Config, wiring, lifecycle (both listeners, runtime rebind, graceful shutdown) |
 
@@ -391,3 +396,5 @@ converts static and dynamically assigned title hints into one themed surface.
 Settings use a flat reading order and expandable reference text; state, errors and
 material consequences remain visible. File access continues through explicit
 import/export actions.
+
+Trusted and enabled **Copy Abilities** are hosted by `abilities.js` (`#panel-abilities`, `css/abilities.css`, `g b` shortcut), `abilities-host.js`, and pure `abilities-model.js`, mounting ES modules from immutable revision-pinned `/abilities/{id}/{digest}/*` snapshot URLs with `mount(container, ctx)` / `update(container, ctx)` / `unmount(container)` inside error boundaries, wiring injected flow inspector tabs into both `proxy.js` and `flowdrawer.js` plus **Abilities** flow context-menu items, registering command-palette items, and refreshing on `ability.update` SSE events. See [Copy Abilities](abilities.md).

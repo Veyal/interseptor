@@ -14,7 +14,7 @@ js: [js/pages.js]
 <ul class="limits">
 <li>It has no active scanner. The scanner is passive only: 31 built-in checks that run over traffic you already captured.</li>
 <li>It is about four months old (first commit 2026-06-22), where Burp’s lineage dates to 2003 and ZAP’s to 2010.</li>
-<li>It has no extension marketplace: you can write sandboxed Starlark checks and install signed rule packs, and that is all.</li>
+<li>It has no extension marketplace or store: you can install local or archived <a href="/abilities/">Copy Abilities</a> (UI menus, inspector tabs, context actions, Starlark hooks and MCP tools, quarantined until approved), write sandboxed Starlark checks, and install signed rule packs, without auto-updating third-party binaries.</li>
 <li>It has no hosted equivalent of Burp Collaborator.</li>
 <li>It does not speak HTTP/3.</li>
 <li>It has no training estate like the Web Security Academy.</li>
@@ -147,7 +147,7 @@ All 16 rows are below, including the six where Interseptor loses. "Partial" alwa
 </tr>
 <tr id="row-7" data-outcome="win">
 <th scope="row"><span class="row-num">7</span>MCP server with nothing extra to install</th>
-<td class="matrix-self"><span class="cell-yes">Yes</span> 134 tools in the binary</td>
+<td class="matrix-self"><span class="cell-yes">Yes</span> 136 tools in the binary</td>
 <td><span class="cell-partial">Partial</span> Official BApp, you install it</td>
 <td><span class="cell-partial">Partial</span> Official BApp, you install it</td>
 <td><span class="cell-partial">Partial</span> Official add-on, you install it</td>
@@ -183,7 +183,7 @@ All 16 rows are below, including the six where Interseptor loses. "Partial" alwa
 </tr>
 <tr id="row-11" data-outcome="lose">
 <th scope="row"><span class="row-num">11</span>Extension ecosystem</th>
-<td class="matrix-self"><span class="cell-no">No</span> Starlark checks and signed packs, no marketplace</td>
+<td class="matrix-self"><span class="cell-partial">Partial</span> Local/archived <a href="/abilities/">Copy Abilities</a> (UI menus, inspector tabs, context actions, Starlark hooks and MCP tools, quarantined until approved); no central marketplace</td>
 <td><span class="cell-partial">Partial</span> BApp store, some entries Pro-only</td>
 <td><span class="cell-yes">Yes</span> 300+ BApps from 250+ authors</td>
 <td><span class="cell-yes">Yes</span> Add-on marketplace with alpha and beta tiers</td>
@@ -242,7 +242,7 @@ All 16 rows are below, including the six where Interseptor loses. "Partial" alwa
 
 Interseptor loses on rows 10 to 15. Row 14 reads "Not checked" for four competitors because we confirmed that mitmproxy supports HTTP/3 and that Interseptor does not, and did not confirm the other four. We would rather leave a cell open than fill it from absence of evidence.
 
-Where the matrix says "134 tools" for MCP, count and transports are in the [API and MCP reference](/api-and-mcp/). Burp, ZAP and Caido all have MCP servers too. The difference in row 7 is where the server lives, not whether one exists.
+Where the matrix says "136 tools" for MCP, count and transports are in the [API and MCP reference](/api-and-mcp/). Burp, ZAP and Caido all have MCP servers too. The difference in row 7 is where the server lives, not whether one exists.
 
 ## Burp Suite Professional
 
@@ -352,7 +352,7 @@ These are not rivals. They are import sources. Keep authoring in Postman; import
 </details>
 <details>
   <summary>Burp and ZAP already have MCP. Why switch for that?</summary>
-  <p>You should not switch for that alone. Both have official MCP integrations, and Caido has a community one. There are three narrower differences. The server is in the binary, so there is no extension to install or keep in version step. The first-party tool set is broader: 134 tools from recon through report export. And findings an agent files are held to an evidence contract: a title-only finding is not accepted, only a real browser or device screenshot counts as visual proof, and the final export returns 409 until the gaps close. If you re-verify your agent's findings by hand today, that last point is the one that matters. See the <a href="/ai-agents/">agent guide</a>.</p>
+  <p>You should not switch for that alone. Both have official MCP integrations, and Caido has a community one. There are three narrower differences. The server is in the binary, so there is no extension to install or keep in version step. The first-party tool set is broader: 136 tools from recon through report export. And findings an agent files are held to an evidence contract: a title-only finding is not accepted, only a real browser or device screenshot counts as visual proof, and the final export returns 409 until the gaps close. If you re-verify your agent's findings by hand today, that last point is the one that matters. See the <a href="/ai-agents/">agent guide</a>.</p>
 </details>
 <details>
   <summary>My muscle memory, extensions and team workflow are all Burp.</summary>

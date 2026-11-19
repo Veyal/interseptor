@@ -1,6 +1,6 @@
 # PRD-0005 — Extension / plugin API
 
-*Owner: Product · Status: 📝 Draft · Priority: Later · Last updated: 2026-07-19*
+*Owner: Product · Status: ✅ Shipped (Phases 1–3) · Priority: Shipped · Last updated: 2026-11-18*
 *Links: [strategy.md](strategy.md) · [roadmap.md](roadmap.md) · [#25](https://github.com/Veyal/interseptor/issues/25)*
 
 ## 1. Summary
@@ -29,20 +29,17 @@ offline-first, sandboxed, and no-cgo.
 - Marketplace / auto-update of untrusted binaries.
 - Hot-path hooks that can break forwarding (capture stays best-effort).
 
-## 4. Proposed phases
+## 4. Delivery phases
 
-1. **Hooks (Go)** — `internal/plugin` registry: `OnFlowCaptured`, `OnScanIssue` (in-process,
-   same binary; packages register at init). Used by first-party features first.
-2. **UI slots** — declared panel id + ES module path under `~/.interseptor/extensions/`.
-3. **WASM / Starlark host** — untrusted third-party logic.
-4. **Docs + example** — `examples/extensions/hello/`.
+1. **Hooks (Go, Phase 1)** — `internal/plugin` registry: `OnFlowCaptured`, `OnScanIssue` (in-process,
+   same binary; packages register at init). Used by first-party features and the Copy Abilities hook bridge.
+2. **UI slots (Phase 2)** — landed as **Copy Abilities** (`internal/abilities`, **Configure → Abilities**): declared sidebar menus/panels, flow inspector tabs, context-menu actions, and command-palette commands via ES modules (`mount(container, ctx)` / `unmount(container)`).
+3. **Sandboxed Starlark host (Phase 3)** — landed as **Copy Abilities** (`hooks/*.star`): SHA-256 quarantined-until-approved `flow.captured` hooks (`on_flow(flow)`) and on-demand/MCP actions (`run(ctx)`).
+4. **Docs + examples** — [`docs/extensions.md`](../extensions.md), [`docs/abilities.md`](../abilities.md), [`examples/extensions/hello/`](../../examples/extensions/hello), and [`examples/abilities/`](../../examples/abilities/).
 
 ## 5. Acceptance (issue #25)
 
 - [x] PRD (this doc)
-- [x] Prototype one official extension — `internal/plugin/annotator` (flow annotator, tested), opt-in via `INTERSEPTOR_EXT_ANNOTATE_HOSTS`.
-- [x] Docs for authors — [`docs/extensions.md`](../extensions.md) + [`examples/extensions/hello/`](../../examples/extensions/hello).
-
-Phase 1 lands in `internal/plugin`: the `OnFlowCaptured` / `OnScanIssue` hook
-registry, the `annotator` example extension, and author docs. UI slots (Phase 2)
-and a WASM/Starlark host (Phase 3) remain open.
+- [x] Phase 1 prototype extension — `internal/plugin/annotator` (flow annotator, tested), opt-in via `INTERSEPTOR_EXT_ANNOTATE_HOSTS`.
+- [x] Phase 1 docs for authors — [`docs/extensions.md`](../extensions.md) + [`examples/extensions/hello/`](../../examples/extensions/hello).
+- [x] Phases 2 & 3 (**Copy Abilities**) — `internal/abilities`, **Configure → Abilities** UI, REST/SSE/MCP/CLI surfaces, SHA-256 quarantine trust model, [`docs/abilities.md`](../abilities.md), and example abilities under [`examples/abilities/`](../../examples/abilities/).

@@ -14,6 +14,7 @@ import { renderState } from './statepanel.js';
 import { readSingleKeyPref, isTypingTarget } from './keys.js';
 import { createFinder } from './finder.js';
 import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, clampDrawerHeight, normalizeFlowDrawerLayout, DEFAULT_FLOW_DRAWER_LAYOUT, stepSibling, linkedFindings, rawState, DRAWER_WIDTH, DRAWER_HEIGHT, hasOriginalFlow, flowSideMethod, flowSidePath, flowSideStatus } from './flowbody.js';
+import { abilityInspectorTabs } from './abilities.js';
 
 const root = document.getElementById('flowDrawer');
 const OVERLAY_QUERY = '(max-width: 1100px)';
@@ -80,9 +81,28 @@ const bodyDeps = {
 const rawStore = () => (cur.variant === 'original' ? cur.rawOrig : cur.raw);
 const flowView = () => ({ resView: cur.resView, id: cur.id, detail: cur.detail, variant: cur.variant, raw: rawStore(), ws: cur.ws, timeline: cur.timeline, auth: cur.auth });
 
+function allFlowTabs(detail) {
+  const base = tabsForFlow(detail);
+  const extra = detail && detail.id ? abilityInspectorTabs(detail) : [];
+  return extra.length ? base.concat(extra) : base;
+}
+
+function unmountAbilityBody() {
+  const body = $('#fdBody');
+  if (!body) return;
+  const host = body.querySelector(':scope > .ab-insp-host');
+  const fn = typeof body._abilityUnmount === 'function' ? body._abilityUnmount : (host && typeof host._abilityUnmount === 'function' ? host._abilityUnmount : null);
+  body._abilityUnmount = null;
+  if (host) host._abilityUnmount = null;
+  if (typeof fn === 'function') {
+    try { fn(); } catch {}
+  }
+}
+
 function paintBody() {
   const body = $('#fdBody');
   if (!body || !cur.detail) return;
+  unmountAbilityBody();
   body.removeAttribute('aria-busy');
   body.dataset.state = 'ready';
   body.innerHTML = renderFlowBody(flowView(), cur.tab, bodyDeps);
@@ -110,6 +130,40 @@ async function loadTab(tab) {
   const tabEpoch = ++cur.tabEpoch;
   const id = cur.id;
   const live = () => cur.epoch === epoch && cur.tabEpoch === tabEpoch && cur.tab === tab;
+  if (typeof tab === 'string' && tab.startsWith('ab:')) {
+    try {
+      const abTab = allFlowTabs(cur.detail).find((t) => t.id === tab);
+      if (!abTab || typeof abTab.mount !== 'function') {
+        const fb = allFlowTabs(cur.detail)[0]?.id;
+        if (fb && fb !== tab) selectTab(fb, false);
+        return;
+      }
+      const body = $('#fdBody');
+      if (!body) return;
+      let host = body.firstElementChild;
+      if (!host || !host.classList || !host.classList.contains('ab-insp-host') || body.children.length !== 1) {
+        unmountAbilityBody();
+        body.textContent = '';
+        host = document.createElement('div');
+        host.className = 'ab-insp-host';
+        body.appendChild(host);
+      }
+      body.removeAttribute('aria-busy');
+      body.dataset.state = 'ready';
+      const unmount = await abTab.mount(host, { flow: cur.detail, side: abTab.side || 'both' });
+      if (!live()) {
+        if (typeof unmount === 'function') { try { unmount(); } catch {} }
+        return;
+      }
+      body._abilityUnmount = typeof unmount === 'function' ? unmount : (typeof host._abilityUnmount === 'function' ? host._abilityUnmount : null);
+      body.scrollTop = 0;
+      if (finder.isOpen()) finder.refresh();
+    } catch (e) {
+      if (live()) showError(e, () => loadTab(tab), 'Could not load this section');
+    }
+    return;
+  }
+  unmountAbilityBody();
   const side = tab === 'request' ? 'req' : tab === 'response' ? 'res' : '';
   try {
     if (side) {
@@ -145,7 +199,7 @@ async function loadTab(tab) {
 function renderTabs() {
   const host = $('#fdTabs');
   host.textContent = '';
-  const tabs = tabsForFlow(cur.detail);
+  const tabs = allFlowTabs(cur.detail);
   if (!tabs.some((t) => t.id === cur.tab)) cur.tab = tabs[0].id;
   for (const t of tabs) {
     const b = document.createElement('button');
@@ -176,7 +230,7 @@ function selectTab(id, focus) {
 }
 $('#fdTabs').addEventListener('click', (e) => { const b = e.target.closest('[role=tab]'); if (b) selectTab(b.dataset.tab, false); });
 $('#fdTabs').addEventListener('keydown', (e) => {
-  const next = nextTab(tabsForFlow(cur.detail || {}), cur.tab, e.key);
+  const next = nextTab(allFlowTabs(cur.detail || {}), cur.tab, e.key);
   if (next !== cur.tab) { e.preventDefault(); selectTab(next, true); }
 });
 
@@ -437,6 +491,7 @@ function revertEvidenceRoute() {
 export function closeFlowDrawer({ updateRoute = true } = {}) {
   if (!cur.open) return false;
   closeMenu(false);
+  unmountAbilityBody();
   cur.epoch++;
   cur.tabEpoch++;
   cur.open = false;
@@ -481,6 +536,7 @@ export function openFlow(id, opts = {}) {
   $('#fdLinked').textContent = '';
   $('#fdTabs').textContent = '';
   syncSteps();
+  unmountAbilityBody();
   renderState($('#fdBody'), 'loading', { rows: 5, title: 'Loading flow' });
   root.classList.add('is-open');
   if (cur.overlay) {
@@ -602,3 +658,9 @@ registerHook('openFlow', openFlow);
 registerHook('closeFlow', closeFlowDrawer);
 registerHook('flowDrawerCurrent', () => (cur.open ? cur.id : 0));
 registerHook('renderFlowBody', (flow, tab) => renderFlowBody(flow, tab, bodyDeps));
+document.addEventListener('interseptor:abilitiesupdate', () => {
+  if (!cur.open || !cur.detail) return;
+  const prev = cur.tab;
+  renderTabs();
+  if (cur.tab !== prev || (typeof cur.tab === 'string' && cur.tab.startsWith('ab:'))) loadTab(cur.tab);
+});

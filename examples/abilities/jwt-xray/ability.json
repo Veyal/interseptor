@@ -1,0 +1,71 @@
+{
+  "schema": "interseptor.ability/v1",
+  "id": "jwt-xray",
+  "name": "JWT X-Ray",
+  "version": "1.0.0",
+  "description": "Detects Bearer and cookie JWTs across captured traffic, flags alg=none or expired claims, and injects a Recon sidebar panel + Flow Inspector tab.",
+  "author": "Veyal",
+  "icon": "key",
+  "capabilities": [
+    "ui.menu",
+    "ui.inspectorTab",
+    "ui.contextMenu",
+    "ui.command",
+    "flow.hook",
+    "ability.action",
+    "mcp.tool"
+  ],
+  "menus": [
+    {
+      "id": "jwt-panel",
+      "label": "JWT X-Ray",
+      "group": "recon",
+      "icon": "key",
+      "entry": "ui/panel.js",
+      "style": "ui/style.css",
+      "description": "Inspect JWT claims and header weaknesses"
+    }
+  ],
+  "inspectorTabs": [
+    {
+      "id": "jwt-inspector",
+      "label": "JWT",
+      "side": "both",
+      "entry": "ui/inspector.js",
+      "style": "ui/style.css"
+    }
+  ],
+  "contextMenus": [
+    {
+      "id": "xray-flow",
+      "label": "Inspect JWTs in JWT X-Ray",
+      "target": "flow",
+      "icon": "key",
+      "panel": "jwt-panel",
+      "action": "analyze_flow"
+    }
+  ],
+  "commands": [
+    {
+      "id": "open-jwt-xray",
+      "title": "JWT X-Ray: Inspect captured JWTs",
+      "keywords": ["jwt", "bearer", "token", "claims", "alg", "none"],
+      "panel": "jwt-panel"
+    }
+  ],
+  "hooks": [
+    {
+      "event": "flow.captured",
+      "entry": "hooks/on_flow.star"
+    }
+  ],
+  "actions": [
+    {
+      "id": "analyze_flow",
+      "name": "Analyze flow JWTs",
+      "description": "Extract and decode JWTs from a captured flow's headers and bodies",
+      "entry": "hooks/analyze.star",
+      "mcp": true
+    }
+  ]
+}

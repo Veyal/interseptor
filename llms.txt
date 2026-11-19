@@ -32,6 +32,7 @@ The project notebook (Report → Notes; `get_notes`, `set_notes`, `append_notes`
 
 ## Optional
 
+- [Abilities](https://veyal.github.io/interseptor/abilities/): Copy Abilities for injecting menus, inspector tabs, context actions, Starlark hooks, and MCP actions
 - [Architecture](https://veyal.github.io/interseptor/architecture/): Architecture and security model
 - [Benchmarks](https://veyal.github.io/interseptor/benchmarks/): Performance benchmarks
 - [CLI reference](https://veyal.github.io/interseptor/cli-reference/): Command-line flags and subcommands

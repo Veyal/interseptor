@@ -4,7 +4,7 @@
 // so it runs under node (_js-tests/desktop-model.test.mjs).
 
 // PANELS are the tool documents `panel:<name>` may open (the rail's data-tab ids).
-export const PANELS = Object.freeze(['proxy', 'intercept', 'repeater', 'intruder', 'identities', 'collections', 'playbooks', 'map', 'findings', 'notes', 'activity', 'settings']);
+export const PANELS = Object.freeze(['proxy', 'intercept', 'repeater', 'intruder', 'identities', 'collections', 'playbooks', 'map', 'findings', 'notes', 'activity', 'abilities', 'settings']);
 
 // COMMANDS maps every non-panel command to the action name desktop.js calls.
 export const COMMANDS = Object.freeze({
@@ -39,6 +39,7 @@ export const FIND_TARGETS = Object.freeze({
   collections: '#collFilter',
   identities: '#identFilter',
   activity: '#actIntentFilter',
+  abilities: '#abSearch',
   settings: '#setSearch',
 });
 export function findTargetFor(panel) {

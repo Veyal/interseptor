@@ -82,3 +82,4 @@ User-facing capabilities in the current release. For a tour of the menus, see th
 - **Collections** — saved requests with environments, variables, auth, `pm.*`-compatible scripts that
   stay quarantined until you trust them, a runner, `interseptor run` for CI with JUnit output, and
   importers for Postman, OpenAPI, curl, Insomnia, Bruno, HAR and Burp. See [Collections](collections.md).
+- **Abilities** — installable Copy Abilities (local folders or `.tar.gz`/`.zip` archives) that stay quarantined until approved and can inject new sidebar menus, flow inspector tabs, context-menu actions, command-palette commands, sandboxed Starlark flow hooks, and MCP actions. See [Abilities](abilities.md).

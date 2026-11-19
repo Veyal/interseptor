@@ -89,11 +89,10 @@ There is no install script. Pick one path:
 
 | Path | Command |
 |---|---|
-| Go 1.26+ | `go install github.com/Veyal/interseptor/cmd/interseptor@latest` |
-| Homebrew | **Do not use for a current build.** The tap exists but is pinned to v2.9.0; the automated publish is disabled. Use `go install` or a release binary until it is re-seeded. |
-| Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Release archive | download `interseptor_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) from the [Releases](https://github.com/Veyal/interseptor/releases) page, verify `checksums.txt`, extract |
-| From source | `git clone https://github.com/Veyal/interseptor.git && cd interseptor && make build` |
+| From source (Go 1.26+) | `git clone https://github.com/Veyal/interseptor.git && cd interseptor && make build` |
+| Homebrew | **Do not use for a current build.** The tap exists but is pinned to v2.9.0; the automated publish is disabled. Use a release binary or build from source until it is re-seeded. |
+| Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Update in place | `interseptor update` (also `interseptor update --check`, `interseptor update --version 2.8.0`). The UI's one-click update (`POST /api/update`) refuses AI/MCP and API-key callers with 403; read `GET /api/update` to report what is available. |
 
 Start it and check that it is running:
@@ -898,7 +897,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (134)
+### MCP tools (136)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -970,6 +969,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `ios_ssh_setup` | none | One-click jailbroken iOS HTTPS intercept via SSH: opens mobileconfig on device (CA + global HTTP proxy). |
 | `ios_ssh_status` | none | Check jailbroken iOS device SSH reachability and authentication. |
 | `ios_status` | none | List iOS simulators (Xcode simctl) and USB iPhones (libimobiledevice): UDID, name, boot state, LAN host... |
+| `list_abilities` | none | List installed Copy Abilities (id, name, version, scope, trusted, enabled, quarantined, drift, capabilities... |
 | `list_authz` | none | List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz). |
 | `list_authz_runs` | none | List persisted authorization-run history newest first: id, ts, kind (single\|bulk\|differential\|crosshost)... |
 | `list_codecs` | none | List project Starlark message codecs (id, source, meta, compile error). |
@@ -1007,6 +1007,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `render_flow_preview` | `flowId` | Render a captured flow as an Interseptor-styled HTTP request/response PNG. |
 | `render_intruder_preview` | `kind` | Render a recorded Intruder run as a PNG: kind=timeline (rate-limit/lockout waterfall), distribution... |
 | `restore_finding_revision` | `id`, `revisionId` | Restore a selected historical finding version, including a deleted finding. |
+| `run_ability_action` | `abilityId`, `action` | Invoke a Starlark action declared by a trusted, enabled Copy Ability (`POST... |
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
 | `run_request` | `itemUid` | Send one collection request through the shared pipeline: variables resolved, trusted scripts run, scope... |
@@ -1143,12 +1144,23 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (295)
+### REST routes (306)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/api/abilities` | List discovered Copy Abilities (global and project-scoped) with trust, enablement, quarantine, drift, and... |
+| POST | `/api/abilities/install` | Install a Copy Ability from a raw .tgz/.zip body or multipart/form-data "file" part (max 32 MiB... |
+| POST | `/api/abilities/reload` | Re-scan global and project ability directories, recompute SHA-256 trust/drift state, and broadcast... |
+| POST | `/api/abilities/scaffold` | Create a starter Copy Ability directory on disk, installed quarantined. |
+| DELETE | `/api/abilities/{id}` | Delete an ability directory and clear its trust record. |
+| GET | `/api/abilities/{id}` | Get one Copy Ability by id: {ability} |
+| POST | `/api/abilities/{id}/actions/{action}` | Invoke a declared Starlark action on a trusted, enabled ability. |
+| GET | `/api/abilities/{id}/export` | Stream a deterministic .tar.gz archive of an ability (`<id>/`... |
+| POST | `/api/abilities/{id}/revoke` | Revoke an ability's trust approval and disable it (returns it to quarantine). |
+| POST | `/api/abilities/{id}/toggle` | Enable or disable a trusted ability. |
+| POST | `/api/abilities/{id}/trust` | Approve the reviewed SHA-256 digest and scope of an ability. |
 | DELETE | `/api/activity` | Clear activity feed |
 | GET | `/api/activity` | AI/MCP activity feed |
 | POST | `/api/activity` | MCP-only activity transport; external HTTP requests are rejected. |

@@ -34,6 +34,7 @@ struct MainMenu {
         PanelItem(title: "Findings", id: "findings", key: "8"),
         PanelItem(title: "Notes", id: "notes", key: "9"),
         PanelItem(title: "Activity", id: "activity", key: "9", mods: [.command, .option]),
+        PanelItem(title: "Abilities", id: "abilities", key: ""),
         PanelItem(title: "Settings", id: "settings", key: ""),
     ]
 

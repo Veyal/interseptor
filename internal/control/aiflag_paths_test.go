@@ -226,6 +226,7 @@ func TestAISourceFlagOnEverySendEndpoint(t *testing.T) {
 // do not put a request on the network and record a flow, with the reason. A new
 // MCP endpoint must land here or in aiFlagEndpoints.
 var aiFlagNotFlowCreating = map[string]string{
+	"/api/abilities/{}/actions/{}":         "runs a sandboxed Starlark ability action, records no HTTP flow",
 	"/api/android/setup":                   "device setup over adb, no HTTP flow",
 	"/api/android/unproxy":                 "device setup over adb, no HTTP flow",
 	"/api/authz":                           "stores identities",

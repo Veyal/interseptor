@@ -1,11 +1,9 @@
 # Writing Interseptor extensions
 
-Interseptor has a small, stable **in-process hook API** for extending the tool
-without forking it. This is Phase 1 of [PRD-0005](product/prd-0005-extensions.md)
-(issue [#25](https://github.com/Veyal/interseptor/issues/25)): first-party Go
-packages register hooks at startup. Later phases add UI panel slots and an
-untrusted (WASM / Starlark) host; the hook contract described here is the
-foundation they build on.
+Interseptor has two extension layers for extending the tool without forking it (see [PRD-0005](product/prd-0005-extensions.md), issue [#25](https://github.com/Veyal/interseptor/issues/25)):
+
+- **Phases 2 & 3 — Copy Abilities (`internal/abilities`, **Configure → Abilities**):** installable ability folders or archives that inject UI sidebar panels, flow inspector tabs, context-menu actions, command-palette commands, sandboxed Starlark `flow.captured` hooks, and MCP actions under a SHA-256 quarantine trust model. See **[Copy Abilities](abilities.md)**.
+- **Phase 1 — In-process Go hooks (`internal/plugin`):** the low-level Go hook registry described below, used by first-party Go packages at startup (including the Copy Abilities Starlark hook bridge).
 
 ## The hook API — `internal/plugin`
 
@@ -88,10 +86,11 @@ INTERSEPTOR_EXT_ANNOTATE_TAG="internal-host" \
 
 A copy-paste starting point lives in [`examples/extensions/hello/`](../examples/extensions/hello).
 
-## Roadmap
+## Copy Abilities (Phases 2 & 3)
 
-- **Phase 2** — declared UI panel slots (ES module under
-  `~/.interseptor/extensions/`), so an extension can add a tab, not just a hook.
-- **Phase 3** — WASM / Starlark host for untrusted third-party logic.
+Phases 2 and 3 of [PRD-0005](product/prd-0005-extensions.md) shipped as **Copy Abilities** (`internal/abilities`), managed in **Configure → Abilities** and via `interseptor ability`.
 
-See [PRD-0005](product/prd-0005-extensions.md) for the full plan.
+- **UI slots (Phase 2)** — declared sidebar menus/panels, flow inspector tabs, context-menu actions, and command-palette entries using ES modules (`mount(container, ctx)` / `unmount(container)`).
+- **Sandboxed Starlark host (Phase 3)** — quarantined-until-trusted `flow.captured` hooks (`on_flow(flow)`) bridged through `internal/plugin` and on-demand/MCP actions (`run(ctx)`).
+
+If you want to extend Interseptor without recompiling Go code, build or install a Copy Ability following [Copy Abilities](abilities.md). Phase 1 in-process Go hooks remain in `internal/plugin` for compiled first-party integrations.

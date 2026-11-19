@@ -1,0 +1,215 @@
+.ab-hello {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+  padding: var(--sp-4, 16px);
+  color: var(--fg);
+  font-family: var(--ui);
+  font-size: var(--fs-md, 13px);
+  min-width: 0;
+}
+
+.ab-hello-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2, 8px);
+  padding-bottom: var(--sp-3, 12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.ab-hello-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ab-hello-title {
+  margin: 0;
+  font-size: var(--fs-xl, 16px);
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.ab-hello-sub {
+  margin: 0;
+  font-size: var(--fs-sm, 12px);
+  color: var(--fg3);
+}
+
+.ab-hello-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+}
+
+.ab-hello-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-3, 12px);
+}
+
+.ab-hello-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 8px);
+  padding: var(--sp-3, 12px);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 9px);
+  min-width: 0;
+}
+
+.ab-hello-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2, 8px);
+}
+
+.ab-hello-card-title {
+  margin: 0;
+  font-size: var(--fs-md, 13px);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.ab-hello-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--bg3);
+  border: 1px solid var(--line2);
+  color: var(--fg2);
+  font-family: var(--mono);
+  font-size: var(--fs-xs, 11px);
+  white-space: nowrap;
+}
+
+.ab-hello-pill.is-accent {
+  background: var(--accentDim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ab-hello-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 11px;
+  border-radius: var(--r-md, 6px);
+  border: 1px solid var(--line2);
+  background: var(--bg3);
+  color: var(--fg2);
+  font-family: var(--ui);
+  font-size: var(--fs-sm, 12px);
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.ab-hello-btn:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.ab-hello-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ab-hello-btn.is-primary {
+  background: var(--accentSolid);
+  border-color: var(--accentSolid);
+  color: var(--onAccent);
+}
+
+.ab-hello-btn.is-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.ab-hello-kv {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  font-size: var(--fs-sm, 12px);
+}
+
+.ab-hello-kv dt {
+  color: var(--fg3);
+}
+
+.ab-hello-kv dd {
+  margin: 0;
+  color: var(--fg);
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.ab-hello-pre {
+  margin: 0;
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 6px);
+  color: var(--fg2);
+  font-family: var(--mono);
+  font-size: var(--fs-xs, 11px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ab-hello-status {
+  margin: 0;
+  font-size: var(--fs-xs, 11px);
+  color: var(--fg3);
+}
+
+.ab-hello-status.is-error {
+  color: var(--red);
+}
+
+.ab-hello-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ab-hello-feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2, 8px);
+  padding: 6px 8px;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 6px);
+  font-family: var(--mono);
+  font-size: var(--fs-xs, 11px);
+  min-width: 0;
+}
+
+.ab-hello-feed-label {
+  color: var(--fg2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ab-hello-empty {
+  margin: 0;
+  padding: var(--sp-2, 8px) 0;
+  color: var(--fg3);
+  font-size: var(--fs-sm, 12px);
+}

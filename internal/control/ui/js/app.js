@@ -34,6 +34,8 @@ import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShell
 import { openSheet } from './sheet.js';
 import { readSingleKeyPref, isShortcutTypingTarget } from './keys.js';
 import { initCanvas, canvasOpenDoc, canvasFocusedPanel } from './canvas.js';
+import { canvasCloseDoc } from './canvas.js';
+import { initAbilities, loadAbilities, mountAbilityPanel } from './abilities.js';
 import { documentTitle, tabLabel } from './shell-title.js';
 import { liveEventStalesReads, bootReads } from './api-inflight.js';
 import { singleKeyShortcutsOn } from './keyboard.js';
@@ -89,15 +91,16 @@ function updateCrumb(t){
 // each panel opens with a visually hidden heading so screen-reader users can
 // jump between panels (and the split's two panes) by heading.
 let titlePanel='', titleProject='';
+const cssAttr=v=>String(v).replace(/["\\]/g,'\\$&');
 function syncDocumentTitle(){
-  const t=titlePanel&&document.querySelector('.tab[data-tab="'+titlePanel+'"]');
+  const t=titlePanel&&document.querySelector('.tab[data-tab="'+cssAttr(titlePanel)+'"]');
   document.title=documentTitle(t?panelLabelOf(t):'',titleProject);
 }
 function setTitleProject(name){titleProject=String(name||'');syncDocumentTitle();noteDesktopStatus();}
 function ensurePanelHeadings(){
   $$('.panel[data-panel]').forEach(panel=>{
     if(panel.querySelector(':scope > .panel-heading'))return;
-    const t=document.querySelector('.tab[data-tab="'+panel.dataset.panel+'"]');if(!t)return;
+    const t=document.querySelector('.tab[data-tab="'+cssAttr(panel.dataset.panel)+'"]');if(!t)return;
     const h=document.createElement('h2');h.className='u-sr panel-heading';h.textContent=panelLabelOf(t);
     panel.insertBefore(h,panel.firstChild);
   });
@@ -121,14 +124,14 @@ function activateTab(t){
 // in a visible pane (one in a single layout, up to two when split), which the
 // canvas marks with `.panel.active`. Live-event work gates on this so a panel
 // sharing a split keeps rendering while a panel in no visible pane still pauses.
-function isPanelVisible(name){const p=document.querySelector('.panel[data-panel="'+name+'"]');return !!p&&p.classList.contains('active');}
+function isPanelVisible(name){const p=document.querySelector('.panel[data-panel="'+cssAttr(name)+'"]');return !!p&&p.classList.contains('active');}
 // loadPanelData refetches a tool's data when its document is shown or focused —
 // the canvas calls it for the focused pane (onCanvasFocusChange) and for a second
 // pane that becomes visible in a split (onCanvasDocShown).
 function loadPanelData(name){
   // A tab strip rendered while its panel was hidden could not measure itself, so
   // bring the active tab into view now that the panel is displayed.
-  document.querySelectorAll('.panel[data-panel="'+name+'"] .rep-tabs').forEach(revealActiveTab);
+  try{document.querySelectorAll('.panel[data-panel="'+name+'"] .rep-tabs').forEach(revealActiveTab);}catch{}
   if(name==='proxy')renderRows();
   else if(name==='activity'){clearActSeen();loadActivity();}
   else if(name==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
@@ -136,8 +139,10 @@ function loadPanelData(name){
   else if(name==='findings')loadFindings();
   else if(name==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
   else if(name==='notes')loadNotes();
+  else if(name==='abilities')loadAbilities();
+  else if(typeof name==='string'&&name.startsWith('ability:'))mountAbilityPanel(name);
 }
-function updateCrumbByName(name){const t=document.querySelector('.tab[data-tab="'+name+'"]');if(t)updateCrumb(t);}
+function updateCrumbByName(name){const t=document.querySelector('.tab[data-tab="'+cssAttr(name)+'"]');if(t)updateCrumb(t);}
 // onCanvasFocusChange runs the shell-side navigation effects whenever the focused
 // document changes (and on an explicit re-open of the same one, mirroring the old
 // re-click-reloads behaviour): flush a leaving Notes draft, remember the tab,
@@ -154,11 +159,13 @@ function onCanvasFocusChange(name,prev){
 function onCanvasDocShown(name){loadPanelData(name);}
 // resolveSavedTab mirrors restoreTab's legacy redirects so the canvas seeds its
 // first document with the same tab restoreTab will focus (no stray extra tab).
+let pendingSavedAbilityTab='';
 function resolveSavedTab(){
   let id='';try{id=localStorage.getItem('tab')||'';}catch(e){}
   if(id==='api')id='settings';
   if(id==='discover')id='map';
-  const known=['proxy','intercept','repeater','intruder','identities','collections','playbooks','map','findings','notes','activity','settings'];
+  if(id.startsWith('ability:')){pendingSavedAbilityTab=id;return 'abilities';}
+  const known=['proxy','intercept','repeater','intruder','identities','collections','playbooks','map','findings','notes','activity','abilities','settings'];
   return known.includes(id)?id:'proxy';
 }
 function goToNotes(){
@@ -180,11 +187,13 @@ function syncMobileToolNav(){
   select.value=tabs.find(tab=>tab.classList.contains('active'))?.dataset.tab||'proxy';
 }
 $('#mobileToolSelect').onchange=e=>{
-  const tab=$$('.tab').find(tab=>tab.dataset.tab===e.currentTarget.value);
+  const val=e.currentTarget.value;
+  const tab=$$('.tab').find(tab=>tab.dataset.tab===val);
   if(tab&&!tab.disabled)tab.click();
+  else if(val&&val.startsWith('ability:'))activateTabByName(val);
   syncMobileToolNav();
 };
-new MutationObserver(syncMobileToolNav).observe($('#tabs'),{subtree:true,attributes:true,attributeFilter:['class','disabled']});
+new MutationObserver(syncMobileToolNav).observe($('#tabs'),{childList:true,subtree:true,attributes:true,attributeFilter:['class','disabled']});
 syncMobileToolNav();
 const mobileNavMedia=matchMedia('(max-width:720px)');
 function syncMainNavigationOrientation(){
@@ -381,6 +390,7 @@ function resyncAfterStaleReconnect(){
   if(isPanelVisible('activity'))loadActivity();
   if(isPanelVisible('map'))loadMapModule().then(m=>m.loadEndpoints());
   if(isPanelVisible('playbooks'))loadPlaybooks();
+  loadAbilities();
 
   refreshIntercept().then(()=>renderIcptStat());
 }
@@ -572,6 +582,7 @@ function cmdkCommands(){
     {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
     {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
+    {t:'Go to Abilities',kw:'abilities copy abilities plugins extensions hooks menus',run:go('abilities')},
     {t:'Go to Settings',kw:'settings preferences configuration options',run:go('settings')},
     {t:'Edit message codecs',kw:'encrypt decrypt aes codec plaintext decoded',run:openCodecs},
     ...(state.oobEnabled?[{t:'Open OOB catcher',kw:'out of band blind ssrf callback collab',run:()=>{openModal($('#oobModal'));loadOob();}}]:[]),
@@ -631,7 +642,7 @@ function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
 function sendSelectedFlow(to){const f=selectedFlow();if(f){(to==='intruder'?sendToIntruder:sendToRepeater)(f);return true;}return false;}
-const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+const GO_MNEMONICS={p:'proxy',i:'intercept',r:'repeater',u:'intruder',c:'collections',m:'map',f:'findings',n:'notes',a:'activity',b:'abilities',t:'settings'};
 // isBareCharacterKey: a printable character without Ctrl/Cmd/Alt (Shift allowed,
 // so ? counts). WCAG 2.1.4: these act only while the Single-key switch is on.
 function isBareCharacterKey(e){return e.key.length===1&&e.key!==' '&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
@@ -891,6 +902,22 @@ async function bootFirstRunUI(){
     releaseWorkstationReady();
     desktopReady();
     loadOptionalModules(path=>import(path));
+    void initAbilities({
+      activateTab:activateTabByName,
+      openFlow:(id,opts)=>import('./core.js').then(m=>m.openFlow(id,opts)),
+      getSelectedFlow:()=>selectedFlow(),
+      registerCommand,
+      registerSseHandler,
+      handlesTabChange:true,
+    }).then(()=>{
+      if(pendingSavedAbilityTab&&canvasFocusedPanel()==='abilities'&&!location.hash){
+        const target=pendingSavedAbilityTab;
+        pendingSavedAbilityTab='';
+        activateTabByName(target);
+      }else{
+        pendingSavedAbilityTab='';
+      }
+    }).catch(()=>{pendingSavedAbilityTab='';});
     await loadFlows();
     // The wizard prints the proxy and control addresses from settings; wait for
     // them so a non-default port never shows the 127.0.0.1:8080 fallback.
@@ -922,12 +949,12 @@ function goSettingsSection(sec){
   const b=document.querySelector('#setNav button[data-sec="'+sec+'"]');if(b)b.click();
 }
 function activateTabByName(name){
-  const tab=document.querySelector('.tab[data-tab="'+name+'"]');
+  const tab=document.querySelector('.tab[data-tab="'+cssAttr(name)+'"]');
   if(tab&&!tab.disabled)activateTab(tab);
 }
 // The strip only fetches once the project workspace is hydrated.
 function refreshProjectState(reason){if(projectScopedUIReady)projectState.refresh({reason});}
-setShellApi({activateTab:activateTabByName,openSettings:goSettingsSection,openProject:()=>{if(projectScopedUIReady)openProjectModal();}});
+setShellApi({activateTab:activateTabByName,closeDoc:canvasCloseDoc,openSettings:goSettingsSection,openProject:()=>{if(projectScopedUIReady)openProjectModal();}});
 initConnection({copyText,hasOpenModal});
 // Desktop shells (native macOS app, Chrome --app window): a no-op beyond the
 // theme-color meta in a browser tab. Every action reuses the shell's own path.

@@ -17,6 +17,7 @@ the active workspace; check it before changing stored data.
 | Report | Findings | Evidence records, review state, revisions, and report export. |
 | Report | Notes | The project's reference notebook: credentials, created data, access matrix. |
 | Report | Activity | Recorded agent actions and their results. |
+| Configure | Abilities | Installed Copy Abilities, trust approval, enable/disable toggles, and archive install/export. |
 | Configure | Settings | Connections, scope, integrations, session settings, and project data. |
 
 Use **Jump to…** in the top bar, or **Ctrl/⌘+K**, to find a panel. Context actions belong to
@@ -145,6 +146,19 @@ URL, Hex, HTML, JWT, and Smart. You can copy the result or move it back into the
 
 Decoder is a one-shot text utility. It does not modify captured evidence, verify JWT signatures,
 or configure persistent Message codecs.
+
+## Abilities
+
+Open **Configure → Abilities** (`#panel-abilities`, or press `g b`) to inspect installed Copy Abilities, review their declared capabilities and SHA-256 trust digest, scaffold a starter bundle, install from a folder or archive, and trust, enable, disable, export, or remove an ability. Newly installed or modified abilities remain quarantined until a human trusts them.
+
+Once trusted and enabled, an ability can inject:
+
+- **Sidebar menus and panels** under an existing group or the **Abilities** group (and the mobile **All tools** picker).
+- **Flow inspector tabs** in both the Proxy bottom inspector and the Flow Drawer (`req`, `res`, or `both` panes).
+- **Context-menu actions** under an **Abilities** submenu on flow rows and inspector panes (`flow`, `selection`, or `workspace` targets).
+- **Command-palette entries** searchable with **Ctrl/⌘+K** (`Jump to…`).
+
+See [Copy Abilities](abilities.md) for the manifest schema, UI SDK, and quarantine rules.
 
 ## Other workspace tools
 

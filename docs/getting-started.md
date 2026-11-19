@@ -4,20 +4,21 @@
 
 Interseptor is a single static binary — **no cgo, no Node, no runtime dependencies**.
 
-### Recommended — `go install` (uses the release tags)
+### Prebuilt binaries
 
-Requires **Go 1.26+**:
+Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
+`checksums.txt` on the [Releases](https://github.com/Veyal/interseptor/releases/latest) page (built by the
+release workflow when a `v*` tag is pushed):
 
 ```bash
-# latest release:
-go install github.com/Veyal/interseptor/cmd/interseptor@latest
-# …or pin a specific release:
-go install github.com/Veyal/interseptor/cmd/interseptor@v2.1.0
-
-interseptor        # if $(go env GOPATH)/bin is on your PATH
+gh release download --repo Veyal/interseptor --pattern '*_darwin_arm64.tar.gz'
+tar xzf interseptor_*_darwin_arm64.tar.gz
+./interseptor
 ```
 
-**Or update in place** (no `go install` to remember):
+Without `gh`, download the archive for your OS and architecture, verify its SHA-256 sum against `checksums.txt`, `chmod +x`, and run.
+
+**Or update in place:**
 
 ```bash
 interseptor update              # latest release
@@ -25,14 +26,13 @@ interseptor update --check      # is a newer version out?
 interseptor update --version 2.1.0
 ```
 
-`interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
+`interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary for your platform, it resolves the release tag commit via the GitHub API and runs `go install` on that commit (or prints `git clone` build instructions if needed; see [API and MCP known limitations](api-and-mcp.md#known-limitations)).
 
 **Or update from the UI.** When a newer release is out, the version badge at the bottom of the navigation rail reads `↑ vX.Y.Z available`. Click it to see the release notes, then **Update**: Interseptor downloads the release, verifies it against `checksums.txt` (a mismatch stops the update and leaves your binary untouched), and installs it while you keep working. **Restart to Update** then relaunches the new version on the same project and ports, and the page reconnects by itself. Copies installed with Homebrew or Scoop show the command to run instead (`brew upgrade interseptor`, `scoop update interseptor`); local development builds and binaries in a folder you cannot write to explain why they cannot update themselves. The macOS app runs its own updater when you click the badge. AI agents cannot start an update.
 
-Every tagged version is listed on the [**Releases**](https://github.com/Veyal/interseptor/releases)
-page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins one.
-
 ### From source
+
+Requires **Go 1.26+**:
 
 ```bash
 git clone https://github.com/Veyal/interseptor.git
@@ -41,18 +41,12 @@ make build
 ./interseptor
 ```
 
+`go install github.com/Veyal/interseptor/cmd/interseptor@latest` and `@v2.x` tags are not used for v2 releases because `go.mod` omits a `/v2` module-path suffix; build from a cloned release tag or use a prebuilt release binary.
+
 `make build` and `make run` stamp local CLI builds with `<version>-local`
 (for example, `2.1.0-local`). The version comes from the latest reachable Git
 tag, or the declared fallback version in a source archive. Published release
 binaries keep their normal version. Plain `go build` does not apply this stamp.
-
-### Prebuilt binaries
-
-Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
-`checksums.txt` on the [Releases](https://github.com/Veyal/interseptor/releases) page (built by the
-release workflow when a `v*` tag is pushed) —
-download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
-tracks the latest release.)
 
 ### macOS app
 

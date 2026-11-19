@@ -163,6 +163,7 @@ function buildMore() {
   const wrap = mk('div', 'dock-more');
   const leaveThen = (fn) => () => { closeSheet('moreSheet'); setTimeout(fn, 0); };
   wrap.append(
+    row('Abilities', actionButton('Open Abilities', leaveThen(() => goTo('abilities')))),
     row('Settings', actionButton('Open Settings', leaveThen(() => goTo('settings')))),
     row('Project', actionButton('Switch project', leaveThen(() => $('mobileProjectBtn')?.click()))),
     row('Theme', segControl('Theme', [['system', 'System'], ['dark', 'Dark'], ['light', 'Light'], ['hc', 'High contrast']], themeChoice(), applyThemeChoice)),

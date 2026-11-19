@@ -52,7 +52,7 @@ interseptor update --force
 ```
 
 Update prefers a release binary and verifies published checksums when present; otherwise it falls
-back to `go install`.
+back to resolving that release tag's commit and building from source with `go` (or prints `git clone` build commands).
 
 ## Install the macOS app
 
@@ -99,3 +99,30 @@ interseptor vault [--dir <path>] [--addr 127.0.0.1:9977] [--keep 10]
 
 `INTERSEPTOR_VAULT_DIR` sets the archive directory. See [Project vault](vault.md) before exposing it
 through Tailscale Serve or another network layer.
+
+## Copy Abilities
+
+`interseptor ability` (alias `interseptor abilities`) manages global and project-scoped [Copy Abilities](abilities.md) locally without starting the server.
+
+```text
+interseptor ability <subcommand> [options]
+```
+
+| Subcommand | Meaning |
+|---|---|
+| `list [--json]` | List installed abilities (`ID`, `SCOPE`, `VERSION`, `STATUS`, `NAME`, `DIGEST`), or emit `{"abilities": [...]}` with `--json`. |
+| `install <archive-or-dir> [--scope global\|project]` | Install a `.tar.gz`, `.zip`, or local folder through the atomic quarantine pipeline (always starts `quarantined`). |
+| `trust <id> [--enable=true\|false]` | Approve an ability's SHA-256 digest in the machine-owned trust store and enable it (`--enable` defaults to `true`). |
+| `enable <id>` | Enable an already-trusted, non-drifted ability. |
+| `disable <id>` | Disable an ability without revoking its trusted digest. |
+| `scaffold <id> [flags]` | Create a starter ability directory (`ability.json`, `ui/*`, `hooks/*`), installed quarantined. Flags: `--name`, `--group` (`capture\|test\|recon\|report\|configure\|abilities`, default `abilities`), `--desc` (`--description`), `--author`, `--scope`. |
+| `export <id> [-o <path>\|--out <path>]` | Export an ability as a deterministic `.tar.gz` archive (defaults to `<id>.tar.gz`; `-` writes to stdout). |
+| `remove <id>` | Delete an ability directory and clear its trust record. |
+
+Common options (accepted before or interleaved with subcommand arguments):
+
+| Flag or environment variable | Meaning |
+|---|---|
+| `--data-dir <path>` / `INTERSEPTOR_DATA_DIR` | Global data directory (default `~/.interseptor`; `--data_dir` also accepted before the subcommand). |
+| `--project <name\|dir>` / `INTERSEPTOR_PROJECT` | Project name or folder (`default` selects the global data directory). |
+| `--scope <global\|project>` | Target scope for `install` and `scaffold` (defaults to `project` when a named/external `--project` is set, else `global`; `--scope project` requires `--project` and is unavailable on `default`). |

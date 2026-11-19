@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/abilities"
 	"github.com/Veyal/interseptor/internal/bind"
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/intercept"
@@ -121,6 +122,8 @@ type Hub struct {
 	// worker. Set before serving.
 	ScriptRouter scriptworker.Router
 	collAPI      *collectionsAPI
+	abilitiesMu  sync.Mutex
+	abilities    *abilities.Manager
 
 	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
 	// cmd; request-generating tools refuse to target it.

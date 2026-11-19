@@ -3,6 +3,12 @@
    650/700/800 reads 600, 550 reads 500, and uppercase-transformed labels render
    in their written case. */
 html.desktop-app #cmdkBtn kbd,
+html.desktop-app .ab-card-name,
+html.desktop-app .ab-detail-title,
+html.desktop-app .ab-kirby-pill,
+html.desktop-app .ab-scaffold-title,
+html.desktop-app .ab-section-title,
+html.desktop-app .ab-title,
 html.desktop-app .act-actor,
 html.desktop-app .act-day-h,
 html.desktop-app .act-new-pill,
@@ -119,6 +125,7 @@ html.desktop-app .u-bold,
 html.desktop-app .ui-select-rep .ui-select-trigger,
 html.desktop-app .uisw b{font-weight:600}
 html.desktop-app .btn{font-weight:500}
+html.desktop-app .ab-section-title,
 html.desktop-app .act-detail b,
 html.desktop-app .ai-turn-label,
 html.desktop-app .checks-group>summary,

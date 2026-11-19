@@ -36,7 +36,7 @@ agent owns reasoning and sequencing. Nothing phones home.
   reads them over MCP and runs them with the ordinary tools, so Repeater, Intruder, Authz, OOB, and
   verification workflows follow a written procedure while Interseptor records every request, evidence,
   and finding.
-- **Extensible** — add project playbooks or sandboxed Starlark message codecs, no fork required.
+- **Extensible** — install **Copy Abilities** ([docs/abilities.md](docs/abilities.md)) to inject sidebar panels, flow inspector tabs, context-menu actions, command-palette commands, sandboxed Starlark flow hooks, and MCP actions — alongside project playbooks and Starlark message codecs, no fork required.
 - **Mobile-ready** — Android and iOS setup for HTTPS interception on real devices.
 - **MCP & API native** — a full MCP server and a REST/SSE API so an external agent or script drives
   the same core as the UI. Interseptor has no built-in model provider or autonomous decision loop.
@@ -61,15 +61,17 @@ No `gh`? Download the archive for your OS and architecture from the
 [Releases page](https://github.com/Veyal/interseptor/releases/latest) and extract it. Release
 archives list their SHA-256 sums in `checksums.txt` on the same page.
 
-Or, if you have Go 1.26+:
+Or build from source (requires Go 1.26+):
 
 ```bash
-go install github.com/Veyal/interseptor/cmd/interseptor@latest
-interseptor
+git clone https://github.com/Veyal/interseptor.git
+cd interseptor
+make build
+./interseptor
 ```
 
 Package managers are **not currently current**: the Homebrew tap is pinned to v2.9.0 and the
-automated publish is disabled, so these install an old build. Use `go install` or a release binary
+automated publish is disabled, so these install an old build. Use a release binary or build from source
 until the tap and bucket are re-seeded (see [packaging/](packaging/README.md)):
 
 ```bash
@@ -120,6 +122,7 @@ The guide lives in [docs/agents.md](docs/agents.md) (published as
 | **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
 | **[Playbooks](docs/playbooks.md)** | Markdown test guides the connected agent executes, plus the coverage ledger |
+| **[Abilities](docs/abilities.md)** | Installable Copy Abilities: UI panels, inspector tabs, Starlark hooks, and quarantine trust |
 | **[Project vault](docs/vault.md)** | Always-on backup / import / merge (Tailscale Serve) |
 | **[Engagement close-out](docs/engagement-closeout.md)** | Checklist to leave a report-ready project |
 | **[MCP cookbook](docs/product/mcp-cookbook.md)** | Copy-paste agent recipes |

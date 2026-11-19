@@ -22,6 +22,7 @@ Parts, in order:
 - Playbooks (https://veyal.github.io/interseptor/playbooks/)
 - Project vault (https://veyal.github.io/interseptor/vault/)
 - Extensions (https://veyal.github.io/interseptor/extensions/)
+- Abilities (https://veyal.github.io/interseptor/abilities/)
 - HTTP/2 (https://veyal.github.io/interseptor/http2/)
 - CLI reference (https://veyal.github.io/interseptor/cli-reference/)
 - Troubleshooting (https://veyal.github.io/interseptor/troubleshooting/)
@@ -121,11 +122,10 @@ There is no install script. Pick one path:
 
 | Path | Command |
 |---|---|
-| Go 1.26+ | `go install github.com/Veyal/interseptor/cmd/interseptor@latest` |
-| Homebrew | **Do not use for a current build.** The tap exists but is pinned to v2.9.0; the automated publish is disabled. Use `go install` or a release binary until it is re-seeded. |
-| Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Release archive | download `interseptor_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) from the [Releases](https://github.com/Veyal/interseptor/releases) page, verify `checksums.txt`, extract |
-| From source | `git clone https://github.com/Veyal/interseptor.git && cd interseptor && make build` |
+| From source (Go 1.26+) | `git clone https://github.com/Veyal/interseptor.git && cd interseptor && make build` |
+| Homebrew | **Do not use for a current build.** The tap exists but is pinned to v2.9.0; the automated publish is disabled. Use a release binary or build from source until it is re-seeded. |
+| Scoop | **Do not use for a current build.** Same as Homebrew: the bucket is not kept in step with releases. |
 | Update in place | `interseptor update` (also `interseptor update --check`, `interseptor update --version 2.8.0`). The UI's one-click update (`POST /api/update`) refuses AI/MCP and API-key callers with 403; read `GET /api/update` to report what is available. |
 
 Start it and check that it is running:
@@ -930,7 +930,7 @@ The tables below are generated from the MCP tool registry and the REST route cat
 `go run ./tools/docscheck generate`. Do not edit them by hand.
 
 <!-- docscheck:begin reference -->
-### MCP tools (134)
+### MCP tools (136)
 
 Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). Read a tool's JSON Schema with `tools/list`; the table shows the first sentence of its description and its required parameters.
 
@@ -1002,6 +1002,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `ios_ssh_setup` | none | One-click jailbroken iOS HTTPS intercept via SSH: opens mobileconfig on device (CA + global HTTP proxy). |
 | `ios_ssh_status` | none | Check jailbroken iOS device SSH reachability and authentication. |
 | `ios_status` | none | List iOS simulators (Xcode simctl) and USB iPhones (libimobiledevice): UDID, name, boot state, LAN host... |
+| `list_abilities` | none | List installed Copy Abilities (id, name, version, scope, trusted, enabled, quarantined, drift, capabilities... |
 | `list_authz` | none | List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz). |
 | `list_authz_runs` | none | List persisted authorization-run history newest first: id, ts, kind (single\|bulk\|differential\|crosshost)... |
 | `list_codecs` | none | List project Starlark message codecs (id, source, meta, compile error). |
@@ -1039,6 +1040,7 @@ Generated from the MCP tool registry (stdio `interseptor mcp` and `POST /mcp`). 
 | `render_flow_preview` | `flowId` | Render a captured flow as an Interseptor-styled HTTP request/response PNG. |
 | `render_intruder_preview` | `kind` | Render a recorded Intruder run as a PNG: kind=timeline (rate-limit/lockout waterfall), distribution... |
 | `restore_finding_revision` | `id`, `revisionId` | Restore a selected historical finding version, including a deleted finding. |
+| `run_ability_action` | `abilityId`, `action` | Invoke a Starlark action declared by a trusted, enabled Copy Ability (`POST... |
 | `run_collection` | `collectionUid` | Run a collection, a folder or a list of requests sequentially with scope policy block (the AI cannot loosen... |
 | `run_login_macro` | none | Run the recorded login macro now — refreshes session Cookie/Authorization headers from the login response. |
 | `run_request` | `itemUid` | Send one collection request through the shared pipeline: variables resolved, trusted scripts run, scope... |
@@ -1175,12 +1177,23 @@ Generated from the `create_finding` input schema. `update_finding` accepts the s
 | `verificationInstructions` | string | when status is needs_verification: exact steps for the human |
 | `why` | string | why this is a vulnerability — which security property breaks |
 
-### REST routes (295)
+### REST routes (306)
 
 Generated from the route catalog served by `GET /api/reference`. Paths are relative to the control address (default `http://127.0.0.1:9966`). `{name}` is a path parameter.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/api/abilities` | List discovered Copy Abilities (global and project-scoped) with trust, enablement, quarantine, drift, and... |
+| POST | `/api/abilities/install` | Install a Copy Ability from a raw .tgz/.zip body or multipart/form-data "file" part (max 32 MiB... |
+| POST | `/api/abilities/reload` | Re-scan global and project ability directories, recompute SHA-256 trust/drift state, and broadcast... |
+| POST | `/api/abilities/scaffold` | Create a starter Copy Ability directory on disk, installed quarantined. |
+| DELETE | `/api/abilities/{id}` | Delete an ability directory and clear its trust record. |
+| GET | `/api/abilities/{id}` | Get one Copy Ability by id: {ability} |
+| POST | `/api/abilities/{id}/actions/{action}` | Invoke a declared Starlark action on a trusted, enabled ability. |
+| GET | `/api/abilities/{id}/export` | Stream a deterministic .tar.gz archive of an ability (`<id>/`... |
+| POST | `/api/abilities/{id}/revoke` | Revoke an ability's trust approval and disable it (returns it to quarantine). |
+| POST | `/api/abilities/{id}/toggle` | Enable or disable a trusted ability. |
+| POST | `/api/abilities/{id}/trust` | Approve the reviewed SHA-256 digest and scope of an ability. |
 | DELETE | `/api/activity` | Clear activity feed |
 | GET | `/api/activity` | AI/MCP activity feed |
 | POST | `/api/activity` | MCP-only activity transport; external HTTP requests are rejected. |
@@ -2385,6 +2398,31 @@ MCP tools: `list_collections`, `get_collection` (with script approval status), `
 (a local current value; secrets are never echoed) and `script_approval_status` (read-only). No MCP
 tool can trust a script or grant a capability.
 
+### Copy Abilities API and MCP
+
+Installable **Copy Abilities** (see [Copy Abilities](https://veyal.github.io/interseptor/abilities/)) expose discovery, trust/lifecycle management, Starlark action execution, archive export, and asset serving over the control API:
+
+| Area | Routes |
+| --- | --- |
+| Discovery & export | `GET /api/abilities` (`{abilities: [...], projectScopeAvailable: bool}`), `GET /api/abilities/{id}` (`{ability}`), `GET /api/abilities/{id}/export` (deterministic `.tar.gz` stream from the verified snapshot) |
+| Lifecycle (UI-session only) | `POST /api/abilities/install` (raw `.tar.gz`/`.zip` body or multipart `"file"` part, 32 MiB cap, `?scope=global\|project`), `POST /api/abilities/scaffold` (`{id, name, description?, author?, scope?, group?}`), `POST /api/abilities/reload`, `DELETE /api/abilities/{id}?scope=&digest=` |
+| Trust & toggle (UI-session only) | `POST /api/abilities/{id}/trust` (`{digest, scope, enabled?: bool}`, `enabled` defaults to `true`, `409` on digest/scope mismatch), `POST /api/abilities/{id}/revoke`, `POST /api/abilities/{id}/toggle` (`{enabled: bool, digest?, scope?}`) |
+| Actions & UI assets | `POST /api/abilities/{id}/actions/{action}` (optional JSON input object including optional `flowId`; returns `{ok: true, result}`), `GET /abilities/{id}/{digest}/{asset...}` (immutable `ui/` snapshot bytes while trusted, enabled, and digest matches; `Cache-Control: no-store`) |
+
+Trust, quarantine, and AI isolation rules:
+
+- **UI-session only for lifecycle and trust.** `install`, `scaffold`, `reload`, `trust`, `revoke`, `toggle`, and `DELETE /api/abilities/{id}` require an interactive UI session (`X-Interseptor-CSRF` + valid UI session cookie, with `X-Interseptor-Source` unset or `ui`); AI, MCP, and API-key callers receive `403`.
+- **Inert quarantine, machine-owned project approvals & SHA-256 drift detection.** Installed and scaffolded abilities start quarantined (`trusted: false`, `enabled: false`) with no Starlark top-level initialization until approved and enabled. Project approvals live in machine-owned `~/.interseptor/ability-approvals/<sha256>/abilities-state.json` (never read from `<projectDir>`). Any post-approval file edit changes the canonical SHA-256 digest and re-quarantines the ability (`toggle` and `actions/{action}` return `403` when untrusted/disabled or `409` when drifted; `/abilities/{id}/{digest}/*` returns `404`).
+- **Non-UI action gate.** Actions without `"mcp": true` require an interactive UI session (`requireUISession`); non-UI callers (API keys, MCP, or `X-Interseptor-Source: ai`) receive `403`.
+- **Live SSE updates.** `install`, `scaffold`, `reload`, `trust`, `revoke`, `toggle`, and `remove` broadcast `{"type": "ability.update"}` on `GET /api/events`.
+
+MCP tools (served in the `full` and `web-pentest` profiles):
+
+- `list_abilities` — lists installed abilities with scope, manifest metadata, trust, enablement, quarantine, and drift state (optional `enabledOnly` and `trustedOnly` booleans; calls `GET /api/abilities`).
+- `run_ability_action` — runs an action declared by a trusted, enabled ability with `"mcp": true` (required `abilityId`, `action`; optional `flowId`, `input`; calls `POST /api/abilities/{abilityId}/actions/{action}`).
+
+No MCP tool can install, scaffold, trust, revoke, enable, disable, or delete an ability.
+
 ### Findings: one canonical evidence format
 
 Findings are persistent, curated records shared by the UI, REST API, MCP tools, and report
@@ -2844,20 +2882,21 @@ Source: https://veyal.github.io/interseptor/getting-started/
 
 Interseptor is a single static binary — **no cgo, no Node, no runtime dependencies**.
 
-### Recommended — `go install` (uses the release tags)
+### Prebuilt binaries
 
-Requires **Go 1.26+**:
+Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
+`checksums.txt` on the [Releases](https://github.com/Veyal/interseptor/releases/latest) page (built by the
+release workflow when a `v*` tag is pushed):
 
 ```bash
-# latest release:
-go install github.com/Veyal/interseptor/cmd/interseptor@latest
-# …or pin a specific release:
-go install github.com/Veyal/interseptor/cmd/interseptor@v2.1.0
-
-interseptor        # if $(go env GOPATH)/bin is on your PATH
+gh release download --repo Veyal/interseptor --pattern '*_darwin_arm64.tar.gz'
+tar xzf interseptor_*_darwin_arm64.tar.gz
+./interseptor
 ```
 
-**Or update in place** (no `go install` to remember):
+Without `gh`, download the archive for your OS and architecture, verify its SHA-256 sum against `checksums.txt`, `chmod +x`, and run.
+
+**Or update in place:**
 
 ```bash
 interseptor update              # latest release
@@ -2865,14 +2904,13 @@ interseptor update --check      # is a newer version out?
 interseptor update --version 2.1.0
 ```
 
-`interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
+`interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary for your platform, it resolves the release tag commit via the GitHub API and runs `go install` on that commit (or prints `git clone` build instructions if needed; see [API and MCP known limitations](https://veyal.github.io/interseptor/api-and-mcp/#known-limitations)).
 
 **Or update from the UI.** When a newer release is out, the version badge at the bottom of the navigation rail reads `↑ vX.Y.Z available`. Click it to see the release notes, then **Update**: Interseptor downloads the release, verifies it against `checksums.txt` (a mismatch stops the update and leaves your binary untouched), and installs it while you keep working. **Restart to Update** then relaunches the new version on the same project and ports, and the page reconnects by itself. Copies installed with Homebrew or Scoop show the command to run instead (`brew upgrade interseptor`, `scoop update interseptor`); local development builds and binaries in a folder you cannot write to explain why they cannot update themselves. The macOS app runs its own updater when you click the badge. AI agents cannot start an update.
 
-Every tagged version is listed on the [**Releases**](https://github.com/Veyal/interseptor/releases)
-page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins one.
-
 ### From source
+
+Requires **Go 1.26+**:
 
 ```bash
 git clone https://github.com/Veyal/interseptor.git
@@ -2881,18 +2919,12 @@ make build
 ./interseptor
 ```
 
+`go install github.com/Veyal/interseptor/cmd/interseptor@latest` and `@v2.x` tags are not used for v2 releases because `go.mod` omits a `/v2` module-path suffix; build from a cloned release tag or use a prebuilt release binary.
+
 `make build` and `make run` stamp local CLI builds with `<version>-local`
 (for example, `2.1.0-local`). The version comes from the latest reachable Git
 tag, or the declared fallback version in a source archive. Published release
 binaries keep their normal version. Plain `go build` does not apply this stamp.
-
-### Prebuilt binaries
-
-Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
-`checksums.txt` on the [Releases](https://github.com/Veyal/interseptor/releases) page (built by the
-release workflow when a `v*` tag is pushed) —
-download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
-tracks the latest release.)
 
 ### macOS app
 
@@ -3027,6 +3059,7 @@ the active workspace; check it before changing stored data.
 | Report | Findings | Evidence records, review state, revisions, and report export. |
 | Report | Notes | The project's reference notebook: credentials, created data, access matrix. |
 | Report | Activity | Recorded agent actions and their results. |
+| Configure | Abilities | Installed Copy Abilities, trust approval, enable/disable toggles, and archive install/export. |
 | Configure | Settings | Connections, scope, integrations, session settings, and project data. |
 
 Use **Jump to…** in the top bar, or **Ctrl/⌘+K**, to find a panel. Context actions belong to
@@ -3155,6 +3188,19 @@ URL, Hex, HTML, JWT, and Smart. You can copy the result or move it back into the
 
 Decoder is a one-shot text utility. It does not modify captured evidence, verify JWT signatures,
 or configure persistent Message codecs.
+
+## Abilities
+
+Open **Configure → Abilities** (`#panel-abilities`, or press `g b`) to inspect installed Copy Abilities, review their declared capabilities and SHA-256 trust digest, scaffold a starter bundle, install from a folder or archive, and trust, enable, disable, export, or remove an ability. Newly installed or modified abilities remain quarantined until a human trusts them.
+
+Once trusted and enabled, an ability can inject:
+
+- **Sidebar menus and panels** under an existing group or the **Abilities** group (and the mobile **All tools** picker).
+- **Flow inspector tabs** in both the Proxy bottom inspector and the Flow Drawer (`req`, `res`, or `both` panes).
+- **Context-menu actions** under an **Abilities** submenu on flow rows and inspector panes (`flow`, `selection`, or `workspace` targets).
+- **Command-palette entries** searchable with **Ctrl/⌘+K** (`Jump to…`).
+
+See [Copy Abilities](https://veyal.github.io/interseptor/abilities/) for the manifest schema, UI SDK, and quarantine rules.
 
 ## Other workspace tools
 
@@ -4829,12 +4875,10 @@ Source: https://veyal.github.io/interseptor/extensions/
 
 # Writing Interseptor extensions
 
-Interseptor has a small, stable **in-process hook API** for extending the tool
-without forking it. This is Phase 1 of [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md)
-(issue [#25](https://github.com/Veyal/interseptor/issues/25)): first-party Go
-packages register hooks at startup. Later phases add UI panel slots and an
-untrusted (WASM / Starlark) host; the hook contract described here is the
-foundation they build on.
+Interseptor has two extension layers for extending the tool without forking it (see [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md), issue [#25](https://github.com/Veyal/interseptor/issues/25)):
+
+- **Phases 2 & 3 — Copy Abilities (`internal/abilities`, **Configure → Abilities**):** installable ability folders or archives that inject UI sidebar panels, flow inspector tabs, context-menu actions, command-palette commands, sandboxed Starlark `flow.captured` hooks, and MCP actions under a SHA-256 quarantine trust model. See **[Copy Abilities](https://veyal.github.io/interseptor/abilities/)**.
+- **Phase 1 — In-process Go hooks (`internal/plugin`):** the low-level Go hook registry described below, used by first-party Go packages at startup (including the Copy Abilities Starlark hook bridge).
 
 ## The hook API — `internal/plugin`
 
@@ -4917,13 +4961,429 @@ INTERSEPTOR_EXT_ANNOTATE_TAG="internal-host" \
 
 A copy-paste starting point lives in [`examples/extensions/hello/`](https://github.com/Veyal/interseptor/tree/main/examples/extensions/hello).
 
-## Roadmap
+## Copy Abilities (Phases 2 & 3)
 
-- **Phase 2** — declared UI panel slots (ES module under
-  `~/.interseptor/extensions/`), so an extension can add a tab, not just a hook.
-- **Phase 3** — WASM / Starlark host for untrusted third-party logic.
+Phases 2 and 3 of [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md) shipped as **Copy Abilities** (`internal/abilities`), managed in **Configure → Abilities** and via `interseptor ability`.
 
-See [PRD-0005](https://github.com/Veyal/interseptor/blob/main/docs/product/prd-0005-extensions.md) for the full plan.
+- **UI slots (Phase 2)** — declared sidebar menus/panels, flow inspector tabs, context-menu actions, and command-palette entries using ES modules (`mount(container, ctx)` / `unmount(container)`).
+- **Sandboxed Starlark host (Phase 3)** — quarantined-until-trusted `flow.captured` hooks (`on_flow(flow)`) bridged through `internal/plugin` and on-demand/MCP actions (`run(ctx)`).
+
+If you want to extend Interseptor without recompiling Go code, build or install a Copy Ability following [Copy Abilities](https://veyal.github.io/interseptor/abilities/). Phase 1 in-process Go hooks remain in `internal/plugin` for compiled first-party integrations.
+
+---
+
+Source: https://veyal.github.io/interseptor/abilities/
+
+# Copy Abilities
+
+**Copy Abilities** are installable extension bundles that let you add new features to Interseptor without forking or recompiling the binary. An ability is a self-contained folder (or `.tar.gz`/`.zip` archive) with an `ability.json` manifest, optional ES module UI files, and optional sandboxed Starlark scripts.
+
+An approved ability can inject:
+
+- **Sidebar menus and workspace panels** under existing navigation groups or an **Abilities** group
+- **Flow inspector tabs** inside the History / Flow Drawer inspector
+- **Context-menu actions** for flows (`"flow"` is mounted in v1; `"selection"` and `"workspace"` are reserved)
+- **Command-palette commands** (`Ctrl/⌘+K`)
+- **Background `flow.captured` hooks** in sandboxed Starlark that auto-tag or annotate flows
+- **On-demand Starlark actions**, optionally exposed to connected AI agents via MCP
+
+Newly installed or modified abilities start **quarantined** and stay inert until a human operator inspects and explicitly trusts them.
+
+## Where abilities live
+
+Abilities can be installed globally or per project:
+
+| Scope | Directory | Trust record | Notes |
+|---|---|---|---|
+| `global` | `~/.interseptor/abilities/<id>/` | `~/.interseptor/abilities-state.json` | Available in every project (under `$INTERSEPTOR_DATA_DIR/` when `--data-dir` or `INTERSEPTOR_DATA_DIR` is set). |
+| `project` | `<projectDir>/abilities/<id>/` | `~/.interseptor/ability-approvals/<sha256>/abilities-state.json` | Available only when that project is open; overrides a global ability with the same `id`. Approvals are stored machine-locally keyed by the canonical `projectDir` SHA-256 and never read from `<projectDir>/abilities-state.json`. The `default` project aliases `~/.interseptor`, so only `global` scope is available there. |
+
+A typical ability folder looks like this:
+
+```text
+my-ability/
+├── ability.json
+├── ui/
+│   ├── panel.js
+│   └── panel.css
+└── hooks/
+    ├── on-flow.star
+    └── inspect.star
+```
+
+## Manifest (`ability.json`)
+
+Every ability requires an `ability.json` manifest at its root using schema `interseptor.ability/v1`.
+
+### Top-level fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `schema` | string | yes | Must be `"interseptor.ability/v1"`. |
+| `id` | string | yes | Unique identifier matching `^[a-z0-9][a-z0-9-]{0,63}$`. |
+| `name` | string | yes | Human-readable display name shown in **Configure → Abilities**. |
+| `version` | string | yes | Version string (for example `"0.1.0"`). |
+| `description` | string | no | Short summary of what the ability does. |
+| `author` | string | no | Author or maintainer name. |
+| `icon` | string | no | Sprite icon name without the `i-` prefix (see [UI icon system](https://github.com/Veyal/interseptor/blob/main/docs/ui-icons.md)). |
+| `capabilities` | array of strings | no | Informational review labels for declared features (`"ui.menu"`, `"ui.panel"`, `"ui.contextMenu"`, `"ui.inspectorTab"`, `"ui.command"`, `"flow.hook"`, `"ability.action"`, `"mcp.tool"`); these do not sandbox UI JavaScript. |
+| `menus` | array | no | Sidebar navigation entries and their panel modules. |
+| `contextMenus` | array | no | Right-click / context menu entries. |
+| `inspectorTabs` | array | no | Extra tabs in the flow inspector. |
+| `commands` | array | no | Entries registered in the `Ctrl/⌘+K` command palette. |
+| `hooks` | array | no | Starlark lifecycle hooks (`flow.captured`). |
+| `actions` | array | no | On-demand Starlark actions (UI, REST, and optional MCP). |
+
+### `menus[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique menu slot ID within the ability. |
+| `label` | string | Sidebar menu label. |
+| `group` | string | Sidebar group: `"capture"`, `"test"`, `"recon"`, `"report"`, `"configure"`, or `"abilities"`. |
+| `icon` | string | Sprite icon name (without `i-`). |
+| `entry` | string | Relative path to the UI ES module (for example `"ui/panel.js"`). |
+| `style` | string | Optional relative path to a stylesheet (for example `"ui/panel.css"`). |
+| `description` | string | Short description shown in navigation/palette surfaces. |
+
+### `contextMenus[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique context-menu entry ID. |
+| `label` | string | Menu item label. |
+| `target` | string | Where the item appears: `"flow"` (mounted on flow rows and inspector panes; `"selection"` and `"workspace"` are accepted in manifests as reserved values). |
+| `icon` | string | Sprite icon name (without `i-`). |
+| `panel` | string | Optional menu/panel ID to activate when invoked. |
+| `action` | string | Optional action ID to invoke. |
+| `entry` | string | Optional relative ES module path (`"ui/..."`). |
+
+### `inspectorTabs[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique inspector tab ID within the ability. |
+| `label` | string | Tab button label shown in the flow inspector. |
+| `side` | string | Flow pane(s) where the tab appears: `"both"`, `"req"`, or `"res"`. |
+| `entry` | string | Relative ES module path (`"ui/..."`). |
+| `style` | string | Optional relative CSS path (`"ui/..."`). |
+
+### `commands[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique command ID within the ability. |
+| `title` | string | Title shown in the command palette (`Ctrl/⌘+K`). |
+| `keywords` | array of strings or string | Search keywords for command-palette matching (whitespace-split when given as a string). |
+| `panel` | string | Optional menu/panel ID to open. |
+| `action` | string | Optional action ID to invoke. |
+
+### `hooks[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Hook event name. Currently `"flow.captured"`. |
+| `entry` | string | Relative Starlark script path (`"hooks/..."`). |
+
+### `actions[]`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique action ID within the ability. |
+| `name` | string | Display name for the action. |
+| `description` | string | Summary of what the action accepts and returns. |
+| `entry` | string | Relative Starlark script path (`"hooks/..."`). |
+| `mcp` | boolean | When `true`, exposes the action through MCP `run_ability_action` (while trusted and enabled). |
+
+### Example `ability.json`
+
+```json
+{
+  "schema": "interseptor.ability/v1",
+  "id": "example-header-audit",
+  "name": "Example Header Audit",
+  "version": "0.1.0",
+  "description": "Flags missing security headers on api.example.com responses and summarizes them in a workspace panel.",
+  "author": "Example Author",
+  "icon": "checks",
+  "capabilities": [
+    "ui.menu",
+    "ui.panel",
+    "ui.inspectorTab",
+    "ui.contextMenu",
+    "ui.command",
+    "flow.hook",
+    "ability.action",
+    "mcp.tool"
+  ],
+  "menus": [
+    {
+      "id": "audit-panel",
+      "label": "Header Audit",
+      "group": "abilities",
+      "icon": "checks",
+      "entry": "ui/panel.js",
+      "style": "ui/panel.css",
+      "description": "Summarize header checks across captured example.com flows."
+    }
+  ],
+  "inspectorTabs": [
+    {
+      "id": "header-tab",
+      "label": "Header Audit",
+      "side": "res",
+      "entry": "ui/tab.js",
+      "style": "ui/panel.css"
+    }
+  ],
+  "contextMenus": [
+    {
+      "id": "audit-selected-flow",
+      "label": "Run Header Audit",
+      "target": "flow",
+      "icon": "checks",
+      "action": "audit-flow"
+    }
+  ],
+  "commands": [
+    {
+      "id": "open-header-audit",
+      "title": "Open Header Audit",
+      "keywords": ["headers", "audit", "example"],
+      "panel": "audit-panel"
+    }
+  ],
+  "hooks": [
+    {
+      "event": "flow.captured",
+      "entry": "hooks/on-flow.star"
+    }
+  ],
+  "actions": [
+    {
+      "id": "audit-flow",
+      "name": "Audit flow headers",
+      "description": "Inspect response security headers for a captured flow.",
+      "entry": "hooks/audit.star",
+      "mcp": true
+    }
+  ]
+}
+```
+
+## Frontend JS UI SDK
+
+UI slots (`menus[]` and `inspectorTabs[]`) load standard browser ES modules served from the revision-pinned path `/abilities/{id}/{digest}/{asset...}` (`Cache-Control: no-store`) once the ability is trusted and enabled. Injected flow inspector tabs appear in both the Proxy bottom inspector and the Flow Drawer (`req`, `res`, or `both` panes), and `flow` context-menu actions appear under an **Abilities** submenu on flow rows and inspector panes.
+
+Each UI module exports `mount(container, ctx)` (required) and optionally `update(container, ctx)` and `unmount(container)`:
+
+```javascript
+export function mount(container, ctx) {
+  // Render DOM inside `container`, wire listeners, subscribe to SSE if needed.
+}
+
+export function update(container, ctx) {
+  // Optional: update an already-mounted panel or inspector tab when flow/action context changes.
+}
+
+export function unmount(container) {
+  // Optional: clean up event listeners, timers, and SSE subscriptions.
+}
+```
+
+A `contextMenus[]` entry that supplies `entry` (without `panel` or `action`) is imported on click and invoked via `run(ctx)` or `default(ctx)`. Module load, `mount`, and `update` errors are isolated inside a per-slot error boundary with **Retry** and **Open Abilities** actions so a broken ability never crashes the workspace.
+
+### `ctx` reference
+
+| Member | Kind | Description |
+|---|---|---|
+| `ctx.abilityId` | string | ID of the owning ability. |
+| `ctx.menuId` | string | Active slot ID (menu ID, inspector tab ID, or context-menu ID). |
+| `ctx.tabId` | string | Same slot ID (`menuId` alias, helpful in inspector tabs). |
+| `ctx.side` | string (optional) | Inspector tab side (`"both"`, `"req"`, or `"res"`). |
+| `ctx.api(path, opts?)` | async function | Calls Interseptor's control REST API with UI headers and parsed JSON handling. |
+| `ctx.runAction(actionId, input?)` | async function | Executes one of this ability's declared `actions[]` (`POST /api/abilities/{id}/actions/{action}`) and returns `{ok: true, result}`. |
+| `ctx.getSelectedFlow()` | function | Returns the flow passed from a context menu (consumed once) or the currently selected flow in Proxy/History, or `null` when none is selected. |
+| `ctx.openFlow(flowId, opts?)` | function | Opens the Flow Drawer inspector on `flowId`. |
+| `ctx.activateTab(tabId)` | function | Navigates to and focuses a workspace panel tab. |
+| `ctx.onSse(type, fn)` | function | Subscribes to a live SSE event type (for example `"flow.new"` or `"ability.update"`); returns an unsubscribe function and is cleaned up automatically on `unmount`. |
+| `ctx.offSse(type)` | function | Unsubscribes all listeners registered by this slot for `type` (or all types when omitted). |
+| `ctx.toast(msg, severity?)` | function | Shows a themed toast notification (`"info"`, `"success"`, `"warn"`, or `"error"`). |
+| `ctx.toastError(prefix, err)` | function | Formats and displays an error toast. |
+| `ctx.esc(str)` | function | HTML-escapes untrusted strings (such as hosts, paths, or headers) before building HTML markup. |
+| `ctx.icon(name, label?)` | function | Returns inline SVG sprite markup for a built-in Interseptor icon (`#i-<name>`). |
+| `ctx.flow`, `ctx.actionResult`, `ctx.result` | optional | Populated when a panel or inspector tab is opened with flow context or immediately after a context-menu/command action run. |
+
+### Example UI module (`ui/panel.js`)
+
+```javascript
+export function mount(container, ctx) {
+  let off = null;
+
+  async function render() {
+    const flow = ctx.getSelectedFlow();
+    if (!flow) {
+      container.innerHTML = `<div class="ability-box"><p>Select a flow in Proxy to audit <code>api.example.com</code> headers.</p></div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="ability-box">
+        <h3>${ctx.icon('checks')} ${ctx.esc(flow.method)} ${ctx.esc(flow.host)}${ctx.esc(flow.path)}</h3>
+        <button type="button" class="btn" id="runAuditBtn">Run Audit Action</button>
+        <pre id="auditOut"></pre>
+      </div>`;
+    container.querySelector('#runAuditBtn')?.addEventListener('click', async () => {
+      try {
+        const res = await ctx.runAction('audit-flow', { flowId: flow.id });
+        container.querySelector('#auditOut').textContent = JSON.stringify(res, null, 2);
+      } catch (err) {
+        ctx.toastError('Audit failed', err);
+      }
+    });
+  }
+
+  off = ctx.onSse('flow.new', () => render());
+  render();
+
+  container._abilityCleanup = () => {
+    if (typeof off === 'function') off();
+  };
+}
+
+export function unmount(container) {
+  if (typeof container._abilityCleanup === 'function') {
+    container._abilityCleanup();
+    delete container._abilityCleanup;
+  }
+  container.innerHTML = '';
+}
+```
+
+## Starlark hooks and actions
+
+Ability scripts under `hooks/*.star` run in Interseptor's sandboxed Starlark engine (using the shared `internal/starx` standard library).
+
+- **Sandbox guarantees:** No filesystem access, no raw sockets or network egress, no environment variable access, no `load()`, and no ability to mutate Interseptor settings or bypass scope. Symlinks escaping the ability directory and hidden dotfiles are rejected.
+- **Execution and size budgets:** Each hook or action invocation is capped at **`100,000` (`100_000`) Starlark steps** (with a **5-second** timeout on `flow.captured` hooks and a **10-second** default timeout on actions; max nesting depth **128**). Request/response bodies passed to Starlark are capped at **64 KiB**, single ability files are capped at **2 MiB** (total uncompressed ability size **16 MiB**, max **512** files; archive uploads capped at **32 MiB**), and `flow.captured` hooks can apply at most **16** tags (64 bytes each) and a **4,096-byte** note per run.
+- **Builtins:** Shared `internal/starx` helpers (`json_decode`, `json_encode`, `b64decode`, `b64encode`, `url_decode`, `url_encode`, `re_search`, `hash`, `hmac`, `sha256_hex`, `hmac_sha256_hex`, `aes_ecb_encrypt`, `aes_ecb_decrypt`, `aes_cbc_encrypt`, `aes_cbc_decrypt`, `aes_ctr`, `now_ms`, `random_hex`, `finding`) are available both as top-level globals and under the frozen `starx` module (for example `starx.b64encode(...)`).
+
+### Flow hook: `on_flow(flow)`
+
+Hooks registered for `"flow.captured"` run asynchronously via `plugin.OnFlowCaptured` after a flow reaches its final recorded state. They **never** run on the proxy hot path, so a slow or failing hook never delays or breaks HTTP/HTTPS forwarding.
+
+`on_flow(flow)` receives a frozen `flow` dictionary with these keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `id` | int | Captured flow ID. |
+| `method` | string | HTTP method (`GET`, `POST`, etc.). |
+| `scheme` | string | `"http"` or `"https"`. |
+| `host` | string | Target hostname. |
+| `port` | int | Target port. |
+| `path` | string | Request path and query string. |
+| `status` | int | Response status code (`0` if unavailable). |
+| `mime` | string | Response MIME type. |
+| `reqHeaders` | dict | Request headers (`headerName -> list of strings`). |
+| `resHeaders` | dict | Response headers (`headerName -> list of strings`). |
+| `reqBody` | string | Request body text (capped at 64 KiB). |
+| `resBody` | string | Response body text (capped at 64 KiB). |
+| `note` | string | Current flow note. |
+
+`on_flow(flow)` returns either `None` (no changes) or a dictionary with optional `tags` and/or `note`:
+
+```python
+# hooks/on-flow.star
+def on_flow(flow):
+    if flow["host"] != "api.example.com":
+        return None
+    if flow["status"] == 200 and not flow["resHeaders"].get("Content-Security-Policy"):
+        return {
+            "tags": ["missing-csp"],
+            "note": "Response from api.example.com omitted Content-Security-Policy.",
+        }
+    return None
+```
+
+### Action: `run(ctx)`
+
+Actions declared in `actions[]` are invoked on demand from an ability's UI (`ctx.runAction`), a context menu or command palette binding, or `POST /api/abilities/{id}/actions/{action}` (and MCP `run_ability_action` when `"mcp": true`).
+
+`run(ctx)` receives a frozen `ctx` dictionary containing:
+
+| Key | Type | Description |
+|---|---|---|
+| Top-level input fields + `input` | dict / any | Caller-supplied JSON fields are exposed at the top level of `ctx` and mirrored under `ctx["input"]` (unless the caller explicitly sent an `"input"` key). |
+| `flow` | dict (optional) | Frozen flow dictionary (same fields as `on_flow(flow)`) loaded automatically when `flowId` (top-level or `input.flowId`) is a positive flow ID. |
+
+`run(ctx)` returns any JSON-serializable value (dictionary, list, string, integer, float, boolean, or `None`):
+
+```python
+# hooks/audit.star
+def run(ctx):
+    flow = ctx.get("flow")
+    if not flow:
+        return {"ok": False, "error": "flowId is required"}
+    headers = flow["resHeaders"]
+    missing = [
+        h for h in ["Strict-Transport-Security", "X-Content-Type-Options", "Content-Security-Policy"]
+        if not headers.get(h)
+    ]
+    return {
+        "ok": True,
+        "flowId": flow["id"],
+        "host": flow["host"],
+        "missingHeaders": missing,
+    }
+```
+
+## Security and quarantine trust model
+
+> **Important:** Trusted UI ES modules run **same-origin in the Interseptor UI** with full operator UI privileges (access to `ctx.api`, DOM, storage, and session controls), **outside the Starlark sandbox**. Manifest `capabilities[]` are informative review labels, not a browser JS permission boundary. Only approve UI code from authors you trust, and reload the browser tab after revoking an ability to clear any already-evaluated ES module state from memory.
+
+Interseptor treats every external or modified ability as **untrusted and inert until a human approves it**:
+
+1. **Quarantined and inert on arrival.** Installing an ability from a directory or `.tar.gz`/`.zip` archive, copying files into `~/.interseptor/abilities/` or `<projectDir>/abilities/`, or scaffolding a new ability leaves it **quarantined** (untrusted and disabled). While quarantined:
+   - No UI menus, inspector tabs, context menus, or command-palette entries are injected.
+   - `/abilities/{id}/{digest}/*` returns `404` and refuses to serve any UI module or static asset. Only verified, immutable `ui/` snapshot bytes on trusted, enabled, non-drifted abilities matching `{digest}` are served (`Cache-Control: no-store`).
+   - Starlark scripts are only parsed and statically resolved (`starlark.SourceProgramOptions`, `load()` disabled) — **no Starlark module top-level code executes** until the ability is explicitly trusted and enabled.
+   - `flow.captured` hooks do not execute and actions cannot be invoked from the UI, REST, or MCP (`403`).
+2. **Human-only, machine-owned, revision-bound approval.** Only an operator in the interactive web UI (**Configure → Abilities**) or via the local CLI (`interseptor ability trust <id>`, which enables by default unless `--enable=false` is passed) can approve an ability. UI approval (`POST /api/abilities/{id}/trust`) submits the reviewed `{digest, scope, enabled}` pair; the server re-snapshots the directory via `os.Root` before persisting trust and rejects stale or mismatched requests with `409 Conflict`. Project approvals live strictly in machine-owned `~/.interseptor/ability-approvals/<sha256>/abilities-state.json` — copying or opening an untrusted project directory never grants trust.
+3. **SHA-256 drift detection.** Approving an ability records a canonical SHA-256 digest over all non-hidden regular files (`ability.json`, `ui/*`, `hooks/*`). Symlinked ability containers/directories and hidden manifest segments are rejected, and any post-approval file change on disk revokes trust on reload and automatically re-quarantines the ability (`409 Conflict` if toggled or invoked while drifted).
+4. **AI / MCP / API-key isolation.** Control endpoints that install, scaffold, reload, trust, revoke, toggle, or delete abilities require an interactive UI session (`X-Interseptor-CSRF` + UI session cookie, with `X-Interseptor-Source` unset or `ui`); AI, MCP, and API-key callers receive `403`. MCP exposes only `list_abilities` (optional `enabledOnly` and `trustedOnly` booleans) and `run_ability_action` (required `abilityId` and `action`; optional `flowId` and `input`; restricted to actions on already-trusted, enabled abilities that explicitly declare `"mcp": true`). All non-UI callers (API keys, MCP, or `X-Interseptor-Source: ai`) are atomically refused `403` on actions lacking `"mcp": true`. Abilities cannot bypass target scope or weaken proxy security rules.
+
+## Managing abilities
+
+### Interactive UI (`Configure → Abilities`)
+
+Open **Configure → Abilities** (or press `g b`) to:
+
+- Inspect installed global and project abilities, their declared capabilities, trust status, and SHA-256 digest state.
+- **Install** an ability from a `.tar.gz`/`.tgz`/`.zip` archive (use `interseptor ability install <dir>` for local folders), or **Scaffold** a starter ability.
+- **Approve & Enable** a quarantined ability after reviewing its manifest and SHA-256 digest, **Enable / Disable** it, **Export** it as a portable `.tar.gz` archive, **Reload** abilities from disk, or **Remove** it.
+
+### CLI
+
+Use `interseptor ability` subcommands for local terminal management:
+
+```text
+interseptor ability list
+interseptor ability install <archive-or-dir>
+interseptor ability trust <id>
+interseptor ability enable <id>
+interseptor ability disable <id>
+interseptor ability scaffold <id>
+interseptor ability export <id>
+interseptor ability remove <id>
+```
+
+See [CLI reference](https://veyal.github.io/interseptor/cli-reference/) for full command usage and [API and MCP](https://veyal.github.io/interseptor/api-and-mcp/) for the `/api/abilities*`, `/abilities/{id}/{digest}/*`, SSE (`ability.update`), and MCP tool contracts.
+
+## Examples
+
+The repository ships two complete example abilities you can inspect, install, or copy:
+
+- [`examples/abilities/hello-ability/`](https://github.com/Veyal/interseptor/tree/main/examples/abilities/hello-ability/) — minimal starter showing a sidebar menu panel, flow context menu, command-palette item, `flow.captured` hook, and MCP-ready action.
+- [`examples/abilities/jwt-xray/`](https://github.com/Veyal/interseptor/tree/main/examples/abilities/jwt-xray/) — practical JWT inspection ability with a Recon sidebar panel, Flow Inspector tab, `flow.captured` JWT/`alg=none` tagger, and deep JWT analyzer action (`mcp: true`).
 
 ---
 
@@ -5034,7 +5494,7 @@ interseptor update --force
 ```
 
 Update prefers a release binary and verifies published checksums when present; otherwise it falls
-back to `go install`.
+back to resolving that release tag's commit and building from source with `go` (or prints `git clone` build commands).
 
 ## Install the macOS app
 
@@ -5081,6 +5541,33 @@ interseptor vault [--dir <path>] [--addr 127.0.0.1:9977] [--keep 10]
 
 `INTERSEPTOR_VAULT_DIR` sets the archive directory. See [Project vault](https://veyal.github.io/interseptor/vault/) before exposing it
 through Tailscale Serve or another network layer.
+
+## Copy Abilities
+
+`interseptor ability` (alias `interseptor abilities`) manages global and project-scoped [Copy Abilities](https://veyal.github.io/interseptor/abilities/) locally without starting the server.
+
+```text
+interseptor ability <subcommand> [options]
+```
+
+| Subcommand | Meaning |
+|---|---|
+| `list [--json]` | List installed abilities (`ID`, `SCOPE`, `VERSION`, `STATUS`, `NAME`, `DIGEST`), or emit `{"abilities": [...]}` with `--json`. |
+| `install <archive-or-dir> [--scope global\|project]` | Install a `.tar.gz`, `.zip`, or local folder through the atomic quarantine pipeline (always starts `quarantined`). |
+| `trust <id> [--enable=true\|false]` | Approve an ability's SHA-256 digest in the machine-owned trust store and enable it (`--enable` defaults to `true`). |
+| `enable <id>` | Enable an already-trusted, non-drifted ability. |
+| `disable <id>` | Disable an ability without revoking its trusted digest. |
+| `scaffold <id> [flags]` | Create a starter ability directory (`ability.json`, `ui/*`, `hooks/*`), installed quarantined. Flags: `--name`, `--group` (`capture\|test\|recon\|report\|configure\|abilities`, default `abilities`), `--desc` (`--description`), `--author`, `--scope`. |
+| `export <id> [-o <path>\|--out <path>]` | Export an ability as a deterministic `.tar.gz` archive (defaults to `<id>.tar.gz`; `-` writes to stdout). |
+| `remove <id>` | Delete an ability directory and clear its trust record. |
+
+Common options (accepted before or interleaved with subcommand arguments):
+
+| Flag or environment variable | Meaning |
+|---|---|
+| `--data-dir <path>` / `INTERSEPTOR_DATA_DIR` | Global data directory (default `~/.interseptor`; `--data_dir` also accepted before the subcommand). |
+| `--project <name\|dir>` / `INTERSEPTOR_PROJECT` | Project name or folder (`default` selects the global data directory). |
+| `--scope <global\|project>` | Target scope for `install` and `scaffold` (defaults to `project` when a named/external `--project` is set, else `global`; `--scope project` requires `--project` and is unavailable on `default`). |
 
 ---
 

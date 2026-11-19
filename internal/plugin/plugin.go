@@ -15,19 +15,47 @@ import "sync"
 // it must not block the proxy hot path — do heavy work in a goroutine.
 type FlowHook func(flowID int64)
 
+type flowHookEntry struct {
+	id uint64
+	fn FlowHook
+}
+
 var (
-	mu        sync.Mutex
-	flowHooks []FlowHook
+	mu         sync.Mutex
+	nextHookID uint64
+	flowHooks  []flowHookEntry
 )
 
 // OnFlowCaptured registers a flow hook. Safe for concurrent use.
 func OnFlowCaptured(h FlowHook) {
+	RegisterFlowHook(h)
+}
+
+// RegisterFlowHook registers a flow hook and returns an idempotent cancel
+// function that unregisters it. Safe for concurrent use.
+func RegisterFlowHook(h FlowHook) func() {
 	if h == nil {
-		return
+		return func() {}
 	}
 	mu.Lock()
-	flowHooks = append(flowHooks, h)
+	nextHookID++
+	id := nextHookID
+	flowHooks = append(flowHooks, flowHookEntry{id: id, fn: h})
 	mu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			mu.Lock()
+			for i, e := range flowHooks {
+				if e.id == id {
+					flowHooks = append(flowHooks[:i], flowHooks[i+1:]...)
+					break
+				}
+			}
+			mu.Unlock()
+		})
+	}
 }
 
 // invokeHook runs one hook with a panic guard: hooks are called from the capture
@@ -41,10 +69,10 @@ func invokeHook(hook func()) {
 // EmitFlowCaptured invokes registered flow hooks outside any caller lock.
 func EmitFlowCaptured(flowID int64) {
 	mu.Lock()
-	hooks := append([]FlowHook(nil), flowHooks...)
+	entries := append([]flowHookEntry(nil), flowHooks...)
 	mu.Unlock()
-	for _, h := range hooks {
-		invokeHook(func() { h(flowID) })
+	for _, e := range entries {
+		invokeHook(func() { e.fn(flowID) })
 	}
 }
 
@@ -52,5 +80,6 @@ func EmitFlowCaptured(flowID int64) {
 func Reset() {
 	mu.Lock()
 	flowHooks = nil
+	nextHookID = 0
 	mu.Unlock()
 }

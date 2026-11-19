@@ -27,8 +27,9 @@ let narrowMq = null;
 let drag = null;
 let built = false;
 
+const cssAttr = (v) => String(v).replace(/["\\]/g, '\\$&');
 const allPanels = () => $$('.panel[data-panel]').map((p) => p.dataset.panel);
-const panelEl = (panel) => document.querySelector('.panel[data-panel="' + panel + '"]');
+const panelEl = (panel) => document.querySelector('.panel[data-panel="' + cssAttr(panel) + '"]');
 const effLayout = () => (narrowMq && narrowMq.matches ? 'single' : state.layout);
 const effSplit = () => effLayout() !== 'single';
 const visibleEff = () => (effSplit() ? M.visiblePanels(state) : [M.focusedPanel(state)]);

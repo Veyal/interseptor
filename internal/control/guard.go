@@ -31,10 +31,14 @@ import (
 // maxRequestBody bounds every control request body as a DoS backstop (see below).
 var maxRequestBody int64 = 128 << 20
 
+const maxAbilityUploadBytes int64 = (32 << 20) + (1 << 20) // 32 MiB archive + multipart framing
+
 func controlRequestBodyLimit(path string) int64 {
 	switch path {
 	case "/api/import/full", "/api/merge/file", "/api/packs/install":
 		return maxArchiveBytes
+	case "/api/abilities/install":
+		return maxAbilityUploadBytes
 	default:
 		return maxRequestBody
 	}

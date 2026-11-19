@@ -35,6 +35,7 @@ func (h *Hub) routes() {
 	h.registerEvidenceRoutes(ev)
 	h.registerMetaRoutes(meta)
 	h.registerCollectionRoutes()
+	h.registerAbilityRoutes()
 
 	h.mux.HandleFunc("/", h.serveFallback)
 }
@@ -354,4 +355,20 @@ func (h *Hub) registerEvidenceRoutes(ev *evidenceAPI) {
 	h.mux.HandleFunc("GET /api/render/flow-waterfall.png", ev.getFlowWaterfallRender)
 	h.mux.HandleFunc("GET /api/render/finding-chain.png", ev.getFindingChainRender)
 	h.mux.HandleFunc("POST /api/findings/{id}/evidence-render", ev.attachEvidenceRender)
+}
+
+func (h *Hub) registerAbilityRoutes() {
+	ab := &abilitiesAPI{h}
+	h.mux.HandleFunc("GET /api/abilities", ab.list)
+	h.mux.HandleFunc("GET /api/abilities/{id}", ab.get)
+	h.mux.HandleFunc("POST /api/abilities/install", ab.install)
+	h.mux.HandleFunc("POST /api/abilities/scaffold", ab.scaffold)
+	h.mux.HandleFunc("POST /api/abilities/reload", ab.reload)
+	h.mux.HandleFunc("POST /api/abilities/{id}/trust", ab.trust)
+	h.mux.HandleFunc("POST /api/abilities/{id}/revoke", ab.revoke)
+	h.mux.HandleFunc("POST /api/abilities/{id}/toggle", ab.toggle)
+	h.mux.HandleFunc("POST /api/abilities/{id}/actions/{action}", ab.runAction)
+	h.mux.HandleFunc("GET /api/abilities/{id}/export", ab.export)
+	h.mux.HandleFunc("DELETE /api/abilities/{id}", ab.remove)
+	h.mux.HandleFunc("GET /abilities/{id}/{revision}/{asset...}", ab.serveAsset)
 }

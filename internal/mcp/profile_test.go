@@ -47,6 +47,7 @@ var fullToolNames = []string{
 	"oob_state", "oob_new", "oob_set_base", "oob_enable",
 	"get_flow_auth", "promote_flow_to_authz", "set_login_macro_from_flow", "set_login_macro",
 	"test_login_macro",
+	"list_abilities", "run_ability_action",
 }
 
 // The default profile must expose exactly the tools it exposed before profiles
@@ -137,10 +138,10 @@ func TestCuratedProfilesExposeTheirDocumentedTools(t *testing.T) {
 			"add_authz_identity", "add_finding_image", "add_finding_poc", "analyze_flow",
 			"authz_differential", "authz_run", "ca_info", "check_readiness", "create_finding",
 			"cross_host_token_replay", "get_flow", "get_playbook", "host_stats",
-			"intruder_state", "list_authz", "list_endpoints", "list_findings", "list_flows",
+			"intruder_state", "list_abilities", "list_authz", "list_endpoints", "list_findings", "list_flows",
 			"list_params", "list_scope", "match_playbooks",
 			"oob_new", "oob_state", "promote_flow_to_authz", "record_playbook_coverage",
-			"render_flow_preview", "run_login_macro", "scope_from_url",
+			"render_flow_preview", "run_ability_action", "run_login_macro", "scope_from_url",
 			"send_request", "set_login_macro_from_flow", "start_intruder", "update_finding",
 		},
 		ProfileReporting: {
@@ -219,7 +220,7 @@ func TestToolListAndSchemaHashHonourProfile(t *testing.T) {
 }
 
 // A tool outside the active profile is not callable: a profile that advertises
-// 30 tools but silently runs 134 would make tools/list a lie.
+// 34 tools but silently runs 136 would make tools/list a lie.
 func TestOutOfProfileCallIsRefusedWithAWayOut(t *testing.T) {
 	web := NewProfile("http://127.0.0.1:1", ProfileWebPentest)
 	_, err := web.Call("drop_request", map[string]any{"id": 1})
